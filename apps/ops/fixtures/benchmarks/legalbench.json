@@ -1,0 +1,16 @@
+[
+  {
+    "id": "legalbench-fr-contract-damages",
+    "name": "LegalBench - FR Dommages contractuels",
+    "prompt": "En droit français des contrats, dans quelles hypothèses un juge peut-il réduire la clause pénale prévue entre les parties ?",
+    "expected_contains": ["clause pénale", "Code civil", "1231-5"],
+    "benchmark": "legalbench"
+  },
+  {
+    "id": "legalbench-ohada-societe",
+    "name": "LegalBench - OHADA Société anonyme",
+    "prompt": "Selon l'Acte uniforme OHADA relatif au droit des sociétés, quelles sont les obligations de publication lors de la constitution d'une société anonyme ?",
+    "expected_contains": ["acte uniforme", "société anonyme", "publication"],
+    "benchmark": "legalbench"
+  }
+]

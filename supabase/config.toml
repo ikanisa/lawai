@@ -334,6 +334,10 @@ s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
 
+# -------------------------
+# Scheduled Edge Functions
+# -------------------------
+
 [functions."crawl-authorities"]
 verify_jwt = false
 

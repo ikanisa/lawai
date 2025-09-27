@@ -1,0 +1,31 @@
+[
+  {
+    "title": "Cour d'appel du Québec – 2020 QCCA 110",
+    "jurisdiction": "CA-QC",
+    "sourceType": "case",
+    "publisher": "CanLII",
+    "canonicalUrl": "https://canlii.ca/t/j5m2j",
+    "downloadUrl": "https://canlii.ca/t/j5m2j",
+    "bindingLanguage": "fr",
+    "consolidated": false,
+    "effectiveDate": "2020-02-05",
+    "versionLabel": "Texte intégral CanLII",
+    "mimeType": "text/html",
+    "residency": "ca",
+    "ecli": "ECLI:CA-QCCA:2020:110"
+  },
+  {
+    "title": "Tribunal administratif du travail – 2023 QCTAT 2542",
+    "jurisdiction": "CA-QC",
+    "sourceType": "case",
+    "publisher": "CanLII",
+    "canonicalUrl": "https://canlii.ca/t/jtnvv",
+    "downloadUrl": "https://canlii.ca/t/jtnvv",
+    "bindingLanguage": "fr",
+    "consolidated": false,
+    "effectiveDate": "2023-07-14",
+    "versionLabel": "Décision complète",
+    "mimeType": "text/html",
+    "residency": "ca"
+  }
+]
