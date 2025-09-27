@@ -44,7 +44,7 @@ owner_profile as (
   select owner_id as id from public.cases where title = 'Dossier exemple - Contrat SaaS' limit 1
 )
 insert into public.case_collaborators (case_id, profile_id, role, added_by)
-select ec.id, cp.id, 'client', op.id
+select ec.id, cp.id, 'client'::public.case_collaborator_role, op.id
 from example_case ec
 join client_profile cp on true
 join owner_profile op on true
@@ -83,9 +83,9 @@ lawyer_profile as (
 insert into public.case_messages (case_id, actor, sender_id, content, model)
 select * from (
   values
-    ((select id from example_case), 'client', (select id from client_profile), 'Pouvez-vous vérifier que les clauses de pénalité sont conformes ?', null),
-    ((select id from example_case), 'assistant', null, 'Oui, je vais analyser les clauses et suggérer des ajustements.', 'gpt-4o-mini'),
-    ((select id from example_case), 'lawyer', (select id from lawyer_profile), 'Merci, pourrais-tu ajouter une clause spécifique pour la protection des données ?', null)
+    ((select id from example_case), 'client'::public.message_actor, (select id from client_profile), 'Pouvez-vous vérifier que les clauses de pénalité sont conformes ?', null),
+    ((select id from example_case), 'assistant'::public.message_actor, null, 'Oui, je vais analyser les clauses et suggérer des ajustements.', 'gpt-4o-mini'),
+    ((select id from example_case), 'lawyer'::public.message_actor, (select id from lawyer_profile), 'Merci, pourrais-tu ajouter une clause spécifique pour la protection des données ?', null)
 ) as msg(case_id, actor, sender_id, content, model)
 where exists (select 1 from example_case)
 and not exists (
