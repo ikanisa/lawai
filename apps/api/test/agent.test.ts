@@ -286,7 +286,7 @@ beforeEach(() => {
     if (url.includes('/embeddings')) {
       return {
         ok: true,
-        json: async () => ({ data: [{ embedding: new Array(3072).fill(0.1) }] }),
+        json: async () => ({ data: [{ embedding: new Array(1536).fill(0.1) }] }),
       } as Response;
     }
 

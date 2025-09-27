@@ -6,7 +6,7 @@ create table if not exists public.residency_zones (
 
 insert into public.residency_zones (code, description) values
   ('eu', 'Union européenne / EEE'),
-  ('ohada', 'OHADA - Afrique de l\'Ouest et Centrale'),
+  ('ohada', 'OHADA - Afrique de l''Ouest et Centrale'),
   ('ch', 'Suisse (cantons francophones)'),
   ('ca', 'Canada / Québec'),
   ('rw', 'Rwanda (gazette et justice)'),

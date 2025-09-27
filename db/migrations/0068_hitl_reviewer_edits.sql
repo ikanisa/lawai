@@ -17,6 +17,7 @@ alter table public.hitl_reviewer_edits enable row level security;
 create index if not exists hitl_reviewer_edits_hitl_idx on public.hitl_reviewer_edits (hitl_id);
 create index if not exists hitl_reviewer_edits_run_idx on public.hitl_reviewer_edits (run_id);
 
-create policy if not exists "hitl reviewer edits by org" on public.hitl_reviewer_edits
+drop policy if exists "hitl reviewer edits by org" on public.hitl_reviewer_edits;
+create policy "hitl reviewer edits by org" on public.hitl_reviewer_edits
   for all using (public.is_org_member(org_id))
   with check (public.is_org_member(org_id));

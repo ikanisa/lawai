@@ -1,5 +1,5 @@
 do
-$$
+$do$
 begin
   if exists (
     select 1
@@ -26,7 +26,7 @@ begin
     select 1 from public.jurisdictions where code = 'CIMA'
   ) then
     insert into public.jurisdictions (code, name, eu, ohada)
-    values ('CIMA', 'Conférence interafricaine des marchés d\'assurances', false, false);
+    values ('CIMA', 'Conférence interafricaine des marchés d''assurances', false, false);
   end if;
 end;
-$$;
+$do$;

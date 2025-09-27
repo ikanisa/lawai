@@ -11,5 +11,6 @@ create table if not exists public.agent_learning_reports (
 
 alter table public.agent_learning_reports enable row level security;
 
-create policy if not exists "learning reports by org" on public.agent_learning_reports
+drop policy if exists "learning reports by org" on public.agent_learning_reports;
+create policy "learning reports by org" on public.agent_learning_reports
   for select using (public.is_org_member(org_id));

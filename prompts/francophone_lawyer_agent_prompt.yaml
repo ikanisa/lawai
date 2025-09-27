@@ -155,7 +155,7 @@ allowlist_domains:
 technology_stack:
   orchestrator: "OpenAI Agents SDK"
   llm_default: "gpt-5-pro"  # fallback gpt-4o ou modèle disponible
-  embeddings: "text-embedding-3-large"
+  embeddings: "text-embedding-3-small"
   retrieval:
     hybrid: true
     vector_store: "OpenAI Vector Store + pgvector (Supabase)"
@@ -381,4 +381,3 @@ notes:
   - "Prévoir la capacité d'ajouter d'autres juridictions francophones à l'avenir (paramétrer les tables et prompts)."
   - "Rappeler que les textes Maghreb en arabe priment; inclure la mention 'Traduction française fournie à titre informatif'."
   - "Inclure dans chaque réponse une mention sur la mise à jour des sources (date de vérification)."
-

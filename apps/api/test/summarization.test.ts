@@ -60,7 +60,7 @@ describe('summariseDocumentFromPayload', () => {
 
     const embeddingsReply = {
       data: [
-        { embedding: new Array(3072).fill(0.2) },
+        { embedding: new Array(1536).fill(0.2) },
       ],
     };
 

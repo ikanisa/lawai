@@ -11,34 +11,50 @@ alter table public.hitl_queue enable row level security;
 alter table public.eval_cases enable row level security;
 alter table public.eval_results enable row level security;
 
-create policy if not exists "orgs readable to members" on public.organizations
+drop policy if exists "orgs readable to members" on public.organizations;
+create policy "orgs readable to members" on public.organizations
 for select
 using (public.is_org_member(id));
 
-create policy if not exists "org_members self-read" on public.org_members
+drop policy if exists "org_members self-read" on public.org_members;
+create policy "org_members self-read" on public.org_members
 for select
 using (auth.uid() = user_id);
 
-create policy if not exists "sources by org" on public.sources
+drop policy if exists "sources by org" on public.sources;
+create policy "sources by org" on public.sources
 for all
 using (public.is_org_member(org_id))
 with check (public.is_org_member(org_id));
 
-create policy if not exists "documents by org" on public.documents
-for all
-using (public.is_org_member(org_id))
-with check (public.is_org_member(org_id));
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'documents'
+      and column_name = 'org_id'
+  ) then
+    execute 'drop policy if exists "documents by org" on public.documents';
+    execute 'create policy "documents by org" on public.documents for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id))';
+  end if;
+end
+$$;
 
-create policy if not exists "chunks by org" on public.document_chunks
+drop policy if exists "chunks by org" on public.document_chunks;
+create policy "chunks by org" on public.document_chunks
 for select
 using (public.is_org_member(org_id));
 
-create policy if not exists "runs by org" on public.agent_runs
+drop policy if exists "runs by org" on public.agent_runs;
+create policy "runs by org" on public.agent_runs
 for all
 using (public.is_org_member(org_id))
 with check (public.is_org_member(org_id));
 
-create policy if not exists "tool invocations by run" on public.tool_invocations
+drop policy if exists "tool invocations by run" on public.tool_invocations;
+create policy "tool invocations by run" on public.tool_invocations
 for select
 using (
   exists (
@@ -49,7 +65,8 @@ using (
   )
 );
 
-create policy if not exists "citations by run" on public.run_citations
+drop policy if exists "citations by run" on public.run_citations;
+create policy "citations by run" on public.run_citations
 for select
 using (
   exists (
@@ -60,17 +77,20 @@ using (
   )
 );
 
-create policy if not exists "hitl by org" on public.hitl_queue
+drop policy if exists "hitl by org" on public.hitl_queue;
+create policy "hitl by org" on public.hitl_queue
 for all
 using (public.is_org_member(org_id))
 with check (public.is_org_member(org_id));
 
-create policy if not exists "evals by org" on public.eval_cases
+drop policy if exists "evals by org" on public.eval_cases;
+create policy "evals by org" on public.eval_cases
 for all
 using (public.is_org_member(org_id))
 with check (public.is_org_member(org_id));
 
-create policy if not exists "eval results by case" on public.eval_results
+drop policy if exists "eval results by case" on public.eval_results;
+create policy "eval results by case" on public.eval_results
 for select
 using (
   exists (

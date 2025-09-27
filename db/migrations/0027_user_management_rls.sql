@@ -5,32 +5,44 @@ alter table public.consent_events enable row level security;
 alter table public.invitations enable row level security;
 alter table public.billing_accounts enable row level security;
 
-create policy if not exists org_policies_select on public.org_policies
+drop policy if exists org_policies_select on public.org_policies;
+create policy org_policies_select on public.org_policies
   for select using (public.is_org_member(org_id));
-create policy if not exists org_policies_modify on public.org_policies
+drop policy if exists org_policies_modify on public.org_policies;
+create policy org_policies_modify on public.org_policies
   for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
 
-create policy if not exists jurisdiction_entitlements_select on public.jurisdiction_entitlements
+drop policy if exists jurisdiction_entitlements_select on public.jurisdiction_entitlements;
+create policy jurisdiction_entitlements_select on public.jurisdiction_entitlements
   for select using (public.is_org_member(org_id));
-create policy if not exists jurisdiction_entitlements_modify on public.jurisdiction_entitlements
+drop policy if exists jurisdiction_entitlements_modify on public.jurisdiction_entitlements;
+create policy jurisdiction_entitlements_modify on public.jurisdiction_entitlements
   for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
 
-create policy if not exists audit_events_select on public.audit_events
+drop policy if exists audit_events_select on public.audit_events;
+create policy audit_events_select on public.audit_events
   for select using (public.is_org_member(org_id));
-create policy if not exists audit_events_insert on public.audit_events
+drop policy if exists audit_events_insert on public.audit_events;
+create policy audit_events_insert on public.audit_events
   for insert with check (public.is_org_member(org_id));
 
-create policy if not exists consent_events_select on public.consent_events
+drop policy if exists consent_events_select on public.consent_events;
+create policy consent_events_select on public.consent_events
   for select using (public.is_org_member(org_id));
-create policy if not exists consent_events_insert on public.consent_events
+drop policy if exists consent_events_insert on public.consent_events;
+create policy consent_events_insert on public.consent_events
   for insert with check (public.is_org_member(org_id));
 
-create policy if not exists invitations_select on public.invitations
+drop policy if exists invitations_select on public.invitations;
+create policy invitations_select on public.invitations
   for select using (public.is_org_member(org_id));
-create policy if not exists invitations_modify on public.invitations
+drop policy if exists invitations_modify on public.invitations;
+create policy invitations_modify on public.invitations
   for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
 
-create policy if not exists billing_accounts_select on public.billing_accounts
+drop policy if exists billing_accounts_select on public.billing_accounts;
+create policy billing_accounts_select on public.billing_accounts
   for select using (public.is_org_member(org_id));
-create policy if not exists billing_accounts_modify on public.billing_accounts
+drop policy if exists billing_accounts_modify on public.billing_accounts;
+create policy billing_accounts_modify on public.billing_accounts
   for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));

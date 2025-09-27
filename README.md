@@ -239,7 +239,7 @@ curl -X POST https://<project-ref>.functions.supabase.co/crawl-authorities \
     "orgId": "<UUID organisation>",
     "openaiApiKey": "'$OPENAI_API_KEY'",
     "vectorStoreId": "'$OPENAI_VECTOR_STORE_AUTHORITIES_ID'",
-    "embeddingModel": "text-embedding-3-large",
+    "embeddingModel": "text-embedding-3-small",
     "summariserModel": "gpt-4o-mini",
     "maxSummaryChars": 12000
   }'

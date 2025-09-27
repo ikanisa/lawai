@@ -12,10 +12,12 @@ create index if not exists ui_telemetry_event_idx on public.ui_telemetry_events 
 
 alter table public.ui_telemetry_events enable row level security;
 
-create policy if not exists ui_telemetry_read on public.ui_telemetry_events
+drop policy if exists ui_telemetry_read on public.ui_telemetry_events;
+create policy ui_telemetry_read on public.ui_telemetry_events
   for select
   using (public.is_org_member(org_id));
 
-create policy if not exists ui_telemetry_insert on public.ui_telemetry_events
+drop policy if exists ui_telemetry_insert on public.ui_telemetry_events;
+create policy ui_telemetry_insert on public.ui_telemetry_events
   for insert
   with check (public.is_org_member(org_id));

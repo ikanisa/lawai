@@ -27,7 +27,7 @@ supabase:
 
     document_chunks:
       pk: id
-      cols: [org_id, document_id, jurisdiction_code, content, embedding(vector-3072), seq:int, article_or_section?]
+      cols: [org_id, document_id, jurisdiction_code, content, embedding(vector-1536), seq:int, article_or_section?]
       idx: ["hnsw(embedding)", jurisdiction_code]
 
     agent_runs:
@@ -139,7 +139,7 @@ supabase:
     secrets: "no service keys client-side; server-only"
 
   rpc:
-    match_chunks(query_embedding: vector-3072, org_id: uuid, k:int=8, juris?:text) -> top-k
+    match_chunks(query_embedding: vector-1536, org_id: uuid, k:int=8, juris?:text) -> top-k
     health_checks: ["citations_link_health", "allowlist_violations"]
   views:
     cepej_metrics: "org-level CEPEJ/FRIA summary (assessed_runs, pass_rate, violation counts)"

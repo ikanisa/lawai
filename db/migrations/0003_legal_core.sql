@@ -48,9 +48,7 @@ create table if not exists public.document_chunks (
   document_id uuid not null references public.documents(id) on delete cascade,
   jurisdiction_code text not null,
   content text not null,
-  embedding vector(3072) not null,
+  embedding vector(1536) not null,
   seq integer not null,
   created_at timestamptz not null default now()
 );
-
-create index if not exists document_chunks_embedding_idx on public.document_chunks using hnsw (embedding vector_l2_ops);

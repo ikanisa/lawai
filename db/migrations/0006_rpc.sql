@@ -1,6 +1,6 @@
 create or replace function public.match_chunks(
   p_org uuid,
-  p_query_embedding vector(3072),
+  p_query_embedding vector(1536),
   p_match_count int default 8,
   p_min_sim float default 0.75,
   p_jurisdiction text default null

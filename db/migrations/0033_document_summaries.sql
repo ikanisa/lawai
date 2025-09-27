@@ -15,9 +15,25 @@ alter table public.documents
   add column if not exists summary_error text,
   add column if not exists chunk_count integer not null default 0;
 
-alter table public.documents
-  add constraint if not exists documents_summary_status_check
-  check (summary_status in ('pending', 'ready', 'skipped', 'failed'));
+do $do$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'documents'
+      and column_name = 'summary_status'
+  ) and not exists (
+    select 1
+    from pg_constraint
+    where conname = 'documents_summary_status_check'
+      and conrelid = 'public.documents'::regclass
+  ) then
+    execute $$alter table public.documents add constraint documents_summary_status_check
+      check (summary_status in ('pending', 'ready', 'skipped', 'failed'))$$;
+  end if;
+end
+$do$;
 
 alter table public.document_chunks
   add column if not exists article_or_section text;

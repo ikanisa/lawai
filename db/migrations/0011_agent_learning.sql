@@ -84,23 +84,29 @@ alter table public.agent_learning_jobs enable row level security;
 alter table public.agent_task_queue enable row level security;
 alter table public.tool_telemetry enable row level security;
 
-create policy if not exists agent_policy_versions_read on public.agent_policy_versions
+drop policy if exists agent_policy_versions_read on public.agent_policy_versions;
+create policy agent_policy_versions_read on public.agent_policy_versions
 for select using (true);
 
-create policy if not exists agent_tools_read on public.agent_tools
+drop policy if exists agent_tools_read on public.agent_tools;
+create policy agent_tools_read on public.agent_tools
 for select using (true);
 
-create policy if not exists agent_synonyms_read on public.agent_synonyms
+drop policy if exists agent_synonyms_read on public.agent_synonyms;
+create policy agent_synonyms_read on public.agent_synonyms
 for select using (true);
 
-create policy if not exists agent_learning_jobs_policy on public.agent_learning_jobs
+drop policy if exists agent_learning_jobs_policy on public.agent_learning_jobs;
+create policy agent_learning_jobs_policy on public.agent_learning_jobs
 for all using (org_id is null or public.is_org_member(org_id))
   with check (org_id is null or public.is_org_member(org_id));
 
-create policy if not exists agent_task_queue_policy on public.agent_task_queue
+drop policy if exists agent_task_queue_policy on public.agent_task_queue;
+create policy agent_task_queue_policy on public.agent_task_queue
 for all using (org_id is null or public.is_org_member(org_id))
   with check (org_id is null or public.is_org_member(org_id));
 
-create policy if not exists tool_telemetry_policy on public.tool_telemetry
+drop policy if exists tool_telemetry_policy on public.tool_telemetry;
+create policy tool_telemetry_policy on public.tool_telemetry
 for all using (public.is_org_member(org_id))
   with check (public.is_org_member(org_id));
