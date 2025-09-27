@@ -1,0 +1,29 @@
+[
+  {
+    "title": "Moniteur belge - Arrêté royal relatif aux clauses abusives",
+    "jurisdiction": "BE",
+    "sourceType": "regulation",
+    "publisher": "Moniteur belge",
+    "canonicalUrl": "https://www.ejustice.just.fgov.be/mopdf/2024/05/03_1.pdf",
+    "downloadUrl": "https://www.ejustice.just.fgov.be/mopdf/2024/05/03_1.pdf",
+    "bindingLanguage": "fr",
+    "consolidated": false,
+    "adoptionDate": "2024-04-25",
+    "effectiveDate": "2024-05-03",
+    "versionLabel": "Édition du 3 mai 2024",
+    "mimeType": "application/pdf"
+  },
+  {
+    "title": "Cour de cassation (Belgique) - Arrêt du 16 février 2024",
+    "jurisdiction": "BE",
+    "sourceType": "case",
+    "publisher": "Cour de cassation belge",
+    "canonicalUrl": "https://www.cass.be/fr/jurisprudence/16-fevrier-2024",
+    "downloadUrl": "https://www.cass.be/fr/jurisprudence/16-fevrier-2024",
+    "bindingLanguage": "fr",
+    "consolidated": false,
+    "effectiveDate": "2024-02-16",
+    "versionLabel": "Texte intégral",
+    "mimeType": "text/html"
+  }
+]
