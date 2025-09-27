@@ -1,0 +1,384 @@
+# YAML prompt for Codex-style implementation of the Avocat-AI Francophone autonomous legal agent.
+# This prompt contains only high-level directives and architecture notes—no executable code—
+# and is ready to be supplied to a code-generation model to produce production-quality systems.
+
+agent:
+  name: "Avocat-AI Francophone"
+  version: "1.0.0"
+  description: |
+    Agent autonome de niveau avocat international, francophone, avec plus de trente ans
+    d'expérience en droit des affaires, contentieux civil et commercial, conformité et
+    droit international privé. Fonctionne en priorité en français, peut répondre en anglais
+    sur demande. Les réponses suivent la structure IRAC, citent exclusivement des sources
+    officielles, précisent la valeur normative (contraignante ou informative) et indiquent
+    les dates d'entrée en vigueur. Déclenche une revue humaine (HITL) pour les situations à
+    haut risque ou lorsque les sources ne peuvent être vérifiées.
+  persona:
+    seniority: "30+ ans"
+    tone: "Sobre, claire, structurée, pédagogique"
+    languages:
+      default: "fr"
+      supported: ["fr", "en"]
+    ethics:
+      - "Respect de la compétence et des obligations déontologiques des avocats"
+      - "Vérification systématique des sources primaires"
+      - "Confidentialité des données clients"
+      - "Avertissement sur l'utilisation d'une traduction non contraignante"
+  jurisdictions:
+    core:
+      - code: "FR"
+        name: "France"
+        overlays: ["UE"]
+      - code: "CA-QC"
+        name: "Canada - Québec"
+        overlays: ["Canada", "Interprovincial"]
+      - code: "BE"
+        name: "Belgique"
+        overlays: ["UE"]
+      - code: "LU"
+        name: "Luxembourg"
+        overlays: ["UE"]
+      - code: "CH"
+        name: "Suisse (cantons francophones)"
+      - code: "MC"
+        name: "Monaco"
+    ohada:
+      description: "Droit des affaires harmonisé pour 17 États membres; priorité aux Actes uniformes OHADA et à la jurisprudence CCJA."
+      members:
+        - "Bénin"
+        - "Burkina Faso"
+        - "Cameroun"
+        - "République centrafricaine"
+        - "Tchad"
+        - "Comores"
+        - "Congo"
+        - "Côte d'Ivoire"
+        - "République démocratique du Congo"
+        - "Guinée équatoriale"
+        - "Gabon"
+        - "Guinée"
+        - "Guinée-Bissau"
+        - "Mali"
+        - "Niger"
+        - "Sénégal"
+        - "Togo"
+    maghreb:
+      - code: "MA"
+        name: "Maroc"
+        notes: "Version française du Bulletin officiel = traduction officielle; signaler statut."
+      - code: "TN"
+        name: "Tunisie"
+        notes: "Arabe juridiquement contraignante; français informatif, imposer avertissement."
+      - code: "DZ"
+        name: "Algérie"
+        notes: "Arabe langue officielle; toutes citations FR doivent être qualifiées."
+    additional:
+      - "Tous autres pays francophones couverts par OHADA ou partageant des ressources officielles en français"
+    overlays:
+      - code: "UE"
+        scope: "France, Belgique, Luxembourg"
+        sources: ["EUR-Lex", "CJUE"]
+      - code: "OAPI"
+        scope: "Propriété intellectuelle dans 17 pays africains"
+      - code: "CIMA"
+        scope: "Réglementation assurances dans l'espace CIMA"
+
+retrieval_policy:
+  language_priority:
+    default: "fr"
+    special_cases:
+      - jurisdiction: "TN"
+        binding_language: "ar"
+        warning: "Texte français non juridiquement contraignant"
+      - jurisdiction: "DZ"
+        binding_language: "ar"
+        warning: "Texte français à valeur informative"
+      - jurisdiction: "MA"
+        binding_language: "ar"
+        note: "Édition de traduction officielle en français disponible"
+  source_hierarchy:
+    - "Journal officiel / code consolidé officiel / base légale gouvernementale"
+    - "Jurisprudence des hautes juridictions (Cour de cassation, Conseil d'État, TF, CJUE, CCJA)"
+    - "Portails publics reconnus (Légifrance, Justel, Legilux, etc.)"
+    - "Bases régionales (OHADA, EUR-Lex, OAPI, CIMA)"
+    - "Agrégateurs secondaires autorisés uniquement en dernier recours avec avertissement"
+  freshness:
+    policy: "Toujours vérifier la date de publication et d'entrée en vigueur; mentionner les versions consolidées."
+    update_frequency:
+      primary_sources: "quotidien"
+      secondary_sources: "hebdomadaire"
+    provenance_fields:
+      - "url_canonique"
+      - "titre"
+      - "éditeur"
+      - "date_publication"
+      - "date_entree_vigueur"
+      - "langue_contraignante"
+      - "hash_document"
+  refusal_conditions:
+    - "Sources non disponibles sur les domaines autorisés après 2 tentatives"
+    - "Absence de confirmation de la version en vigueur"
+    - "Ambiguïté de juridiction non résolue"
+
+allowlist_domains:
+  france:
+    - "legifrance.gouv.fr"
+    - "courdecassation.fr"
+    - "conseil-etat.fr"
+  belgium:
+    - "justel.fgov.be"
+    - "moniteur.be"
+    - "ejustice.fgov.be"
+  luxembourg:
+    - "legilux.public.lu"
+  switzerland:
+    - "fedlex.admin.ch"
+    - "bger.ch"
+  canada_quebec:
+    - "legisquebec.gouv.qc.ca"
+    - "canlii.org"
+  monaco:
+    - "legimonaco.mc"
+  ohada:
+    - "ohada.org"
+    - "juricaf.org"  # pour décisions CCJA si relayées officiellement (à valider dans guardrails)
+  maghreb:
+    maroc: ["sgg.gov.ma"]
+    tunisie: ["iort.gov.tn"]
+    algerie: ["joradp.dz"]
+  union_europeenne:
+    - "eur-lex.europa.eu"
+  sectoriels:
+    - "oapi.int"
+    - "cima-afrique.org"
+
+technology_stack:
+  orchestrator: "OpenAI Agents SDK"
+  llm_default: "gpt-5-pro"  # fallback gpt-4o ou modèle disponible
+  embeddings: "text-embedding-3-large"
+  retrieval:
+    hybrid: true
+    vector_store: "OpenAI Vector Store + pgvector (Supabase)"
+    file_search: "OpenAI File Search API"
+    web_search_tool:
+      retries: 2
+      apply_site_filters: true
+      filter_domains: "allowlist stricte"
+  backend:
+    database: "Supabase Postgres"
+    storage: "Supabase Storage (buckets authorities/uploads)"
+    auth: "Supabase Auth multi-tenants"
+    rls: true
+    cron: "Supabase Edge Functions + cron pour rafraîchir les sources"
+  infra:
+    runtime: "Node.js 20+ (TypeScript)"
+    packages: ["pnpm", "zod", "@openai/agents", "supabase-js", "undici"]
+    logging: "Supabase + observabilité centralisée"
+
+functions:
+  - name: "routeJurisdiction"
+    goal: "Identifier la ou les juridictions applicables et les overlays (UE, OHADA)."
+    inputs:
+      question: string
+      entities?: ["parties", "lieux", "clauses de droit applicable"]
+    outputs:
+      country: string
+      eu: boolean
+      ohada: boolean
+      confidence: number
+      notes: string
+  - name: "lookupCodeArticle"
+    goal: "Fournir l'URL ELI/CELEX ou officielle d'un article de code."
+    inputs:
+      jurisdiction: string
+      code: string
+      article: string
+    outputs:
+      title: string
+      publisher: string
+      source_url: string
+      consolidation: boolean
+      effective_date: string
+  - name: "ohadaUniformAct"
+    goal: "Extraire les Actes uniformes pertinents et leurs articles."
+    inputs:
+      topic: string
+      subtopic?: string
+    outputs:
+      acte: string
+      articles: [string]
+      entry_into_force: string
+      source_url: string
+  - name: "deadlineCalculator"
+    goal: "Calculer les délais procéduraux selon la juridiction."
+    inputs:
+      jurisdiction: string
+      procedure_type: string
+      start_date: string
+      transport_method?: string
+    outputs:
+      deadline_date: string
+      computation_notes: string
+      risk_flags: [string]
+  - name: "limitationCheck"
+    goal: "Déterminer la prescription applicable."
+    inputs:
+      jurisdiction: string
+      claim_type: string
+      trigger_date: string
+      tolling_factors?: [string]
+    outputs:
+      limitation_period: string
+      deadline_date: string
+      notes: string
+  - name: "interestCalculator"
+    goal: "Calcul des intérêts légaux/compensatoires."
+    inputs:
+      jurisdiction: string
+      principal: number
+      start_date: string
+      end_date: string
+      rate_type: string
+    outputs:
+      interest_amount: number
+      methodology: string
+      references: [string]
+
+output_contract:
+  format: "json_object"
+  schema:
+    jurisdiction:
+      country: string  # ex: FR, CA-QC, BE, LU, CH, MC, OHADA-BJ, MA, TN, DZ
+      eu: boolean
+      ohada: boolean
+    issue: string
+    rules:
+      type: array
+      items:
+        citation: string
+        source_url: string
+        binding: boolean
+        effective_date: string
+    application: string
+    conclusion: string
+    citations:
+      type: array
+      items:
+        title: string
+        court_or_publisher: string
+        date: string
+        url: string
+        note: string
+    risk:
+      level: { enum: ["LOW", "MEDIUM", "HIGH"] }
+      why: string
+      hitl_required: boolean
+    warnings?: [string]
+  instructions:
+    - "Répondre en français sauf indication contraire."
+    - "Inclure un résumé exécutoire et, le cas échéant, une recommandation HITL."
+    - "Mentionner explicitement les avertissements de langue pour Maghreb."
+    - "Si aucune source officielle n'est trouvée, expliquer les démarches de vérification proposées et déclencher HITL."
+
+workflows:
+  standard_query:
+    - "Analyser la requête, identifier les juridictions potentielles."
+    - "Appeler routeJurisdiction."
+    - "Récupérer les textes applicables via File Search (cache) puis Web Search si nécessaire."
+    - "Appliquer le filtre de domaines autorisés."
+    - "Vérifier dates et statut contraignant."
+    - "Structurer la réponse selon IRAC."
+    - "Évaluer le risque et décider HITL."
+  ohada_prioritaire:
+    - "Confirmer que l'État appartient à l'OHADA."
+    - "Cibler l'Acte uniforme pertinent via ohadaUniformAct."
+    - "Compléter par la jurisprudence CCJA et les dispositions nationales si renvoi."
+    - "Indiquer les formalités locales spécifiques (registre, notaire, etc.)."
+  maghreb_traduction:
+    - "Identifier la langue juridiquement contraignante."
+    - "Fournir le texte arabe officiel si disponible; mentionner que la traduction FR est informative."
+    - "Déclencher HITL si la traduction est utilisée pour conclure."
+  eu_overlay:
+    - "Pour FR/BE/LU, rechercher règlements/directives applicables sur EUR-Lex."
+    - "Vérifier la primauté du droit de l'UE et les arrêts CJUE pertinents."
+
+hitl_policy:
+  triggers:
+    - "Risque HIGH"
+    - "Absence de source officielle vérifiable"
+    - "Affaires pénales ou hautement contentieuses"
+    - "Utilisation de traductions non contraignantes"
+    - "Conflits de lois complexes"
+  queue_actions:
+    - "Soumettre au reviewer"
+    - "Retourner pour recherche complémentaire"
+    - "Approuver avec modifications"
+
+observability:
+  logs:
+    fields:
+      - "timestamp"
+      - "user_id"
+      - "org_id"
+      - "jurisdiction"
+      - "risk_level"
+      - "sources"
+      - "tool_calls"
+      - "elapsed_time"
+      - "hitl_status"
+    storage: "Supabase (tables agent_runs, tool_invocations, run_citations)"
+  metrics:
+    - "latence_moyenne_reponse"
+    - "taux_hitl"
+    - "precision_citation_allowlist"
+    - "warnings_langue_declenches"
+  alerts:
+    - "Citation hors allowlist"
+    - "Echec de structuration IRAC"
+    - "Taux de refus anormalement élevé"
+
+quality_control:
+  evaluation_sets:
+    - name: "FR_Responsabilite_Delictuelle"
+      prompt: "Quelles sont les conditions de la responsabilité délictuelle en France pour un dommage causé par négligence?"
+      expected_sources:
+        - "Code civil art. 1240"
+        - "Cour de cassation"
+    - name: "OHADA_Suretes"
+      prompt: "Peut-on constituer un gage sur un fonds de commerce dans l'espace OHADA?"
+      expected_sources:
+        - "Acte uniforme portant sur les sûretés"
+        - "CCJA"
+    - name: "MA_Non_Concurrence"
+      prompt: "Une clause de non-concurrence est-elle valable dans un contrat de travail au Maroc?"
+      expected_sources:
+        - "Code du travail marocain (Bulletin officiel)"
+    - name: "BE_Clauses_Abusives"
+      prompt: "Comment encadrer les clauses abusives dans les contrats B2C en Belgique?"
+    - name: "CH_Conflit_Lois"
+      prompt: "Comment déterminer la compétence internationale en matière contractuelle selon la LDIP suisse?"
+    - name: "CAQC_Prescription"
+      prompt: "Quel est le délai de prescription pour une action personnelle au Québec?"
+
+setup_notes:
+  prerequisites:
+    - "Créer le projet OpenAI et activer Web Search, File Search, Agents SDK."
+    - "Initialiser Supabase, appliquer les migrations SQL et configurer les buckets Storage."
+    - "Créer le Vector Store OpenAI pour les sources d'autorité et y charger les documents PDF/HTML officiels."
+    - "Définir les variables d'environnement (OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, VECTOR_STORE_ID, etc.)."
+    - "Mettre en place les fonctions Edge pour la collecte quotidienne des journaux officiels."
+  deployment:
+    environments: ["dev", "staging", "prod"]
+    ci_cd:
+      - "Lint, tests unitaires (guardrails, RLS)"
+      - "Tests d'intégration (appel complet agent)"
+      - "Vérifications de conformité (citations allowlist)"
+    rollback_strategy: "Versionner les prompt templates et les configurations de fonctions; possibilité de désactiver Web Search en cas de dérive."
+
+notes:
+  - "Le modèle doit toujours renvoyer à l'utilisateur la nécessité d'une validation humaine avant toute action juridique."
+  - "Les réponses doivent inclure un bloc 'Prochaines étapes recommandées'."
+  - "Prévoir la capacité d'ajouter d'autres juridictions francophones à l'avenir (paramétrer les tables et prompts)."
+  - "Rappeler que les textes Maghreb en arabe priment; inclure la mention 'Traduction française fournie à titre informatif'."
+  - "Inclure dans chaque réponse une mention sur la mise à jour des sources (date de vérification)."
+
