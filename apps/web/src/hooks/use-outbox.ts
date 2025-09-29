@@ -36,7 +36,12 @@ export function useOutbox() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    const persistable = items.filter((item) => !item.confidentialMode);
+    if (persistable.length === 0) {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
+    }
   }, [items]);
 
   const enqueue = useCallback((item: Omit<OutboxItem, 'id' | 'createdAt'>) => {

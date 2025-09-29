@@ -72,3 +72,13 @@ body {
   animation-duration: 0.01ms !important;
   animation-delay: 0ms !important;
 }
+
+.confidential-blur {
+  filter: blur(7px);
+  transition: filter 0.25s ease-in-out;
+}
+
+.confidential-blur:hover,
+.confidential-blur:focus-within {
+  filter: blur(0);
+}

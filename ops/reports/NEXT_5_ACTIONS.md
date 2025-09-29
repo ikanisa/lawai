@@ -1,7 +1,7 @@
 # Next 5 Actions
 
-1. **Wire Drive ingestion alerts** – forward `drive-watcher` failures to Slack/e-mail and surface manifest status in the governance dashboard.
-2. **Ship OCR/Akoma Ntoso enrichment** – extend the summarisation pipeline with OCR for PDFs and persist Akoma Ntoso anchors for gazettes with scanned layouts.
-3. **Broaden evaluation corpus** – seed additional jurisdictional prompts and integrate recall/precision gating into CI now that link-health thresholds are enforced.
-4. **Automate provenance alerts** – push link-health failures from `org_provenance_metrics` to operator notifications and governance dashboards.
-5. **Implement citations diff viewer** – build side-by-side diff component fed by `/api/corpus` snapshots and integrate into the Citations screen.
+1. **Run Q4 disaster-recovery drill using the new runbook (Paris → Montréal failover)** – Owner: Amadou (Platform) – Due: 2024-10-05.
+2. **Automate CEPEJ/Maghreb/Rwanda compliance alerts to Ops & Compliance channels** – Owner: Claire (Compliance) – Due: 2024-09-25.
+3. **Integrate Core Web Vitals into weekly performance snapshot review workflow** – Owner: Camille (Ops) – Due: 2024-09-18.
+4. **Publish remaining governance collateral (support runbook, pricing, outreach) in Trust Center** – Owner: Claire (Compliance) – Due: 2024-09-15.
+5. **Automate vector store snapshot restore validation in CI** – Owner: Mathieu (Ops) – Due: 2024-09-20.

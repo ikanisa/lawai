@@ -1,7 +1,7 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
 import { createServiceClient } from '@avocat-ai/supabase';
-import type { IRACPayload } from '@avocat-ai/shared';
+import { ACCEPTANCE_THRESHOLDS, type IRACPayload } from '@avocat-ai/shared';
 import { env } from './config.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent.js';
 import { authorizeAction, ensureOrgAccessCompliance } from './access-control.js';
@@ -357,7 +357,7 @@ app.get<{ Querystring: { orgId?: string } }>('/metrics/governance', async (reque
 
   try {
     await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
-    const [overviewResult, toolResult, provenanceResult, identifierResult] = await Promise.all([
+    const [overviewResult, toolResult, provenanceResult, identifierResult, jurisdictionResult] = await Promise.all([
       supabase.from('org_metrics').select('*').eq('org_id', orgId).limit(1).maybeSingle(),
       supabase
         .from('tool_performance_metrics')
@@ -368,6 +368,13 @@ app.get<{ Querystring: { orgId?: string } }>('/metrics/governance', async (reque
       supabase
         .from('jurisdiction_identifier_coverage')
         .select('jurisdiction_code, sources_total, sources_with_eli, sources_with_ecli, sources_with_akoma, akoma_article_count')
+        .eq('org_id', orgId)
+        .order('jurisdiction_code', { ascending: true }),
+      supabase
+        .from('org_jurisdiction_provenance')
+        .select(
+          'jurisdiction_code, residency_zone, total_sources, sources_consolidated, sources_with_binding, sources_with_language_note, sources_with_eli, sources_with_ecli, sources_with_akoma, binding_breakdown, source_type_breakdown, language_note_breakdown',
+        )
         .eq('org_id', orgId)
         .order('jurisdiction_code', { ascending: true }),
     ]);
@@ -390,6 +397,11 @@ app.get<{ Querystring: { orgId?: string } }>('/metrics/governance', async (reque
     if (identifierResult.error) {
       request.log.error({ err: identifierResult.error }, 'identifier coverage query failed');
       return reply.code(500).send({ error: 'metrics_identifier_failed' });
+    }
+
+    if (jurisdictionResult.error) {
+      request.log.error({ err: jurisdictionResult.error }, 'jurisdiction provenance query failed');
+      return reply.code(500).send({ error: 'metrics_jurisdiction_failed' });
     }
 
     const overviewRow = overviewResult.data ?? null;
@@ -456,7 +468,22 @@ app.get<{ Querystring: { orgId?: string } }>('/metrics/governance', async (reque
       lastInvokedAt: row.last_invoked_at ?? null,
     }));
 
-    return { overview, provenance, tools, identifiers: identifierRows };
+    const jurisdictionRows = (jurisdictionResult.data ?? []).map((row) => ({
+      jurisdiction: row.jurisdiction_code ?? 'UNKNOWN',
+      residencyZone: row.residency_zone ?? 'unknown',
+      totalSources: row.total_sources ?? 0,
+      sourcesConsolidated: row.sources_consolidated ?? 0,
+      sourcesWithBinding: row.sources_with_binding ?? 0,
+      sourcesWithLanguageNote: row.sources_with_language_note ?? 0,
+      sourcesWithEli: row.sources_with_eli ?? 0,
+      sourcesWithEcli: row.sources_with_ecli ?? 0,
+      sourcesWithAkoma: row.sources_with_akoma ?? 0,
+      bindingBreakdown: toNumberRecord(row.binding_breakdown),
+      sourceTypeBreakdown: toNumberRecord(row.source_type_breakdown),
+      languageNoteBreakdown: toNumberRecord(row.language_note_breakdown),
+    }));
+
+    return { overview, provenance, tools, identifiers: identifierRows, jurisdictions: jurisdictionRows };
   } catch (error) {
     if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
       return reply.code(error.statusCode).send({ error: error.message });
@@ -507,6 +534,360 @@ app.get<{ Querystring: { status?: string; category?: string; orgId?: string } }>
   }
 
   return { publications: data ?? [] };
+});
+
+app.get<{ Params: { orgId: string } }>('/admin/org/:orgId/operations/overview', async (request, reply) => {
+  const { orgId } = request.params;
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('admin:audit', orgId, userHeader, request);
+
+    const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [
+      sloResult,
+      incidentResult,
+      changeLogResult,
+      goNoGoResult,
+      cepejMetricsResult,
+      cepejViolationResult,
+      evaluationCoverageResult,
+      webVitalsResult,
+    ] = await Promise.all([
+      supabase
+        .from('slo_snapshots')
+        .select(
+          'captured_at, api_uptime_percent, hitl_response_p95_seconds, retrieval_latency_p95_seconds, citation_precision_p95, notes',
+        )
+        .eq('org_id', orgId)
+        .order('captured_at', { ascending: false })
+        .limit(20),
+      supabase
+        .from('incident_reports')
+        .select(
+          'id, occurred_at, detected_at, resolved_at, severity, status, title, summary, impact, resolution, follow_up, evidence_url, recorded_at',
+        )
+        .eq('org_id', orgId)
+        .order('occurred_at', { ascending: false }),
+      supabase
+        .from('change_log_entries')
+        .select('id, entry_date, title, category, summary, release_tag, links, recorded_at')
+        .eq('org_id', orgId)
+        .order('entry_date', { ascending: false })
+        .limit(20),
+      supabase
+        .from('go_no_go_evidence')
+        .select('criterion, status, evidence_url, notes, section, recorded_at')
+        .eq('org_id', orgId)
+        .order('recorded_at', { ascending: false })
+        .limit(20),
+      supabase
+        .from('cepej_metrics')
+        .select('assessed_runs, passed_runs, violation_runs, fria_required_runs, pass_rate')
+        .eq('org_id', orgId)
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('cepej_violation_breakdown')
+        .select('violation, occurrences')
+        .eq('org_id', orgId),
+      supabase
+        .from('org_evaluation_metrics')
+        .select('maghreb_banner_coverage, rwanda_notice_coverage')
+        .eq('org_id', orgId)
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('ui_telemetry_events')
+        .select('payload, created_at')
+        .eq('org_id', orgId)
+        .eq('event_name', 'web_vital')
+        .gte('created_at', thirtyDaysAgoIso)
+        .order('created_at', { ascending: false })
+        .limit(2000),
+    ]);
+
+    if (sloResult.error) {
+      request.log.error({ err: sloResult.error }, 'operations slo query failed');
+      return reply.code(500).send({ error: 'operations_slo_failed' });
+    }
+
+    if (incidentResult.error) {
+      request.log.error({ err: incidentResult.error }, 'operations incidents query failed');
+      return reply.code(500).send({ error: 'operations_incidents_failed' });
+    }
+
+    if (changeLogResult.error) {
+      request.log.error({ err: changeLogResult.error }, 'operations change log query failed');
+      return reply.code(500).send({ error: 'operations_change_log_failed' });
+    }
+
+    if (goNoGoResult.error) {
+      request.log.error({ err: goNoGoResult.error }, 'operations go-no-go query failed');
+      return reply.code(500).send({ error: 'operations_go_no_go_failed' });
+    }
+
+    if (cepejMetricsResult.error) {
+      request.log.error({ err: cepejMetricsResult.error }, 'operations cepej metrics query failed');
+      return reply.code(500).send({ error: 'operations_cepej_failed' });
+    }
+
+    if (cepejViolationResult.error) {
+      request.log.error({ err: cepejViolationResult.error }, 'operations cepej breakdown query failed');
+      return reply.code(500).send({ error: 'operations_cepej_failed' });
+    }
+
+    if (evaluationCoverageResult.error) {
+      request.log.error({ err: evaluationCoverageResult.error }, 'operations evaluation coverage query failed');
+      return reply.code(500).send({ error: 'operations_evaluation_failed' });
+    }
+
+    if (webVitalsResult.error) {
+      request.log.error({ err: webVitalsResult.error }, 'operations web vitals query failed');
+      return reply.code(500).send({ error: 'operations_web_vitals_failed' });
+    }
+
+    const sloRows = (sloResult.data ?? []).map((row) => ({
+      captured_at: row.captured_at as string,
+      api_uptime_percent: toNumber(row.api_uptime_percent) ?? 0,
+      hitl_response_p95_seconds: toNumber(row.hitl_response_p95_seconds) ?? 0,
+      retrieval_latency_p95_seconds: toNumber(row.retrieval_latency_p95_seconds) ?? 0,
+      citation_precision_p95: toNumber(row.citation_precision_p95),
+      notes: (row.notes as string | null | undefined) ?? null,
+    }));
+
+    const sloSummary = sloRows.length > 0 ? summariseSlo(sloRows) : null;
+    const sloSnapshots = sloRows.map((row) => ({
+      capturedAt: row.captured_at,
+      apiUptimePercent: row.api_uptime_percent,
+      hitlResponseP95Seconds: row.hitl_response_p95_seconds,
+      retrievalLatencyP95Seconds: row.retrieval_latency_p95_seconds,
+      citationPrecisionP95: row.citation_precision_p95,
+      notes: row.notes,
+    }));
+
+    const incidentRows = (incidentResult.data ?? []).map((row) => ({
+      id: row.id as string,
+      occurredAt: row.occurred_at as string | null | undefined,
+      detectedAt: row.detected_at as string | null | undefined,
+      resolvedAt: row.resolved_at as string | null | undefined,
+      severity: row.severity as string,
+      status: row.status as string,
+      title: row.title as string,
+      summary: (row.summary as string | null | undefined) ?? '',
+      impact: (row.impact as string | null | undefined) ?? '',
+      resolution: (row.resolution as string | null | undefined) ?? '',
+      followUp: (row.follow_up as string | null | undefined) ?? '',
+      evidenceUrl: (row.evidence_url as string | null | undefined) ?? null,
+      recordedAt: row.recorded_at as string | null | undefined,
+    }));
+
+    const incidentTotals = incidentRows.reduce(
+      (acc, incident) => {
+        const status = (incident.status ?? '').toLowerCase();
+        if (status === 'closed') {
+          acc.closed += 1;
+        } else {
+          acc.open += 1;
+        }
+        return acc;
+      },
+      { total: incidentRows.length, open: 0, closed: 0 },
+    );
+
+    const changeRows = (changeLogResult.data ?? []).map((row) => ({
+      id: row.id as string,
+      entryDate: row.entry_date as string | null | undefined,
+      title: row.title as string,
+      category: row.category as string,
+      summary: (row.summary as string | null | undefined) ?? '',
+      releaseTag: (row.release_tag as string | null | undefined) ?? null,
+      links: row.links ?? null,
+      recordedAt: row.recorded_at as string | null | undefined,
+    }));
+
+    const goNoGoRows = (goNoGoResult.data ?? []).map((row) => ({
+      criterion: row.criterion as string,
+      status: row.status as string,
+      evidenceUrl: (row.evidence_url as string | null | undefined) ?? null,
+      notes: row.notes ?? null,
+      section: row.section as string,
+      recordedAt: row.recorded_at as string | null | undefined,
+    }));
+
+    const cepejMetricsRow = cepejMetricsResult.data ?? null;
+    const cepejViolationsRows = cepejViolationResult.data ?? [];
+    const cepejSummary = cepejMetricsRow
+      ? {
+          assessedRuns: cepejMetricsRow.assessed_runs ?? 0,
+          passedRuns: cepejMetricsRow.passed_runs ?? 0,
+          violationRuns: cepejMetricsRow.violation_runs ?? 0,
+          friaRequiredRuns: cepejMetricsRow.fria_required_runs ?? 0,
+          passRate: toNumber(cepejMetricsRow.pass_rate),
+          violations: cepejViolationsRows.reduce<Record<string, number>>((acc, entry) => {
+            const key = typeof entry.violation === 'string' && entry.violation.length > 0 ? entry.violation : 'unknown';
+            const count = typeof entry.occurrences === 'number' ? entry.occurrences : Number(entry.occurrences ?? 0);
+            acc[key] = (acc[key] ?? 0) + (Number.isFinite(count) ? count : 0);
+            return acc;
+          }, {}),
+        }
+      : {
+          assessedRuns: 0,
+          passedRuns: 0,
+          violationRuns: 0,
+          friaRequiredRuns: 0,
+          passRate: null,
+          violations: {} as Record<string, number>,
+        };
+
+    const evaluationCoverageRow = evaluationCoverageResult.data ?? null;
+    const evaluationCoverage = {
+      maghrebBanner: toNumber(evaluationCoverageRow?.maghreb_banner_coverage) ?? null,
+      rwandaNotice: toNumber(evaluationCoverageRow?.rwanda_notice_coverage) ?? null,
+    };
+
+    const complianceAlerts: Array<{ code: string; level: 'info' | 'warning' | 'critical' }> = [];
+    if (cepejSummary.assessedRuns > 0 && cepejSummary.violationRuns > 0) {
+      complianceAlerts.push({ code: 'cepej_violation', level: 'warning' });
+    }
+    if (cepejSummary.friaRequiredRuns > 0) {
+      complianceAlerts.push({ code: 'fria_required', level: 'warning' });
+    }
+    if (
+      evaluationCoverage.maghrebBanner !== null &&
+      evaluationCoverage.maghrebBanner < ACCEPTANCE_THRESHOLDS.maghrebBindingBannerCoverage
+    ) {
+      complianceAlerts.push({ code: 'maghreb_banner_low', level: 'critical' });
+    }
+    if (
+      evaluationCoverage.rwandaNotice !== null &&
+      evaluationCoverage.rwandaNotice < ACCEPTANCE_THRESHOLDS.rwandaLanguageNoticeCoverage
+    ) {
+      complianceAlerts.push({ code: 'rwanda_notice_low', level: 'critical' });
+    }
+
+    const vitalsRows = webVitalsResult.data ?? [];
+    const vitalsByMetric: Record<'LCP' | 'INP' | 'CLS', number[]> = {
+      LCP: [],
+      INP: [],
+      CLS: [],
+    };
+
+    for (const event of vitalsRows) {
+      const payload = (event.payload ?? {}) as Record<string, unknown>;
+      const rawMetric = typeof payload.metric === 'string' ? payload.metric.toUpperCase() : null;
+      if (!rawMetric) {
+        continue;
+      }
+      if (rawMetric !== 'LCP' && rawMetric !== 'INP' && rawMetric !== 'CLS') {
+        continue;
+      }
+      const rawValue = payload.value;
+      const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+      if (!Number.isFinite(value)) {
+        continue;
+      }
+      vitalsByMetric[rawMetric].push(value);
+    }
+
+    const percentile = (values: number[], fraction: number): number | null => {
+      if (values.length === 0) {
+        return null;
+      }
+      const sorted = [...values].sort((a, b) => a - b);
+      const index = Math.floor((sorted.length - 1) * fraction);
+      return sorted[index];
+    };
+
+    const lcpP75 = percentile(vitalsByMetric.LCP, 0.75);
+    const inpP75 = percentile(vitalsByMetric.INP, 0.75);
+    const clsP75 = percentile(vitalsByMetric.CLS, 0.75);
+
+    const totalVitalSamples = vitalsByMetric.LCP.length + vitalsByMetric.INP.length + vitalsByMetric.CLS.length;
+    const webVitalAlerts: Array<{ code: string; level: 'info' | 'warning' | 'critical' }> = [];
+    if (lcpP75 !== null && lcpP75 > 2500) {
+      webVitalAlerts.push({ code: 'web_vitals_lcp', level: 'warning' });
+    }
+    if (inpP75 !== null && inpP75 > 200) {
+      webVitalAlerts.push({ code: 'web_vitals_inp', level: 'warning' });
+    }
+    if (clsP75 !== null && clsP75 > 0.1) {
+      webVitalAlerts.push({ code: 'web_vitals_cls', level: 'warning' });
+    }
+
+    return {
+      slo: {
+        summary: sloSummary
+          ? {
+              snapshots: sloSummary.snapshots,
+              latestCapture: sloSummary.latestCapture,
+              apiUptimeP95: sloSummary.apiUptimeP95,
+              hitlResponseP95Seconds: sloSummary.hitlResponseP95Seconds,
+              retrievalLatencyP95Seconds: sloSummary.retrievalLatencyP95Seconds,
+              citationPrecisionP95: sloSummary.citationPrecisionP95,
+            }
+          : null,
+        snapshots: sloSnapshots,
+      },
+      incidents: {
+        total: incidentTotals.total,
+        open: incidentTotals.open,
+        closed: incidentTotals.closed,
+        latest: incidentRows[0] ?? null,
+        entries: incidentRows.slice(0, 5),
+      },
+      changeLog: {
+        total: changeRows.length,
+        latest: changeRows[0] ?? null,
+        entries: changeRows.slice(0, 5),
+      },
+      goNoGo: {
+        section: goNoGoRows[0]?.section ?? 'A',
+        criteria: goNoGoRows.map((row) => ({
+          criterion: row.criterion,
+          recordedStatus: row.status,
+          recordedEvidenceUrl: row.evidenceUrl,
+          recordedNotes: row.notes ?? null,
+        })),
+      },
+      compliance: {
+        cepej: cepejSummary,
+        evaluationCoverage,
+        alerts: complianceAlerts,
+      },
+      webVitals: {
+        sampleCount: totalVitalSamples,
+        metrics: {
+          LCP: {
+            p75: lcpP75,
+            unit: 'ms',
+            sampleCount: vitalsByMetric.LCP.length,
+          },
+          INP: {
+            p75: inpP75,
+            unit: 'ms',
+            sampleCount: vitalsByMetric.INP.length,
+          },
+          CLS: {
+            p75: clsP75,
+            unit: 'score',
+            sampleCount: vitalsByMetric.CLS.length,
+          },
+        },
+        alerts: webVitalAlerts,
+      },
+    };
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error }, 'operations overview failed');
+    return reply.code(500).send({ error: 'operations_overview_failed' });
+  }
 });
 
 app.get<{ Querystring: { orgId?: string } }>('/metrics/retrieval', async (request, reply) => {
@@ -595,7 +976,7 @@ app.get<{ Querystring: { orgId?: string } }>('/metrics/evaluations', async (requ
       supabase
         .from('org_evaluation_jurisdiction_metrics')
         .select(
-          'jurisdiction, evaluation_count, pass_rate, citation_precision_median, temporal_validity_median, avg_binding_warnings, maghreb_banner_coverage',
+          'jurisdiction, evaluation_count, pass_rate, citation_precision_median, temporal_validity_median, avg_binding_warnings, maghreb_banner_coverage, rwanda_notice_coverage',
         )
         .eq('org_id', orgId),
     ]);

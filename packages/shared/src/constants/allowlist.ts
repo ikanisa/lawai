@@ -21,6 +21,14 @@ export const OFFICIAL_DOMAIN_REGISTRY: Readonly<Record<string, readonly string[]
   'eur-lex.europa.eu': ['EU'],
   'oapi.int': ['OAPI'],
   'cima-afrique.org': ['CIMA'],
+  // Rwanda — Official Gazette, Law Reform Commission, Judiciary
+  'gazette.gov.rw': ['RW'],
+  'gazettes.gov.rw': ['RW'],
+  'minijust.gov.rw': ['RW'],
+  'amategeko.gov.rw': ['RW'],
+  'rlrc.gov.rw': ['RW'],
+  'judiciary.gov.rw': ['RW'],
+  'rwandalii.gov.rw': ['RW'],
 };
 
 export const OFFICIAL_DOMAIN_ALLOWLIST: readonly string[] = Object.keys(OFFICIAL_DOMAIN_REGISTRY);

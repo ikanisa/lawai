@@ -27,43 +27,20 @@ import {
   upsertIpAllowlistEntry,
   deleteIpAllowlistEntry,
   type ScimTokenResponse,
+  fetchOperationsOverview,
+  type OperationsOverviewResponse,
 } from '../../lib/api';
-import type { Messages } from '../../lib/i18n';
+import type { Locale, Messages } from '../../lib/i18n';
+import { OperationsOverviewCard } from '../governance/operations-overview-card';
+import { JurisdictionCoverageCard } from '../governance/jurisdiction-coverage-card';
 
 interface AdminViewProps {
   messages: Messages;
-}
-
-const numberFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
-const decimalFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
-const dateTimeFormatter = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
-
-function formatPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
-  return `${decimalFormatter.format(value * 100)} %`;
-}
-
-function formatMinutes(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
-  return `${decimalFormatter.format(value)} min`;
-}
-
-function formatDecimal(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
-  return decimalFormatter.format(value);
+  locale: Locale;
 }
 
 const selectClassName =
   'focus-ring w-full rounded-2xl border border-slate-600/60 bg-slate-900/60 px-4 py-3 text-sm text-slate-100';
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '—';
-  }
-  return dateTimeFormatter.format(date);
-}
 
 function useGovernanceMetrics() {
   return useQuery<GovernanceMetricsResponse>({
@@ -73,9 +50,14 @@ function useGovernanceMetrics() {
   });
 }
 
-export function AdminView({ messages }: AdminViewProps) {
+export function AdminView({ messages, locale }: AdminViewProps) {
   const queryClient = useQueryClient();
   const metricsQuery = useGovernanceMetrics();
+  const operationsQuery = useQuery<OperationsOverviewResponse>({
+    queryKey: ['operations-overview', DEMO_ORG_ID],
+    queryFn: () => fetchOperationsOverview(DEMO_ORG_ID),
+    staleTime: 60_000,
+  });
   const overview = metricsQuery.data?.overview ?? null;
   const toolRows = metricsQuery.data?.tools ?? [];
   const jurisdictionLabels = useMemo(
@@ -110,6 +92,38 @@ export function AdminView({ messages }: AdminViewProps) {
       .sort((a, b) => b.citationCount - a.citationCount)
       .slice(0, 8);
   }, [retrievalQuery.data]);
+  const jurisdictionCoverage = metricsQuery.data?.jurisdictions ?? [];
+  const intlLocale = locale === 'en' ? 'en-US' : 'fr-FR';
+  const numberFormatter = useMemo(() => new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 0 }), [intlLocale]);
+  const decimalFormatter = useMemo(() => new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 1 }), [intlLocale]);
+  const dateTimeFormatter = useMemo(
+    () => new Intl.DateTimeFormat(intlLocale, { dateStyle: 'short', timeStyle: 'short' }),
+    [intlLocale],
+  );
+
+  const formatPercent = (value: number | null | undefined): string => {
+    if (value === null || value === undefined) return '—';
+    return `${decimalFormatter.format(value * 100)} %`;
+  };
+
+  const formatMinutes = (value: number | null | undefined): string => {
+    if (value === null || value === undefined) return '—';
+    return `${decimalFormatter.format(value)} min`;
+  };
+
+  const formatDecimal = (value: number | null | undefined): string => {
+    if (value === null || value === undefined) return '—';
+    return decimalFormatter.format(value);
+  };
+
+  const formatDateTime = (value: string | null | undefined): string => {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '—';
+    }
+    return dateTimeFormatter.format(date);
+  };
   const evaluationQuery = useQuery<EvaluationMetricsResponse>({
     queryKey: ['evaluation-metrics', DEMO_ORG_ID],
     queryFn: () => fetchEvaluationMetrics(DEMO_ORG_ID),
@@ -408,6 +422,19 @@ export function AdminView({ messages }: AdminViewProps) {
           </CardContent>
         </Card>
 
+      <OperationsOverviewCard
+        messages={messages}
+        data={operationsQuery.data ?? null}
+        loading={operationsQuery.isLoading && !operationsQuery.data}
+        locale={locale === 'en' ? 'en-US' : 'fr-FR'}
+      />
+
+      <JurisdictionCoverageCard
+        messages={messages}
+        data={jurisdictionCoverage}
+        loading={metricsQuery.isLoading && jurisdictionCoverage.length === 0}
+      />
+
         <Card className="glass-card border border-slate-800/60">
             <CardHeader>
               <CardTitle className="text-slate-100">{messages.admin.retrievalTitle}</CardTitle>
@@ -550,7 +577,7 @@ export function AdminView({ messages }: AdminViewProps) {
             <p className="text-sm text-slate-400">{messages.admin.evaluationDescription}</p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <MetricBlock
                 label={messages.admin.evaluationPassRate}
                 primary={formatPercent(evaluationSummary?.passRate)}
@@ -585,6 +612,12 @@ export function AdminView({ messages }: AdminViewProps) {
                 secondary={messages.admin.evaluationMaghrebHint}
                 loading={evaluationQuery.isLoading}
               />
+              <MetricBlock
+                label={messages.admin.evaluationRwandaCoverage}
+                primary={formatPercent(evaluationSummary?.rwandaNoticeCoverage)}
+                secondary={messages.admin.evaluationRwandaHint}
+                loading={evaluationQuery.isLoading}
+              />
             </div>
 
             <div>
@@ -604,6 +637,7 @@ export function AdminView({ messages }: AdminViewProps) {
                       <th className="pb-2 text-right">{messages.admin.evaluationTemporalMedian}</th>
                       <th className="pb-2 text-right">{messages.admin.evaluationBindingWarnings}</th>
                       <th className="pb-2 text-right">{messages.admin.evaluationMaghrebCoverage}</th>
+                      <th className="pb-2 text-right">{messages.admin.evaluationRwandaCoverage}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
@@ -616,6 +650,7 @@ export function AdminView({ messages }: AdminViewProps) {
                         <td className="py-2 text-right text-sm">{formatPercent(row.temporalValidityMedian)}</td>
                         <td className="py-2 text-right text-sm">{formatDecimal(row.avgBindingWarnings)}</td>
                         <td className="py-2 text-right text-sm">{formatPercent(row.maghrebBannerCoverage)}</td>
+                        <td className="py-2 text-right text-sm">{formatPercent(row.rwandaNoticeCoverage)}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -35,6 +35,7 @@ import { Separator } from '../ui/separator';
 import { exportIracToDocx, exportIracToPdf } from '../../lib/exporters';
 import { useOnlineStatus } from '../../hooks/use-online-status';
 import { useOutbox, type OutboxItem } from '../../hooks/use-outbox';
+import { cn } from '../../lib/utils';
 
 interface ResearchViewProps {
   messages: Messages;
@@ -73,6 +74,9 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         }
         if (jurisdiction.notes?.includes('swiss')) {
           badges.push({ label: badgeMessages.swiss, variant: 'outline' });
+        }
+        if (jurisdiction.id === 'RW') {
+          badges.push({ label: badgeMessages.rwanda, variant: 'success' });
         }
 
         return {
@@ -139,6 +143,8 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const isMaghreb = jurisdictionCode === 'MA' || jurisdictionCode === 'TN' || jurisdictionCode === 'DZ';
   const isCanadian = jurisdictionCode === 'CA-QC' || jurisdictionCode === 'CA';
   const isSwiss = jurisdictionCode === 'CH';
+  const isRwanda = jurisdictionCode === 'RW';
+  const telemetryEnabled = !confidentialMode;
 
   const planSteps = latestRun?.plan ?? null;
   const planLogs = latestRun?.toolLogs ?? [];
@@ -154,12 +160,16 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
   const handleVoiceTranscript = (text: string) => {
     setQuestion((current) => (current ? `${current.trim()} ${text}` : text));
-    void sendTelemetryEvent('voice_dictation_used');
+    if (telemetryEnabled) {
+      void sendTelemetryEvent('voice_dictation_used');
+    }
   };
 
   const handleOcrText = (text: string) => {
     setContext((current) => (current ? `${current}\n${text}` : text));
-    void sendTelemetryEvent('camera_ocr_added');
+    if (telemetryEnabled) {
+      void sendTelemetryEvent('camera_ocr_added');
+    }
   };
 
   const citationBadges = (note?: string) => {
@@ -295,6 +305,8 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         .replace('{total}', trustCitationSummary.rules.total.toString())
     : null;
 
+  const resultContainerClass = cn('space-y-5', confidentialMode && 'confidential-blur');
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!question.trim()) {
@@ -305,18 +317,22 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     if (!online) {
       enqueue({ question, context, confidentialMode });
       toast.info(outboxMessages.queued);
-      void sendTelemetryEvent('outbox_enqueued', { offline: true });
+      if (telemetryEnabled) {
+        void sendTelemetryEvent('outbox_enqueued', { offline: true });
+      }
       setQuestion('');
       setContext('');
       return;
     }
 
-    void sendTelemetryEvent('run_submitted', {
-      questionLength: question.length,
-      ohadaMode,
-      euOverlay,
-      confidentialMode,
-    });
+    if (telemetryEnabled) {
+      void sendTelemetryEvent('run_submitted', {
+        questionLength: question.length,
+        ohadaMode,
+        euOverlay,
+        confidentialMode,
+      });
+    }
 
     try {
       const data = await mutation.mutateAsync({
@@ -329,33 +345,46 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
       setLatestRun(data);
       toggle(true);
       toast.success(successMessage);
-      void sendTelemetryEvent('run_completed', {
-        runId: data.runId,
-        jurisdiction: data.data?.jurisdiction.country ?? null,
-        risk: data.data?.risk.level ?? null,
-      });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('avocat-run-success'));
+      }
+      if (telemetryEnabled) {
+        void sendTelemetryEvent('run_completed', {
+          runId: data.runId,
+          jurisdiction: data.data?.jurisdiction.country ?? null,
+          risk: data.data?.risk.level ?? null,
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Agent indisponible';
       toast.error(message);
-      void sendTelemetryEvent('run_failed', { message });
+      if (telemetryEnabled) {
+        void sendTelemetryEvent('run_failed', { message });
+      }
       enqueue({ question, context, confidentialMode });
       toast.info(outboxMessages.queued);
-      void sendTelemetryEvent('outbox_enqueued', { offline: false });
+      if (telemetryEnabled) {
+        void sendTelemetryEvent('outbox_enqueued', { offline: false });
+      }
     }
   }
 
   function handleBilingualSelect(language: 'fr' | 'en') {
-    void sendTelemetryEvent('bilingual_toggle', {
-      language,
-      jurisdiction: jurisdictionCode ?? null,
-    });
+    if (telemetryEnabled) {
+      void sendTelemetryEvent('bilingual_toggle', {
+        language,
+        jurisdiction: jurisdictionCode ?? null,
+      });
+    }
   }
 
   function handleCitationVisit(url: string) {
-    void sendTelemetryEvent('citation_clicked', {
-      url,
-      jurisdiction: jurisdictionCode ?? null,
-    });
+    if (telemetryEnabled) {
+      void sendTelemetryEvent('citation_clicked', {
+        url,
+        jurisdiction: jurisdictionCode ?? null,
+      });
+    }
   }
 
   const staleThresholdDays = 90;
@@ -370,6 +399,9 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
   const processOutboxItem = useCallback(
     async (item: OutboxItem, source: 'manual' | 'auto') => {
+      if (item.confidentialMode && source === 'auto') {
+        return false;
+      }
       try {
         const data = await mutation.mutateAsync({
           question: item.question,
@@ -385,22 +417,31 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         const toastId = `outbox-${item.id}`;
         const successLabel = source === 'manual' ? successMessage : outboxMessages.sent ?? successMessage;
         toast.success(successLabel, { id: toastId });
-        void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
-          success: true,
-          runId: data.runId,
-        });
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('avocat-run-success'));
+        }
+        const itemTelemetryEnabled = telemetryEnabled && !item.confidentialMode;
+        if (itemTelemetryEnabled) {
+          void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
+            success: true,
+            runId: data.runId,
+          });
+        }
         return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Agent indisponible';
         toast.error(message, { id: `outbox-${item.id}` });
-        void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
-          success: false,
-          message,
-        });
+        const itemTelemetryEnabled = telemetryEnabled && !item.confidentialMode;
+        if (itemTelemetryEnabled) {
+          void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
+            success: false,
+            message,
+          });
+        }
         return false;
       }
     },
-    [mutation, open, toggle, successMessage, outboxMessages.sent],
+    [mutation, open, toggle, successMessage, outboxMessages.sent, telemetryEnabled],
   );
 
   async function handleOutboxRetry(item: OutboxItem) {
@@ -423,7 +464,9 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
   const verifyCitation = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');
-    void sendTelemetryEvent('citation_verify', { url });
+    if (telemetryEnabled) {
+      void sendTelemetryEvent('citation_verify', { url });
+    }
   };
 
   return (
@@ -524,13 +567,14 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
           </Card>
         </div>
 
-        <div className="space-y-5">
+        <div className={resultContainerClass}>
           {payload ? (
             <div className="space-y-5">
               <RiskBanner risk={payload.risk} hitlLabel={messages.actions.hitl} onHitl={() => toast.info(hitlMessage)} />
               {isMaghreb && <LanguageBanner message={messages.research.languageWarning} />}
               {isCanadian && <LanguageBanner message={messages.research.canadaLanguageNotice} />}
               {isSwiss && <LanguageBanner message={messages.research.switzerlandLanguageNotice} />}
+              {isRwanda && <LanguageBanner message={messages.research.rwandaLanguageNotice} />}
               {noticeMessages.map((message) => (
                 <LanguageBanner key={message} message={message} />
               ))}

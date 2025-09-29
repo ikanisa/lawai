@@ -16,6 +16,7 @@
     "icons:generate": "node ./scripts/generate-icons.mjs"
   },
   "dependencies": {
+    "@avocat-ai/shared": "workspace:*",
     "@radix-ui/react-dialog": "^1.0.7",
     "@radix-ui/react-dropdown-menu": "^2.0.6",
     "@radix-ui/react-scroll-area": "^1.0.5",

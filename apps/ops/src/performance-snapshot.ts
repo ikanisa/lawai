@@ -91,6 +91,15 @@ async function fetchMetrics(options: CliOptions) {
       p95LatencyMs: number | null;
       lastInvokedAt: string | null;
     }>;
+    webVitals?: {
+      sampleCount: number;
+      metrics: {
+        LCP: { p75: number | null; unit: 'ms'; sampleCount: number };
+        INP: { p75: number | null; unit: 'ms'; sampleCount: number };
+        CLS: { p75: number | null; unit: 'score'; sampleCount: number };
+      };
+      alerts: Array<{ code: string }>;
+    } | null;
   };
 
   return json;
@@ -111,6 +120,7 @@ async function recordSnapshot(
   const p95 = metrics.tools.length > 0
     ? Math.max(...metrics.tools.map((tool) => tool.p95LatencyMs ?? 0))
     : null;
+  const webVitals = metrics.webVitals ?? null;
 
   const payload = {
     org_id: options.orgId,
@@ -125,7 +135,7 @@ async function recordSnapshot(
     binding_warnings: null,
     notes: options.notes ?? null,
     recorded_by: options.userId,
-    metadata: { tools: metrics.tools },
+    metadata: { tools: metrics.tools, webVitals },
   };
 
   const { error } = await client.from('performance_snapshots').insert(payload);
@@ -158,6 +168,14 @@ async function run(): Promise<void> {
         avgLatencyMs: metrics.overview.avgLatencyMs,
         allowlistedRatio: metrics.overview.allowlistedCitationRatio,
         evaluationPassRate: metrics.overview.evaluationPassRate,
+      });
+    }
+    if (metrics.webVitals) {
+      console.table({
+        webVitalsSamples: metrics.webVitals.sampleCount,
+        lcpP75ms: metrics.webVitals.metrics.LCP.p75 ?? '—',
+        inpP75ms: metrics.webVitals.metrics.INP.p75 ?? '—',
+        clsP75: metrics.webVitals.metrics.CLS.p75 ?? '—',
       });
     }
   } catch (error) {

@@ -9,7 +9,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   OPENAI_API_KEY: z.string().min(1).default('test-openai-key'),
   AGENT_MODEL: z.string().default('gpt-5-pro'),
-  EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
+  EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
   SUMMARISER_MODEL: z.string().optional(),
   MAX_SUMMARY_CHARS: z.coerce.number().optional(),
   OPENAI_VECTOR_STORE_AUTHORITIES_ID: z.string().min(1).default('vs_test'),
