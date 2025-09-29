@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { IRACPayload } from '@avocat-ai/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import messagesEn from '../src/messages/en.json';
+import messagesEn from '../messages/en.json';
 import type { Messages } from '../src/lib/i18n';
 import type { AgentRunResponse } from '../src/lib/api';
 import { ResearchView } from '../src/components/research/research-view';
@@ -16,8 +16,14 @@ vi.mock('sonner', () => ({
   },
 }));
 
-const submitResearchQuestionMock = vi.fn();
-const sendTelemetryEventMock = vi.fn();
+vi.mock('../src/hooks/use-online-status', () => ({
+  useOnlineStatus: () => true,
+}));
+
+const { submitResearchQuestionMock, sendTelemetryEventMock } = vi.hoisted(() => ({
+  submitResearchQuestionMock: vi.fn(),
+  sendTelemetryEventMock: vi.fn(),
+}));
 
 vi.mock('../src/lib/api', async () => {
   const actual = await vi.importActual<typeof import('../src/lib/api')>('../src/lib/api');
@@ -128,7 +134,9 @@ describe('ResearchView trust panel', () => {
       target: { value: 'Analyse juridique' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: messagesEn.actions.submit }));
+    const form = screen.getByLabelText(messagesEn.research.heroPlaceholder).closest('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
 
     await waitFor(() => expect(submitResearchQuestionMock).toHaveBeenCalled());
 

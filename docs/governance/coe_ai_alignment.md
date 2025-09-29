@@ -1,30 +1,8 @@
-# Council of Europe AI Framework Convention Alignment
+# Council of Europe Alignment
 
-The Avocat-AI Francophone deployment adopts the forthcoming Council of Europe Framework Convention on Artificial Intelligence principles by mapping obligations to product artefacts.
+This document outlines how Avocat-AI Francophone satisfies transparency, accountability, and fairness requirements drafted by the Council of Europe on use of AI in judicial systems.
 
-## Transparency & Explainability
-- **IRAC Structured Outputs** ensure reasoning is visible without exposing chain-of-thought.
-- **Plan Drawer** summarises tools and provenance for every run.
-- **Public documentation**: publish quarterly transparency report including case-score distributions and red-team outcomes.
-
-## Oversight & Accountability
-- **HITL queue** provides human decision checkpoints for high-risk matters.
-- **Audit events** capture every privileged action (`audit_events` table) with immutable history.
-- **Performance snapshots** record latency, citation precision, and temporal validity metrics for accountability reviews.
-
-## Non-Discrimination & Fairness
-- Case-quality scoring penalises politically sensitive courts and ensures OHADA precedence.
-- Red-team harness exercises Maghreb translation, OHADA arbitration, and sanctions scenarios to detect bias.
-- Evaluation CLI stores pass/fail metrics per jurisdiction for fairness audits.
-
-## Data Governance & Privacy
-- **Residency matrix** (see `data_residency_matrix.md`) defines permitted storage envelopes.
-- Confidential mode enforces File Search-only operations and disables caching.
-- Access logs and consent events demonstrate lawful basis tracking.
-
-## Redress & Incident Response
-- Incident response runbook defines escalation, containment, and remediation flows.
-- `red_team_findings` table tracks outstanding vulnerabilities with mitigations and resolution status.
-- Support SLOs and change-management procedures are published in the governance pack.
-
-Maintainers must review this document at each release and link to supporting evidence in the Go / No-Go checklist.
+- Transparency notices displayed in research responses and Trust Center.
+- Human oversight via mandatory HITL escalation for penal and sanctions matters.
+- Auditability ensured through `audit_events` and change log entries.
+- Fairness and non-discrimination monitored with evaluation metrics and scenario coverage.

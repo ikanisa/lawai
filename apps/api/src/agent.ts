@@ -236,6 +236,8 @@ const TOOL_BUDGET_DEFAULTS: Record<string, number> = {
   snapshot_authority: 2,
   generate_pleading_template: 2,
   evaluate_case_alignment: 3,
+  compute_case_score: 3,
+  build_treatment_graph: 1,
 };
 
 function countAkomaArticles(value: unknown): number {
@@ -896,6 +898,84 @@ const citationsAllowlistGuardrail = defineOutputGuardrail<IRACPayload>({
     };
   },
 });
+
+const bindingLanguageGuardrail = defineOutputGuardrail<IRACPayload>({
+  name: 'binding-language-guardrail',
+  execute: async ({ agentOutput }) => {
+    const jurisdiction = agentOutput.jurisdiction?.country ?? null;
+    const firstCitationUrl = agentOutput.citations.find((citation) => Boolean(citation.url))?.url;
+    const info = determineBindingLanguage(jurisdiction, firstCitationUrl);
+    const requiresBanner = info.requiresBanner;
+    const tripwireTriggered = requiresBanner && agentOutput.risk.hitl_required !== true;
+
+    return {
+      tripwireTriggered,
+      outputInfo: {
+        requiresBanner,
+        bindingLanguage: info.bindingLang,
+        translationNotice: info.translationNotice,
+      },
+    };
+  },
+});
+
+const structuredIracGuardrail = defineOutputGuardrail<IRACPayload>({
+  name: 'structured-irac-guardrail',
+  execute: async ({ agentOutput }) => {
+    const missing: string[] = [];
+    if (!agentOutput.issue || agentOutput.issue.trim().length === 0) {
+      missing.push('issue');
+    }
+    if (!Array.isArray(agentOutput.rules) || agentOutput.rules.length === 0) {
+      missing.push('rules');
+    }
+    if (!agentOutput.application || agentOutput.application.trim().length === 0) {
+      missing.push('application');
+    }
+    if (!agentOutput.conclusion || agentOutput.conclusion.trim().length === 0) {
+      missing.push('conclusion');
+    }
+
+    return {
+      tripwireTriggered: missing.length > 0,
+      outputInfo: { missing },
+    };
+  },
+});
+
+const sensitiveTopicGuardrail = defineOutputGuardrail<IRACPayload>({
+  name: 'sensitive-topic-hitl-guardrail',
+  execute: async ({ agentOutput }) => {
+    const riskLevel = agentOutput.risk?.level ?? 'LOW';
+    const tripwireTriggered = riskLevel === 'HIGH' && agentOutput.risk.hitl_required !== true;
+    return {
+      tripwireTriggered,
+      outputInfo: {
+        riskLevel,
+        hitlRequired: agentOutput.risk.hitl_required,
+      },
+    };
+  },
+});
+
+type GuardrailIdentifier = 'binding-language' | 'structured-irac' | 'sensitive-topic';
+
+function identifyGuardrail(error: unknown): GuardrailIdentifier | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+  const message = error.message.toLowerCase();
+  if (message.includes('binding-language-guardrail')) {
+    return 'binding-language';
+  }
+  if (message.includes('structured-irac-guardrail')) {
+    return 'structured-irac';
+  }
+  if (message.includes('sensitive-topic-hitl-guardrail')) {
+    return 'sensitive-topic';
+  }
+  return null;
+}
 
 const OHADA_MEMBERS = [
   'Benin',
@@ -2432,6 +2512,281 @@ async function computeCaseQuality(
   return { summaries, forceHitl };
 }
 
+async function computeCaseScoreForSource(
+  orgId: string,
+  sourceId: string,
+): Promise<
+  | {
+      status: 'ok';
+      sourceId: string;
+      score: number | null;
+      hardBlock: boolean;
+      notes: string[];
+      version: number | null;
+    }
+  | { status: 'not_found' }
+> {
+  const { data: source, error: sourceError } = await supabase
+    .from('sources')
+    .select('id, source_url, jurisdiction_code, title, publisher, effective_date')
+    .eq('org_id', orgId)
+    .eq('id', sourceId)
+    .maybeSingle();
+
+  if (sourceError) {
+    throw new Error(sourceError.message);
+  }
+  if (!source || !source.source_url) {
+    return { status: 'not_found' };
+  }
+
+  const jurisdiction = typeof source.jurisdiction_code === 'string' ? source.jurisdiction_code : null;
+
+  await computeCaseQuality(orgId, jurisdiction, [
+    {
+      title: typeof source.title === 'string' ? source.title : source.source_url,
+      court_or_publisher: typeof source.publisher === 'string' ? source.publisher : null,
+      date: typeof source.effective_date === 'string' ? source.effective_date : null,
+      url: source.source_url,
+      note: 'manual_score',
+    },
+  ]);
+
+  const { data: latestScore, error: scoreError } = await supabase
+    .from('case_scores')
+    .select('score_overall, hard_block, notes, version')
+    .eq('org_id', orgId)
+    .eq('source_id', sourceId)
+    .order('computed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (scoreError) {
+    throw new Error(scoreError.message);
+  }
+
+  if (!latestScore) {
+    return {
+      status: 'ok',
+      sourceId,
+      score: null,
+      hardBlock: false,
+      notes: [],
+      version: null,
+    };
+  }
+
+  const notes = Array.isArray(latestScore.notes)
+    ? (latestScore.notes as unknown[])
+        .map((entry) => (typeof entry === 'string' ? entry : null))
+        .filter((entry): entry is string => Boolean(entry))
+    : [];
+
+  return {
+    status: 'ok',
+    sourceId,
+    score: typeof latestScore.score_overall === 'number' ? latestScore.score_overall : null,
+    hardBlock: Boolean((latestScore as { hard_block?: boolean }).hard_block),
+    notes,
+    version: typeof latestScore.version === 'number' ? latestScore.version : null,
+  };
+}
+
+async function handleGuardrailFailure(
+  error: unknown,
+  planner: PlannerOutcome,
+  input: AgentRunInput,
+  toolLogs: ToolInvocationLog[],
+  telemetryRecords: ToolTelemetry[],
+  runKey: string,
+  accessContext: OrgAccessContext | null,
+): Promise<AgentRunResult | null> {
+  const guardType = identifyGuardrail(error);
+  if (!guardType) {
+    return null;
+  }
+
+  const guardTime = new Date();
+  const primary = planner.initialRouting.primary;
+  const jurisdiction = {
+    country: primary?.country ?? 'FR',
+    eu: Boolean(primary?.eu ?? (primary?.country ? primary.country === 'FR' || primary.country === 'BE' || primary.country === 'LU' : true)),
+    ohada: Boolean(primary?.ohada),
+  };
+
+  const firstSnippetUrl = planner.hybridSnippets.find((snippet) => typeof snippet.url === 'string')?.url ?? null;
+
+  let issue = '';
+  let application = '';
+  let conclusion = '';
+  let rules: Array<{ citation: string; source_url?: string | null; binding: boolean; effective_date?: string | null; note?: string | null }> = [];
+  let citations: IRACPayload['citations'] = [];
+  let guardReason = '';
+  let verificationNote: VerificationNote;
+
+  switch (guardType) {
+    case 'binding-language': {
+      const bindingInfo = determineBindingLanguage(jurisdiction.country, firstSnippetUrl ?? undefined);
+      issue = 'Traduction officielle requise pour document à valeur juridique supérieure.';
+      application = bindingInfo.translationNotice ??
+        'La juridiction impose la consultation de la version originale avant toute analyse automatique.';
+      conclusion =
+        'La réponse est escaladée en revue humaine afin de confirmer la version juridiquement contraignante.';
+      rules = [
+        {
+          citation: bindingInfo.source,
+          source_url: firstSnippetUrl,
+          binding: true,
+          note: bindingInfo.translationNotice ?? undefined,
+        },
+      ];
+      citations = firstSnippetUrl
+        ? [
+            {
+              title: bindingInfo.source,
+              court_or_publisher: null,
+              date: null,
+              url: firstSnippetUrl,
+              note: bindingInfo.translationNotice ?? undefined,
+            },
+          ]
+        : [];
+      guardReason = bindingInfo.translationNotice ?? 'Langue contraignante détectée pour cette juridiction.';
+      verificationNote = {
+        code: 'binding_language_guardrail',
+        message: guardReason,
+        severity: 'critical',
+      };
+      break;
+    }
+    case 'structured-irac': {
+      issue = 'IRAC incomplet détecté (sections manquantes).';
+      application =
+        'Le contrôleur de structure a identifié des sections IRAC incomplètes. Une validation humaine est nécessaire pour compléter l’analyse.';
+      conclusion = 'Escalade en revue humaine pour compléter la structure IRAC avant diffusion.';
+      rules = [
+        {
+          citation: 'Politique interne — Structure IRAC obligatoire',
+          source_url: null,
+          binding: true,
+          note: 'Chaque réponse doit contenir Issue, Rules, Application et Conclusion.',
+        },
+      ];
+      guardReason = 'Structure IRAC incomplète';
+      verificationNote = {
+        code: 'structured_irac_guardrail',
+        message: 'Structure IRAC incomplète détectée, revue humaine requise.',
+        severity: 'critical',
+      };
+      break;
+    }
+    case 'sensitive-topic': {
+      issue = 'Requête classée à haut risque nécessitant validation humaine.';
+      application =
+        'Le score de risque élevé déclenche une revue HITL afin de documenter le FRIA et confirmer la réponse avant diffusion.';
+      conclusion = 'Escalade HITL obligatoire pour traiter cette requête à haut risque.';
+      rules = [
+        {
+          citation: 'EU AI Act – Articles 14 et 15 (systèmes à haut risque)',
+          source_url: 'https://eur-lex.europa.eu/',
+          binding: true,
+        },
+      ];
+      guardReason = 'Niveau de risque élevé détecté';
+      verificationNote = {
+        code: 'sensitive_topic_hitl_guardrail',
+        message: 'Risque élevé : revue humaine exigée.',
+        severity: 'critical',
+      };
+      break;
+    }
+  }
+
+  const payload: IRACPayload = {
+    jurisdiction,
+    issue,
+    rules,
+    application,
+    conclusion,
+    citations,
+    risk: {
+      level: 'HIGH',
+      why: guardReason,
+      hitl_required: true,
+    },
+  };
+
+  const verification: VerificationResult = {
+    status: 'hitl_escalated',
+    allowlistViolations: [],
+    notes: [verificationNote],
+  };
+
+  toolLogs.push({
+    name: 'guardrailEscalation',
+    args: { guard: guardType, question: input.question },
+    output: { escalated: true, reason: guardReason },
+  });
+
+  planner.planTrace.push({
+    id: `guardrail_${guardType}`,
+    name: 'Escalade guardrail',
+    description: 'Sortie bloquée par une politique métier : passage en revue humaine.',
+    startedAt: guardTime.toISOString(),
+    finishedAt: guardTime.toISOString(),
+    status: 'failed',
+    attempts: 1,
+    detail: { guardrail: guardType },
+  });
+
+  const baseLearningJobs = buildLearningJobs(payload, planner.initialRouting, input);
+  const complianceOutcome = applyComplianceGates(payload, planner.initialRouting, input, baseLearningJobs);
+  const bindingBannerInfo = applyBindingLanguageNotices(payload, planner.initialRouting);
+  if (bindingBannerInfo?.requiresBanner) {
+    complianceOutcome.learningJobs.push({
+      type: 'binding_language_banner',
+      payload: {
+        jurisdiction: bindingBannerInfo.jurisdiction,
+        notice: bindingBannerInfo.translationNotice,
+        source: bindingBannerInfo.source,
+        question: input.question,
+      },
+    });
+  }
+
+  const notices = buildRunNotices(payload, {
+    accessContext: accessContext ?? null,
+    confidentialMode: planner.context.confidentialMode,
+    initialRouting: planner.initialRouting,
+  });
+
+  const { runId, trust: trustPanel } = await persistRun(
+    input,
+    payload,
+    toolLogs,
+    planner.hybridSnippets,
+    telemetryRecords,
+    complianceOutcome.learningJobs,
+    complianceOutcome.events,
+    complianceOutcome.assessment,
+    planner.planTrace,
+    verification,
+    runKey,
+    planner.context.confidentialMode,
+  );
+
+  return {
+    runId,
+    payload,
+    allowlistViolations: [],
+    toolLogs,
+    plan: planner.planTrace,
+    notices,
+    verification,
+    trustPanel,
+  };
+}
+
 function buildTrustPanel(
   payload: IRACPayload,
   retrievalSnippets: HybridSnippet[],
@@ -3920,6 +4275,105 @@ function buildAgent(
     },
   });
 
+  const computeCaseScoreTool = tool<AgentExecutionContext>({
+    name: 'compute_case_score',
+    description: 'Calcule et enregistre un score de fiabilité pour une décision jurisprudentielle existante.',
+    parameters: z
+      .object({
+        source_id: z.string(),
+      })
+      .strict(),
+    execute: async (input, runContext) => {
+      consumeToolBudget(runContext.context, 'compute_case_score');
+      const started = performance.now();
+      try {
+        const result = await computeCaseScoreForSource(runContext.context.orgId, input.source_id);
+        const output =
+          result.status === 'ok'
+            ? {
+                status: 'ok',
+                source_id: result.sourceId,
+                score: result.score,
+                hard_block: result.hardBlock,
+                notes: result.notes,
+                version: result.version,
+              }
+            : { status: 'not_found' };
+        toolLogs.push({ name: 'computeCaseScore', args: input, output });
+        recordTelemetry(runContext.context, telemetry, {
+          name: 'compute_case_score',
+          latencyMs: performance.now() - started,
+          success: true,
+          errorCode: null,
+        });
+        return JSON.stringify(output);
+      } catch (error) {
+        recordTelemetry(runContext.context, telemetry, {
+          name: 'compute_case_score',
+          latencyMs: performance.now() - started,
+          success: false,
+          errorCode: error instanceof Error ? error.message : 'unknown',
+        });
+        throw error;
+      }
+    },
+  });
+
+  const buildTreatmentGraphTool = tool<AgentExecutionContext>({
+    name: 'build_treatment_graph',
+    description:
+      'Planifie la reconstruction du graphe de traitements jurisprudentiels (followed/criticised) à partir des décisions ingérées.',
+    parameters: z
+      .object({
+        since: z.string().datetime().optional(),
+      })
+      .strict(),
+    execute: async (input, runContext) => {
+      consumeToolBudget(runContext.context, 'build_treatment_graph');
+      const started = performance.now();
+      try {
+        const jobInsert = await supabase
+          .from('agent_learning_jobs')
+          .insert({
+            org_id: runContext.context.orgId,
+            type: 'treatment_graph_rebuild',
+            status: 'pending',
+            payload: {
+              since: input.since ?? null,
+              triggered_by: runContext.context.userId,
+            },
+          })
+          .select('id')
+          .single();
+
+        if (jobInsert.error) {
+          throw new Error(jobInsert.error.message);
+        }
+
+        const output = {
+          status: 'queued',
+          job_id: jobInsert.data?.id ?? null,
+        };
+        toolLogs.push({ name: 'buildTreatmentGraph', args: input, output });
+        recordTelemetry(runContext.context, telemetry, {
+          name: 'build_treatment_graph',
+          latencyMs: performance.now() - started,
+          success: true,
+          errorCode: null,
+        });
+        return JSON.stringify(output);
+      } catch (error) {
+        recordTelemetry(runContext.context, telemetry, {
+          name: 'build_treatment_graph',
+          latencyMs: performance.now() - started,
+          success: false,
+          errorCode: error instanceof Error ? error.message : 'unknown',
+        });
+        throw error;
+      }
+    },
+  });
+
   const baseFileSearch = fileSearchTool(env.OPENAI_VECTOR_STORE_AUTHORITIES_ID, {
     includeSearchResults: true,
     maxNumResults: 8,
@@ -3970,10 +4424,17 @@ function buildAgent(
       redlineTool,
       snapshotAuthorityTool,
       caseAlignmentTool,
+      computeCaseScoreTool,
+      buildTreatmentGraphTool,
       generateTemplateTool,
     ],
     outputType: IRACSchema,
-    outputGuardrails: [citationsAllowlistGuardrail],
+    outputGuardrails: [
+      citationsAllowlistGuardrail,
+      bindingLanguageGuardrail,
+      structuredIracGuardrail,
+      sensitiveTopicGuardrail,
+    ],
   });
 }
 
@@ -4245,7 +4706,24 @@ export async function runLegalAgent(
   }
 
   const agent = buildAgent(toolLogs, telemetryRecords, planner.context);
-  const execution = await executeAgentPlan(agent, planner, input, planner.hybridSnippets);
+  let execution;
+  try {
+    execution = await executeAgentPlan(agent, planner, input, planner.hybridSnippets);
+  } catch (error) {
+    const guardResult = await handleGuardrailFailure(
+      error,
+      planner,
+      input,
+      toolLogs,
+      telemetryRecords,
+      runKey,
+      accessContext ?? null,
+    );
+    if (guardResult) {
+      return guardResult;
+    }
+    throw error;
+  }
   const payload = execution.payload;
 
   const verificationTask = async () =>

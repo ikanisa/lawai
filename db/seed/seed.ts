@@ -27,6 +27,7 @@ const jurisdictions = [
   { code: 'DZ', name: 'Algérie', eu: false, ohada: false },
   { code: 'OAPI', name: 'Organisation africaine de la propriété intellectuelle', eu: false, ohada: false },
   { code: 'CIMA', name: 'Conférence interafricaine des marchés d\'assurances', eu: false, ohada: false },
+  { code: 'RW', name: 'Rwanda', eu: false, ohada: false },
 ];
 
 const authorityDomains = {
@@ -49,6 +50,7 @@ const authorityDomains = {
   DZ: ['joradp.dz'],
   OAPI: ['oapi.int'],
   CIMA: ['cima-afrique.org'],
+  RW: ['gazette.gov.rw', 'gazettes.gov.rw', 'minijust.gov.rw', 'amategeko.gov.rw', 'rlrc.gov.rw', 'judiciary.gov.rw', 'rwandalii.gov.rw'],
 };
 
 const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
@@ -174,7 +176,7 @@ const governancePublications = [
     title: 'DPIA & Engagements Conseil de l\'Europe',
     summary:
       "Synthèse des mesures de conformité (RGPD, Loi IA UE) et des engagements pris dans le cadre de la Convention-cadre du Conseil de l'Europe.",
-    doc_url: 'https://docs.avocat-ai.example/governance/dpia-commitments',
+    doc_url: 'https://app.avocat-ai.example/governance/dpia_commitments.md',
     category: 'compliance',
     status: 'published',
     metadata: { version: '1.0.0' },
@@ -184,10 +186,178 @@ const governancePublications = [
     title: 'Alignement Conseil de l\'Europe – IA Responsable',
     summary:
       "Cadre de transparence, supervision humaine, responsabilité et équité pour l'agent juridique autonome conformément au traité en préparation.",
-    doc_url: 'https://docs.avocat-ai.example/governance/coe-alignment',
+    doc_url: 'https://app.avocat-ai.example/governance/coe_ai_alignment.md',
     category: 'compliance',
     status: 'published',
     metadata: { version: '1.0.0' },
+  },
+  {
+    slug: 'cepej-charter',
+    title: 'Charte éthique CEPEJ',
+    summary:
+      'Cartographie des principes CEPEJ et des contrôles produits associés, à partager avec les clients et autorités.',
+    doc_url: 'https://app.avocat-ai.example/governance/cepej_charter_mapping.md',
+    category: 'compliance',
+    status: 'published',
+    metadata: { version: '1.0.0' },
+  },
+  {
+    slug: 'incident-response-plan',
+    title: 'Plan de réponse aux incidents',
+    summary:
+      'Processus en six étapes, SLA et responsabilités pour la gestion des incidents de sécurité, qualité ou disponibilité.',
+    doc_url: 'https://app.avocat-ai.example/governance/incident_response_plan.md',
+    category: 'operations',
+    status: 'published',
+    metadata: { version: '1.0.0' },
+  },
+  {
+    slug: 'change-management-playbook',
+    title: 'Playbook de gestion des changements',
+    summary:
+      'Cycle CAB, classifications et check-lists pour piloter les évolutions sans régression de conformité.',
+    doc_url: 'https://app.avocat-ai.example/governance/change_management_playbook.md',
+    category: 'operations',
+    status: 'published',
+    metadata: { version: '1.0.0' },
+  },
+  {
+    slug: 'slo-and-support',
+    title: 'SLO & support opérationnel',
+    summary:
+      "Objectifs de service, engagements support et reporting mensuel communiqués dans le centre de confiance.",
+    doc_url: 'https://app.avocat-ai.example/governance/slo_and_support.md',
+    category: 'operations',
+    status: 'published',
+    metadata: { version: '1.0.0' },
+  },
+  {
+    slug: 'pilot-onboarding',
+    title: "Playbook d'onboarding pilote",
+    summary:
+      'Check-list de préparation, formation et indicateurs de succès pour conduire un pilote de six semaines.',
+    doc_url: 'https://app.avocat-ai.example/governance/pilot_onboarding_playbook.md',
+    category: 'launch',
+    status: 'published',
+    metadata: { version: '1.0.0' },
+  },
+  {
+    slug: 'pricing-collateral',
+    title: 'Tarification & supports commerciaux',
+    summary:
+      'Grille tarifaire, packaging et checklist de lancement à fournir aux équipes commerciales et clients.',
+    doc_url: 'https://app.avocat-ai.example/governance/pricing_collateral.md',
+    category: 'launch',
+    status: 'published',
+    metadata: { version: '1.0.0' },
+  },
+  {
+    slug: 'support-runbook',
+    title: 'Runbook support & astreinte',
+    summary:
+      "Escalade 24/5, responsabilités et scénarios types pour gérer les demandes clients et incidents.",
+    doc_url: 'https://app.avocat-ai.example/governance/support_runbook.md',
+    category: 'operations',
+    status: 'published',
+    metadata: { version: '1.0.0' },
+  },
+  {
+    slug: 'regulator-outreach-plan',
+    title: 'Plan de communication régulateurs',
+    summary:
+      "Canaux officiels, cadence de reporting et points de contact pour informer autorités & ordres professionnels.",
+    doc_url: 'https://app.avocat-ai.example/governance/regulator_outreach_plan.md',
+    category: 'operations',
+    status: 'published',
+    metadata: { version: '1.0.0' },
+  },
+  {
+    slug: 'disaster-recovery-runbook',
+    title: 'Runbook reprise & rollback',
+    summary:
+      "Procédure de restauration complète, objectifs RPO/RTO et drill trimestriel de bascule régionale.",
+    doc_url: 'https://app.avocat-ai.example/governance/disaster_recovery_runbook.md',
+    category: 'operations',
+    status: 'published',
+    metadata: { version: '1.0.0' },
+  },
+];
+
+const incidentReports = [
+  {
+    id: '11111111-1111-1111-1111-111111111111',
+    org_id: DEMO_ORG_ID,
+    occurred_at: '2024-07-04T08:30:00Z',
+    detected_at: '2024-07-04T08:37:00Z',
+    resolved_at: '2024-07-04T09:05:00Z',
+    severity: 'medium',
+    status: 'closed',
+    title: 'Dégradation ponctuelle du délai HITL',
+    summary:
+      "Temps de réponse reviewer > SLA pendant 35 minutes suite à un pic d'escalades déclenché par une mise à jour du modèle.",
+    impact: 'Temps d’attente moyen 12 min vs objectif 8 min sur la fenêtre concernée.',
+    resolution:
+      "Activation du plan de contingence reviewer + reconfiguration du seuil d'escalade ; métriques redevenues nominales.",
+    follow_up:
+      'Ajouter un garde-fou automatique dans le worker de learning et informer les clients pilotes de l’incident clos.',
+    evidence_url: 'https://app.avocat-ai.example/governance/incident_response_plan.md',
+    recorded_by: DEMO_ORG_ID,
+  },
+  {
+    id: '11111111-1111-1111-1111-222222222222',
+    org_id: DEMO_ORG_ID,
+    occurred_at: '2024-08-22T16:12:00Z',
+    detected_at: '2024-08-22T16:15:00Z',
+    resolved_at: '2024-08-22T16:40:00Z',
+    severity: 'low',
+    status: 'closed',
+    title: 'Lien source expiré (Maghreb)',
+    summary:
+      "Lien JORT expiré détecté par la surveillance de santé des sources ; aucun client impacté grâce au fallback vector store.",
+    impact: 'Aucun incident client, correction proactive.',
+    resolution: 'Remplacement du snapshot, ajout du hash correct et relecture par l’équipe ingestion.',
+    follow_up: 'Suivi hebdo renforcé sur les gazettes Maghreb et alertes dans le tableau de bord retravaillé.',
+    evidence_url: 'https://app.avocat-ai.example/governance/change_management_playbook.md',
+    recorded_by: DEMO_ORG_ID,
+  },
+];
+
+const changeLogEntries = [
+  {
+    id: '22222222-1111-1111-1111-111111111111',
+    org_id: DEMO_ORG_ID,
+    entry_date: '2024-08-15',
+    title: 'Dashboard SLO & export régulateur',
+    category: 'ops',
+    summary:
+      "Ajout du panneau SLO dans la console admin et export CSV destiné aux autorités / clients entreprises.",
+    release_tag: '2024.08-ga-readiness',
+    links: { docs: ['https://app.avocat-ai.example/governance/slo_and_support.md'] },
+    recorded_by: DEMO_ORG_ID,
+  },
+  {
+    id: '22222222-1111-1111-1111-222222222222',
+    org_id: DEMO_ORG_ID,
+    entry_date: '2024-09-02',
+    title: 'Playbook incidents mis à jour',
+    category: 'policy',
+    summary:
+      "Version 1.2 du plan de réponse aux incidents avec nouveaux seuils de notification régulateur et modèle de rapport.",
+    release_tag: '2024.09-hardening',
+    links: { docs: ['https://app.avocat-ai.example/governance/incident_response_plan.md'] },
+    recorded_by: DEMO_ORG_ID,
+  },
+  {
+    id: '22222222-1111-1111-1111-333333333333',
+    org_id: DEMO_ORG_ID,
+    entry_date: '2024-09-10',
+    title: 'Plan de communication régulateurs',
+    category: 'compliance',
+    summary:
+      'Création du plan de contact trimestriel (CNIL, CSA, Ordre des avocats) et intégration dans la checklist Go / No-Go.',
+    release_tag: '2024.09-hardening',
+    links: { docs: ['https://app.avocat-ai.example/governance/regulator_outreach_plan.md'] },
+    recorded_by: DEMO_ORG_ID,
   },
 ];
 
@@ -247,6 +417,18 @@ async function main() {
     await supabase
       .from('governance_publications')
       .upsert(publication, { onConflict: 'slug' });
+  }
+
+  for (const incident of incidentReports) {
+    await supabase
+      .from('incident_reports')
+      .upsert(incident, { onConflict: 'id' });
+  }
+
+  for (const change of changeLogEntries) {
+    await supabase
+      .from('change_log_entries')
+      .upsert(change, { onConflict: 'id' });
   }
 
   console.log('Seed completed');

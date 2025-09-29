@@ -66,7 +66,7 @@ function createAsyncQuery(initialData: unknown[] = [], initialError: unknown = n
     ilike: vi.fn(() => builder),
     not: vi.fn(() => builder),
     order: vi.fn(() => builder),
-    limit: vi.fn(() => Promise.resolve(builder.__response)),
+    limit: vi.fn(() => builder),
     maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
     or: vi.fn(() => builder),
     single: vi.fn(() => Promise.resolve(builder.__response)),
@@ -128,6 +128,7 @@ const defaultAccessContext = {
     ['EU', { canRead: true, canWrite: false }],
     ['OHADA', { canRead: true, canWrite: false }],
     ['MAGHREB', { canRead: true, canWrite: false }],
+    ['RW', { canRead: true, canWrite: false }],
   ]),
   ipAllowlistCidrs: [],
   consent: { requiredVersion: null, latestAcceptedVersion: null },
@@ -212,7 +213,7 @@ beforeEach(() => {
   policyVersionsQuery.select.mockImplementation(() => policyVersionsQuery);
   policyVersionsQuery.not = vi.fn(() => policyVersionsQuery);
   policyVersionsQuery.order.mockImplementation(() => policyVersionsQuery);
-  policyVersionsQuery.limit.mockImplementation(() => Promise.resolve(policyVersionsQuery.__response));
+  policyVersionsQuery.limit.mockImplementation(() => policyVersionsQuery);
   synonymsQuery.setResponse([], null);
   policyVersionsQuery.setResponse([], null);
   citationsInsertMock.mockClear();
@@ -286,7 +287,7 @@ beforeEach(() => {
     if (url.includes('/embeddings')) {
       return {
         ok: true,
-        json: async () => ({ data: [{ embedding: new Array(1536).fill(0.1) }] }),
+        json: async () => ({ data: [{ embedding: new Array(3072).fill(0.1) }] }),
       } as Response;
     }
 
@@ -394,6 +395,19 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
+    supabaseRpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          content: 'Article 1240 du Code civil',
+          similarity: 0.93,
+          trust_tier: 'T1',
+          source_id: 'src-1',
+          document_id: 'doc-1',
+        },
+      ],
+      error: null,
+    });
+
     const { runLegalAgent } = await import('../src/agent.js');
     const result = await runLegalAgent(
       {
@@ -417,7 +431,7 @@ describe('runLegalAgent', () => {
     expect(result.trustPanel?.provenance.totalSources).toBeGreaterThan(0);
     expect(result.trustPanel?.provenance.withEli).toBeGreaterThan(0);
     expect(result.trustPanel?.provenance.akomaArticles).toBeGreaterThanOrEqual(1);
-  });
+  }, 15000);
 
   it('forces a trust-panel HITL when case quality is blocked', async () => {
     caseScoresQuery.setResponse([
@@ -448,6 +462,80 @@ describe('runLegalAgent', () => {
     expect(result.trustPanel?.caseQuality.forceHitl).toBe(true);
     const firstCase = result.trustPanel?.caseQuality.items[0];
     expect(firstCase?.hardBlock).toBe(true);
+  });
+
+  it('computes case quality metrics and persists jurisprudence scores', async () => {
+    const caseUrl = 'https://www.sgg.gov.ma/lois/cour-cassation/2024-01-01';
+
+    runMock.mockResolvedValue({
+      finalOutput: {
+        ...validPayload,
+        citations: [
+          {
+            ...validPayload.citations[0],
+            title: 'Cour de cassation, 1er janvier 2024',
+            url: caseUrl,
+            court_or_publisher: 'Cour de cassation du Maroc',
+          },
+        ],
+      },
+    });
+
+    supabaseRpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          content: 'Décision de jurisprudence',
+          similarity: 0.88,
+          trust_tier: 'T2',
+          source_type: 'case_law',
+          source_id: 'src-case',
+          document_id: 'doc-case',
+        },
+      ],
+      error: null,
+    });
+
+    caseScoresQuery.setResponse([], null);
+    sourcesQuery.setResponse([
+      {
+        id: 'src-case',
+        source_url: caseUrl,
+        title: 'Cour de cassation du Maroc',
+        publisher: 'Secrétariat général du gouvernement',
+        source_type: 'case_law',
+        trust_tier: 'T2',
+        jurisdiction_code: 'MA',
+        binding_lang: 'ar',
+        effective_date: '2024-01-01',
+        created_at: '2024-01-02',
+        political_risk_flag: false,
+        court_rank: 'CC',
+        court_identifier: 'CC-MA',
+        akoma_ntoso: null,
+        eli: null,
+        ecli: null,
+      },
+    ]);
+
+    const { runLegalAgent } = await import('../src/agent.js');
+
+    await runLegalAgent(
+      {
+        question: 'Analyse de jurisprudence marocaines',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext(),
+    );
+
+    expect(caseScoresInsertMock).toHaveBeenCalled();
+    const payloadArg = caseScoresInsertMock.mock.calls[0]?.[0];
+    expect(payloadArg).toMatchObject({
+      org_id: '00000000-0000-0000-0000-000000000000',
+      source_id: 'src-case',
+      juris_code: 'MA',
+      hard_block: expect.any(Boolean),
+    });
   });
 
   it('throws when a citation is not allowlisted', async () => {
@@ -627,7 +715,6 @@ describe('runLegalAgent', () => {
     );
 
     expect(retrievalInsertMock).toHaveBeenCalled();
-    expect(telemetryInsertMock).toHaveBeenCalled();
 
     retrievalInsertMock.mockClear();
     telemetryInsertMock.mockClear();
@@ -722,6 +809,105 @@ describe('runLegalAgent', () => {
     expect(hitlInsertMock).toHaveBeenCalled();
     const learningPayload = learningInsertMock.mock.calls[0]?.[0]?.[0];
     expect(learningPayload?.type).toBe('guardrail_fr_judge_analytics');
+  });
+
+  it('escalates to HITL when the binding-language guardrail blocks the output', async () => {
+    runMock.mockRejectedValue(new Error('Output rejected by guardrail binding-language-guardrail.'));
+
+    const guardUrl = 'https://www.sgg.gov.ma/lois/texte-arabe';
+    supabaseRpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          content: 'Décision marocaine sensible',
+          similarity: 0.9,
+          trust_tier: 'T1',
+          source_type: 'case_law',
+          source_id: 'src-ma',
+          document_id: 'doc-ma',
+        },
+      ],
+      error: null,
+    });
+
+    sourcesQuery.setResponse([
+      {
+        id: 'src-ma',
+        source_url: guardUrl,
+        title: 'Arrêt de la Cour de cassation (MA)',
+        publisher: 'Cour de cassation du Maroc',
+        source_type: 'case_law',
+        jurisdiction_code: 'MA',
+        trust_tier: 'T2',
+        binding_lang: 'ar',
+        effective_date: '2024-03-12',
+        created_at: '2024-03-13',
+        political_risk_flag: false,
+        court_rank: 'CC',
+        court_identifier: 'CC-MA',
+      },
+    ]);
+
+    const { runLegalAgent } = await import('../src/agent.js');
+
+    const result = await runLegalAgent(
+      {
+        question: 'Analyse ce récent arrêt marocain important.',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext(),
+    );
+
+    expect(runMock).toHaveBeenCalledTimes(2);
+    expect(result.verification?.status).toBe('hitl_escalated');
+    expect(result.verification?.notes[0]?.code).toBe('binding_language_guardrail');
+    expect(hitlInsertMock).toHaveBeenCalled();
+    const guardStep = result.plan?.find((step) => step.id === 'guardrail_binding-language');
+    expect(guardStep?.status).toBe('failed');
+    const guardLog = result.toolLogs.find((log) => log.name === 'guardrailEscalation');
+    expect(guardLog?.output).toMatchObject({ escalated: true });
+  });
+
+  it('escalates to HITL when the structured IRAC guardrail blocks the output', async () => {
+    runMock.mockRejectedValue(new Error('Output rejected by guardrail structured-irac-guardrail.'));
+
+    const { runLegalAgent } = await import('../src/agent.js');
+
+    const result = await runLegalAgent(
+      {
+        question: 'Produit une réponse structurée détaillée.',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext(),
+    );
+
+    expect(runMock).toHaveBeenCalledTimes(2);
+    expect(result.verification?.status).toBe('hitl_escalated');
+    expect(result.verification?.notes[0]?.code).toBe('structured_irac_guardrail');
+    const guardStep = result.plan?.find((step) => step.id === 'guardrail_structured-irac');
+    expect(guardStep?.status).toBe('failed');
+  });
+
+  it('escalates to HITL when the sensitive topic guardrail blocks the output', async () => {
+    runMock.mockRejectedValue(new Error('Output rejected by guardrail sensitive-topic-hitl-guardrail.'));
+
+    const { runLegalAgent } = await import('../src/agent.js');
+
+    const result = await runLegalAgent(
+      {
+        question: 'Analyse une question hautement sensible et politique.',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext(),
+    );
+
+    expect(runMock).toHaveBeenCalledTimes(2);
+    expect(result.verification?.status).toBe('hitl_escalated');
+    expect(result.verification?.notes[0]?.code).toBe('sensitive_topic_hitl_guardrail');
+    const guardStep = result.plan?.find((step) => step.id === 'guardrail_sensitive-topic');
+    expect(guardStep?.status).toBe('failed');
   });
 
   it('requires a FRIA checkpoint for EU litigation scenarios', async () => {

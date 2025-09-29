@@ -65,6 +65,7 @@ describe('evaluation helpers', () => {
     expect(baseMetrics.citationPrecision).toBe(1);
     expect(baseMetrics.temporalValidity).toBe(1);
     expect(baseMetrics.maghrebBanner).toBeNull();
+    expect(baseMetrics.rwandaNotice).toBeNull();
 
     const maghrebPayload: IRACPayload = {
       ...basePayload,
@@ -82,18 +83,83 @@ describe('evaluation helpers', () => {
     const maghrebMetrics = computeMetrics(maghrebPayload);
     expect(maghrebMetrics.maghrebBanner).toBe(true);
     expect(maghrebMetrics.jurisdiction).toBe('MA');
+
+    const rwandaPayload: IRACPayload = {
+      ...basePayload,
+      jurisdiction: { country: 'RW', eu: false, ohada: false },
+      risk: {
+        ...basePayload.risk,
+        why: `${basePayload.risk.why} | La Gazette officielle du Rwanda est publiée en kinyarwanda et en anglais; les versions françaises doivent être vérifiées.`,
+      },
+      citations: [
+        {
+          title: 'Official Gazette',
+          court_or_publisher: 'Rwanda Law Reform Commission',
+          date: '2024-01-01',
+          url: 'https://gazette.gov.rw/2024/official-gazette',
+          note: 'La Gazette officielle du Rwanda est publiée en kinyarwanda et en anglais; les versions françaises doivent être vérifiées.',
+        },
+      ],
+    };
+    const rwandaMetrics = computeMetrics(rwandaPayload);
+    expect(rwandaMetrics.rwandaNotice).toBe(true);
+    expect(rwandaMetrics.jurisdiction).toBe('RW');
   });
 
   it('enforces acceptance thresholds', () => {
     const okResult = checkAcceptanceThresholds([
-      { citationPrecision: 0.98, temporalValidity: 0.99, bindingWarnings: 0, jurisdiction: 'FR', maghrebBanner: null },
-      { citationPrecision: 0.97, temporalValidity: 0.96, bindingWarnings: 1, jurisdiction: 'MA', maghrebBanner: true },
+      {
+        citationPrecision: 0.98,
+        temporalValidity: 0.99,
+        bindingWarnings: 0,
+        jurisdiction: 'FR',
+        maghrebBanner: null,
+        rwandaNotice: null,
+      },
+      {
+        citationPrecision: 0.97,
+        temporalValidity: 0.96,
+        bindingWarnings: 1,
+        jurisdiction: 'MA',
+        maghrebBanner: true,
+        rwandaNotice: null,
+      },
+      {
+        citationPrecision: 0.99,
+        temporalValidity: 0.97,
+        bindingWarnings: 0,
+        jurisdiction: 'RW',
+        maghrebBanner: null,
+        rwandaNotice: true,
+      },
     ]);
     expect(okResult.ok).toBe(true);
 
     const failResult = checkAcceptanceThresholds([
-      { citationPrecision: 0.90, temporalValidity: 0.96, bindingWarnings: 0, jurisdiction: 'FR', maghrebBanner: null },
-      { citationPrecision: 0.94, temporalValidity: 0.80, bindingWarnings: 0, jurisdiction: 'MA', maghrebBanner: false },
+      {
+        citationPrecision: 0.90,
+        temporalValidity: 0.96,
+        bindingWarnings: 0,
+        jurisdiction: 'FR',
+        maghrebBanner: null,
+        rwandaNotice: null,
+      },
+      {
+        citationPrecision: 0.94,
+        temporalValidity: 0.80,
+        bindingWarnings: 0,
+        jurisdiction: 'MA',
+        maghrebBanner: false,
+        rwandaNotice: null,
+      },
+      {
+        citationPrecision: 0.90,
+        temporalValidity: 0.92,
+        bindingWarnings: 0,
+        jurisdiction: 'RW',
+        maghrebBanner: null,
+        rwandaNotice: false,
+      },
     ]);
     expect(failResult.ok).toBe(false);
     expect(failResult.failures.length).toBeGreaterThan(0);

@@ -20,6 +20,91 @@ const supabase = createSupabaseService(env);
 let vectorStoreId = process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID ?? '';
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has('--dry-run') || process.env.VECTOR_STORE_DRY_RUN === '1';
+const pollIntervalMs = Number.parseInt(process.env.VECTOR_STORE_POLL_INTERVAL_MS ?? '5000', 10);
+const pollTimeoutMs = Number.parseInt(process.env.VECTOR_STORE_POLL_TIMEOUT_MS ?? String(5 * 60_000), 10);
+
+async function wait(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function fetchVectorStoreFile(
+  apiKey: string,
+  storeId: string,
+  fileId: string,
+): Promise<{ status: string; last_error?: { message?: string } | null }> {
+  const response = await fetch(`https://api.openai.com/v1/vector_stores/${storeId}/files/${fileId}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  const json = await response.json();
+  if (!response.ok) {
+    const message = json?.error?.message ?? `OpenAI API error ${response.status}`;
+    throw new Error(message);
+  }
+
+  const status = (json?.status as string | undefined) ?? (json?.data?.status as string | undefined) ?? 'unknown';
+  const lastError = json?.last_error ?? json?.data?.last_error ?? null;
+  return { status, last_error: lastError };
+}
+
+type PollStatus = {
+  attempt: number;
+  elapsedMs: number;
+  status: string;
+  consecutiveErrors: number;
+};
+
+async function waitForVectorStoreReady(
+  apiKey: string,
+  storeId: string,
+  fileId: string,
+  onStatus?: (status: PollStatus) => void,
+) {
+  const start = Date.now();
+  const interval = Number.isFinite(pollIntervalMs) && pollIntervalMs > 0 ? pollIntervalMs : 5000;
+  const timeout = Number.isFinite(pollTimeoutMs) && pollTimeoutMs > 0 ? pollTimeoutMs : 300000;
+
+  let attempt = 0;
+  let consecutiveErrors = 0;
+
+  while (Date.now() - start <= timeout) {
+    attempt += 1;
+    let status = 'unknown';
+    try {
+      const result = await fetchVectorStoreFile(apiKey, storeId, fileId);
+      status = result.status ?? 'unknown';
+      consecutiveErrors = 0;
+
+      if (status === 'completed') {
+        onStatus?.({ attempt, elapsedMs: Date.now() - start, status, consecutiveErrors });
+        return;
+      }
+      if (status === 'failed') {
+        const message = result.last_error?.message ?? 'File processing failed';
+        throw new Error(message);
+      }
+    } catch (error) {
+      consecutiveErrors += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('vector_store_poll_error', { attempt, message });
+      onStatus?.({ attempt, elapsedMs: Date.now() - start, status: 'error', consecutiveErrors });
+      if (consecutiveErrors >= 3) {
+        throw new Error(`Vector store polling failed after ${attempt} attempts: ${message}`);
+      }
+    }
+
+    onStatus?.({ attempt, elapsedMs: Date.now() - start, status, consecutiveErrors });
+    const backoffFactor = Math.min(1 + consecutiveErrors, 4);
+    await wait(interval * backoffFactor);
+  }
+
+  throw new Error('Vector store processing timeout');
+}
 
 async function upsertLocalChunks(doc: PendingDocument, blob: Blob, embeddingEnv: EmbeddingEnv) {
   const text = await decodeBlob(blob);
@@ -51,7 +136,11 @@ async function upsertLocalChunks(doc: PendingDocument, blob: Blob, embeddingEnv:
   }
 }
 
-async function uploadDocument(doc: PendingDocument, apiKey: string) {
+async function uploadDocument(
+  doc: PendingDocument,
+  apiKey: string,
+  onStatus?: (status: PollStatus) => void,
+) {
   const download = await supabase.storage.from(doc.bucket_id).download(doc.storage_path);
   if (download.error) {
     throw new Error(download.error.message);
@@ -93,6 +182,20 @@ async function uploadDocument(doc: PendingDocument, apiKey: string) {
     throw new Error(attachJson.error?.message ?? 'Erreur lors du rattachement du fichier');
   }
 
+  await supabase
+    .from('documents')
+    .update({
+      openai_file_id: fileJson.id as string,
+      vector_store_status: 'processing',
+      vector_store_error: null,
+      vector_store_synced_at: null,
+    })
+    .eq('id', doc.id);
+
+  const vectorFileId = (attachJson?.id as string | undefined) ?? (attachJson?.data?.id as string | undefined) ?? (fileJson.id as string);
+
+  await waitForVectorStoreReady(apiKey, vectorStoreId, vectorFileId, onStatus);
+
   await upsertLocalChunks(doc, blob, {
     OPENAI_API_KEY: apiKey,
     EMBEDDING_MODEL: env.EMBEDDING_MODEL,
@@ -101,7 +204,6 @@ async function uploadDocument(doc: PendingDocument, apiKey: string) {
   await supabase
     .from('documents')
     .update({
-      openai_file_id: fileJson.id as string,
       vector_store_status: 'uploaded',
       vector_store_error: null,
       vector_store_synced_at: new Date().toISOString(),
@@ -163,7 +265,14 @@ async function main() {
         docSpinner.succeed(`Simulation: ${doc.storage_path}`);
         continue;
       }
-      await uploadDocument(doc, env.OPENAI_API_KEY);
+      await uploadDocument(doc, env.OPENAI_API_KEY, (info) => {
+        if (info.status === 'error') {
+          docSpinner.text = `Upload ${doc.storage_path}… erreur réseau (tentative ${info.attempt})`;
+        } else if (info.status !== 'completed') {
+          const seconds = Math.round(info.elapsedMs / 1000);
+          docSpinner.text = `Upload ${doc.storage_path}… en traitement (${info.status}, ${seconds}s)`;
+        }
+      });
       docSpinner.succeed(`Synchronisé: ${doc.storage_path}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Erreur inconnue';

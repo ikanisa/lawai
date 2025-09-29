@@ -7,5 +7,5 @@ interface PageProps {
 
 export default function AdminPage({ params }: PageProps) {
   const messages = getMessages(params.locale);
-  return <AdminView messages={messages} />;
+  return <AdminView messages={messages} locale={params.locale} />;
 }

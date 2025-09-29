@@ -98,6 +98,8 @@ const ALLOWLIST_HOSTS = new Set<string>(OFFICIAL_DOMAIN_ALLOWLIST.map((host) => 
 const MAGHREB_JURISDICTION_SET = new Set<string>(
   MAGHREB_JURISDICTIONS.map((code) => code.toUpperCase()),
 );
+const RWANDA_JURISDICTION_SET = new Set<string>(['RW']);
+const RWANDA_NOTICE_KEYWORDS = ['rwanda', 'gazette', 'kinyarwanda'];
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BENCHMARKS_DIR = path.resolve(CURRENT_DIR, '../fixtures/benchmarks');
@@ -142,6 +144,7 @@ export interface CaseMetricsSummary {
   bindingWarnings: number;
   jurisdiction: string | null;
   maghrebBanner: boolean | null;
+  rwandaNotice: boolean | null;
 }
 
 export function computeMetrics(payload: IRACPayload): CaseMetricsSummary {
@@ -153,11 +156,13 @@ export function computeMetrics(payload: IRACPayload): CaseMetricsSummary {
     ? payload.jurisdiction.country.toUpperCase()
     : null;
   const isMaghreb = jurisdictionCode ? MAGHREB_JURISDICTION_SET.has(jurisdictionCode) : false;
+  const isRwanda = jurisdictionCode ? RWANDA_JURISDICTION_SET.has(jurisdictionCode) : false;
 
   for (const citation of payload.citations) {
     try {
       const host = new URL(citation.url).hostname.toLowerCase();
-      if (ALLOWLIST_HOSTS.has(host)) {
+      const normalizedHost = host.startsWith('www.') ? host.slice(4) : host;
+      if (ALLOWLIST_HOSTS.has(host) || ALLOWLIST_HOSTS.has(normalizedHost)) {
         allowlistedCount += 1;
       }
     } catch (_error) {
@@ -180,11 +185,19 @@ export function computeMetrics(payload: IRACPayload): CaseMetricsSummary {
   const temporalValidity = rules.length === 0 ? 1 : validRules / rules.length;
 
   let maghrebBanner: boolean | null = null;
+  let rwandaNotice: boolean | null = null;
   if (isMaghreb) {
     maghrebBanner = payload.citations.some((citation) => {
       const note = citation.note ? citation.note.toLowerCase() : '';
       return note.includes('traduction') || note.includes('langue');
     });
+  }
+
+  if (isRwanda) {
+    const haystack = [payload.risk.why ?? '', ...payload.citations.map((citation) => citation.note ?? '')]
+      .join(' \n ')
+      .toLowerCase();
+    rwandaNotice = RWANDA_NOTICE_KEYWORDS.every((keyword) => haystack.includes(keyword));
   }
 
   return {
@@ -193,6 +206,7 @@ export function computeMetrics(payload: IRACPayload): CaseMetricsSummary {
     bindingWarnings,
     jurisdiction: jurisdictionCode,
     maghrebBanner,
+    rwandaNotice,
   };
 }
 
@@ -205,6 +219,7 @@ export function checkAcceptanceThresholds(entries: CaseMetricsSummary[]) {
         citationPrecision: 1,
         temporalValidity: 1,
         maghrebBanner: 1,
+        rwandaNotice: 1,
       },
     };
   }
@@ -223,6 +238,14 @@ export function checkAcceptanceThresholds(entries: CaseMetricsSummary[]) {
     maghrebEntries.length === 0
       ? 1
       : maghrebEntries.filter((entry) => entry.maghrebBanner === true).length / maghrebEntries.length;
+
+  const rwandaEntries = entries.filter((entry) =>
+    entry.jurisdiction ? RWANDA_JURISDICTION_SET.has(entry.jurisdiction.toUpperCase()) : false,
+  );
+  const rwandaCoverage =
+    rwandaEntries.length === 0
+      ? 1
+      : rwandaEntries.filter((entry) => entry.rwandaNotice === true).length / rwandaEntries.length;
 
   const failures: string[] = [];
   if (precisionCoverage < ACCEPTANCE_THRESHOLDS.citationsAllowlistedP95) {
@@ -246,6 +269,13 @@ export function checkAcceptanceThresholds(entries: CaseMetricsSummary[]) {
       ).toFixed(0)}%`,
     );
   }
+  if (rwandaCoverage < ACCEPTANCE_THRESHOLDS.rwandaLanguageNoticeCoverage) {
+    failures.push(
+      `Couverture triage Rwanda ${(rwandaCoverage * 100).toFixed(1)}% < ${(
+        ACCEPTANCE_THRESHOLDS.rwandaLanguageNoticeCoverage * 100
+      ).toFixed(0)}%`,
+    );
+  }
 
   return {
     ok: failures.length === 0,
@@ -254,6 +284,7 @@ export function checkAcceptanceThresholds(entries: CaseMetricsSummary[]) {
       citationPrecision: precisionCoverage,
       temporalValidity: temporalCoverage,
       maghrebBanner: maghrebCoverage,
+      rwandaNotice: rwandaCoverage,
     },
   };
 }
@@ -438,6 +469,7 @@ async function recordResult(
       binding_warnings: metrics.bindingWarnings,
       jurisdiction: metrics.jurisdiction,
       maghreb_banner: metrics.maghrebBanner,
+      rwanda_notice: metrics.rwandaNotice,
       ...(benchmark ? { benchmark } : {}),
     };
     payload.citation_precision = metrics.citationPrecision;
@@ -446,6 +478,9 @@ async function recordResult(
     payload.jurisdiction = metrics.jurisdiction;
     if (typeof metrics.maghrebBanner === 'boolean') {
       payload.maghreb_banner = metrics.maghrebBanner;
+    }
+    if (typeof metrics.rwandaNotice === 'boolean') {
+      payload.rwanda_notice = metrics.rwandaNotice;
     }
   }
 
@@ -643,6 +678,7 @@ async function run(): Promise<void> {
       citationPrecision: number;
       temporalValidity: number;
       maghrebBanner: number;
+      rwandaNotice: number;
     } | null = null;
     let linkHealthSummary: LinkHealthSummary | null = null;
 
@@ -676,6 +712,9 @@ async function run(): Promise<void> {
         );
         console.log(
           `Couverture bannière Maghreb >= ${(ACCEPTANCE_THRESHOLDS.maghrebBindingBannerCoverage * 100).toFixed(0)}%: ${(coverageSnapshot.maghrebBanner * 100).toFixed(1)}%`,
+        );
+        console.log(
+          `Couverture avis Rwanda >= ${(ACCEPTANCE_THRESHOLDS.rwandaLanguageNoticeCoverage * 100).toFixed(0)}%: ${(coverageSnapshot.rwandaNotice * 100).toFixed(1)}%`,
         );
       }
 
@@ -721,6 +760,7 @@ async function run(): Promise<void> {
         coverage_citation_precision: coverageSnapshot?.citationPrecision ?? null,
         coverage_temporal_validity: coverageSnapshot?.temporalValidity ?? null,
         coverage_maghreb_banner: coverageSnapshot?.maghrebBanner ?? null,
+        coverage_rwanda_notice: coverageSnapshot?.rwandaNotice ?? null,
         acceptance_failures: thresholdFailures,
         link_health: linkHealthSummary
           ? {
@@ -740,20 +780,23 @@ async function run(): Promise<void> {
       }
     }
 
-    const summaryBase = `Résultats: ${passed} réussi(s), ${failed} échec(s).`;
-    const summary = thresholdFailed ? `${summaryBase} (seuils non respectés)` : summaryBase;
-    if (failed > 0 || thresholdFailed) {
-      if (options.ciMode) {
-        console.error(summary);
-      } else {
-        ora().warn(summary);
-      }
-      process.exitCode = 1;
-    } else if (options.ciMode) {
-      console.log(summary);
+  const summaryBase = `Résultats: ${passed} réussi(s), ${failed} échec(s).`;
+  const summary = thresholdFailed ? `${summaryBase} (seuils non respectés)` : summaryBase;
+  if (failed > 0 || thresholdFailed) {
+    if (options.ciMode) {
+      console.error(summary);
     } else {
-      ora().succeed(summary);
+      ora().warn(summary);
     }
+    process.exitCode = 1;
+    if (options.ciMode) {
+      throw new Error('Seuils d\'acceptation non respectés');
+    }
+  } else if (options.ciMode) {
+    console.log(summary);
+  } else {
+    ora().succeed(summary);
+  }
   }
 }
 

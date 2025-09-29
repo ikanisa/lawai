@@ -139,6 +139,115 @@ export interface HitlMetricsResponse {
   };
 }
 
+export interface GovernancePublication {
+  slug: string;
+  title: string;
+  summary: string | null;
+  doc_url: string | null;
+  category: string | null;
+  status: string | null;
+  published_at?: string | null;
+}
+
+export interface OperationsSloSnapshot {
+  capturedAt: string | null;
+  apiUptimePercent: number | null;
+  hitlResponseP95Seconds: number | null;
+  retrievalLatencyP95Seconds: number | null;
+  citationPrecisionP95: number | null;
+  notes: string | null;
+}
+
+export interface OperationsSloSummary {
+  snapshots: number | null;
+  latestCapture: string | null;
+  apiUptimeP95: number | null;
+  hitlResponseP95Seconds: number | null;
+  retrievalLatencyP95Seconds: number | null;
+  citationPrecisionP95: number | null;
+}
+
+export interface OperationsIncident {
+  id: string;
+  occurredAt: string | null;
+  detectedAt: string | null;
+  resolvedAt: string | null;
+  severity: string;
+  status: string;
+  title: string;
+  summary: string;
+  impact: string;
+  resolution: string;
+  followUp: string;
+  evidenceUrl: string | null;
+  recordedAt: string | null;
+}
+
+export interface OperationsChangeLogEntry {
+  id: string;
+  entryDate: string | null;
+  title: string;
+  category: string;
+  summary: string;
+  releaseTag: string | null;
+  links: unknown;
+  recordedAt: string | null;
+}
+
+export interface OperationsGoNoGoCriterion {
+  criterion: string;
+  recordedStatus: string;
+  recordedEvidenceUrl: string | null;
+  recordedNotes: unknown;
+}
+
+export interface OperationsOverviewResponse {
+  slo: {
+    summary: OperationsSloSummary | null;
+    snapshots: OperationsSloSnapshot[];
+  };
+  incidents: {
+    total: number;
+    open: number;
+    closed: number;
+    latest: OperationsIncident | null;
+    entries: OperationsIncident[];
+  };
+  changeLog: {
+    total: number;
+    latest: OperationsChangeLogEntry | null;
+    entries: OperationsChangeLogEntry[];
+  };
+  goNoGo: {
+    section: string;
+    criteria: OperationsGoNoGoCriterion[];
+  };
+  compliance: {
+    cepej: {
+      assessedRuns: number;
+      passedRuns: number;
+      violationRuns: number;
+      friaRequiredRuns: number;
+      passRate: number | null;
+      violations: Record<string, number>;
+    };
+    evaluationCoverage: {
+      maghrebBanner: number | null;
+      rwandaNotice: number | null;
+    };
+    alerts: Array<{ code: string; level: 'info' | 'warning' | 'critical' }>;
+  };
+  webVitals: {
+    sampleCount: number;
+    metrics: {
+      LCP: { p75: number | null; unit: 'ms'; sampleCount: number };
+      INP: { p75: number | null; unit: 'ms'; sampleCount: number };
+      CLS: { p75: number | null; unit: 'score'; sampleCount: number };
+    };
+    alerts: Array<{ code: string; level: 'info' | 'warning' | 'critical' }>;
+  };
+}
+
 export async function submitResearchQuestion(input: {
   question: string;
   context?: string;
@@ -203,6 +312,40 @@ export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsRespon
     throw new Error('Unable to fetch HITL metrics');
   }
   return response.json();
+}
+
+export async function fetchOperationsOverview(orgId: string): Promise<OperationsOverviewResponse> {
+  const response = await fetch(
+    `${API_BASE}/admin/org/${encodeURIComponent(orgId)}/operations/overview`,
+    {
+      headers: { 'x-user-id': DEMO_USER_ID },
+    },
+  );
+  if (!response.ok) {
+    throw new Error('Unable to fetch operations overview');
+  }
+  return response.json();
+}
+
+export async function fetchGovernancePublications(orgId?: string): Promise<GovernancePublication[]> {
+  const params = new URLSearchParams({ status: 'published' });
+  if (orgId) {
+    params.set('orgId', orgId);
+  }
+  const response = await fetch(`${API_BASE}/governance/publications?${params.toString()}`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
+  });
+  if (!response.ok) {
+    throw new Error('Unable to fetch governance publications');
+  }
+  const payload = await response.json();
+  if (Array.isArray(payload)) {
+    return payload as GovernancePublication[];
+  }
+  if (payload && typeof payload === 'object' && Array.isArray(payload.publications)) {
+    return payload.publications as GovernancePublication[];
+  }
+  return [];
 }
 
 export async function submitHitlAction(id: string, action: 'approve' | 'request_changes' | 'reject', comment?: string) {
@@ -307,6 +450,20 @@ export interface GovernanceMetricsResponse {
     sourcesWithAkoma: number;
     akomaArticles: number;
   }>;
+  jurisdictions: Array<{
+    jurisdiction: string;
+    residencyZone: string;
+    totalSources: number;
+    sourcesConsolidated: number;
+    sourcesWithBinding: number;
+    sourcesWithLanguageNote: number;
+    sourcesWithEli: number;
+    sourcesWithEcli: number;
+    sourcesWithAkoma: number;
+    bindingBreakdown: Record<string, number>;
+    sourceTypeBreakdown: Record<string, number>;
+    languageNoteBreakdown: Record<string, number>;
+  }>;
 }
 
 export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceMetricsResponse> {
@@ -318,7 +475,13 @@ export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceM
   if (!response.ok) {
     throw new Error('Unable to fetch governance metrics');
   }
-  return response.json();
+  const payload = (await response.json()) as GovernanceMetricsResponse;
+  return {
+    overview: payload.overview ?? null,
+    tools: payload.tools ?? [],
+    identifiers: payload.identifiers ?? [],
+    jurisdictions: payload.jurisdictions ?? [],
+  };
 }
 
 export async function fetchRetrievalMetrics(orgId: string): Promise<RetrievalMetricsResponse> {
@@ -345,6 +508,7 @@ export interface EvaluationMetricsResponse {
     citationPrecisionCoverage: number | null;
     temporalValidityCoverage: number | null;
     maghrebBannerCoverage: number | null;
+    rwandaNoticeCoverage: number | null;
     lastResultAt: string | null;
   } | null;
   jurisdictions: Array<{
@@ -355,6 +519,7 @@ export interface EvaluationMetricsResponse {
     temporalValidityMedian: number | null;
     avgBindingWarnings: number | null;
     maghrebBannerCoverage: number | null;
+    rwandaNoticeCoverage: number | null;
   }>;
 }
 

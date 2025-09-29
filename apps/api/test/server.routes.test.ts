@@ -40,6 +40,7 @@ function createQueryBuilder(result: { data: unknown; error: unknown }) {
     limit: vi.fn(() => builder),
     in: vi.fn(() => builder),
     gte: vi.fn(() => builder),
+    lte: vi.fn(() => builder),
     update: vi.fn(() => builder),
     insert: vi.fn(() => builder),
     delete: vi.fn(() => builder),
@@ -105,6 +106,7 @@ describe('API routes', () => {
             citation_precision_coverage: 0.9,
             temporal_validity_coverage: 1,
             maghreb_banner_coverage: 1,
+            rwanda_notice_coverage: 0.5,
             last_result_at: '2024-09-02T00:00:00Z',
           },
           error: null,
@@ -125,6 +127,7 @@ describe('API routes', () => {
               temporal_validity_median: 1,
               avg_binding_warnings: 0,
               maghreb_banner_coverage: null,
+              rwanda_notice_coverage: null,
             },
             {
               jurisdiction: 'MA',
@@ -134,6 +137,17 @@ describe('API routes', () => {
               temporal_validity_median: 0.9,
               avg_binding_warnings: 1,
               maghreb_banner_coverage: 1,
+              rwanda_notice_coverage: null,
+            },
+            {
+              jurisdiction: 'RW',
+              evaluation_count: 1,
+              pass_rate: 1,
+              citation_precision_median: 1,
+              temporal_validity_median: 1,
+              avg_binding_warnings: 0,
+              maghreb_banner_coverage: null,
+              rwanda_notice_coverage: 1,
             },
           ],
           error: null,
@@ -153,12 +167,19 @@ describe('API routes', () => {
 
     expect(response.statusCode).toBe(200);
     const body = response.json() as {
-      summary: { totalCases: number; evaluatedResults: number; passRate: number | null } | null;
-      jurisdictions: Array<{ jurisdiction: string }>;
+      summary: {
+        totalCases: number;
+        evaluatedResults: number;
+        passRate: number | null;
+        rwandaNoticeCoverage?: number | null;
+      } | null;
+      jurisdictions: Array<{ jurisdiction: string; rwandaNoticeCoverage?: number | null }>;
     };
     expect(body.summary).toMatchObject({ totalCases: 12, evaluatedResults: 9, passRate: 0.75 });
-    expect(body.jurisdictions).toHaveLength(2);
-    expect(body.jurisdictions[0].jurisdiction).toBe('FR');
+    expect(body.summary?.rwandaNoticeCoverage).toBeCloseTo(0.5);
+    expect(body.jurisdictions).toHaveLength(3);
+    const rwandaRow = body.jurisdictions.find((row) => row.jurisdiction === 'RW');
+    expect(rwandaRow?.rwandaNoticeCoverage).toBe(1);
   });
 
   it('returns 500 when evaluation metrics query fails', async () => {
@@ -293,6 +314,28 @@ describe('API routes', () => {
           error: null,
         });
       }
+      if (table === 'org_jurisdiction_provenance') {
+        return createQueryBuilder({
+          data: [
+            {
+              org_id: 'org-1',
+              jurisdiction_code: 'FR',
+              residency_zone: 'eu',
+              total_sources: 2,
+              sources_consolidated: 1,
+              sources_with_binding: 2,
+              sources_with_language_note: 1,
+              sources_with_eli: 2,
+              sources_with_ecli: 1,
+              sources_with_akoma: 2,
+              binding_breakdown: { fr: 2 },
+              source_type_breakdown: { statute: 2 },
+              language_note_breakdown: { traduction: 1 },
+            },
+          ],
+          error: null,
+        });
+      }
       throw new Error(`unexpected table ${table}`);
     });
 
@@ -306,6 +349,183 @@ describe('API routes', () => {
     const body = response.json() as { identifiers: Array<{ jurisdiction: string; sourcesTotal: number }> };
     expect(body.identifiers).toHaveLength(1);
     expect(body.identifiers[0]).toMatchObject({ jurisdiction: 'FR', sourcesTotal: 2, sourcesWithEli: 2 });
+  });
+
+  it('returns operations overview with SLO, incidents, change log, and go-no-go', async () => {
+    const now = new Date().toISOString();
+    const previous = new Date(Date.now() - 86_400_000).toISOString();
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'slo_snapshots') {
+        return createQueryBuilder({
+          data: [
+            {
+              captured_at: now,
+              api_uptime_percent: 0.995,
+              hitl_response_p95_seconds: 32.4,
+              retrieval_latency_p95_seconds: 21.8,
+              citation_precision_p95: 0.97,
+              notes: 'Stabilité nominale',
+            },
+            {
+              captured_at: previous,
+              api_uptime_percent: 0.99,
+              hitl_response_p95_seconds: 45.2,
+              retrieval_latency_p95_seconds: 30.1,
+              citation_precision_p95: 0.95,
+              notes: null,
+            },
+          ],
+          error: null,
+        });
+      }
+      if (table === 'incident_reports') {
+        return createQueryBuilder({
+          data: [
+            {
+              id: 'incident-1',
+              occurred_at: previous,
+              detected_at: previous,
+              resolved_at: now,
+              severity: 'medium',
+              status: 'closed',
+              title: 'Latence HITL',
+              summary: 'Temps de réponse au-dessus du SLA.',
+              impact: 'Retard de 12 minutes.',
+              resolution: 'Réaffectation reviewer',
+              follow_up: 'Ajouter un alerting p95',
+              evidence_url: 'https://example.com/incident',
+              recorded_at: now,
+            },
+          ],
+          error: null,
+        });
+      }
+      if (table === 'change_log_entries') {
+        return createQueryBuilder({
+          data: [
+            {
+              id: 'change-1',
+              entry_date: '2024-09-15',
+              title: 'Mise à jour SLO',
+              category: 'ops',
+              summary: 'Nouvelles métriques publiées.',
+              release_tag: '2024.09',
+              links: { docs: ['https://example.com/change'] },
+              recorded_at: now,
+            },
+          ],
+          error: null,
+        });
+      }
+      if (table === 'go_no_go_evidence') {
+        return createQueryBuilder({
+          data: [
+            {
+              section: 'A',
+              criterion: 'SLO >= 99%',
+              status: 'satisfied',
+              evidence_url: 'https://example.com/slo',
+              notes: { proof: 'dashboard' },
+              recorded_at: now,
+            },
+          ],
+          error: null,
+        });
+      }
+      if (table === 'cepej_metrics') {
+        const builder = createQueryBuilder({
+          data: {
+            assessed_runs: 4,
+            passed_runs: 3,
+            violation_runs: 1,
+            fria_required_runs: 1,
+            pass_rate: 0.75,
+          },
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'cepej_violation_breakdown') {
+        const builder = createQueryBuilder({
+          data: [
+            { violation: 'transparency', occurrences: 1 },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'org_evaluation_metrics') {
+        const builder = createQueryBuilder({
+          data: {
+            maghreb_banner_coverage: 0.9,
+            rwanda_notice_coverage: 0.6,
+          },
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'ui_telemetry_events') {
+        const builder = createQueryBuilder({
+          data: [
+            { payload: { metric: 'LCP', value: 3200 }, created_at: now },
+            { payload: { metric: 'CLS', value: 0.12 }, created_at: now },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.gte = vi.fn(() => builder);
+        builder.order.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/admin/org/org-1/operations/overview',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      slo: { summary: { latestCapture: string | null; apiUptimeP95: number | null } | null };
+      incidents: { total: number; entries: Array<{ id: string }> };
+      changeLog: { entries: Array<{ id: string }> };
+      goNoGo: { criteria: Array<{ criterion: string; recordedStatus: string }> };
+      compliance: {
+        cepej: { assessedRuns: number; violationRuns: number };
+        evaluationCoverage: { maghrebBanner: number | null; rwandaNotice: number | null };
+        alerts: Array<{ code: string }>;
+      };
+      webVitals: {
+        metrics: { LCP: { p75: number | null }; CLS: { p75: number | null } };
+        alerts: Array<{ code: string }>;
+      };
+    };
+
+    expect(body.slo.summary).toMatchObject({ latestCapture: now, apiUptimeP95: expect.any(Number) });
+    expect(body.incidents.total).toBe(1);
+    expect(body.incidents.entries[0]?.id).toBe('incident-1');
+    expect(body.changeLog.entries[0]?.id).toBe('change-1');
+    expect(body.goNoGo.criteria[0]).toMatchObject({ criterion: 'SLO >= 99%', recordedStatus: 'satisfied' });
+    expect(body.compliance.cepej.assessedRuns).toBe(4);
+    expect(body.compliance.evaluationCoverage.rwandaNotice).toBeCloseTo(0.6);
+    expect(body.compliance.alerts.map((alert) => alert.code)).toEqual(
+      expect.arrayContaining(['cepej_violation', 'rwanda_notice_low']),
+    );
+    expect(body.webVitals.metrics.LCP.p75).toBe(3200);
+    expect(body.webVitals.alerts.map((alert) => alert.code)).toContain('web_vitals_lcp');
   });
 
   it('returns HITL metrics from learning reports', async () => {
@@ -576,6 +796,8 @@ describe('API routes', () => {
   });
 
   it('builds Akoma Ntoso payload when resummarizing an authority document', async () => {
+    const now = new Date().toISOString();
+
     const documentRow = {
       id: 'doc-1',
       org_id: 'org-1',
@@ -638,9 +860,17 @@ describe('API routes', () => {
       insert: vi.fn(async () => ({ error: null })),
     };
 
+    const summaryRow = {
+      summary: 'Synthèse existante',
+      outline: { sections: [] },
+      created_at: now,
+    };
     const documentSummariesTable = {
       upsert: vi.fn(async () => ({ error: null })),
       delete: vi.fn(() => ({ eq: vi.fn(() => ({ error: null })) })),
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: summaryRow, error: null })) })),
+      })),
     };
 
     const sourceUpdateEq = vi.fn(() => ({ error: null }));
@@ -686,6 +916,6 @@ describe('API routes', () => {
     expect(akoma.body?.articles?.[0]?.excerpt).toBe('Article 1 - contenu');
     expect(akoma.meta?.publication?.consolidated ?? null).toBeNull();
     expect(updates.eli).toBe('loi/2020/05/12/2020-1234/jo/texte');
-    expect(sourceUpdateEq).toHaveBeenCalledWith('src-1');
+    expect(sourceUpdateEq).toHaveBeenCalledWith('id', 'src-1');
   });
 });

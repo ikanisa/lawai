@@ -90,6 +90,13 @@ export const SUPPORTED_JURISDICTIONS: JurisdictionMetadata[] = [
     labelEn: 'OHADA',
     ohada: true,
   },
+  {
+    id: 'RW',
+    displayCode: 'RW',
+    labelFr: 'Rwanda',
+    labelEn: 'Rwanda',
+    notes: ['residency'],
+  },
 ];
 
 export const MAGHREB_JURISDICTIONS = SUPPORTED_JURISDICTIONS.filter((entry) => entry.maghreb)

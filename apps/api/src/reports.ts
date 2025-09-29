@@ -119,6 +119,7 @@ export interface EvaluationMetricsSummary {
   citationPrecisionCoverage: number | null;
   temporalValidityCoverage: number | null;
   maghrebBannerCoverage: number | null;
+  rwandaNoticeCoverage: number | null;
   lastResultAt: string | null;
 }
 
@@ -130,6 +131,7 @@ export interface EvaluationJurisdictionMetric {
   temporalValidityMedian: number | null;
   avgBindingWarnings: number | null;
   maghrebBannerCoverage: number | null;
+  rwandaNoticeCoverage: number | null;
 }
 
 export interface EvaluationMetricsResponse {
@@ -171,6 +173,7 @@ export interface EvaluationMetricsSummaryRow {
   citation_precision_coverage: unknown;
   temporal_validity_coverage: unknown;
   maghreb_banner_coverage: unknown;
+  rwanda_notice_coverage: unknown;
   last_result_at: string | null;
 }
 
@@ -182,6 +185,7 @@ export interface EvaluationJurisdictionRow {
   temporal_validity_median: unknown;
   avg_binding_warnings: unknown;
   maghreb_banner_coverage: unknown;
+  rwanda_notice_coverage: unknown;
 }
 
 export interface SloSnapshotRecord {
@@ -283,6 +287,7 @@ export function buildEvaluationMetricsResponse(
         citationPrecisionCoverage: toNumeric(summaryRow.citation_precision_coverage),
         temporalValidityCoverage: toNumeric(summaryRow.temporal_validity_coverage),
         maghrebBannerCoverage: toNumeric(summaryRow.maghreb_banner_coverage),
+        rwandaNoticeCoverage: toNumeric(summaryRow.rwanda_notice_coverage),
         lastResultAt: summaryRow.last_result_at ?? null,
       }
     : null;
@@ -295,6 +300,7 @@ export function buildEvaluationMetricsResponse(
     temporalValidityMedian: toNumeric(row.temporal_validity_median),
     avgBindingWarnings: toNumeric(row.avg_binding_warnings),
     maghrebBannerCoverage: toNumeric(row.maghreb_banner_coverage),
+    rwandaNoticeCoverage: toNumeric(row.rwanda_notice_coverage),
   }));
 
   jurisdictions.sort((a, b) => a.jurisdiction.localeCompare(b.jurisdiction));

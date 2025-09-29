@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
   LayoutGrid,
   Search,
@@ -37,6 +37,7 @@ const NAVIGATION = [
   { key: 'hitl', href: '/hitl', icon: ShieldCheck },
   { key: 'corpus', href: '/corpus', icon: Database },
   { key: 'admin', href: '/admin', icon: Settings },
+  { key: 'trust', href: '/trust', icon: Globe2 },
 ];
 
 const MOBILE_PRIMARY_NAV = ['workspace', 'research', 'drafting', 'hitl'] as const;
@@ -44,6 +45,53 @@ const MOBILE_PRIMARY_NAV = ['workspace', 'research', 'drafting', 'hitl'] as cons
 export function AppShell({ children, messages, locale }: AppShellProps) {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
+  const installPromptRef = useRef<any>(null);
+  const successRef = useRef(false);
+  const installDismissedRef = useRef(false);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    installDismissedRef.current = window.localStorage.getItem('avocat-ai-install-dismissed') === '1';
+
+    const handleBeforeInstall = (event: Event) => {
+      event.preventDefault();
+      if (installDismissedRef.current) {
+        return;
+      }
+      installPromptRef.current = event;
+      if (successRef.current) {
+        setShowInstallPrompt(true);
+      }
+    };
+
+    const handleRunSuccess = () => {
+      successRef.current = true;
+      if (installPromptRef.current && !installDismissedRef.current) {
+        setShowInstallPrompt(true);
+      }
+    };
+
+    const handleInstalled = () => {
+      installPromptRef.current = null;
+      setShowInstallPrompt(false);
+      installDismissedRef.current = true;
+      window.localStorage.setItem('avocat-ai-install-dismissed', '1');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('avocat-run-success', handleRunSuccess);
+    window.addEventListener('appinstalled', handleInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('avocat-run-success', handleRunSuccess);
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
+  }, []);
 
   const localizedHref = (href: string) => `/${locale}${href}`;
 
@@ -178,5 +226,44 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
         </div>
       </div>
     </div>
+      {showInstallPrompt ? (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm rounded-3xl border border-slate-800/60 bg-slate-900/90 p-5 text-slate-100 shadow-2xl">
+          <h2 className="text-sm font-semibold">{messages.app.installPromptTitle}</h2>
+          <p className="mt-2 text-sm text-slate-300">{messages.app.installPromptBody}</p>
+          <div className="mt-4 flex items-center gap-3">
+            <Button
+              onClick={async () => {
+                const prompt = installPromptRef.current as any;
+                if (!prompt || typeof prompt.prompt !== 'function') {
+                  setShowInstallPrompt(false);
+                  return;
+                }
+                prompt.prompt();
+                try {
+                  await prompt.userChoice;
+                } catch (error) {
+                  console.warn('install_prompt_cancelled', error);
+                }
+                installPromptRef.current = null;
+                setShowInstallPrompt(false);
+                installDismissedRef.current = true;
+                window.localStorage.setItem('avocat-ai-install-dismissed', '1');
+              }}
+            >
+              {messages.app.installPromptCta}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowInstallPrompt(false);
+                installDismissedRef.current = true;
+                window.localStorage.setItem('avocat-ai-install-dismissed', '1');
+              }}
+            >
+              {messages.app.installPromptDismiss}
+            </Button>
+          </div>
+        </div>
+      ) : null}
   );
 }

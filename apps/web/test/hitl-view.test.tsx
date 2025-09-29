@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import messagesFr from '../src/messages/fr.json';
+import messagesFr from '../messages/fr.json';
 import type { Messages } from '../src/lib/i18n';
 import { HitlView } from '../src/components/hitl/hitl-view';
 
@@ -12,10 +12,17 @@ vi.mock('sonner', () => ({
   },
 }));
 
-const fetchHitlQueueMock = vi.fn();
-const fetchHitlMetricsMock = vi.fn();
-const fetchMatterDetailMock = vi.fn();
-const submitHitlActionMock = vi.fn();
+const {
+  fetchHitlQueueMock,
+  fetchHitlMetricsMock,
+  fetchMatterDetailMock,
+  submitHitlActionMock,
+} = vi.hoisted(() => ({
+  fetchHitlQueueMock: vi.fn(),
+  fetchHitlMetricsMock: vi.fn(),
+  fetchMatterDetailMock: vi.fn(),
+  submitHitlActionMock: vi.fn(),
+}));
 
 type ApiModule = typeof import('../src/lib/api');
 
@@ -81,12 +88,12 @@ describe('HitlView metrics', () => {
 
     await waitFor(() => expect(fetchHitlMetricsMock).toHaveBeenCalled());
 
-    expect(screen.getByText(messagesFr.hitl.metricsFairnessOverall)).toBeInTheDocument();
-    expect(screen.getByText(messagesFr.hitl.metricsFairnessTotalRuns)).toBeInTheDocument();
-    expect(screen.getByText(/25%/)).toBeInTheDocument();
-    expect(screen.getByText(messagesFr.hitl.metricsQueueBreakdown)).toBeInTheDocument();
-    expect(screen.getByText('indexing ticket', { exact: false })).toBeInTheDocument();
-    expect(screen.getByText('LexGLUE')).toBeInTheDocument();
+    expect(await screen.findByText(messagesFr.hitl.metricsFairnessOverall)).toBeInTheDocument();
+    expect(await screen.findByText(messagesFr.hitl.metricsFairnessTotalRuns)).toBeInTheDocument();
+    expect(await screen.findByText(/25%/)).toBeInTheDocument();
+    expect(await screen.findByText(messagesFr.hitl.metricsQueueBreakdown)).toBeInTheDocument();
+    expect(await screen.findByText('indexing ticket', { exact: false })).toBeInTheDocument();
+    expect(await screen.findByText('LexGLUE')).toBeInTheDocument();
   });
 
   it('shows a loading state while metrics resolve', async () => {
