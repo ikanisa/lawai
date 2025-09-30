@@ -248,6 +248,425 @@ export interface OperationsOverviewResponse {
   };
 }
 
+export async function processDriveManifest(input: {
+  orgId: string;
+  userId: string;
+  manifestName?: string;
+  manifestUrl?: string;
+  manifestContent?: string;
+  entries?: unknown[];
+}) {
+  const response = await fetch(`${API_BASE}/gdrive/process-manifest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': input.userId },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || 'drive_manifest_failed');
+  }
+  return (await response.json()) as {
+    manifestId?: string;
+    fileCount?: number;
+    validCount?: number;
+    warningCount?: number;
+    errorCount?: number;
+  };
+}
+
+export interface GDriveState {
+  org_id: string;
+  drive_id: string | null;
+  folder_id: string | null;
+  channel_id: string | null;
+  resource_id: string | null;
+  expiration: string | null;
+  start_page_token: string | null;
+  last_page_token: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export async function fetchGDriveState(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/gdrive/state?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId },
+  });
+  if (!response.ok) throw new Error('state_failed');
+  return (await response.json()) as { state: GDriveState | null };
+}
+
+export async function gdriveInstall(orgId: string, userId: string, driveId?: string | null, folderId?: string | null) {
+  const response = await fetch(`${API_BASE}/gdrive/install`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+    body: JSON.stringify({ orgId, driveId, folderId }),
+  });
+  if (!response.ok) throw new Error('install_failed');
+  return (await response.json()) as { state: GDriveState };
+}
+
+export async function gdriveRenew(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/gdrive/renew`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+    body: JSON.stringify({ orgId }),
+  });
+  if (!response.ok) throw new Error('renew_failed');
+  return (await response.json()) as { state: GDriveState };
+}
+
+export async function gdriveUninstall(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/gdrive/uninstall`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+    body: JSON.stringify({ orgId }),
+  });
+  if (!response.ok) throw new Error('uninstall_failed');
+  return (await response.json()) as { ok: boolean };
+}
+
+export async function gdriveProcessChanges(orgId: string, userId: string, pageToken?: string | null) {
+  const response = await fetch(`${API_BASE}/gdrive/process-changes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+    body: JSON.stringify({ orgId, pageToken: pageToken ?? null }),
+  });
+  if (!response.ok) throw new Error('process_changes_failed');
+  return (await response.json()) as { processed: number; next_page_token: string | null };
+}
+
+export async function gdriveBackfill(orgId: string, userId: string, batches: number = 5) {
+  const response = await fetch(`${API_BASE}/gdrive/backfill`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+    body: JSON.stringify({ orgId, batches }),
+  });
+  if (!response.ok) throw new Error('backfill_failed');
+  return (await response.json()) as { processed: number; next_page_token: string | null };
+}
+
+export async function uploadDocument(input: {
+  orgId: string;
+  userId: string;
+  file: File;
+  bucket?: 'uploads' | 'authorities';
+  source?: {
+    jurisdiction_code?: string;
+    source_type?: string;
+    title?: string;
+    publisher?: string | null;
+    source_url?: string | null;
+    binding_lang?: string | null;
+    consolidated?: boolean;
+    effective_date?: string | null;
+  } | null;
+}) {
+  const arrayBuffer = await input.file.arrayBuffer();
+  const base64 = typeof window === 'undefined' ? '' : btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+  const body = {
+    orgId: input.orgId,
+    userId: input.userId,
+    name: input.file.name,
+    mimeType: input.file.type || 'application/octet-stream',
+    contentBase64: base64,
+    bucket: input.bucket ?? 'uploads',
+    source: input.source ?? null,
+  };
+  const response = await fetch(`${API_BASE}/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': input.userId },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || 'upload_failed');
+  }
+  return (await response.json()) as {
+    documentId: string;
+    bucket: string;
+    storagePath: string;
+    bytes: number;
+    summaryStatus: string;
+    chunkCount: number;
+  };
+}
+
+export async function startWhatsAppOtp(input: { phone: string; orgId?: string; captchaToken?: string }) {
+  const response = await fetch(`${API_BASE}/auth/wa/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      phone_e164: input.phone,
+      org_hint: input.orgId,
+      captchaToken: input.captchaToken,
+    }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody?.error ?? 'wa_start_failed');
+  }
+  return (await response.json()) as { sent: boolean; expires_at: string; remaining?: number };
+}
+
+export async function verifyWhatsAppOtp(input: {
+  phone: string;
+  otp: string;
+  inviteToken?: string;
+  orgHint?: string;
+}) {
+  const response = await fetch(`${API_BASE}/auth/wa/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      phone_e164: input.phone,
+      otp: input.otp,
+      invite_token: input.inviteToken,
+      org_hint: input.orgHint,
+    }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody?.error ?? 'wa_verify_failed');
+  }
+  return (await response.json()) as {
+    login: boolean;
+    user_id: string;
+    session_token: string;
+    wa_id: string;
+    needs_profile: boolean;
+    needs_org: boolean;
+    is_new_user: boolean;
+    memberships: Array<{ org_id: string; role: string }>;
+  };
+}
+
+export async function linkWhatsAppOtp(input: { phone: string; otp: string; orgId?: string; userId?: string }) {
+  const response = await fetch(`${API_BASE}/auth/wa/link`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': input.userId ?? DEMO_USER_ID,
+      ...(input.orgId ? { 'x-org-id': input.orgId } : {}),
+    },
+    body: JSON.stringify({ phone_e164: input.phone, otp: input.otp }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody?.error ?? 'wa_link_failed');
+  }
+  return (await response.json()) as { linked: boolean; wa_id: string };
+}
+
+export async function unlinkWhatsApp(input: { orgId?: string; userId?: string }) {
+  const response = await fetch(`${API_BASE}/auth/wa/unlink`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': input.userId ?? DEMO_USER_ID,
+      ...(input.orgId ? { 'x-org-id': input.orgId } : {}),
+    },
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody?.error ?? 'wa_unlink_failed');
+  }
+  return (await response.json()) as { unlinked: boolean };
+}
+
+export interface OrgMemberRow {
+  user_id: string;
+  role: string;
+  created_at: string | null;
+  profile: {
+    full_name?: string | null;
+    email?: string | null;
+    phone_e164?: string | null;
+    locale?: string | null;
+    verified?: boolean | null;
+  } | null;
+}
+
+export async function fetchOrgMembers(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/admin/org/members?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId },
+  });
+  if (!response.ok) {
+    throw new Error('members_fetch_failed');
+  }
+  return (await response.json()) as { members: OrgMemberRow[] };
+}
+
+export async function createOrgInvite(orgId: string, userId: string, payload: { email: string; role: string; expiresInHours?: number }) {
+  const response = await fetch(`${API_BASE}/admin/org/invite`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify({
+      email: payload.email,
+      role: payload.role,
+      expires_in_hours: payload.expiresInHours,
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error ?? 'invite_failed');
+  }
+  return (await response.json()) as { token: string; expires_at: string };
+}
+
+export async function updateMemberRole(orgId: string, actorUserId: string, targetUserId: string, role: string) {
+  const response = await fetch(`${API_BASE}/admin/org/members/${encodeURIComponent(targetUserId)}/role`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': actorUserId,
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify({ role }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error ?? 'member_role_failed');
+  }
+  return (await response.json()) as { updated: boolean };
+}
+
+export async function fetchOrgPolicies(orgId: string, userId: string = DEMO_USER_ID) {
+  const response = await fetch(`${API_BASE}/admin/org/${encodeURIComponent(orgId)}/policies`, {
+    headers: { 'x-user-id': userId },
+  });
+  if (!response.ok) {
+    throw new Error('policies_fetch_failed');
+  }
+  return (await response.json()) as { policies: Record<string, unknown> };
+}
+
+export async function updateOrgPolicies(
+  orgId: string,
+  userId: string = DEMO_USER_ID,
+  updates: Array<{ key: string; value: unknown }>,
+  removes: string[] = [],
+) {
+  const response = await fetch(`${API_BASE}/admin/org/${encodeURIComponent(orgId)}/policies`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+    },
+    body: JSON.stringify({ updates, removes }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error ?? 'policies_update_failed');
+  }
+  return (await response.json()) as { ok: boolean };
+}
+
+export async function fetchJurisdictions(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/admin/org/jurisdictions?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId },
+  });
+  if (!response.ok) {
+    throw new Error('jurisdictions_fetch_failed');
+  }
+  return (await response.json()) as { entitlements: Array<{ juris_code: string; can_read: boolean; can_write: boolean }> };
+}
+
+export async function updateJurisdictions(orgId: string, userId: string, rows: Array<{ juris_code: string; can_read: boolean; can_write: boolean }>) {
+  const response = await fetch(`${API_BASE}/admin/org/jurisdictions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify(rows),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error ?? 'jurisdictions_update_failed');
+  }
+  return (await response.json()) as { updated: boolean };
+}
+
+export async function fetchAuditEvents(orgId: string, userId: string = DEMO_USER_ID, limit = 50) {
+  const response = await fetch(
+    `${API_BASE}/admin/org/${encodeURIComponent(orgId)}/audit-events?limit=${encodeURIComponent(String(limit))}`,
+    {
+      headers: { 'x-user-id': userId },
+    },
+  );
+  if (!response.ok) {
+    throw new Error('audit_fetch_failed');
+  }
+  return (await response.json()) as {
+    events: Array<{ id: string; kind: string; object: string | null; actor_user_id: string | null; ts: string; before_state: unknown; after_state: unknown }>;
+  };
+}
+
+export async function recordConsent(orgId: string | undefined, userId: string, type: string, version: string) {
+  const response = await fetch(`${API_BASE}/consent`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+    },
+    body: JSON.stringify({ org_id: orgId, type, version }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error ?? 'consent_failed');
+  }
+  return (await response.json()) as { recorded: boolean };
+}
+
+export async function fetchLearningMetrics(params?: { metric?: string; window?: string; limit?: number }) {
+  const query = new URLSearchParams();
+  if (params?.metric) query.set('metric', params.metric);
+  if (params?.window) query.set('window', params.window);
+  if (params?.limit) query.set('limit', String(params.limit));
+  const response = await fetch(`${API_BASE}/learning/metrics?${query.toString()}`);
+  if (!response.ok) {
+    throw new Error('learning_metrics_failed');
+  }
+  return (await response.json()) as { metrics: Array<{ id: string; window: string; metric: string; value: number; dims: Record<string, unknown>; computed_at: string }> };
+}
+
+export async function fetchLearningSignals(orgId: string, userId: string, limit: number = 50) {
+  const response = await fetch(`${API_BASE}/learning/signals?orgId=${encodeURIComponent(orgId)}&limit=${limit}`, {
+    headers: { 'x-user-id': userId },
+  });
+  if (!response.ok) {
+    throw new Error('learning_signals_failed');
+  }
+  return (await response.json()) as { signals: Array<{ id: string; run_id?: string | null; source: string; kind: string; payload: Record<string, unknown>; created_at: string }> };
+}
+
+export async function submitLearningFeedback(orgId: string, userId: string, payload: { runId: string; rating: 'up' | 'down'; reasonCode?: string; freeText?: string }) {
+  const response = await fetch(`${API_BASE}/learning/feedback`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify({
+      run_id: payload.runId,
+      rating: payload.rating,
+      reason_code: payload.reasonCode,
+      free_text: payload.freeText,
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error ?? 'feedback_failed');
+  }
+  return (await response.json()) as { recorded: boolean };
+}
+
 export async function submitResearchQuestion(input: {
   question: string;
   context?: string;
@@ -296,6 +715,37 @@ export async function fetchCitations(orgId: string) {
   return response.json();
 }
 
+export async function fetchCaseScore(orgId: string, sourceId: string) {
+  const response = await fetch(
+    `${API_BASE}/case-scores?orgId=${encodeURIComponent(orgId)}&sourceId=${encodeURIComponent(sourceId)}`,
+    { headers: { 'x-user-id': DEMO_USER_ID } },
+  );
+  if (!response.ok) throw new Error('Unable to fetch case score');
+  const payload = await response.json();
+  const score = Array.isArray(payload?.scores) && payload.scores.length > 0 ? payload.scores[0] : null;
+  return score as
+    | {
+        id: string;
+        sourceId: string;
+        jurisdiction: string;
+        score: number;
+        axes: Record<string, number>;
+        hardBlock: boolean;
+        notes: unknown;
+        computedAt: string;
+      }
+    | null;
+}
+
+export async function fetchCaseTreatments(orgId: string, sourceId: string) {
+  const response = await fetch(
+    `${API_BASE}/case-treatments?orgId=${encodeURIComponent(orgId)}&sourceId=${encodeURIComponent(sourceId)}`,
+    { headers: { 'x-user-id': DEMO_USER_ID } },
+  );
+  if (!response.ok) throw new Error('Unable to fetch treatments');
+  return (await response.json()) as { treatments: Array<{ treatment: string; decidedAt?: string | null }> };
+}
+
 export async function fetchHitlQueue(orgId: string) {
   const response = await fetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`);
   if (!response.ok) {
@@ -325,6 +775,57 @@ export async function fetchOperationsOverview(orgId: string): Promise<Operations
     throw new Error('Unable to fetch operations overview');
   }
   return response.json();
+}
+
+export async function fetchAlerts(orgId: string) {
+  const response = await fetch(`${API_BASE}/metrics/alerts?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
+  });
+  if (!response.ok) throw new Error('Unable to fetch alerts');
+  return response.json() as Promise<{
+    thresholds: { precision: number; temporal: number; linkHealthFailureRatioMax: number };
+    results: {
+      citationPrecision: { ok: boolean; value: number | null };
+      temporalValidity: { ok: boolean; value: number | null };
+      linkHealth: { ok: boolean; failed: number; totalSources: number };
+    };
+  }>;
+}
+
+export async function fetchExports(orgId: string) {
+  const response = await fetch(`${API_BASE}/admin/org/${encodeURIComponent(orgId)}/exports`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
+  });
+  if (!response.ok) throw new Error('Unable to fetch exports');
+  return (await response.json()) as { exports: Array<{ id: string; format: string; status: string; file_path?: string | null; signedUrl?: string | null; error?: string | null; created_at: string; completed_at?: string | null }> };
+}
+
+export async function requestExport(orgId: string, format: 'csv' | 'json' = 'csv') {
+  const response = await fetch(`${API_BASE}/admin/org/${encodeURIComponent(orgId)}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    body: JSON.stringify({ format }),
+  });
+  if (!response.ok) throw new Error('Unable to request export');
+  return (await response.json()) as { id: string; status: string; filePath?: string | null };
+}
+
+export async function fetchDeletionRequests(orgId: string) {
+  const response = await fetch(`${API_BASE}/admin/org/${encodeURIComponent(orgId)}/deletion-requests`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
+  });
+  if (!response.ok) throw new Error('Unable to fetch deletion requests');
+  return (await response.json()) as { requests: Array<{ id: string; target: string; target_id?: string | null; reason?: string | null; status: string; created_at: string; processed_at?: string | null; error?: string | null }> };
+}
+
+export async function createDeletionRequest(orgId: string, target: 'document' | 'source' | 'org', id?: string, reason?: string) {
+  const response = await fetch(`${API_BASE}/admin/org/${encodeURIComponent(orgId)}/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    body: JSON.stringify({ target, id, reason }),
+  });
+  if (!response.ok) throw new Error('Unable to create deletion request');
+  return (await response.json()) as { id: string; status: string };
 }
 
 export async function fetchGovernancePublications(orgId?: string): Promise<GovernancePublication[]> {
@@ -648,17 +1149,6 @@ export async function deleteScimAccessToken(orgId: string, tokenId: string) {
   if (!response.ok) {
     throw new Error('Unable to delete SCIM token');
   }
-}
-
-export async function fetchAuditEvents(orgId: string, limit = 50) {
-  const response = await fetch(
-    `${API_BASE}/admin/org/${orgId}/audit-events?limit=${encodeURIComponent(String(limit))}`,
-    { headers: { 'x-user-id': DEMO_USER_ID } },
-  );
-  if (!response.ok) {
-    throw new Error('Unable to fetch audit events');
-  }
-  return response.json();
 }
 
 export async function fetchIpAllowlist(orgId: string) {

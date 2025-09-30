@@ -1,12 +1,25 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
+import { createHash } from 'node:crypto';
+import jwt from 'jsonwebtoken';
+import { z } from 'zod';
 import { createServiceClient } from '@avocat-ai/supabase';
 import { ACCEPTANCE_THRESHOLDS, type IRACPayload } from '@avocat-ai/shared';
 import { env } from './config.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent.js';
+import {
+  getServiceAccountAccessToken,
+  getStartPageToken as gdriveGetStartPageToken,
+  listChanges as gdriveListChanges,
+  getFileMetadata as gdriveGetFileMetadata,
+  downloadFile as gdriveDownloadFile,
+  exportGoogleDoc as gdriveExportDoc,
+  isGoogleDocMime,
+} from './gdrive.js';
 import { authorizeAction, ensureOrgAccessCompliance } from './access-control.js';
 import type { OrgAccessContext } from './access-control.js';
 import { summariseDocumentFromPayload } from './summarization.js';
+import { evaluateCaseQuality } from './case-quality.js';
 import {
   buildTransparencyReport,
   buildRetrievalMetricsResponse,
@@ -44,6 +57,9 @@ import {
 } from './sso.js';
 import { listScimUsers, createScimUser, patchScimUser, deleteScimUser } from './scim.js';
 import { logAuditEvent } from './audit.js';
+import { InMemoryRateLimiter } from './rate-limit.js';
+import { generateOtp, hashOtp, verifyOtp, OTP_POLICY } from './otp.js';
+import { createWhatsAppAdapter } from './whatsapp.js';
 
 async function embedQuery(text: string): Promise<number[]> {
   const response = await fetch('https://api.openai.com/v1/embeddings', {
@@ -81,6 +97,54 @@ const supabase = createServiceClient({
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
 });
 
+const whatsappAdapter = createWhatsAppAdapter(app.log);
+
+const phoneRateLimiter = new InMemoryRateLimiter({ limit: 3, windowMs: 60_000 });
+const ipRateLimiter = new InMemoryRateLimiter({ limit: 10, windowMs: 60_000 });
+
+type StressEntry = { count: number; resetAt: number };
+const phoneStressMap = new Map<string, StressEntry>();
+
+function recordOtpStress(phone: string): { requireCaptcha: boolean; remaining: number } {
+  const now = Date.now();
+  const entry = phoneStressMap.get(phone);
+  if (!entry || entry.resetAt <= now) {
+    phoneStressMap.set(phone, { count: 1, resetAt: now + 5 * 60_000 });
+    return { requireCaptcha: false, remaining: 2 };
+  }
+  entry.count += 1;
+  return { requireCaptcha: entry.count > 3, remaining: Math.max(0, 3 - entry.count) };
+}
+
+function resetOtpStress(phone: string): void {
+  phoneStressMap.delete(phone);
+}
+
+function normalizePhone(input: string): string {
+  const trimmed = input.trim();
+  if (!/^\+\d{8,15}$/.test(trimmed)) {
+    throw new Error('invalid_phone');
+  }
+  return trimmed;
+}
+
+function deriveWhatsAppId(phoneE164: string): string {
+  return `wa_${createHash('sha256').update(phoneE164).digest('hex').slice(0, 32)}`;
+}
+
+function signSessionToken(payload: { userId: string; phone: string; waId?: string | null }): string {
+  return jwt.sign(
+    {
+      sub: payload.userId,
+      phone: payload.phone,
+      wa_id: payload.waId ?? null,
+      iat: Math.floor(Date.now() / 1000),
+    },
+    env.JWT_SECRET,
+    { expiresIn: '1h', issuer: 'avocat-ai-wa' },
+  );
+}
+
 function withRequestContext<T extends OrgAccessContext>(access: T, request: FastifyRequest): T {
   ensureOrgAccessCompliance(access, {
     ip: request.ip,
@@ -103,6 +167,8 @@ const GO_NO_GO_SECTIONS = new Set(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
 const GO_NO_GO_STATUSES = new Set(['pending', 'satisfied']);
 const GO_NO_GO_DECISIONS = new Set(['go', 'no-go']);
 const FRIA_CRITERION = 'EU AI Act (high-risk): FRIA completed';
+const ORG_ROLES = new Set(['owner', 'admin', 'reviewer', 'member', 'viewer', 'compliance_officer', 'auditor']);
+const LEARNING_METRIC_LIMIT = 200;
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) {
@@ -300,6 +366,1574 @@ function resolveDateRange(startParam?: string, endParam?: string): { start: stri
 }
 
 app.get('/healthz', async () => ({ status: 'ok' }));
+
+// WhatsApp OTP authentication
+const whatsappStartSchema = z.object({
+  phone_e164: z.string(),
+  org_hint: z.string().uuid().optional(),
+  captchaToken: z.string().optional(),
+});
+
+const whatsappVerifySchema = z.object({
+  phone_e164: z.string(),
+  otp: z.string().min(4).max(8),
+  invite_token: z.string().uuid().optional(),
+  org_hint: z.string().uuid().optional(),
+});
+
+const whatsappLinkSchema = z.object({
+  phone_e164: z.string(),
+  otp: z.string().min(4).max(8),
+});
+
+async function deleteExistingOtp(phone: string) {
+  await supabase.from('wa_otp').delete().eq('phone_e164', phone);
+}
+
+app.post<{ Body: z.infer<typeof whatsappStartSchema> }>('/auth/wa/start', async (request, reply) => {
+  const parsed = whatsappStartSchema.safeParse(request.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
+  }
+
+  let phone: string;
+  try {
+    phone = normalizePhone(parsed.data.phone_e164);
+  } catch (error) {
+    return reply.code(400).send({ error: (error as Error).message });
+  }
+
+  const ipKey = request.ip ?? 'unknown';
+  const ipHit = ipRateLimiter.hit(ipKey);
+  if (!ipHit.allowed) {
+    return reply.code(429).send({ error: 'rate_limited_ip', retry_after: ipHit.resetAt });
+  }
+
+  const phoneHit = phoneRateLimiter.hit(phone);
+  if (!phoneHit.allowed) {
+    return reply.code(429).send({ error: 'rate_limited_phone', retry_after: phoneHit.resetAt });
+  }
+
+  const stress = recordOtpStress(phone);
+  if (stress.requireCaptcha && !parsed.data.captchaToken) {
+    return reply.code(428).send({ error: 'captcha_required' });
+  }
+
+  const otp = generateOtp(OTP_POLICY.length);
+  const hash = await hashOtp(otp);
+  const expiresAt = new Date(Date.now() + OTP_POLICY.ttlMinutes * 60_000);
+
+  try {
+    await deleteExistingOtp(phone);
+    const { error } = await supabase.from('wa_otp').insert({
+      phone_e164: phone,
+      otp_hash: hash,
+      expires_at: expiresAt.toISOString(),
+      attempts: 0,
+    });
+    if (error) {
+      request.log.error({ err: error.message }, 'wa_otp_store_failed');
+      return reply.code(500).send({ error: 'otp_store_failed' });
+    }
+  } catch (error) {
+    request.log.error({ err: error }, 'wa_otp_store_failed');
+    return reply.code(500).send({ error: 'otp_store_failed' });
+  }
+
+  try {
+    await whatsappAdapter.sendOtp({ phoneE164: phone, code: otp });
+  } catch (error) {
+    request.log.error({ err: error }, 'wa_send_failed');
+    return reply.code(502).send({ error: 'wa_send_failed' });
+  }
+
+  if (parsed.data.org_hint) {
+    try {
+      await logAuditEvent({
+        orgId: parsed.data.org_hint,
+        actorId: null,
+        kind: 'wa_otp_sent',
+        object: phone,
+        after: { phone },
+      });
+    } catch (error) {
+      request.log.warn({ err: error }, 'audit_wa_otp_failed');
+    }
+  }
+
+  return reply.send({ sent: true, expires_at: expiresAt.toISOString(), remaining: phoneHit.remaining });
+});
+
+async function consumeOtp(phone: string): Promise<{ id: string; otp_hash: string; expires_at: string; attempts: number } | null> {
+  const { data, error } = await supabase
+    .from('wa_otp')
+    .select('id, otp_hash, expires_at, attempts')
+    .eq('phone_e164', phone)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as any;
+}
+
+async function incrementOtpAttempts(id: string, attempts: number): Promise<void> {
+  await supabase
+    .from('wa_otp')
+    .update({ attempts })
+    .eq('id', id);
+}
+
+async function removeOtp(id: string): Promise<void> {
+  await supabase
+    .from('wa_otp')
+    .delete()
+    .eq('id', id);
+}
+
+async function upsertProfile(userId: string, phone: string): Promise<{ needsProfile: boolean; profile: Record<string, unknown> | null }> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('user_id, full_name, verified, locale, phone_e164, email, professional_type, bar_number')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    const insert = await supabase
+      .from('profiles')
+      .insert({ user_id: userId, phone_e164: phone, locale: 'fr' })
+      .select('user_id, full_name, verified, locale, phone_e164, email, professional_type, bar_number')
+      .maybeSingle();
+    if (insert.error) {
+      throw new Error(insert.error.message);
+    }
+    return { needsProfile: true, profile: insert.data as Record<string, unknown> };
+  }
+
+  if (data.phone_e164 !== phone) {
+    await supabase
+      .from('profiles')
+      .update({ phone_e164: phone })
+      .eq('user_id', userId);
+  }
+
+  const needsProfile = !data.full_name;
+  return { needsProfile, profile: data as Record<string, unknown> };
+}
+
+async function listOrgMemberships(userId: string): Promise<Array<{ org_id: string; role: string }>> {
+  const { data, error } = await supabase
+    .from('org_members')
+    .select('org_id, role')
+    .eq('user_id', userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as Array<{ org_id: string; role: string }>;
+}
+
+async function ensureMembership(orgId: string, userId: string, role: string): Promise<void> {
+  const { error } = await supabase
+    .from('org_members')
+    .upsert({ org_id: orgId, user_id: userId, role }, { onConflict: 'org_id,user_id' });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+app.post<{ Body: z.infer<typeof whatsappVerifySchema> }>('/auth/wa/verify', async (request, reply) => {
+  const parsed = whatsappVerifySchema.safeParse(request.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
+  }
+
+  let phone: string;
+  try {
+    phone = normalizePhone(parsed.data.phone_e164);
+  } catch (error) {
+    return reply.code(400).send({ error: (error as Error).message });
+  }
+
+  const otpRecord = await consumeOtp(phone);
+  if (!otpRecord) {
+    return reply.code(400).send({ error: 'otp_not_found' });
+  }
+
+  if (new Date(otpRecord.expires_at).getTime() < Date.now()) {
+    await removeOtp(otpRecord.id);
+    return reply.code(400).send({ error: 'otp_expired' });
+  }
+
+  const nextAttempts = otpRecord.attempts + 1;
+  if (!(await verifyOtp(parsed.data.otp, otpRecord.otp_hash))) {
+    await incrementOtpAttempts(otpRecord.id, nextAttempts);
+    if (nextAttempts >= OTP_POLICY.maxAttempts) {
+      await removeOtp(otpRecord.id);
+      return reply.code(423).send({ error: 'otp_locked' });
+    }
+    return reply.code(400).send({ error: 'otp_invalid', attempts_remaining: OTP_POLICY.maxAttempts - nextAttempts });
+  }
+
+  await removeOtp(otpRecord.id);
+  resetOtpStress(phone);
+
+  let waIdentity = null as { wa_id: string; user_id: string | null } | null;
+  const existingIdentity = await supabase
+    .from('wa_identities')
+    .select('wa_id, user_id, phone_e164')
+    .eq('phone_e164', phone)
+    .maybeSingle();
+  if (existingIdentity.error) {
+    request.log.error({ err: existingIdentity.error }, 'wa_identity_lookup_failed');
+    return reply.code(500).send({ error: 'wa_identity_failed' });
+  }
+  if (existingIdentity.data) {
+    waIdentity = existingIdentity.data as { wa_id: string; user_id: string | null };
+  }
+
+  let userId = waIdentity?.user_id ?? null;
+  let waId = waIdentity?.wa_id ?? deriveWhatsAppId(phone);
+  let isNewUser = false;
+
+  if (!userId) {
+    const created = await supabase.auth.admin.createUser({
+      phone,
+      phone_confirm: true,
+      email_confirm: false,
+      user_metadata: { locale: 'fr' },
+    });
+    if (created.error || !created.data?.user) {
+      request.log.error({ err: created.error?.message }, 'auth_user_create_failed');
+      return reply.code(500).send({ error: 'user_create_failed' });
+    }
+    userId = created.data.user.id;
+    isNewUser = true;
+
+    const { error } = await supabase
+      .from('wa_identities')
+      .upsert({ wa_id: waId, phone_e164: phone, user_id: userId })
+      .eq('wa_id', waId);
+    if (error) {
+      request.log.error({ err: error }, 'wa_identity_upsert_failed');
+      return reply.code(500).send({ error: 'wa_identity_failed' });
+    }
+  } else {
+    waId = waIdentity!.wa_id;
+  }
+
+  const profileState = await upsertProfile(userId, phone);
+  const memberships = await listOrgMemberships(userId);
+
+  if (!waIdentity?.user_id) {
+    const { error } = await supabase
+      .from('wa_identities')
+      .upsert({ wa_id: waId, phone_e164: phone, user_id: userId }, { onConflict: 'wa_id' });
+    if (error) {
+      request.log.warn({ err: error }, 'wa_identity_link_failed');
+    }
+  }
+
+  let inviteAcceptedOrg: string | null = null;
+
+  if (parsed.data.invite_token) {
+    const invitation = await supabase
+      .from('invitations')
+      .select('org_id, role, expires_at, accepted_by')
+      .eq('token', parsed.data.invite_token)
+      .maybeSingle();
+    if (invitation.error) {
+      request.log.error({ err: invitation.error }, 'invite_lookup_failed');
+      return reply.code(500).send({ error: 'invite_lookup_failed' });
+    }
+    if (!invitation.data) {
+      return reply.code(404).send({ error: 'invite_not_found' });
+    }
+    if (invitation.data.accepted_by && invitation.data.accepted_by !== userId) {
+      return reply.code(409).send({ error: 'invite_already_used' });
+    }
+    if (new Date(invitation.data.expires_at).getTime() < Date.now()) {
+      return reply.code(410).send({ error: 'invite_expired' });
+    }
+
+    await ensureMembership(invitation.data.org_id as string, userId, invitation.data.role as string);
+    await supabase
+      .from('invitations')
+      .update({ accepted_by: userId })
+      .eq('token', parsed.data.invite_token);
+    memberships.push({ org_id: invitation.data.org_id as string, role: invitation.data.role as string });
+    inviteAcceptedOrg = invitation.data.org_id as string;
+
+    try {
+      await logAuditEvent({
+        orgId: invitation.data.org_id as string,
+        actorId: userId,
+        kind: 'invite.accepted',
+        object: parsed.data.invite_token,
+        after: { role: invitation.data.role, user_id: userId },
+      });
+    } catch (error) {
+      request.log.warn({ err: error }, 'audit_invite_accept_failed');
+    }
+  }
+
+  if (parsed.data.org_hint && !memberships.some((m) => m.org_id === parsed.data.org_hint)) {
+    try {
+      await ensureMembership(parsed.data.org_hint, userId, 'viewer');
+      memberships.push({ org_id: parsed.data.org_hint, role: 'viewer' });
+    } catch (error) {
+      request.log.warn({ err: error }, 'org_hint_membership_failed');
+    }
+  }
+
+  const jwtToken = signSessionToken({ userId, phone, waId });
+  const needsOrg = memberships.length === 0;
+
+  if (memberships.length > 0) {
+    const targetOrg = inviteAcceptedOrg ?? memberships[0]?.org_id;
+    if (targetOrg) {
+      try {
+        await logAuditEvent({
+          orgId: targetOrg,
+          actorId: userId,
+          kind: 'wa_login_success',
+          object: userId,
+          after: { phone },
+        });
+      } catch (error) {
+        request.log.warn({ err: error }, 'audit_wa_login_failed');
+      }
+    }
+  }
+
+  return reply.send({
+    login: true,
+    user_id: userId,
+    session_token: jwtToken,
+    wa_id: waId,
+    needs_profile: profileState.needsProfile,
+    needs_org: needsOrg,
+    is_new_user: isNewUser,
+    memberships,
+  });
+});
+
+app.post<{ Body: z.infer<typeof whatsappLinkSchema> }>('/auth/wa/link', async (request, reply) => {
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+
+  const parsed = whatsappLinkSchema.safeParse(request.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
+  }
+
+  let phone: string;
+  try {
+    phone = normalizePhone(parsed.data.phone_e164);
+  } catch (error) {
+    return reply.code(400).send({ error: (error as Error).message });
+  }
+
+  const otpRecord = await consumeOtp(phone);
+  if (!otpRecord) {
+    return reply.code(400).send({ error: 'otp_not_found' });
+  }
+
+  if (new Date(otpRecord.expires_at).getTime() < Date.now()) {
+    await removeOtp(otpRecord.id);
+    return reply.code(400).send({ error: 'otp_expired' });
+  }
+
+  const nextAttempts = otpRecord.attempts + 1;
+  if (!(await verifyOtp(parsed.data.otp, otpRecord.otp_hash))) {
+    await incrementOtpAttempts(otpRecord.id, nextAttempts);
+    if (nextAttempts >= OTP_POLICY.maxAttempts) {
+      await removeOtp(otpRecord.id);
+      return reply.code(423).send({ error: 'otp_locked' });
+    }
+    return reply.code(400).send({ error: 'otp_invalid' });
+  }
+
+  await removeOtp(otpRecord.id);
+  resetOtpStress(phone);
+
+  const lookup = await supabase
+    .from('wa_identities')
+    .select('wa_id, user_id')
+    .eq('phone_e164', phone)
+    .maybeSingle();
+  if (lookup.error) {
+    request.log.error({ err: lookup.error }, 'wa_identity_link_lookup_failed');
+    return reply.code(500).send({ error: 'wa_identity_failed' });
+  }
+  if (lookup.data && lookup.data.user_id && lookup.data.user_id !== userHeader) {
+    return reply.code(409).send({ error: 'phone_in_use' });
+  }
+
+  const waId = lookup.data?.wa_id ?? deriveWhatsAppId(phone);
+  const { error: upsertError } = await supabase
+    .from('wa_identities')
+    .upsert({ wa_id: waId, phone_e164: phone, user_id: userHeader }, { onConflict: 'wa_id' });
+  if (upsertError) {
+    request.log.error({ err: upsertError }, 'wa_identity_upsert_failed');
+    return reply.code(500).send({ error: 'wa_identity_failed' });
+  }
+
+  await supabase.from('profiles').update({ phone_e164: phone }).eq('user_id', userHeader);
+
+  const orgId = request.headers['x-org-id'];
+  if (typeof orgId === 'string' && orgId) {
+    try {
+      await logAuditEvent({
+        orgId,
+        actorId: userHeader,
+        kind: 'wa_linked',
+        object: waId,
+        after: { phone },
+      });
+    } catch (error) {
+      request.log.warn({ err: error }, 'audit_wa_link_failed');
+    }
+  }
+
+  return reply.send({ linked: true, wa_id: waId });
+});
+
+app.post('/auth/wa/unlink', async (request, reply) => {
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+
+  await supabase.from('wa_identities').delete().eq('user_id', userHeader);
+
+  const orgId = request.headers['x-org-id'];
+  if (typeof orgId === 'string' && orgId) {
+    try {
+      await logAuditEvent({
+        orgId,
+        actorId: userHeader,
+        kind: 'wa_unlinked',
+        object: userHeader,
+      });
+    } catch (error) {
+      request.log.warn({ err: error }, 'audit_wa_unlink_failed');
+    }
+  }
+
+  return reply.send({ unlinked: true });
+});
+
+app.get('/wa/webhook', async (request, reply) => {
+  const token = env.WA_WEBHOOK_VERIFY_TOKEN;
+  const challenge = (request.query as Record<string, string>)?.['hub.challenge'];
+  const verifyToken = (request.query as Record<string, string>)?.['hub.verify_token'];
+
+  if (!token || verifyToken !== token || !challenge) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  return reply.send(challenge);
+});
+
+app.post('/wa/webhook', async (request, reply) => {
+  const token = env.WA_WEBHOOK_VERIFY_TOKEN;
+  const receivedToken = (request.query as Record<string, string>)?.['hub.verify_token'];
+  if (token && receivedToken && token !== receivedToken) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  request.log.info({ body: request.body }, 'wa_webhook_received');
+  return reply.send({ ok: true });
+});
+
+// Admin: members and invitations
+const inviteSchema = z.object({
+  email: z.string().email(),
+  role: z.string().refine((role) => ORG_ROLES.has(role), { message: 'invalid_role' }),
+  expires_in_hours: z.coerce.number().min(1).max(24 * 14).optional(),
+});
+
+const memberRoleSchema = z.object({
+  role: z.string().refine((role) => ORG_ROLES.has(role), { message: 'invalid_role' }),
+});
+
+app.get<{ Querystring: { orgId?: string } }>('/admin/org/members', async (request, reply) => {
+  const { orgId } = request.query;
+  if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const { data, error } = await supabase
+    .from('org_members')
+    .select('user_id, role, created_at, profiles(full_name, email, phone_e164, locale, verified)')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    request.log.error({ err: error }, 'members_list_failed');
+    return reply.code(500).send({ error: 'members_list_failed' });
+  }
+
+  const members = (data ?? []).map((row) => ({
+    user_id: row.user_id,
+    role: row.role,
+    created_at: row.created_at,
+    profile: row.profiles ?? null,
+  }));
+
+  return reply.send({ members });
+});
+
+app.post<{ Body: z.infer<typeof inviteSchema> }>('/admin/org/invite', async (request, reply) => {
+  const orgId = request.headers['x-org-id'];
+  if (typeof orgId !== 'string' || orgId.length === 0) {
+    return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  const parsed = inviteSchema.safeParse(request.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
+  }
+
+  try {
+    await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const expires = new Date(Date.now() + (parsed.data.expires_in_hours ?? 72) * 60 * 60 * 1000);
+  const { data, error } = await supabase
+    .from('invitations')
+    .insert({
+      org_id: orgId,
+      email: parsed.data.email,
+      role: parsed.data.role,
+      expires_at: expires.toISOString(),
+    })
+    .select('token, expires_at')
+    .maybeSingle();
+
+  if (error || !data) {
+    request.log.error({ err: error }, 'invite_create_failed');
+    return reply.code(500).send({ error: 'invite_create_failed' });
+  }
+
+  try {
+    await logAuditEvent({
+      orgId,
+      actorId: userHeader,
+      kind: 'invite.created',
+      object: parsed.data.email,
+      after: { role: parsed.data.role },
+    });
+  } catch (auditError) {
+    request.log.warn({ err: auditError }, 'audit_invite_failed');
+  }
+
+  return reply.code(201).send({ token: data.token, expires_at: data.expires_at });
+});
+
+app.post<{ Params: { userId: string }; Body: z.infer<typeof memberRoleSchema> }>('/admin/org/members/:userId/role', async (request, reply) => {
+  const orgId = request.headers['x-org-id'];
+  if (typeof orgId !== 'string' || orgId.length === 0) {
+    return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  const parsed = memberRoleSchema.safeParse(request.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
+  }
+
+  try {
+    await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const { data, error } = await supabase
+    .from('org_members')
+    .update({ role: parsed.data.role })
+    .eq('org_id', orgId)
+    .eq('user_id', request.params.userId)
+    .select('user_id, role')
+    .maybeSingle();
+
+  if (error) {
+    request.log.error({ err: error }, 'member_role_update_failed');
+    return reply.code(500).send({ error: 'member_role_update_failed' });
+  }
+  if (!data) {
+    return reply.code(404).send({ error: 'member_not_found' });
+  }
+
+  try {
+    await logAuditEvent({
+      orgId,
+      actorId: userHeader,
+      kind: 'member.role_changed',
+      object: request.params.userId,
+      after: { role: parsed.data.role },
+    });
+  } catch (auditError) {
+    request.log.warn({ err: auditError }, 'audit_member_role_failed');
+  }
+
+  return reply.send({ updated: true });
+});
+
+const jurisdictionSchema = z.array(
+  z.object({
+    juris_code: z.string().trim().min(1),
+    can_read: z.boolean(),
+    can_write: z.boolean(),
+  }),
+);
+
+app.get<{ Querystring: { orgId?: string } }>('/admin/org/jurisdictions', async (request, reply) => {
+  const { orgId } = request.query;
+  if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const { data, error } = await supabase
+    .from('jurisdiction_entitlements')
+    .select('juris_code, can_read, can_write')
+    .eq('org_id', orgId)
+    .order('juris_code', { ascending: true });
+
+  if (error) {
+    request.log.error({ err: error }, 'jurisdictions_fetch_failed');
+    return reply.code(500).send({ error: 'jurisdictions_fetch_failed' });
+  }
+
+  return reply.send({ entitlements: data ?? [] });
+});
+
+app.post('/admin/org/jurisdictions', async (request, reply) => {
+  const orgId = request.headers['x-org-id'];
+  if (typeof orgId !== 'string' || orgId.length === 0) {
+    return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  const parsed = jurisdictionSchema.safeParse(request.body ?? []);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
+  }
+
+  try {
+    await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const rows = parsed.data.map((entry) => ({
+    org_id: orgId,
+    juris_code: entry.juris_code.toUpperCase(),
+    can_read: entry.can_read,
+    can_write: entry.can_write,
+  }));
+
+  const { error } = await supabase
+    .from('jurisdiction_entitlements')
+    .upsert(rows, { onConflict: 'org_id,juris_code' });
+
+  if (error) {
+    request.log.error({ err: error }, 'jurisdictions_update_failed');
+    return reply.code(500).send({ error: 'jurisdictions_update_failed' });
+  }
+
+  for (const entry of rows) {
+    try {
+      await logAuditEvent({
+        orgId,
+        actorId: userHeader,
+        kind: 'jurisdiction.updated',
+        object: entry.juris_code,
+        after: { can_read: entry.can_read, can_write: entry.can_write },
+      });
+    } catch (auditError) {
+      request.log.warn({ err: auditError }, 'audit_jurisdiction_failed');
+    }
+  }
+
+  return reply.send({ updated: true });
+});
+
+app.get<{ Querystring: { orgId?: string; limit?: string } }>('/admin/audit', async (request, reply) => {
+  const { orgId, limit } = request.query;
+  if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('admin:audit', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const max = Math.min(200, Math.max(1, Number(limit ?? 100)));
+  const { data, error } = await supabase
+    .from('audit_events')
+    .select('id, org_id, actor_user_id, kind, object, before_state, after_state, metadata, ts')
+    .eq('org_id', orgId)
+    .order('ts', { ascending: false })
+    .limit(max);
+
+  if (error) {
+    request.log.error({ err: error }, 'audit_list_failed');
+    return reply.code(500).send({ error: 'audit_list_failed' });
+  }
+
+  return reply.send({ events: data ?? [] });
+});
+
+const consentSchema = z.object({
+  org_id: z.string().uuid().optional(),
+  type: z.string().min(1),
+  version: z.string().min(1),
+});
+
+const learningFeedbackSchema = z.object({
+  run_id: z.string().uuid(),
+  rating: z.enum(['up', 'down']),
+  reason_code: z.string().max(64).optional(),
+  free_text: z.string().max(500).optional(),
+});
+
+app.post<{ Body: z.infer<typeof consentSchema> }>('/consent', async (request, reply) => {
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+
+  const parsed = consentSchema.safeParse(request.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
+  }
+
+  const insert = await supabase
+    .from('consent_events')
+    .insert({
+      user_id: userHeader,
+      org_id: parsed.data.org_id ?? null,
+      type: parsed.data.type,
+      version: parsed.data.version,
+    })
+    .select('user_id, org_id, type, version, created_at')
+    .maybeSingle();
+
+  if (insert.error || !insert.data) {
+    request.log.error({ err: insert.error }, 'consent_write_failed');
+    return reply.code(500).send({ error: 'consent_write_failed' });
+  }
+
+  return reply.send({ recorded: true, event: insert.data });
+});
+
+app.post<{ Body: z.infer<typeof learningFeedbackSchema> }>('/learning/feedback', async (request, reply) => {
+  const userHeader = request.headers['x-user-id'];
+  const orgHeader = request.headers['x-org-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+  if (!orgHeader || typeof orgHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+
+  const parsed = learningFeedbackSchema.safeParse(request.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
+  }
+
+  try {
+    await authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const payload = {
+    org_id: orgHeader,
+    run_id: parsed.data.run_id,
+    source: 'user',
+    kind: parsed.data.rating,
+    payload: {
+      reason_code: parsed.data.reason_code ?? null,
+      free_text: parsed.data.free_text ?? null,
+      user_id: userHeader,
+    },
+  };
+
+  const { error } = await supabase.from('learning_signals').insert(payload, { returning: 'minimal' });
+  if (error) {
+    request.log.error({ err: error }, 'learning_feedback_failed');
+    return reply.code(500).send({ error: 'feedback_failed' });
+  }
+
+  return reply.send({ recorded: true });
+});
+
+app.get<{ Querystring: { metric?: string; window?: string; limit?: string } }>('/learning/metrics', async (request, reply) => {
+  const { metric, window, limit } = request.query;
+  const max = Math.min(LEARNING_METRIC_LIMIT, Math.max(1, Number(limit ?? 50)));
+
+  let query = supabase
+    .from('learning_metrics')
+    .select('id, window, metric, value, dims, computed_at')
+    .order('computed_at', { ascending: false })
+    .limit(max);
+
+  if (metric) {
+    query = query.eq('metric', metric);
+  }
+  if (window) {
+    query = query.eq('window', window);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    request.log.error({ err: error }, 'learning_metrics_failed');
+    return reply.code(500).send({ error: 'learning_metrics_failed' });
+  }
+
+  return reply.send({ metrics: data ?? [] });
+});
+
+app.get<{ Querystring: { orgId?: string; limit?: string } }>('/learning/signals', async (request, reply) => {
+  const { orgId, limit } = request.query;
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const max = Math.min(200, Math.max(1, Number(limit ?? 100)));
+  const { data, error } = await supabase
+    .from('learning_signals')
+    .select('id, run_id, source, kind, payload, created_at')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false })
+    .limit(max);
+
+  if (error) {
+    request.log.error({ err: error }, 'learning_signals_fetch_failed');
+    return reply.code(500).send({ error: 'learning_signals_failed' });
+  }
+
+  return reply.send({ signals: data ?? [] });
+});
+
+// Helpers for upload route
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+function makeStoragePath(orgId: string, name: string): string {
+  const now = new Date();
+  const yyyy = now.getUTCFullYear();
+  const mm = pad2(now.getUTCMonth() + 1);
+  const safeName = name
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${orgId}/${yyyy}/${mm}/${safeName}`;
+}
+
+// JSON upload endpoint (base64 payload)
+app.post<{
+  Body: {
+    orgId?: string;
+    userId?: string;
+    name?: string;
+    mimeType?: string;
+    contentBase64?: string;
+    bucket?: 'uploads' | 'authorities';
+    source?: {
+      jurisdiction_code?: string;
+      source_type?: string;
+      title?: string;
+      publisher?: string | null;
+      source_url?: string | null;
+      binding_lang?: string | null;
+      consolidated?: boolean;
+      effective_date?: string | null;
+    } | null;
+  };
+}>('/upload', async (request, reply) => {
+  const body = request.body ?? {};
+  const orgId = body.orgId;
+  const userId = body.userId ?? (request.headers['x-user-id'] as string | undefined);
+  const bucket = body.bucket ?? 'uploads';
+  const name = body.name ?? '';
+  const mimeType = body.mimeType ?? 'application/octet-stream';
+  const contentBase64 = body.contentBase64 ?? '';
+
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+  if (!userId) {
+    return reply.code(400).send({ error: 'x-user-id header or userId is required' });
+  }
+  if (!name || !contentBase64) {
+    return reply.code(400).send({ error: 'name and contentBase64 are required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('corpus:manage', orgId, userId, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error }, 'upload authorization failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  // Decode base64
+  let buffer: Buffer;
+  try {
+    const base64 = contentBase64.includes(',') ? contentBase64.split(',').pop() ?? '' : contentBase64;
+    buffer = Buffer.from(base64, 'base64');
+  } catch (_err) {
+    return reply.code(400).send({ error: 'invalid_base64' });
+  }
+
+  const storagePath = makeStoragePath(orgId, name);
+
+  const blob = new Blob([buffer], { type: mimeType });
+  const upload = await supabase.storage.from(bucket).upload(storagePath, blob, {
+    contentType: mimeType,
+    upsert: false,
+  });
+  if (upload.error) {
+    request.log.error({ err: upload.error }, 'storage upload failed');
+    return reply.code(500).send({ error: 'storage_upload_failed' });
+  }
+
+  // Optional source attach for authorities
+  let sourceId: string | null = null;
+  if (bucket === 'authorities' && body.source && body.source.title && body.source.jurisdiction_code && body.source.source_type) {
+    const sourceInsert = await supabase
+      .from('sources')
+      .insert({
+        org_id: orgId,
+        jurisdiction_code: body.source.jurisdiction_code,
+        source_type: body.source.source_type,
+        title: body.source.title,
+        publisher: body.source.publisher ?? null,
+        source_url: body.source.source_url ?? `https://storage/${bucket}/${storagePath}`,
+        binding_lang: body.source.binding_lang ?? null,
+        consolidated: Boolean(body.source.consolidated ?? false),
+        effective_date: body.source.effective_date ?? null,
+      })
+      .select('id')
+      .single();
+    if (!sourceInsert.error) {
+      sourceId = sourceInsert.data?.id ?? null;
+    } else {
+      request.log.warn({ err: sourceInsert.error }, 'source insert failed');
+    }
+  }
+
+  // Insert document
+  const docInsert = await supabase
+    .from('documents')
+    .insert({
+      org_id: orgId,
+      source_id: sourceId,
+      name,
+      storage_path: storagePath,
+      bucket_id: bucket,
+      mime_type: mimeType,
+      bytes: buffer.byteLength,
+      vector_store_status: 'pending',
+      summary_status: 'pending',
+      chunk_count: 0,
+    })
+    .select('id')
+    .single();
+  if (docInsert.error) {
+    request.log.error({ err: docInsert.error }, 'document insert failed');
+    return reply.code(500).send({ error: 'document_insert_failed' });
+  }
+  const documentId = docInsert.data?.id as string;
+
+  // Best-effort summarisation/embeddings
+  let summaryStatus: 'ready' | 'skipped' | 'failed' = 'failed';
+  let chunkCount = 0;
+  try {
+    const metaTitle = body.source?.title ?? name;
+    const metaJurisdiction = body.source?.jurisdiction_code ?? 'UNKNOWN';
+    const metaPublisher = body.source?.publisher ?? null;
+    const result = await summariseDocumentFromPayload({
+      payload: new Uint8Array(buffer),
+      mimeType,
+      openaiApiKey: env.OPENAI_API_KEY,
+      metadata: { title: metaTitle, jurisdiction: metaJurisdiction, publisher: metaPublisher },
+      summariserModel: env.SUMMARISER_MODEL,
+      embeddingModel: env.EMBEDDING_MODEL,
+      maxSummaryChars: env.MAX_SUMMARY_CHARS,
+    });
+    summaryStatus = result.status;
+    chunkCount = Array.isArray(result.chunks) ? result.chunks.length : 0;
+
+    if (result.status !== 'failed') {
+      await supabase
+        .from('document_summaries')
+        .upsert({ org_id: orgId, document_id: documentId, summary: result.summary ?? null, outline: result.highlights ?? null }, { onConflict: 'document_id' });
+    }
+    if (result.embeddings && result.embeddings.length === result.chunks.length && result.chunks.length > 0) {
+      const rows = result.chunks.map((chunk, idx) => ({
+        org_id: orgId,
+        document_id: documentId,
+        jurisdiction_code: body.source?.jurisdiction_code ?? 'UNKNOWN',
+        content: chunk.content,
+        embedding: result.embeddings[idx],
+        seq: chunk.seq,
+      }));
+      const batchSize = 100;
+      for (let i = 0; i < rows.length; i += batchSize) {
+        const slice = rows.slice(i, i + batchSize);
+        const { error } = await supabase.from('document_chunks').insert(slice);
+        if (error) {
+          request.log.warn({ err: error }, 'chunk insert failed');
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    request.log.warn({ err: error }, 'summarisation/embedding failed');
+  }
+  const { error: docUpdateError } = await supabase
+    .from('documents')
+    .update({ summary_status: summaryStatus, chunk_count: chunkCount })
+    .eq('id', documentId)
+    .eq('org_id', orgId);
+  if (docUpdateError) {
+    request.log.warn({ err: docUpdateError }, 'document status update failed');
+  }
+
+  // Enqueue to OpenAI Vector Store (best-effort)
+  try {
+    const vectorStoreId = process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID;
+    if (vectorStoreId) {
+      const form = new FormData();
+      form.append('purpose', 'assistants');
+      const dataBlob = new Blob([buffer], { type: mimeType });
+      form.append('file', dataBlob, name);
+      const fileRes = await fetch('https://api.openai.com/v1/files', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+        body: form,
+      });
+      const fileJson = (await fileRes.json()) as { id?: string; error?: { message?: string } };
+      if (fileRes.ok && fileJson.id) {
+        const attachRes = await fetch(`https://api.openai.com/v1/vector_stores/${encodeURIComponent(vectorStoreId)}/files`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+          body: JSON.stringify({ file_id: fileJson.id }),
+        });
+        if (attachRes.ok) {
+          await supabase
+            .from('documents')
+            .update({ vector_store_status: 'uploaded', vector_store_synced_at: new Date().toISOString() })
+            .eq('id', documentId)
+            .eq('org_id', orgId);
+        } else {
+          const attJson = await attachRes.json();
+          request.log.warn({ err: attJson?.error?.message ?? 'attach_failed' }, 'vector store attach failed');
+        }
+      } else {
+        request.log.warn({ err: fileJson?.error?.message ?? 'file_upload_failed' }, 'vector store file upload failed');
+      }
+    }
+  } catch (error) {
+    request.log.warn({ err: error }, 'vector store enqueue failed');
+  }
+
+  return {
+    documentId,
+    bucket,
+    storagePath,
+    bytes: buffer.byteLength,
+    summaryStatus,
+    chunkCount,
+  };
+});
+
+// Proxy to Supabase Edge Function: drive-watcher
+// Accepts: { orgId, manifestName?, manifestUrl?, manifestContent?, entries? }
+app.post<{
+  Body: {
+    orgId?: string;
+    manifestName?: string;
+    manifestUrl?: string;
+    manifestContent?: string;
+    entries?: unknown[];
+  };
+}>('/gdrive/process-manifest', async (request, reply) => {
+  const { orgId, manifestName, manifestUrl, manifestContent, entries } = request.body ?? {};
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('corpus:manage', orgId, userHeader, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error }, 'gdrive auth failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const fnBase = env.SUPABASE_URL?.replace(/\/?$/, '') ?? '';
+  const fnKey = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!fnBase || !fnKey) {
+    return reply.code(500).send({ error: 'supabase_env_missing' });
+  }
+  const endpoint = `${fnBase}/functions/v1/drive-watcher`;
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${fnKey}` },
+    body: JSON.stringify({ orgId, manifestName, manifestUrl, manifestContent, entries }),
+  });
+  const json = await res.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch (_e) {
+    parsed = { raw: json };
+  }
+  if (!res.ok) {
+    request.log.error({ status: res.status, body: parsed }, 'drive-watcher call failed');
+    return reply.code(502).send({ error: 'drive_watcher_failed', status: res.status, payload: parsed });
+  }
+  return parsed;
+});
+
+// GDrive state endpoints (install/renew/uninstall/get)
+app.get<{ Querystring: { orgId?: string } }>('/gdrive/state', async (request, reply) => {
+  const { orgId } = request.query;
+  if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+  try {
+    await authorizeRequestWithGuards('corpus:view', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+  const { data, error } = await supabase.from('gdrive_state').select('*').eq('org_id', orgId).maybeSingle();
+  if (error) return reply.code(500).send({ error: 'state_failed' });
+  return { state: data ?? null };
+});
+
+app.post<{
+  Body: { orgId?: string; driveId?: string | null; folderId?: string | null };
+}>('/gdrive/install', async (request, reply) => {
+  const { orgId, driveId, folderId } = request.body ?? {};
+  if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+  try {
+    await authorizeRequestWithGuards('corpus:manage', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+  let startPageToken: string | null = null;
+  let expiration = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  // Try real Google API if credentials present
+  let channelId: string | null = null;
+  let resourceId: string | null = null;
+  try {
+    const saEmail = process.env.GDRIVE_SERVICE_ACCOUNT_EMAIL ?? '';
+    const saKey = process.env.GDRIVE_SERVICE_ACCOUNT_KEY ?? '';
+    if (saEmail && saKey) {
+      const access = await getServiceAccountAccessToken(saEmail, saKey);
+      startPageToken = await gdriveGetStartPageToken(access, driveId ?? undefined);
+      const address = process.env.GDRIVE_WEBHOOK_URL ?? '';
+      const token = process.env.GDRIVE_WATCH_CHANNEL_TOKEN ?? '';
+      if (address && startPageToken) {
+        const watch = await (await import('./gdrive.js')).watchChanges(access, startPageToken, address, token);
+        channelId = watch.id;
+        resourceId = watch.resourceId;
+        expiration = watch.expiration ?? expiration;
+      }
+    }
+  } catch (error) {
+    request.log.warn({ err: error }, 'gdrive install: watch/startPageToken failed, falling back');
+  }
+  const { data, error } = await supabase
+    .from('gdrive_state')
+    .upsert(
+      {
+        org_id: orgId,
+        drive_id: driveId ?? null,
+        folder_id: folderId ?? null,
+        channel_id: channelId ?? 'manual',
+        resource_id: resourceId ?? null,
+        expiration,
+        start_page_token: startPageToken,
+        last_page_token: null,
+      },
+      { onConflict: 'org_id' },
+    )
+    .select('*')
+    .maybeSingle();
+  if (error) return reply.code(500).send({ error: 'install_failed' });
+  return { state: data };
+});
+
+app.post<{
+  Body: { orgId?: string };
+}>('/gdrive/renew', async (request, reply) => {
+  const { orgId } = request.body ?? {};
+  if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+  try {
+    await authorizeRequestWithGuards('corpus:manage', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+  const expiration = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('gdrive_state')
+    .update({ expiration })
+    .eq('org_id', orgId)
+    .select('*')
+    .maybeSingle();
+  if (error) return reply.code(500).send({ error: 'renew_failed' });
+  return { state: data };
+});
+
+app.post<{
+  Body: { orgId?: string };
+}>('/gdrive/uninstall', async (request, reply) => {
+  const { orgId } = request.body ?? {};
+  if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+  try {
+    await authorizeRequestWithGuards('corpus:manage', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+  const { error } = await supabase.from('gdrive_state').delete().eq('org_id', orgId);
+  if (error) return reply.code(500).send({ error: 'uninstall_failed' });
+  return { ok: true };
+});
+
+// Webhook endpoint: logs and acknowledges; validate token if provided
+app.post('/gdrive/webhook', async (request, reply) => {
+  const channelToken = request.headers['x-goog-channel-token'];
+  const configurationToken = process.env.GDRIVE_WATCH_CHANNEL_TOKEN ?? '';
+  if (!channelToken || channelToken !== configurationToken) {
+    return reply.code(401).send({ error: 'invalid_channel_token' });
+  }
+  // Optionally log an ingestion run stub
+  await supabase.from('ingestion_runs').insert({
+    adapter_id: 'gdrive-webhook',
+    org_id: null,
+    status: 'completed',
+    inserted_count: 0,
+    skipped_count: 0,
+    failed_count: 0,
+    finished_at: new Date().toISOString(),
+  });
+  return { ack: true };
+});
+
+app.post<{
+  Body: { orgId?: string; pageToken?: string | null };
+}>('/gdrive/process-changes', async (request, reply) => {
+  const { orgId, pageToken } = request.body ?? {};
+  if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+  const userHeader = request.headers['x-user-id'];
+  const authHeader = request.headers['authorization'];
+  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
+  const isInternal = typeof authHeader === 'string' && authHeader.trim().toLowerCase() === `bearer ${serviceKey}`.toLowerCase();
+  if (!isInternal) {
+    if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+    try {
+      await authorizeRequestWithGuards('corpus:manage', orgId, userHeader, request);
+    } catch (error) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+  }
+  // Resolve state
+  const stateRow = await supabase.from('gdrive_state').select('*').eq('org_id', orgId).maybeSingle();
+  if (stateRow.error) {
+    request.log.error({ err: stateRow.error }, 'gdrive state fetch failed');
+    return reply.code(500).send({ error: 'state_failed' });
+  }
+  const state = stateRow.data as { drive_id?: string | null; folder_id?: string | null; start_page_token?: string | null; last_page_token?: string | null } | null;
+  const tokenToUse = pageToken ?? state?.last_page_token ?? state?.start_page_token ?? null;
+  if (!tokenToUse) {
+    return { processed: 0, next_page_token: null };
+  }
+
+  // Acquire SA access token
+  let accessToken: string | null = null;
+  try {
+    const saEmail = process.env.GDRIVE_SERVICE_ACCOUNT_EMAIL ?? '';
+    const saKey = process.env.GDRIVE_SERVICE_ACCOUNT_KEY ?? '';
+    if (saEmail && saKey) {
+      accessToken = await getServiceAccountAccessToken(saEmail, saKey);
+    }
+  } catch (error) {
+    request.log.warn({ err: error }, 'gdrive auth failed');
+  }
+  if (!accessToken) {
+    // fallback: set last_page_token and return
+    await supabase.from('gdrive_state').update({ last_page_token: tokenToUse }).eq('org_id', orgId);
+    await supabase.from('ingestion_runs').insert({ adapter_id: 'gdrive-changes', org_id: orgId, status: 'completed', inserted_count: 0, skipped_count: 0, failed_count: 0, finished_at: new Date().toISOString() });
+    return { processed: 0, next_page_token: tokenToUse };
+  }
+
+  // List changes and ingest a small batch
+  let newToken: string | null = null;
+  let processed = 0;
+  let failed = 0;
+  try {
+    const { changes, newStartPageToken, nextPageToken } = await gdriveListChanges(accessToken, tokenToUse, 25);
+    newToken = nextPageToken ?? newStartPageToken ?? tokenToUse;
+    const targetFolder = state?.folder_id ?? null;
+    for (const change of changes) {
+      if (change.removed) continue;
+      const fid = change.fileId || change.file?.id;
+      if (!fid) continue;
+      const meta = change.file ?? (await gdriveGetFileMetadata(accessToken, fid));
+      if (!meta?.id) continue;
+      // Filter by folder if provided
+      if (targetFolder && Array.isArray(meta.parents) && !meta.parents.includes(targetFolder)) {
+        continue;
+      }
+      const docType = meta.mimeType ? isGoogleDocMime(meta.mimeType) : null;
+      let payload: Uint8Array | null = null;
+      let mime: string = meta.mimeType ?? 'application/octet-stream';
+      if (docType) {
+        const exported = await gdriveExportDoc(accessToken, meta.id!, docType);
+        if (exported) {
+          payload = exported.data;
+          mime = exported.mimeType;
+        }
+      } else {
+        const bin = await gdriveDownloadFile(accessToken, meta.id!);
+        if (bin) {
+          payload = bin.data;
+          mime = bin.mimeType;
+        }
+      }
+      if (!payload) continue;
+
+      // Store in Storage (snapshots bucket)
+      const storagePath = makeStoragePath(orgId, meta.name || `${meta.id}`);
+      const blob = new Blob([payload], { type: mime });
+      const up = await supabase.storage.from('snapshots').upload(storagePath, blob, { contentType: mime, upsert: true });
+      if (up.error) {
+        failed += 1;
+        continue;
+      }
+      // Insert document
+      const docIns = await supabase
+        .from('documents')
+        .upsert(
+          {
+            org_id: orgId,
+            source_id: null,
+            name: meta.name || meta.id || 'file',
+            storage_path: storagePath,
+            bucket_id: 'snapshots',
+            mime_type: mime,
+            bytes: payload.byteLength,
+            vector_store_status: 'pending',
+            summary_status: 'pending',
+          },
+          { onConflict: 'org_id,bucket_id,storage_path' },
+        )
+        .select('id')
+        .maybeSingle();
+      if (docIns.error) {
+        failed += 1;
+        continue;
+      }
+      const documentId = (docIns.data as { id?: string } | null)?.id ?? null;
+      // Summarise (best-effort)
+      try {
+        const result = await summariseDocumentFromPayload({
+          payload,
+          mimeType: mime,
+          openaiApiKey: env.OPENAI_API_KEY,
+          metadata: { title: meta.name || 'Document', jurisdiction: 'UNKNOWN', publisher: null },
+          summariserModel: env.SUMMARISER_MODEL,
+          embeddingModel: env.EMBEDDING_MODEL,
+          maxSummaryChars: env.MAX_SUMMARY_CHARS,
+        });
+        if (documentId) {
+          await supabase
+            .from('document_summaries')
+            .upsert({ org_id: orgId, document_id: documentId, summary: result.summary ?? null, outline: result.highlights ?? null }, { onConflict: 'document_id' });
+          const { error: updErr } = await supabase
+            .from('documents')
+            .update({ summary_status: result.status, chunk_count: (result.chunks ?? []).length })
+            .eq('id', documentId)
+            .eq('org_id', orgId);
+          if (updErr) request.log.warn({ err: updErr }, 'gdrive doc update failed');
+          if (result.embeddings && result.embeddings.length === result.chunks.length && result.chunks.length > 0) {
+            const rows = result.chunks.map((chunk, idx) => ({ org_id: orgId, document_id: documentId, jurisdiction_code: 'UNKNOWN', content: chunk.content, embedding: result.embeddings[idx], seq: chunk.seq }));
+            const batchSize = 100;
+            for (let i = 0; i < rows.length; i += batchSize) {
+              const slice = rows.slice(i, i + batchSize);
+              const { error } = await supabase.from('document_chunks').insert(slice);
+              if (error) break;
+            }
+          }
+        }
+        processed += 1;
+      } catch (e) {
+        failed += 1;
+        request.log.warn({ err: e }, 'gdrive summarise failed');
+      }
+    }
+  } catch (error) {
+    request.log.error({ err: error }, 'gdrive process-changes failed');
+  }
+
+  // Persist last token
+  if (newToken) {
+    await supabase.from('gdrive_state').update({ last_page_token: newToken }).eq('org_id', orgId);
+  }
+  await supabase.from('ingestion_runs').insert({
+    adapter_id: 'gdrive-changes',
+    org_id: orgId,
+    status: failed === 0 ? 'completed' : 'completed_with_errors',
+    inserted_count: processed,
+    skipped_count: 0,
+    failed_count: failed,
+    finished_at: new Date().toISOString(),
+  });
+  return { processed, next_page_token: newToken ?? tokenToUse };
+});
+
+// Process changes for all orgs with GDrive state (internal, service role only)
+app.post('/gdrive/process-all', async (request, reply) => {
+  const authHeader = request.headers['authorization'];
+  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!(typeof authHeader === 'string' && authHeader.trim().toLowerCase() === `bearer ${serviceKey}`.toLowerCase())) {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+  const { data, error } = await supabase.from('gdrive_state').select('org_id, last_page_token');
+  if (error) return reply.code(500).send({ error: 'state_failed' });
+  const results: Array<{ orgId: string; processed: number; nextPageToken: string | null }> = [];
+  if (Array.isArray(data)) {
+    for (const row of data) {
+      const orgId = (row as any).org_id as string;
+      try {
+        const res = await fetch(`${env.SUPABASE_URL?.replace(/\/?$/, '') ?? ''}/gdrive/process-changes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+          body: JSON.stringify({ orgId }),
+        });
+        const json = (await res.json()) as { processed?: number; next_page_token?: string | null };
+        results.push({ orgId, processed: json.processed ?? 0, nextPageToken: json.next_page_token ?? null });
+      } catch (error) {
+        request.log.warn({ err: error }, 'process-all org failed');
+      }
+    }
+  }
+  return { results };
+});
+
+// Backfill changes for a single org (batched)
+app.post<{
+  Body: { orgId?: string; batches?: number };
+}>('/gdrive/backfill', async (request, reply) => {
+  const { orgId, batches } = request.body ?? {};
+  if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+  const authHeader = request.headers['authorization'];
+  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
+  const isInternal = typeof authHeader === 'string' && authHeader.trim().toLowerCase() === `bearer ${serviceKey}`.toLowerCase();
+  const userHeader = request.headers['x-user-id'];
+  if (!isInternal) {
+    if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+    try {
+      await authorizeRequestWithGuards('corpus:manage', orgId, userHeader, request);
+    } catch (error) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+  }
+  let processedTotal = 0;
+  let nextToken: string | null = null;
+  const loops = Math.max(1, Math.min(batches ?? 5, 20));
+  for (let i = 0; i < loops; i++) {
+    const res = await fetch(`${env.SUPABASE_URL?.replace(/\/?$/, '') ?? ''}/gdrive/process-changes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serviceKey}`,
+        ...(isInternal ? {} : { 'x-user-id': String(userHeader) }),
+      },
+      body: JSON.stringify({ orgId, pageToken: nextToken ?? null }),
+    });
+    const json = (await res.json()) as { processed?: number; next_page_token?: string | null };
+    processedTotal += json.processed ?? 0;
+    nextToken = json.next_page_token ?? nextToken;
+  }
+  return { processed: processedTotal, next_page_token: nextToken };
+});
+
 
 app.post<{
   Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
@@ -3072,7 +4706,7 @@ app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply
   const { data, error } = await supabase
     .from('sources')
     .select(
-      'id, title, source_type, jurisdiction_code, source_url, publisher, binding_lang, consolidated, language_note, effective_date, created_at, capture_sha256',
+      'id, title, source_type, jurisdiction_code, source_url, publisher, binding_lang, consolidated, language_note, effective_date, created_at, capture_sha256, link_last_status, link_last_checked_at',
     )
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
@@ -3083,6 +4717,8 @@ app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply
     return reply.code(500).send({ error: 'citations_failed' });
   }
 
+  const now = Date.now();
+  const staleThresholdMs = 30 * 24 * 60 * 60 * 1000;
   return {
     entries: (data ?? []).map((row) => ({
       id: row.id,
@@ -3097,6 +4733,12 @@ app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply
       effectiveDate: row.effective_date,
       capturedAt: row.created_at,
       checksum: row.capture_sha256,
+      stale:
+        row.link_last_status === 'stale' ||
+        (row.link_last_checked_at && now - new Date(row.link_last_checked_at).getTime() > staleThresholdMs)
+          ? true
+          : false,
+      linkStatus: row.link_last_status ?? null,
     })),
   };
 });
@@ -4568,3 +6210,415 @@ if (process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') {
 }
 
 export { app };
+// C2PA signing (simplified placeholder: returns a signature over content hash)
+app.post<{ Body: { orgId?: string; contentSha256?: string; filename?: string } }>('/exports/sign', async (request, reply) => {
+  const { orgId, contentSha256, filename } = request.body ?? {};
+  if (!orgId || !contentSha256) {
+    return reply.code(400).send({ error: 'orgId and contentSha256 are required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+  try {
+    await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+  // In a real implementation, perform C2PA signing with a private key and embed manifest.
+  const keyId = process.env.C2PA_SIGNING_KEY_ID ?? 'dev-key';
+  const signedAt = new Date().toISOString();
+  const signature = `${keyId}.${contentSha256}.${Buffer.from(signedAt).toString('base64url')}`;
+  return { signature, keyId, signedAt, filename: filename ?? null };
+});
+
+// Admin policies
+app.get<{ Params: { orgId: string } }>(
+  '/admin/org/:orgId/policies',
+  async (request, reply) => {
+    const { orgId } = request.params;
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+    try {
+      await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+    } catch (error) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+    const { data, error } = await supabase.from('org_policies').select('key, value').eq('org_id', orgId);
+    if (error) return reply.code(500).send({ error: 'policies_failed' });
+    const record: Record<string, unknown> = {};
+    for (const row of data ?? []) {
+      record[(row as any).key as string] = (row as any).value;
+    }
+    return { policies: record };
+  },
+);
+
+app.patch<{ Params: { orgId: string }; Body: { updates?: Array<{ key: string; value: unknown }>; removes?: string[] } }>(
+  '/admin/org/:orgId/policies',
+  async (request, reply) => {
+    const { orgId } = request.params;
+    const { updates, removes } = request.body ?? {};
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+    try {
+      await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+    } catch (error) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+    const nowIso = new Date().toISOString();
+    if (Array.isArray(updates) && updates.length > 0) {
+      const rows = updates.map((u) => ({
+        org_id: orgId,
+        key: u.key,
+        value: u.value,
+        updated_by: userHeader,
+        updated_at: nowIso,
+      }));
+      const up = await supabase.from('org_policies').upsert(rows, { onConflict: 'org_id,key' });
+      if (up.error) return reply.code(500).send({ error: 'policies_update_failed' });
+
+      for (const entry of updates) {
+        try {
+          await logAuditEvent({
+            orgId,
+            actorId: userHeader,
+            kind: 'policy.updated',
+            object: entry.key,
+            after: entry.value as Record<string, unknown> | null,
+          });
+        } catch (auditError) {
+          request.log.warn({ err: auditError }, 'audit_policy_update_failed');
+        }
+      }
+    }
+    if (Array.isArray(removes) && removes.length > 0) {
+      const del = await supabase.from('org_policies').delete().eq('org_id', orgId).in('key', removes);
+      if (del.error) return reply.code(500).send({ error: 'policies_delete_failed' });
+
+      for (const key of removes) {
+        try {
+          await logAuditEvent({
+            orgId,
+            actorId: userHeader,
+            kind: 'policy.removed',
+            object: key,
+          });
+        } catch (auditError) {
+          request.log.warn({ err: auditError }, 'audit_policy_remove_failed');
+        }
+      }
+    }
+    return { ok: true };
+  },
+);
+
+// Alerts snapshot for dashboards
+app.get<{ Querystring: { orgId?: string } }>(
+  '/metrics/alerts',
+  async (request, reply) => {
+    const { orgId } = request.query;
+    if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+    try {
+      await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
+    } catch (error) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+    const [metrics, provenance] = await Promise.all([
+      supabase.from('org_metrics').select('*').eq('org_id', orgId).limit(1).maybeSingle(),
+      supabase.from('org_provenance_metrics').select('*').eq('org_id', orgId).limit(1).maybeSingle(),
+    ]);
+    const thresholds = {
+      precision: 0.95,
+      temporal: 0.95,
+      linkHealthFailureRatioMax: 0.05,
+    };
+    const precisionOk = (metrics.data?.citation_precision_p95 ?? 1) >= thresholds.precision;
+    const temporalOk = (metrics.data?.temporal_validity_p95 ?? 1) >= thresholds.temporal;
+    const totalSources = provenance.data?.total_sources ?? 0;
+    const failed = provenance.data?.link_failed ?? 0;
+    const linkOk = totalSources === 0 ? true : failed / totalSources <= thresholds.linkHealthFailureRatioMax;
+    return {
+      thresholds,
+      results: {
+        citationPrecision: { ok: precisionOk, value: metrics.data?.citation_precision_p95 ?? null },
+        temporalValidity: { ok: temporalOk, value: metrics.data?.temporal_validity_p95 ?? null },
+        linkHealth: { ok: linkOk, failed, totalSources },
+      },
+    };
+  },
+);
+
+// Export jobs
+app.get<{ Params: { orgId: string } }>(
+  '/admin/org/:orgId/exports',
+  async (request, reply) => {
+    const { orgId } = request.params;
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+    try {
+      await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+    } catch (error) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+    const { data, error } = await supabase
+      .from('export_jobs')
+      .select('id, format, status, file_path, error, created_at, completed_at')
+      .eq('org_id', orgId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) return reply.code(500).send({ error: 'exports_failed' });
+
+    // Create signed URLs for file_path where present
+    const rows = [] as Array<any>;
+    for (const row of data ?? []) {
+      let signedUrl: string | null = null;
+      if (row.file_path) {
+        const signed = await supabase.storage.from('snapshots').createSignedUrl(row.file_path, 60 * 60);
+        if (!signed.error) signedUrl = signed.data?.signedUrl ?? null;
+      }
+      rows.push({ ...row, signedUrl });
+    }
+    return { exports: rows };
+  },
+);
+
+app.post<{ Params: { orgId: string }; Body: { format?: 'csv' | 'json' } }>(
+  '/admin/org/:orgId/export',
+  async (request, reply) => {
+    const { orgId } = request.params;
+    const { format } = request.body ?? {};
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+    try {
+      await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+    } catch (error) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    // Insert job
+    const ins = await supabase
+      .from('export_jobs')
+      .insert({ org_id: orgId, requested_by: userHeader, format: format ?? 'csv', status: 'pending' })
+      .select('id')
+      .single();
+    if (ins.error || !ins.data) return reply.code(500).send({ error: 'export_insert_failed' });
+    const jobId = (ins.data as any).id as string;
+
+    // Build export snapshot
+    const { data: sources, error } = await supabase
+      .from('sources')
+      .select('jurisdiction_code, source_type, title, publisher, source_url, binding_lang, consolidated, effective_date, eli, ecli, link_last_status')
+      .eq('org_id', orgId);
+    if (error) return reply.code(500).send({ error: 'export_query_failed' });
+
+    let filePath = `${orgId}/exports/export-${Date.now()}.${format ?? 'csv'}`;
+    let status: 'completed' | 'failed' = 'completed';
+    let errorMessage: string | null = null;
+    try {
+      if ((format ?? 'csv') === 'json') {
+        const blob = new Blob([JSON.stringify(sources ?? [], null, 2)], { type: 'application/json' });
+        const up = await supabase.storage.from('snapshots').upload(filePath, blob, { upsert: true, contentType: 'application/json' });
+        if (up.error) throw new Error(up.error.message);
+      } else {
+        // CSV
+        const header = [
+          'jurisdiction',
+          'type',
+          'title',
+          'publisher',
+          'url',
+          'binding_lang',
+          'consolidated',
+          'effective_date',
+          'eli',
+          'ecli',
+          'link_status',
+        ];
+        const rows = (sources ?? []).map((s: any) => [
+          s.jurisdiction_code ?? '',
+          s.source_type ?? '',
+          (s.title ?? '').replaceAll('"', '""'),
+          (s.publisher ?? '').replaceAll('"', '""'),
+          s.source_url ?? '',
+          s.binding_lang ?? '',
+          String(Boolean(s.consolidated)),
+          s.effective_date ?? '',
+          s.eli ?? '',
+          s.ecli ?? '',
+          s.link_last_status ?? '',
+        ]);
+        const csv = [header, ...rows]
+          .map((r) => r.map((v) => `"${String(v)}"`).join(','))
+          .join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const up = await supabase.storage.from('snapshots').upload(filePath, blob, { upsert: true, contentType: 'text/csv' });
+        if (up.error) throw new Error(up.error.message);
+      }
+    } catch (e) {
+      status = 'failed';
+      errorMessage = (e as Error).message ?? 'export_failed';
+    }
+    await supabase
+      .from('export_jobs')
+      .update({ status, file_path: status === 'completed' ? filePath : null, error: errorMessage, completed_at: new Date().toISOString() })
+      .eq('id', jobId);
+
+    return { id: jobId, status, filePath: status === 'completed' ? filePath : null };
+  },
+);
+
+// Deletion requests
+app.get<{ Params: { orgId: string } }>(
+  '/admin/org/:orgId/deletion-requests',
+  async (request, reply) => {
+    const { orgId } = request.params;
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+    try {
+      await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+    } catch (error) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+    const { data, error } = await supabase
+      .from('deletion_requests')
+      .select('id, target, target_id, reason, status, created_at, processed_at, error')
+      .eq('org_id', orgId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) return reply.code(500).send({ error: 'deletion_list_failed' });
+    return { requests: data ?? [] };
+  },
+);
+
+app.post<{ Params: { orgId: string }; Body: { target: 'document' | 'source' | 'org'; id?: string; reason?: string } }>(
+  '/admin/org/:orgId/delete',
+  async (request, reply) => {
+    const { orgId } = request.params;
+    const { target, id, reason } = request.body ?? {};
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+    try {
+      await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+    } catch (error) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+    const ins = await supabase
+      .from('deletion_requests')
+      .insert({ org_id: orgId, requested_by: userHeader, target, target_id: id ?? null, reason: reason ?? null, status: 'pending' })
+      .select('id')
+      .single();
+    if (ins.error || !ins.data) return reply.code(500).send({ error: 'deletion_insert_failed' });
+    const reqId = (ins.data as any).id as string;
+
+    // Process synchronously for documents only (demo path)
+    let status: 'completed' | 'failed' = 'completed';
+    let errorMessage: string | null = null;
+    if (target === 'document' && id) {
+      try {
+        const doc = await supabase
+          .from('documents')
+          .select('id, org_id, bucket_id, storage_path')
+          .eq('id', id)
+          .eq('org_id', orgId)
+          .maybeSingle();
+        if (doc.error || !doc.data) throw new Error('document_not_found');
+        const del = await supabase.storage.from(doc.data.bucket_id as string).remove([doc.data.storage_path as string]);
+        if (del.error) throw new Error(del.error.message);
+        await supabase.from('documents').delete().eq('id', id).eq('org_id', orgId);
+        await supabase.from('document_chunks').delete().eq('document_id', id).eq('org_id', orgId);
+      } catch (e) {
+        status = 'failed';
+        errorMessage = (e as Error).message ?? 'deletion_failed';
+      }
+    }
+    await supabase
+      .from('deletion_requests')
+      .update({ status, processed_at: new Date().toISOString(), error: errorMessage })
+      .eq('id', reqId);
+    return { id: reqId, status };
+  },
+);
+// Recompute case scores for an organization
+app.post<{ Body: { orgId?: string; limit?: number } }>('/cases/recompute', async (request, reply) => {
+  const { orgId, limit } = request.body ?? {};
+  if (!orgId) return reply.code(400).send({ error: 'orgId is required' });
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') return reply.code(400).send({ error: 'x-user-id header is required' });
+  try {
+    await authorizeRequestWithGuards('cases:view', orgId, userHeader, request);
+  } catch (error) {
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const { data: cases, error } = await supabase
+    .from('sources')
+    .select('id, jurisdiction_code, trust_tier, court_rank, binding_lang, effective_date, created_at')
+    .eq('org_id', orgId)
+    .eq('source_type', 'case')
+    .order('created_at', { ascending: false })
+    .limit(Math.max(1, Math.min(limit ?? 200, 1000)));
+  if (error) return reply.code(500).send({ error: 'sources_failed' });
+
+  let updated = 0;
+  for (const row of cases ?? []) {
+    const sourceId = (row as any).id as string;
+    const juris = (row as any).jurisdiction_code as string;
+    const trustTier = (((row as any).trust_tier as string) ?? 'T2') as 'T1' | 'T2' | 'T3' | 'T4';
+    const courtRank = (row as any).court_rank as string | null;
+    const bindingLang = (row as any).binding_lang as string | null;
+    const effectiveDate = (row as any).effective_date as string | null;
+    const createdAt = (row as any).created_at as string | null;
+
+    const [treatmentsRes, alignmentsRes] = await Promise.all([
+      supabase
+        .from('case_treatments')
+        .select('treatment, weight, decided_at')
+        .eq('org_id', orgId)
+        .eq('source_id', sourceId),
+      supabase
+        .from('case_statute_links')
+        .select('alignment_score')
+        .eq('org_id', orgId)
+        .eq('case_source_id', sourceId),
+    ]);
+    if (treatmentsRes.error || alignmentsRes.error) {
+      continue;
+    }
+    const signals = {
+      trustTier,
+      courtRank,
+      jurisdiction: juris,
+      bindingJurisdiction: juris,
+      politicalRiskFlag: false,
+      bindingLanguage: bindingLang,
+      effectiveDate,
+      createdAt,
+      treatments: (treatmentsRes.data ?? []).map((t) => ({ treatment: t.treatment as string, weight: (t.weight as number) ?? 1, decidedAt: (t.decided_at as string) ?? null })),
+      statuteAlignments: (alignmentsRes.data ?? []).map((a) => ({ alignmentScore: (a.alignment_score as number) ?? null })),
+      riskOverlays: [],
+    } as const;
+    const result = evaluateCaseQuality(signals);
+    const upsert = await supabase
+      .from('case_scores')
+      .upsert(
+        {
+          org_id: orgId,
+          source_id: sourceId,
+          juris_code: juris,
+          score_overall: result.score,
+          axes: result.axes as any,
+          hard_block: result.hardBlock,
+          model_ref: 'policy_v1',
+          computed_at: new Date().toISOString(),
+        },
+        { onConflict: 'source_id' },
+      )
+      .select('id')
+      .maybeSingle();
+    if (!upsert.error) updated += 1;
+  }
+  return { updated };
+});

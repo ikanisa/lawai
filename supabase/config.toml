@@ -367,3 +367,52 @@ verify_jwt = false
 [[functions."regulator-digest".schedules]]
 cron = "0 6 * * *"
 args = "{\"days\":7}"
+
+[functions."gdrive-delta"]
+verify_jwt = false
+
+[[functions."gdrive-delta".schedules]]
+cron = "*/10 * * * *"
+args = "{}"
+
+[functions."learning-collector"]
+verify_jwt = false
+
+[[functions."learning-collector".schedules]]
+cron = "*/10 * * * *"
+args = "{}"
+
+[functions."learning-diagnoser"]
+verify_jwt = false
+
+[[functions."learning-diagnoser".schedules]]
+cron = "*/30 * * * *"
+args = "{}"
+
+[functions."learning-applier"]
+verify_jwt = false
+
+[[functions."learning-applier".schedules]]
+cron = "0 * * * *"
+args = "{}"
+
+[functions."evaluate-and-gate"]
+verify_jwt = false
+
+[[functions."evaluate-and-gate".schedules]]
+cron = "30 2 * * *"
+args = "{}"
+
+[functions."link-health"]
+verify_jwt = false
+
+[[functions."link-health".schedules]]
+cron = "0 3 * * *"
+args = "{}"
+
+[functions."case-recompute"]
+verify_jwt = false
+
+[[functions."case-recompute".schedules]]
+cron = "30 1 * * *"
+args = "{}"

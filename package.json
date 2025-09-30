@@ -21,6 +21,7 @@
     "ops:regulator-digest": "pnpm --filter @apps/ops regulator-digest",
     "ops:go-no-go": "pnpm --filter @apps/ops go-no-go",
     "ops:check": "pnpm --filter @apps/ops check",
+    "ops:link-health": "pnpm --filter @apps/ops link-health",
     "ops:rotate-secrets": "pnpm --filter @apps/ops rotate-secrets",
     "ops:rls-smoke": "pnpm --filter @apps/ops rls-smoke",
     "ops:phase": "pnpm --filter @apps/ops phase",

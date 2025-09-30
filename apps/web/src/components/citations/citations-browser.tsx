@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import type { Locale, Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, fetchCitations, fetchCorpus, fetchSnapshotDiff } from '../../lib/api';
+import { DEMO_ORG_ID, fetchCitations, fetchCorpus, fetchSnapshotDiff, fetchCaseScore } from '../../lib/api';
 
 interface CitationsBrowserProps {
   messages: Messages;
@@ -24,6 +24,8 @@ interface CitationEntry {
   bindingLanguage?: string;
   languageNote?: string;
   effectiveDate?: string;
+  sourceType?: string;
+  stale?: boolean;
 }
 
 interface SnapshotSummary {
@@ -121,11 +123,15 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
                 {entry.languageNote?.toLowerCase().includes('traduction') ? (
                   <Badge variant="warning">{messages.citationsBrowser.translation}</Badge>
                 ) : null}
+                {entry.stale ? <Badge variant="warning">{messages.citationsBrowser.stale}</Badge> : null}
               </div>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-slate-200">
               <p>{entry.publisher ?? '—'}</p>
               <p className="text-xs text-slate-400">{entry.url}</p>
+              {entry.sourceType === 'case' ? (
+                <CaseScoreBadge sourceId={entry.id} />
+              ) : null}
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{messages.citationsBrowser.metadata}</Badge>
                 <span className="text-xs text-slate-400">
@@ -217,6 +223,34 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function CaseScoreBadge({ sourceId }: { sourceId: string }) {
+  const scoreQuery = useQuery({
+    queryKey: ['case-score', sourceId],
+    queryFn: () => fetchCaseScore(DEMO_ORG_ID, sourceId),
+    staleTime: 60_000,
+  });
+  if (scoreQuery.isLoading) return <Badge variant="outline">Score…</Badge>;
+  const s = scoreQuery.data;
+  if (!s) return null;
+  const band = s.score >= 85 ? 'success' : s.score >= 70 ? 'warning' : 'default';
+  return (
+    <div className="flex items-center gap-2">
+      <Badge variant={band as any}>Score {Math.round(s.score)}</Badge>
+      <details className="text-xs text-slate-400">
+        <summary className="cursor-pointer text-teal-200">Why this score</summary>
+        <div className="mt-2 space-y-1">
+          {Object.entries(s.axes).map(([axis, value]) => (
+            <div key={axis} className="flex items-center justify-between gap-3">
+              <span className="text-slate-300">{axis}</span>
+              <span>{Math.round(Number(value))}</span>
+            </div>
+          ))}
+        </div>
+      </details>
     </div>
   );
 }

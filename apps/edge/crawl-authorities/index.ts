@@ -230,23 +230,31 @@ type DownloadResult = {
   lastModified?: string | null;
 };
 
+async function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function downloadDocument(doc: NormalizedDocument): Promise<DownloadResult> {
-  try {
-    const response = await fetch(doc.downloadUrl, { method: 'GET' });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+  const attempts = [0, 500, 1500];
+  for (let i = 0; i < attempts.length; i++) {
+    if (attempts[i] > 0) await delay(attempts[i]);
+    try {
+      const response = await fetch(doc.downloadUrl, { method: 'GET' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      const payload = new Uint8Array(arrayBuffer);
+      if (payload.byteLength > 0) {
+        return {
+          payload,
+          etag: response.headers.get('etag'),
+          lastModified: response.headers.get('last-modified'),
+        };
+      }
+    } catch (error) {
+      console.warn(`Attempt ${i + 1} failed to download ${doc.downloadUrl}:`, error);
     }
-    const arrayBuffer = await response.arrayBuffer();
-    const payload = new Uint8Array(arrayBuffer);
-    if (payload.byteLength > 0) {
-      return {
-        payload,
-        etag: response.headers.get('etag'),
-        lastModified: response.headers.get('last-modified'),
-      };
-    }
-  } catch (error) {
-    console.warn(`Unable to download ${doc.downloadUrl}:`, error);
   }
   const fallback = `Document placeholder for ${doc.title} (${doc.canonicalUrl})`;
   return {

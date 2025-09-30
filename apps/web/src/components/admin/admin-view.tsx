@@ -1,13 +1,14 @@
 'use client';
 
 import type { FormEvent } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
+import { Switch } from '../../components/ui/switch';
 import {
   DEMO_ORG_ID,
   fetchGovernanceMetrics,
@@ -22,6 +23,11 @@ import {
   fetchScimTokens,
   createScimAccessToken,
   deleteScimAccessToken,
+  fetchOrgMembers,
+  createOrgInvite,
+  updateMemberRole,
+  fetchJurisdictions,
+  updateJurisdictions,
   fetchAuditEvents,
   fetchIpAllowlist,
   upsertIpAllowlistEntry,
@@ -29,6 +35,11 @@ import {
   type ScimTokenResponse,
   fetchOperationsOverview,
   type OperationsOverviewResponse,
+  fetchOrgPolicies,
+  updateOrgPolicies,
+  fetchAlerts,
+  fetchLearningMetrics,
+  fetchLearningSignals,
 } from '../../lib/api';
 import type { Locale, Messages } from '../../lib/i18n';
 import { OperationsOverviewCard } from '../governance/operations-overview-card';
@@ -41,6 +52,8 @@ interface AdminViewProps {
 
 const selectClassName =
   'focus-ring w-full rounded-2xl border border-slate-600/60 bg-slate-900/60 px-4 py-3 text-sm text-slate-100';
+
+const ADMIN_JURISDICTIONS = ['FR', 'BE', 'LU', 'CH-FR', 'CA-QC', 'MC', 'OHADA', 'MA', 'TN', 'DZ', 'RW', 'EU'];
 
 function useGovernanceMetrics() {
   return useQuery<GovernanceMetricsResponse>({
@@ -58,6 +71,12 @@ export function AdminView({ messages, locale }: AdminViewProps) {
     queryFn: () => fetchOperationsOverview(DEMO_ORG_ID),
     staleTime: 60_000,
   });
+  const policiesQuery = useQuery({ queryKey: ['admin-policies', DEMO_ORG_ID], queryFn: () => fetchOrgPolicies(DEMO_ORG_ID, DEMO_USER_ID) });
+  const alertsQuery = useQuery({ queryKey: ['alerts', DEMO_ORG_ID], queryFn: () => fetchAlerts(DEMO_ORG_ID), refetchInterval: 60000 });
+  const exportsQuery = useQuery({ queryKey: ['exports', DEMO_ORG_ID], queryFn: () => fetchExports(DEMO_ORG_ID) });
+  const deletionQuery = useQuery({ queryKey: ['deletion-requests', DEMO_ORG_ID], queryFn: () => fetchDeletionRequests(DEMO_ORG_ID) });
+  const exportMutation = useMutation({ mutationFn: (fmt: 'csv' | 'json') => requestExport(DEMO_ORG_ID, fmt), onSuccess: () => { toast.success('Export demandé'); queryClient.invalidateQueries({ queryKey: ['exports', DEMO_ORG_ID] }); } });
+  const deletionMutation = useMutation({ mutationFn: (payload: { id: string; reason?: string }) => createDeletionRequest(DEMO_ORG_ID, 'document', payload.id, payload.reason), onSuccess: () => { toast.success('Suppression demandée'); queryClient.invalidateQueries({ queryKey: ['deletion-requests', DEMO_ORG_ID] }); } });
   const overview = metricsQuery.data?.overview ?? null;
   const toolRows = metricsQuery.data?.tools ?? [];
   const jurisdictionLabels = useMemo(
@@ -100,6 +119,22 @@ export function AdminView({ messages, locale }: AdminViewProps) {
     () => new Intl.DateTimeFormat(intlLocale, { dateStyle: 'short', timeStyle: 'short' }),
     [intlLocale],
   );
+  const members = membersQuery.data?.members ?? [];
+  const jurisdictionAccess = useMemo(() => {
+    const map = new Map<string, { can_read: boolean; can_write: boolean }>();
+    for (const entry of jurisdictionsQuery.data?.entitlements ?? []) {
+      map.set(entry.juris_code.toUpperCase(), {
+        can_read: Boolean(entry.can_read),
+        can_write: Boolean(entry.can_write),
+      });
+    }
+    return map;
+  }, [jurisdictionsQuery.data]);
+  const learningMetrics = learningMetricsQuery.data?.metrics ?? [];
+  const learningSignals = learningSignalsQuery.data?.signals ?? [];
+  const allowlistedMetric = learningMetrics.find((metric) => metric.metric === 'citations_allowlisted_ratio');
+  const deadLinkMetric = learningMetrics.find((metric) => metric.metric === 'dead_link_rate');
+  const learningSignalsDisplayed = learningSignals.slice(0, 10);
 
   const formatPercent = (value: number | null | undefined): string => {
     if (value === null || value === undefined) return '—';
@@ -153,11 +188,29 @@ export function AdminView({ messages, locale }: AdminViewProps) {
   });
   const auditQuery = useQuery({
     queryKey: ['admin-audit', DEMO_ORG_ID],
-    queryFn: () => fetchAuditEvents(DEMO_ORG_ID, 25),
+    queryFn: () => fetchAuditEvents(DEMO_ORG_ID, DEMO_USER_ID, 25),
   });
   const ipQuery = useQuery({
     queryKey: ['admin-ip', DEMO_ORG_ID],
     queryFn: () => fetchIpAllowlist(DEMO_ORG_ID),
+  });
+  const membersQuery = useQuery({
+    queryKey: ['admin-members', DEMO_ORG_ID],
+    queryFn: () => fetchOrgMembers(DEMO_ORG_ID, DEMO_USER_ID),
+  });
+  const jurisdictionsQuery = useQuery({
+    queryKey: ['admin-jurisdictions', DEMO_ORG_ID],
+    queryFn: () => fetchJurisdictions(DEMO_ORG_ID, DEMO_USER_ID),
+  });
+  const learningMetricsQuery = useQuery({
+    queryKey: ['learning-metrics', DEMO_ORG_ID],
+    queryFn: () => fetchLearningMetrics({ limit: 50 }),
+    refetchInterval: 60_000,
+  });
+  const learningSignalsQuery = useQuery({
+    queryKey: ['learning-signals', DEMO_ORG_ID],
+    queryFn: () => fetchLearningSignals(DEMO_ORG_ID, DEMO_USER_ID, 50),
+    refetchInterval: 60_000,
   });
 
   const [ssoProvider, setSsoProvider] = useState<'saml' | 'oidc'>('saml');
@@ -170,6 +223,32 @@ export function AdminView({ messages, locale }: AdminViewProps) {
   const [lastScimToken, setLastScimToken] = useState<ScimTokenResponse | null>(null);
   const [ipCidr, setIpCidr] = useState('');
   const [ipDescription, setIpDescription] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('member');
+  const [latestInvite, setLatestInvite] = useState<{ token: string; expires_at: string } | null>(null);
+  const [confidentialMode, setConfidentialMode] = useState(false);
+  const [frMode, setFrMode] = useState(true);
+  const [residencyZone, setResidencyZone] = useState('eu');
+  const [deleteDocId, setDeleteDocId] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
+  useEffect(() => {
+    const p = policiesQuery.data?.policies ?? {};
+    const conf = (p['confidential_mode'] as any)?.enabled ?? p['confidential_mode'] ?? false;
+    const fr = (p['fr_judge_analytics_block'] as any)?.enabled ?? p['fr_judge_analytics_block'] ?? true;
+    const rz = (p['residency_zone'] as any)?.code ?? p['residency_zone'] ?? 'eu';
+    setConfidentialMode(Boolean(conf));
+    setFrMode(Boolean(fr));
+    setResidencyZone(typeof rz === 'string' ? rz : 'eu');
+  }, [policiesQuery.data]);
+  const savePolicies = async () => {
+    await updateOrgPolicies(DEMO_ORG_ID, DEMO_USER_ID, [
+      { key: 'confidential_mode', value: { enabled: confidentialMode } },
+      { key: 'fr_judge_analytics_block', value: { enabled: frMode } },
+      { key: 'residency_zone', value: { code: residencyZone } },
+    ]);
+    toast.success('Politiques mises à jour');
+    await queryClient.invalidateQueries({ queryKey: ['admin-policies', DEMO_ORG_ID] });
+  };
   const providerLabels = useMemo(
     () => ({
       saml: messages.admin.ssoProviderSaml,
@@ -289,19 +368,58 @@ export function AdminView({ messages, locale }: AdminViewProps) {
     expiresAt?: string | null;
     lastUsedAt?: string | null;
   }>;
-  const auditEvents = (auditQuery.data?.events ?? []) as Array<{
-    id: string;
-    kind: string;
-    object: string;
-    created_at: string;
-    actor_user_id?: string | null;
-  }>;
+  const auditEvents = useMemo(
+    () =>
+      (auditQuery.data?.events ?? []).map((event: any) => ({
+        id: event.id as string,
+        kind: event.kind as string,
+        object: (event.object as string | null) ?? '—',
+        actor: (event.actor_user_id as string | null) ?? messages.admin.auditSystem,
+        ts: (event.ts as string | null) ?? (event.created_at as string | null) ?? null,
+      })),
+    [auditQuery.data, messages.admin.auditSystem],
+  );
   const ipEntries = (ipQuery.data?.entries ?? []) as Array<{
     id: string;
     cidr: string;
     description?: string | null;
     created_at?: string | null;
   }>;
+  const inviteMutation = useMutation({
+    mutationFn: (payload: { email: string; role: string; expiresInHours?: number }) =>
+      createOrgInvite(DEMO_ORG_ID, DEMO_USER_ID, payload),
+    onSuccess: (data) => {
+      toast.success(messages.admin.inviteSuccess);
+      setLatestInvite(data);
+      setInviteEmail('');
+      queryClient.invalidateQueries({ queryKey: ['admin-members', DEMO_ORG_ID] });
+    },
+    onError: () => {
+      toast.error(messages.admin.inviteError);
+    },
+  });
+  const memberRoleMutation = useMutation({
+    mutationFn: (payload: { userId: string; role: string }) =>
+      updateMemberRole(DEMO_ORG_ID, DEMO_USER_ID, payload.userId, payload.role),
+    onSuccess: () => {
+      toast.success(messages.admin.roleUpdated);
+      queryClient.invalidateQueries({ queryKey: ['admin-members', DEMO_ORG_ID] });
+    },
+    onError: () => {
+      toast.error(messages.admin.roleUpdateError);
+    },
+  });
+  const jurisdictionMutation = useMutation({
+    mutationFn: (payload: { juris_code: string; can_read: boolean; can_write: boolean }) =>
+      updateJurisdictions(DEMO_ORG_ID, DEMO_USER_ID, [payload]),
+    onSuccess: () => {
+      toast.success(messages.admin.jurisdictionUpdated);
+      queryClient.invalidateQueries({ queryKey: ['admin-jurisdictions', DEMO_ORG_ID] });
+    },
+    onError: () => {
+      toast.error(messages.admin.jurisdictionError);
+    },
+  });
 
   const handleSsoSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -328,6 +446,33 @@ export function AdminView({ messages, locale }: AdminViewProps) {
     }
     addIpMutation.mutate();
   };
+  const handleInviteSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!inviteEmail.trim()) {
+      toast.error(messages.admin.inviteEmailRequired);
+      return;
+    }
+    inviteMutation.mutate({ email: inviteEmail.trim(), role: inviteRole });
+  };
+  const handleMemberRoleChange = (userId: string, role: string) => {
+    memberRoleMutation.mutate({ userId, role });
+  };
+  const getJurisdictionAccess = (code: string) => {
+    return (
+      jurisdictionAccess.get(code.toUpperCase()) ?? {
+        can_read: false,
+        can_write: false,
+      }
+    );
+  };
+  const handleJurisdictionToggle = (code: string, field: 'can_read' | 'can_write') => {
+    const current = getJurisdictionAccess(code);
+    jurisdictionMutation.mutate({
+      juris_code: code,
+      can_read: field === 'can_read' ? !current.can_read : current.can_read,
+      can_write: field === 'can_write' ? !current.can_write : current.can_write,
+    });
+  };
 
   const handleCopyToken = async () => {
     if (!lastScimToken?.token) return;
@@ -341,6 +486,74 @@ export function AdminView({ messages, locale }: AdminViewProps) {
     } catch (error) {
       console.error('Failed to copy SCIM token', error);
       toast.error(messages.admin.scimCopyError);
+    }
+  };
+
+  // Google Drive watch state
+  const [driveId, setDriveId] = useState('');
+  const [folderId, setFolderId] = useState('');
+  const [gdriveState, setGdriveState] = useState<{ expiration?: string | null; drive_id?: string | null; folder_id?: string | null } | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const api = await import('../../lib/api');
+        const res = await api.fetchGDriveState(DEMO_ORG_ID, DEMO_ORG_ID);
+        setGdriveState(res.state);
+        if (res.state?.drive_id) setDriveId(res.state.drive_id);
+        if (res.state?.folder_id) setFolderId(res.state.folder_id);
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+  const installGDrive = async () => {
+    try {
+      const api = await import('../../lib/api');
+      const res = await api.gdriveInstall(DEMO_ORG_ID, DEMO_ORG_ID, driveId || null, folderId || null);
+      setGdriveState(res.state);
+      toast.success('GDrive installé');
+    } catch (e) {
+      toast.error('Échec installation GDrive');
+    }
+  };
+  const renewGDrive = async () => {
+    try {
+      const api = await import('../../lib/api');
+      const res = await api.gdriveRenew(DEMO_ORG_ID, DEMO_ORG_ID);
+      setGdriveState(res.state);
+      toast.success('GDrive renouvelé');
+    } catch (e) {
+      toast.error('Échec renouvellement GDrive');
+    }
+  };
+  const uninstallGDrive = async () => {
+    try {
+      const api = await import('../../lib/api');
+      await api.gdriveUninstall(DEMO_ORG_ID, DEMO_ORG_ID);
+      setGdriveState(null);
+      toast.success('GDrive désinstallé');
+    } catch (e) {
+      toast.error('Échec désinstallation GDrive');
+    }
+  };
+  const processChangesNow = async () => {
+    try {
+      const api = await import('../../lib/api');
+      const res = await api.gdriveProcessChanges(DEMO_ORG_ID, DEMO_ORG_ID, null);
+      setGdriveState((s) => ({ ...s, last_page_token: res.next_page_token } as any));
+      toast.success(`Traitement: ${res.processed}`);
+    } catch (e) {
+      toast.error('Échec traitement des changements');
+    }
+  };
+  const backfillNow = async () => {
+    try {
+      const api = await import('../../lib/api');
+      const res = await api.gdriveBackfill(DEMO_ORG_ID, DEMO_ORG_ID, 5);
+      setGdriveState((s) => ({ ...s, last_page_token: res.next_page_token } as any));
+      toast.success(`Backfill: ${res.processed}`);
+    } catch (e) {
+      toast.error('Échec backfill');
     }
   };
 
@@ -421,6 +634,235 @@ export function AdminView({ messages, locale }: AdminViewProps) {
               />
           </CardContent>
         </Card>
+
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
+            <CardTitle className="text-slate-100">{messages.admin.peopleTitle}</CardTitle>
+            <p className="text-sm text-slate-400">{messages.admin.peopleDescription}</p>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-slate-200">
+            <form className="grid gap-3 md:grid-cols-[2fr_1fr_1fr]" onSubmit={handleInviteSubmit}>
+              <Input
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+                placeholder="avocat@example.com"
+                aria-label={messages.admin.inviteEmailLabel}
+              />
+              <select className={selectClassName} value={inviteRole} onChange={(event) => setInviteRole(event.target.value)}>
+                {roleOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <Button type="submit" disabled={inviteMutation.isPending}>
+                {inviteMutation.isPending ? messages.admin.inviteSending : messages.admin.inviteSend}
+              </Button>
+            </form>
+            {latestInvite ? (
+              <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200">
+                <p className="font-semibold">{messages.admin.inviteLatest}</p>
+                <p className="break-all">{latestInvite.token}</p>
+                <p className="text-emerald-300/70">{messages.admin.inviteExpires} {formatDateTime(latestInvite.expires_at)}</p>
+              </div>
+            ) : null}
+
+            {membersQuery.isLoading ? (
+              <p className="text-slate-400">{messages.admin.loading}</p>
+            ) : members.length === 0 ? (
+              <p className="text-slate-400">{messages.admin.membersEmpty}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-xs uppercase tracking-wide text-slate-400">
+                  <thead>
+                    <tr>
+                      <th className="pb-2 pr-3">{messages.admin.memberName}</th>
+                      <th className="pb-2 pr-3">Email</th>
+                      <th className="pb-2 pr-3">{messages.admin.memberPhone}</th>
+                      <th className="pb-2 pr-3">{messages.admin.memberRole}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                    {members.map((member) => (
+                      <tr key={member.user_id}>
+                        <td className="py-2 pr-3">{member.profile?.full_name ?? messages.admin.memberUnknown}</td>
+                        <td className="py-2 pr-3 text-slate-400">{member.profile?.email ?? '—'}</td>
+                        <td className="py-2 pr-3 text-slate-400">{member.profile?.phone_e164 ?? '—'}</td>
+                        <td className="py-2 pr-3">
+                          <select
+                            className={selectClassName}
+                            value={member.role}
+                            onChange={(event) => handleMemberRoleChange(member.user_id, event.target.value)}
+                            disabled={memberRoleMutation.isPending}
+                          >
+                            {roleOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
+            <CardTitle className="text-slate-100">{messages.admin.policyTitle}</CardTitle>
+            <p className="text-sm text-slate-400">{messages.admin.policyDescription}</p>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-slate-200">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
+                <div>
+                  <p className="font-semibold text-slate-100">{messages.admin.confidentialMode}</p>
+                  <p className="text-xs text-slate-400">{messages.admin.confidentialHint}</p>
+                </div>
+                <Switch checked={confidentialMode} onClick={() => setConfidentialMode((prev) => !prev)} label="" />
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
+                <div>
+                  <p className="font-semibold text-slate-100">{messages.admin.franceMode}</p>
+                  <p className="text-xs text-slate-400">{messages.admin.franceModeHint}</p>
+                </div>
+                <Switch checked={frMode} onClick={() => setFrMode((prev) => !prev)} label="" />
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                <span className="uppercase tracking-wide text-slate-400">{messages.admin.residencyZone}</span>
+                <select className={selectClassName} value={residencyZone} onChange={(event) => setResidencyZone(event.target.value)}>
+                  <option value="eu">EU</option>
+                  <option value="ohada">OHADA</option>
+                  <option value="ch">CH</option>
+                  <option value="ca">CA</option>
+                  <option value="maghreb">Maghreb</option>
+                  <option value="rw">RW</option>
+                </select>
+              </label>
+              <div className="flex items-center justify-end">
+                <Button type="button" variant="outline" onClick={savePolicies} disabled={policiesQuery.isFetching}>
+                  {messages.admin.savePolicies}
+                </Button>
+              </div>
+            </div>
+            <Button asChild variant="outline">
+              <a href="/governance/responsible_ai_policy.md" target="_blank" rel="noreferrer">
+                {messages.admin.download}
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
+            <CardTitle className="text-slate-100">{messages.admin.jurisdictionMatrixTitle}</CardTitle>
+            <p className="text-sm text-slate-400">{messages.admin.jurisdictionMatrixDescription}</p>
+          </CardHeader>
+          <CardContent className="overflow-x-auto text-sm text-slate-200">
+            {jurisdictionsQuery.isLoading ? (
+              <p className="text-slate-400">{messages.admin.loading}</p>
+            ) : (
+              <table className="min-w-full text-left text-xs uppercase tracking-wide text-slate-400">
+                <thead>
+                  <tr>
+                    <th className="pb-2 pr-3">{messages.admin.jurisdictionCode}</th>
+                    <th className="pb-2 pr-3 text-right">{messages.admin.jurisdictionRead}</th>
+                    <th className="pb-2 pr-3 text-right">{messages.admin.jurisdictionWrite}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                  {ADMIN_JURISDICTIONS.map((code) => {
+                    const access = getJurisdictionAccess(code);
+                    return (
+                      <tr key={code}>
+                        <td className="py-2 pr-3 font-medium text-slate-100">{code}</td>
+                        <td className="py-2 pr-3 text-right">
+                          <Switch
+                            checked={access.can_read}
+                            onClick={() => handleJurisdictionToggle(code, 'can_read')}
+                            label=""
+                          />
+                        </td>
+                        <td className="py-2 pr-3 text-right">
+                          <Switch
+                            checked={access.can_write}
+                            onClick={() => handleJurisdictionToggle(code, 'can_write')}
+                            label=""
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
+            <CardTitle className="text-slate-100">{messages.admin.learningTitle}</CardTitle>
+            <p className="text-sm text-slate-400">{messages.admin.learningDescription}</p>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-slate-200">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">{messages.admin.learningAllowlisted}</p>
+                <p className="text-2xl font-semibold text-slate-100">
+                  {allowlistedMetric ? formatPercent(allowlistedMetric.value) : '—'}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {allowlistedMetric ? formatDateTime(allowlistedMetric.computed_at) : messages.admin.learningNoData}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">{messages.admin.learningDeadLinks}</p>
+                <p className="text-2xl font-semibold text-slate-100">
+                  {deadLinkMetric ? formatPercent(deadLinkMetric.value) : '—'}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {deadLinkMetric ? formatDateTime(deadLinkMetric.computed_at) : messages.admin.learningNoData}
+                </p>
+              </div>
+            </div>
+            {learningSignalsQuery.isLoading ? (
+              <p className="text-slate-400">{messages.admin.loadingShort}</p>
+            ) : learningSignalsDisplayed.length === 0 ? (
+              <p className="text-slate-400">{messages.admin.learningSignalsEmpty}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-xs uppercase tracking-wide text-slate-400">
+                  <thead>
+                    <tr>
+                      <th className="pb-2 pr-3">{messages.admin.learningSignalSource}</th>
+                      <th className="pb-2 pr-3">{messages.admin.learningSignalKind}</th>
+                      <th className="pb-2 pr-3">{messages.admin.learningSignalRun}</th>
+                      <th className="pb-2">{messages.admin.learningSignalWhen}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                    {learningSignalsDisplayed.map((signal) => (
+                      <tr key={signal.id}>
+                        <td className="py-2 pr-3 text-slate-300">{signal.source}</td>
+                        <td className="py-2 pr-3 text-slate-300">{signal.kind}</td>
+                        <td className="py-2 pr-3 text-slate-400">{signal.run_id ?? '—'}</td>
+                        <td className="py-2 text-slate-400">{formatDateTime(signal.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        </div>
 
       <OperationsOverviewCard
         messages={messages}
@@ -706,25 +1148,96 @@ export function AdminView({ messages, locale }: AdminViewProps) {
             </CardContent>
           </Card>
 
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
+            <CardTitle className="text-slate-100">Retention & Export</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-slate-200">
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => exportMutation.mutate('csv')}>Export CSV</Button>
+              <Button size="sm" variant="outline" onClick={() => exportMutation.mutate('json')}>Export JSON</Button>
+            </div>
+            <div className="space-y-2 text-xs">
+              {(exportsQuery.data?.exports ?? []).map((ex) => (
+                <div key={ex.id} className="flex items-center justify-between gap-3">
+                  <span>{ex.format} · {ex.status} · {new Date(ex.created_at).toLocaleString()}</span>
+                  {ex.signedUrl ? (
+                    <a className="text-teal-200" href={ex.signedUrl} target="_blank" rel="noreferrer">Télécharger</a>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-3">
+              <input
+                placeholder="Document ID"
+                value={deleteDocId}
+                onChange={(e) => setDeleteDocId(e.target.value)}
+                className={selectClassName}
+              />
+              <input
+                placeholder="Raison (optionnelle)"
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                className={selectClassName}
+              />
+              <Button size="sm" variant="outline" onClick={() => deletionMutation.mutate({ id: deleteDocId, reason: deleteReason || undefined })} disabled={!deleteDocId}>
+                Supprimer le document
+              </Button>
+            </div>
+            <div className="space-y-2 text-xs">
+              {(deletionQuery.data?.requests ?? []).map((req) => (
+                <div key={req.id} className="flex items-center justify-between gap-3">
+                  <span>{req.target}:{req.target_id ?? 'org'} · {req.status} · {new Date(req.created_at).toLocaleString()}</span>
+                  {req.error ? <span className="text-rose-400">{req.error}</span> : null}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
           <Card className="glass-card border border-slate-800/60">
             <CardHeader>
-              <CardTitle className="text-slate-100">{messages.admin.policies}</CardTitle>
-              <p className="text-sm text-slate-400">{messages.admin.policyDescription}</p>
+              <CardTitle className="text-slate-100">Google Drive — Watch</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Button asChild variant="outline">
-                <a href="/governance/responsible_ai_policy.md" target="_blank" rel="noreferrer">
-                  {messages.admin.download}
-                </a>
-              </Button>
-              <ul className="space-y-2 text-sm text-slate-200">
-                <li>{messages.admin.retention}</li>
-                <li>{messages.admin.incident}</li>
-                <li>{messages.admin.change}</li>
-              </ul>
+            <CardContent className="space-y-3 text-sm text-slate-300">
+              <div className="grid gap-2 md:grid-cols-2">
+                <input
+                  placeholder="Drive ID (optionnel)"
+                  value={driveId}
+                  onChange={(e) => setDriveId(e.target.value)}
+                  className={selectClassName}
+                />
+                <input
+                  placeholder="Folder ID autorisé"
+                  value={folderId}
+                  onChange={(e) => setFolderId(e.target.value)}
+                  className={selectClassName}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={installGDrive}>
+                  Installer
+                </Button>
+                <Button size="sm" variant="outline" onClick={renewGDrive}>
+                  Renouveler
+                </Button>
+                <Button size="sm" variant="outline" onClick={uninstallGDrive}>
+                  Désinstaller
+                </Button>
+                <Button size="sm" variant="outline" onClick={processChangesNow}>
+                  Traiter maintenant
+                </Button>
+                <Button size="sm" variant="outline" onClick={backfillNow}>
+                  Backfill ×5
+                </Button>
+              </div>
+              <div className="text-xs text-slate-400">
+                <p>Expiration: {gdriveState?.expiration ?? '—'}</p>
+                <p>Dernier token: {(gdriveState as any)?.last_page_token ?? '—'}</p>
+              </div>
             </CardContent>
           </Card>
-        </div>
+      </div>
 
         <Card className="glass-card border border-slate-800/60">
           <CardHeader>
@@ -761,6 +1274,39 @@ export function AdminView({ messages, locale }: AdminViewProps) {
                   ))}
                 </tbody>
               </table>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
+            <CardTitle className="text-slate-100">Alerts</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-slate-200">
+            {alertsQuery.isLoading ? (
+              <p className="text-slate-400">Chargement…</p>
+            ) : alertsQuery.isError ? (
+              <p className="text-rose-400">Erreur</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span>Citation precision</span>
+                  <Badge variant={alertsQuery.data!.results.citationPrecision.ok ? 'success' : 'warning'}>
+                    {alertsQuery.data!.results.citationPrecision.value ?? '—'}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>Temporal validity</span>
+                  <Badge variant={alertsQuery.data!.results.temporalValidity.ok ? 'success' : 'warning'}>
+                    {alertsQuery.data!.results.temporalValidity.value ?? '—'}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>Link health</span>
+                  <Badge variant={alertsQuery.data!.results.linkHealth.ok ? 'success' : 'warning'}>
+                    {alertsQuery.data!.results.linkHealth.failed}/{alertsQuery.data!.results.linkHealth.totalSources}
+                  </Badge>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -1052,10 +1598,8 @@ export function AdminView({ messages, locale }: AdminViewProps) {
                     <tr key={event.id}>
                       <td className="py-2 pr-4 font-medium text-slate-100">{event.kind}</td>
                       <td className="py-2 pr-4 text-slate-300">{event.object}</td>
-                      <td className="py-2 pr-4 text-slate-400">
-                        {event.actor_user_id ?? messages.admin.auditSystem}
-                      </td>
-                      <td className="py-2 text-slate-400">{formatDateTime(event.created_at)}</td>
+                      <td className="py-2 pr-4 text-slate-400">{event.actor}</td>
+                      <td className="py-2 text-slate-400">{formatDateTime(event.ts)}</td>
                     </tr>
                   ))}
                 </tbody>

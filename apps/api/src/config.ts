@@ -15,6 +15,15 @@ const envSchema = z.object({
   OPENAI_VECTOR_STORE_AUTHORITIES_ID: z.string().min(1).default('vs_test'),
   SUPABASE_URL: z.string().url().default('https://example.supabase.co'),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).default('service-role-test'),
+  SUPABASE_ANON_KEY: z.string().optional(),
+  WA_PROVIDER: z.enum(['meta', 'twilio']).default('meta'),
+  WA_TOKEN: z.string().optional(),
+  WA_PHONE_NUMBER_ID: z.string().optional(),
+  WA_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  WA_TEMPLATE_OTP_NAME: z.string().optional(),
+  WA_TEMPLATE_LOCALE: z.string().default('fr'),
+  JWT_SECRET: z.string().min(1).default('jwt-secret-dev'),
+  RATE_LIMIT_REDIS_URL: z.string().optional(),
   JURIS_ALLOWLIST_JSON: z.string().optional(),
   AGENT_STUB_MODE: z
     .enum(['auto', 'always', 'never'])

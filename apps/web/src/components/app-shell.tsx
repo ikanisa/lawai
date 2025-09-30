@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
   LayoutGrid,
@@ -17,10 +17,17 @@ import {
   Menu,
   Globe2,
   X,
+  Upload,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 import type { Messages, Locale } from '../lib/i18n';
+import { useCommandPalette } from '../state/command-palette';
+import { CommandPalette } from './command-palette';
+import { Sheet, SheetSection } from './ui/sheet';
+import { useOnlineStatus } from '../hooks/use-online-status';
+import { useOutbox } from '../hooks/use-outbox';
+import { Badge } from './ui/badge';
 
 interface AppShellProps {
   children: ReactNode;
@@ -30,7 +37,7 @@ interface AppShellProps {
 
 const NAVIGATION = [
   { key: 'workspace', href: '/workspace', icon: LayoutGrid },
-  { key: 'research', href: '/research', icon: Search },
+  { key: 'research', href: '/research', icon: Search, badge: 'beta' },
   { key: 'drafting', href: '/drafting', icon: FileText },
   { key: 'matters', href: '/matters', icon: Briefcase },
   { key: 'citations', href: '/citations', icon: BookMarked },
@@ -44,11 +51,16 @@ const MOBILE_PRIMARY_NAV = ['workspace', 'research', 'drafting', 'hitl'] as cons
 
 export function AppShell({ children, messages, locale }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
   const installPromptRef = useRef<any>(null);
   const successRef = useRef(false);
   const installDismissedRef = useRef(false);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const setCommandOpen = useCommandPalette((state) => state.setOpen);
+  const online = useOnlineStatus();
+  const { items: outboxItems } = useOutbox();
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -93,10 +105,34 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
     };
   }, []);
 
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName;
+      const isEditable = target?.isContentEditable;
+      const isInput = tagName === 'INPUT' || tagName === 'TEXTAREA' || (tagName === 'DIV' && isEditable);
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandOpen(true);
+        return;
+      }
+
+      if (!event.metaKey && !event.ctrlKey && event.key === '/' && !isInput) {
+        event.preventDefault();
+        setCommandOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [setCommandOpen]);
+
   const localizedHref = (href: string) => `/${locale}${href}`;
 
   return (
-    <div className="relative flex min-h-screen bg-slate-950 text-slate-100">
+    <>
+      <div className="relative flex min-h-screen bg-slate-950 text-slate-100">
       <a href="#main" className="skip-link">
         {messages.app.skipToContent}
       </a>
@@ -147,7 +183,14 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
                   )}
                 >
                   <Icon className="h-4 w-4" aria-hidden />
-                  {messages.nav[item.key as keyof typeof messages.nav]}
+                  <span className="flex items-center gap-2">
+                    {messages.nav[item.key as keyof typeof messages.nav]}
+                    {item.badge === 'beta' ? (
+                      <Badge variant="outline" className="rounded-full border-teal-300/60 bg-teal-500/10 text-[10px] uppercase tracking-wide text-teal-200">
+                        Beta
+                      </Badge>
+                    ) : null}
+                  </span>
                 </span>
               </Link>
             );
@@ -165,12 +208,50 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
       <div className="flex flex-1 flex-col lg:pl-64">
         <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-slate-800/60 bg-slate-950/80 px-6 backdrop-blur">
           <div className="flex items-center gap-3">
-            <div className="hidden lg:flex">
-              <Command className="h-5 w-5 text-slate-500" aria-hidden />
-            </div>
-            <p className="text-sm text-slate-400">{messages.app.commandPlaceholder}</p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCommandOpen(true)}
+              className="hidden items-center gap-3 rounded-full border-slate-800/60 bg-slate-900/60 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-teal-400/60 hover:text-teal-100 lg:inline-flex"
+            >
+              <Command className="h-4 w-4" aria-hidden />
+              <span>{messages.commands.open}</span>
+              <span className="hidden items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 xl:flex">
+                <kbd className="rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1">⌘</kbd>
+                <kbd className="rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1">K</kbd>
+              </span>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              onClick={() => setCommandOpen(true)}
+              aria-label={messages.commands.open}
+            >
+              <Command className="h-5 w-5" aria-hidden />
+            </Button>
           </div>
           <div className="flex items-center gap-3">
+            {!online ? (
+              <span
+                role="status"
+                aria-live="polite"
+                className="hidden rounded-full border border-amber-400/60 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-200 lg:inline-flex"
+              >
+                {messages.app.offlineLabel}
+                {outboxItems.length > 0 ? ` • ${messages.app.offlineQueued.replace('{count}', String(outboxItems.length))}` : ''}
+              </span>
+            ) : null}
+            {!online ? (
+              <span
+                role="status"
+                aria-live="polite"
+                className="inline-flex rounded-full border border-amber-400/60 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-200 lg:hidden"
+              >
+                {messages.app.offlineShort}
+              </span>
+            ) : null}
             <Button variant="ghost" size="icon" aria-label="Notifications">
               <Bell className="h-5 w-5" aria-hidden />
             </Button>
@@ -211,20 +292,25 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
                   aria-label={messages.nav[item.key as keyof typeof messages.nav]}
                 >
                   <Icon className="h-5 w-5" aria-hidden />
-                  <span className="sr-only sm:not-sr-only">{messages.nav[item.key as keyof typeof messages.nav]}</span>
+                  <span className="sr-only sm:not-sr-only">
+                    {messages.nav[item.key as keyof typeof messages.nav]}
+                    {item.badge === 'beta' ? ' (Beta)' : ''}
+                  </span>
                 </Link>
               );
             })}
           </nav>
-          <Link
-            href={localizedHref('/research')}
+          <button
+            type="button"
+            onClick={() => setMobileActionsOpen(true)}
             className="pointer-events-auto focus-ring absolute -top-9 left-1/2 inline-flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-grad-1 text-slate-950 shadow-2xl"
             aria-label={messages.actions.ask}
           >
             <Search className="h-5 w-5" aria-hidden />
-          </Link>
+          </button>
         </div>
       </div>
+      <CommandPalette messages={messages} locale={locale} />
     </div>
       {showInstallPrompt ? (
         <div className="fixed bottom-6 right-6 z-50 max-w-sm rounded-3xl border border-slate-800/60 bg-slate-900/90 p-5 text-slate-100 shadow-2xl">
@@ -265,5 +351,71 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
           </div>
         </div>
       ) : null}
+      <Sheet
+        open={mobileActionsOpen}
+        onOpenChange={setMobileActionsOpen}
+        title={messages.app.mobileActionsTitle}
+        description={messages.app.mobileActionsDescription}
+      >
+        <SheetSection>
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="outline"
+              className="flex items-center justify-between gap-3 border-slate-700/60 bg-slate-900/60 text-slate-100"
+              onClick={() => {
+                setMobileActionsOpen(false);
+                router.push(localizedHref('/research'));
+              }}
+              disabled={!online}
+            >
+              <span className="flex items-center gap-3">
+                <Search className="h-4 w-4 text-teal-200" aria-hidden />
+                {messages.actions.newResearch}
+              </span>
+              <span className="text-xs text-slate-500">⌘K</span>
+            </Button>
+            <Button
+              variant="outline"
+              className="flex items-center justify-between gap-3 border-slate-700/60 bg-slate-900/60 text-slate-100"
+              onClick={() => {
+                setMobileActionsOpen(false);
+                router.push(localizedHref('/corpus'));
+              }}
+              disabled={!online}
+            >
+              <span className="flex items-center gap-3">
+                <Upload className="h-4 w-4 text-teal-200" aria-hidden />
+                {messages.actions.upload}
+              </span>
+            </Button>
+            <Button
+              variant="outline"
+              className="flex items-center justify-between gap-3 border-slate-700/60 bg-slate-900/60 text-slate-100"
+              onClick={() => {
+                setMobileActionsOpen(false);
+                router.push(localizedHref('/drafting'));
+              }}
+              disabled={!online}
+            >
+              <span className="flex items-center gap-3">
+                <FileText className="h-4 w-4 text-teal-200" aria-hidden />
+                {messages.actions.newDraft}
+              </span>
+            </Button>
+          </div>
+          {!online ? (
+            <p className="mt-4 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+              {messages.app.mobileOfflineNotice}
+              {outboxItems.length > 0 ? ` ${messages.app.offlineQueued.replace('{count}', String(outboxItems.length))}.` : ''}
+            </p>
+          ) : null}
+          {online && outboxItems.length > 0 ? (
+            <p className="mt-4 rounded-2xl border border-slate-700/60 bg-slate-900/50 p-3 text-xs text-slate-300">
+              {messages.app.outboxPending.replace('{count}', String(outboxItems.length))}
+            </p>
+          ) : null}
+        </SheetSection>
+      </Sheet>
+    </>
   );
 }

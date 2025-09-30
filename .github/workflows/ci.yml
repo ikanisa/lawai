@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_DB_URL: postgres://postgres:postgres@localhost:5432/postgres
+      SUPABASE_URL: "${{ secrets.SUPABASE_URL || 'https://example.supabase.co' }}"
+      SUPABASE_SERVICE_ROLE_KEY: "${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'service' }}"
+      OPS_ORG_ID: "${{ secrets.OPS_ORG_ID || '00000000-0000-0000-0000-000000000000' }}"
+      GO_NO_GO_ENFORCE: '1'
     services:
       postgres:
         image: ankane/pgvector:0.5.1
@@ -59,8 +63,8 @@ jobs:
       - name: Run environment conformance check
         run: pnpm ops:check -- --ci
         env:
-          SUPABASE_URL: https://example.supabase.co
-          SUPABASE_SERVICE_ROLE_KEY: service
+          SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_DB_URL: ${{ env.SUPABASE_DB_URL }}
           OPENAI_API_KEY: test
           OPENAI_VECTOR_STORE_AUTHORITIES_ID: vs_test

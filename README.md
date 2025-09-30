@@ -173,6 +173,22 @@ pnpm ops:slo --org $ORG --user $USER --list
 pnpm ops:slo --org $ORG --user $USER --list --export > reports/slo.csv
 ```
 
+### Tâches nocturnes (CI planifiées)
+
+Un workflow GitHub Actions exécute chaque nuit les routines d'observabilité et d'ingestion incrémentale :
+
+- Rapport d'apprentissage nocturne (`pnpm ops:learning -- --mode nightly`)
+- Vérification de santé des liens officiels (HEAD sur un lot tournant) via `pnpm ops:link-health`
+- Traitement des deltas Google Drive via la fonction Edge `gdrive-delta`
+
+Configurez les secrets `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY` et `OPS_ORG_ID` dans votre dépôt pour activer le workflow `.github/workflows/nightly.yml`.
+
+### Gestion des utilisateurs & WhatsApp OTP
+
+- Le modèle RBAC×ABAC est documenté dans `docs/USER_MGMT_MODEL.md`.
+- La configuration WhatsApp (Meta ou Twilio) est décrite dans `docs/WA_SETUP.md`.
+- Les politiques de sécurité/privacité et les runbooks associés se trouvent dans `docs/SECURITY_PRIVACY_USER_MGMT.md` et `docs/runbooks/`.
+
 ### Vérifier le checklist Go / No-Go
 
 Pour vérifier que chaque section (A–H) dispose d'une preuve satisfaite, qu'un artefact FRIA validé est présent et qu'une décision « GO » a été consignée pour un tag de release donné, utilisez le nouvel assistant :
@@ -182,6 +198,8 @@ pnpm ops:go-no-go --org $ORG --release rc-2024-09 --require-go
 ```
 
 La commande récupère les entrées `go_no_go_evidence`, `go_no_go_signoffs` **et** les artefacts `fria_artifacts`, récapitule le nombre de critères satisfaits par section et échoue (code de sortie ≠ 0) tant qu'un item reste en attente, qu'aucune décision « GO » applicable n'est présente ou qu'aucun dossier FRIA validé ne couvre la release ciblée (ou l'organisation via un artefact global).
+
+⚙️ Le workflow CI (`.github/workflows/ci.yml`) exécute `pnpm ops:go-no-go --require-go` par défaut avec les mêmes secrets (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPS_ORG_ID`). Des valeurs de secours sont utilisées si les secrets sont absents, mais alimentez-les pour déclencher la vérification sur votre projet réel.
 
 ### Piloter la boucle d'apprentissage
 
@@ -279,7 +297,7 @@ Après déploiement des fonctions, exécutez :`supabase functions deploy <nom>`
 
 La fonction crée un enregistrement dans `drive_manifests`, insère le détail des lignes (`drive_manifest_items`) et ouvre une entrée `ingestion_runs` pour traquer l’état du flux. Les erreurs (domaine hors allowlist, champs manquants, langue Maghreb) sont retournées dans la réponse JSON.
 
-### Exécuter le run agent côté API
+### Téléverser un document (API) et exécuter un run agent
 
 L’API `/runs` nécessite désormais l’identifiant d’organisation et d’utilisateur pour historiser les requêtes :
 
@@ -292,6 +310,60 @@ curl -X POST http://localhost:3000/runs \
     "userId": "00000000-0000-0000-0000-000000000000"
   }'
 ```
+
+Pour téléverser un fichier côté serveur (JSON base64), utilisez `/upload` :
+
+```bash
+curl -X POST http://localhost:3000/upload \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: 00000000-0000-0000-0000-000000000000" \
+  -d '{
+    "orgId": "00000000-0000-0000-0000-000000000000",
+    "name": "Code_civil_1240.html",
+    "mimeType": "text/html",
+    "contentBase64": "<BASE64>",
+    "bucket": "authorities",
+    "source": { "jurisdiction_code": "FR", "source_type": "statute", "title": "Code civil art. 1240" }
+  }'
+```
+
+L’API stocke le fichier dans Supabase Storage (bucket `uploads` ou `authorities`), crée la ligne `documents` et tente une
+synthèse/embedding (requiert `OPENAI_API_KEY`). La Console « Corpus & Sources » expose un bouton d’import graphique.
+
+### Intégration Google Drive (Service Account — dossier unique)
+
+1) Créez un compte de service GCP et partagez‑lui uniquement le dossier Drive autorisé (ou un Shared Drive entier si nécessaire) en lecture.
+
+2) Renseignez les variables d’environnement :
+
+```
+GDRIVE_SERVICE_ACCOUNT_EMAIL=svc-avocat-drive@<project>.iam.gserviceaccount.com
+GDRIVE_SERVICE_ACCOUNT_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+GDRIVE_FOLDER_ID=<FOLDER_ID_AUTORISE>
+# Optionnel si Shared Drive
+GDRIVE_SHARED_DRIVE_ID=<DRIVE_ID>
+# Webhook push (optionnel) – adresse publique pointant vers /gdrive/webhook
+GDRIVE_WEBHOOK_URL=https://api.example.test/gdrive/webhook
+GDRIVE_WATCH_CHANNEL_TOKEN=<RANDOM_SECRET>
+```
+
+3) Dans la Console Admin, ouvrez « Google Drive — Watch », saisissez l’ID du dossier (et du Drive si applicable), puis **Installer**.
+
+- Si les identifiants sont valides, l’API récupère un `startPageToken` et tente de créer un canal Push (changes.watch) si `GDRIVE_WEBHOOK_URL` est défini. À défaut, le mode Pull reste disponible via `/gdrive/process-changes`.
+
+4) Pour traiter les changements (mode Pull) :
+
+```bash
+curl -X POST http://localhost:3000/gdrive/process-changes \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: 00000000-0000-0000-0000-000000000000" \
+  -d '{ "orgId": "00000000-0000-0000-0000-000000000000" }'
+```
+
+L’API lit les changements, filtre par `folder_id`, exporte/telecharge les fichiers (HTML/CSV/PDF selon le type),
+les stocke dans le bucket `snapshots`, crée/actualise `documents`, exécute une synthèse + embeddings (si `OPENAI_API_KEY`), insère `document_chunks`, puis met à jour `ingestion_runs`.
+
+5) Traitement de manifeste (Drive Watcher Edge) : depuis la page « Corpus & Sources », collez l’URL d’un manifeste JSON/JSONL pour valider les entrées (allowlist, dates, langue Maghreb) et suivre la télémétrie.
 
 ## CI/CD
 

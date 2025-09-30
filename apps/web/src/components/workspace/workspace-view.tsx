@@ -18,6 +18,8 @@ import { Separator } from '../ui/separator';
 import { JurisdictionChip } from '../jurisdiction-chip';
 import { usePlanDrawer } from '../../state/plan-drawer';
 import { PlanDrawer } from '../plan-drawer';
+import { useOnlineStatus } from '../../hooks/use-online-status';
+import { useOutbox } from '../../hooks/use-outbox';
 
 interface WorkspaceViewProps {
   messages: Messages;
@@ -69,6 +71,8 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
   const { open, toggle } = usePlanDrawer();
   const [heroQuestion, setHeroQuestion] = useState('');
   const workspaceQuery = useWorkspaceData(locale);
+  const online = useOnlineStatus();
+  const { items: outboxItems } = useOutbox();
 
   const matters = workspaceQuery.data?.matters ?? [];
   const complianceWatch = workspaceQuery.data?.complianceWatch ?? [];
@@ -93,6 +97,10 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!online) {
+      toast.warning(messages.workspace.offlineNotice);
+      return;
+    }
     toggle(true);
     router.push(`/${locale}/research`);
   }
@@ -119,12 +127,19 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
                 placeholder={messages.research.heroPlaceholder}
               />
               <div className="flex flex-wrap items-center gap-3">
-                <Button type="submit" className="shadow-lg">
+                <Button type="submit" className="shadow-lg" disabled={!online || mutation.isPending}>
                   {messages.workspace.heroCta}
                 </Button>
                 <Badge variant="outline">{messages.workspace.keyboardHint}</Badge>
                 <Badge variant="success">{messages.workspace.wcagBadge}</Badge>
               </div>
+              {!online ? (
+                <p className="text-xs text-amber-300">
+                  {outboxItems.length > 0
+                    ? messages.workspace.offlineQueued.replace('{count}', String(outboxItems.length))
+                    : messages.workspace.offlineNotice}
+                </p>
+              ) : null}
             </form>
             <div className="rounded-3xl border border-slate-700/60 bg-slate-900/60 p-5 text-sm text-slate-200/90">
               <h2 className="text-xs uppercase tracking-wide text-slate-400">{messages.workspace.planTitle}</h2>
