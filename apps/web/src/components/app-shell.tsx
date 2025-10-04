@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import type { Route } from 'next';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
@@ -18,6 +19,7 @@ import {
   Globe2,
   X,
   Upload,
+  WifiOff,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
@@ -28,6 +30,8 @@ import { Sheet, SheetSection } from './ui/sheet';
 import { useOnlineStatus } from '../hooks/use-online-status';
 import { useOutbox } from '../hooks/use-outbox';
 import { Badge } from './ui/badge';
+import { toast } from 'sonner';
+import { useDigest } from '../hooks/use-digest';
 
 interface AppShellProps {
   children: ReactNode;
@@ -61,6 +65,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   const setCommandOpen = useCommandPalette((state) => state.setOpen);
   const online = useOnlineStatus();
   const { items: outboxItems } = useOutbox();
+  const { enabled: digestEnabled, enable: enableDigest, loading: digestLoading } = useDigest();
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -128,7 +133,21 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [setCommandOpen]);
 
-  const localizedHref = (href: string) => `/${locale}${href}`;
+  async function handleEnableDigest() {
+    try {
+      const granted = await enableDigest();
+      if (granted) {
+        toast.success(messages.workspace.digestEnabled);
+      } else {
+        toast.error(messages.workspace.digestError);
+      }
+    } catch (error) {
+      console.error('digest_enable_failed', error);
+      toast.error(messages.workspace.digestError);
+    }
+  }
+
+  const localizedHref = (href: string) => `/${locale}${href}` as Route;
 
   return (
     <>
@@ -252,8 +271,38 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
                 {messages.app.offlineShort}
               </span>
             ) : null}
+            {online && outboxItems.length > 0 ? (
+              <span
+                role="status"
+                aria-live="polite"
+                className="hidden rounded-full border border-teal-400/60 bg-teal-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-teal-200 lg:inline-flex"
+              >
+                {messages.app.outboxPending.replace('{count}', String(outboxItems.length))}
+              </span>
+            ) : null}
             <Button variant="ghost" size="icon" aria-label="Notifications">
               <Bell className="h-5 w-5" aria-hidden />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleEnableDigest}
+              aria-label={messages.workspace.enableDigest}
+              disabled={digestEnabled || digestLoading}
+              className={cn(
+                'relative border-slate-700/60 bg-slate-900/60 text-slate-200 transition hover:border-teal-400/60 hover:text-teal-100',
+                digestEnabled && 'border-teal-400/60 text-teal-200',
+              )}
+            >
+              <Bell className="h-5 w-5" aria-hidden />
+              {digestEnabled ? (
+                <Badge
+                  variant="outline"
+                  className="absolute -right-2 -top-2 rounded-full border-teal-300/70 bg-teal-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-100"
+                >
+                  {messages.workspace.digestEnabledBadge}
+                </Badge>
+              ) : null}
             </Button>
             <Button variant="ghost" size="icon" aria-label="Sélecteur d’organisation">
               <Database className="h-5 w-5" aria-hidden />
@@ -271,6 +320,12 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
       </div>
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-lg px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] lg:hidden">
         <div className="relative">
+          {!online ? (
+            <div className="pointer-events-auto mb-3 flex items-center gap-2 rounded-2xl border border-amber-500/40 bg-amber-900/50 px-4 py-2 text-xs text-amber-100">
+              <WifiOff className="h-4 w-4" aria-hidden />
+              <span>{messages.app.mobileOfflineNotice}</span>
+            </div>
+          ) : null}
           <nav
             id="mobile-nav"
             aria-label="Navigation principale mobile"
@@ -401,6 +456,25 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
                 <FileText className="h-4 w-4 text-teal-200" aria-hidden />
                 {messages.actions.newDraft}
               </span>
+            </Button>
+            <Button
+              variant="outline"
+              className="flex items-center justify-between gap-3 border-slate-700/60 bg-slate-900/60 text-slate-100"
+              onClick={() => {
+                setMobileActionsOpen(false);
+                void handleEnableDigest();
+              }}
+              disabled={digestEnabled || digestLoading}
+            >
+              <span className="flex items-center gap-3">
+                <Bell className="h-4 w-4 text-teal-200" aria-hidden />
+                {messages.workspace.enableDigest}
+              </span>
+              {digestEnabled ? (
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wide text-teal-200">
+                  {messages.workspace.digestEnabledBadge}
+                </Badge>
+              ) : null}
             </Button>
           </div>
           {!online ? (

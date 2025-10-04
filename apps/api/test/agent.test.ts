@@ -431,6 +431,8 @@ describe('runLegalAgent', () => {
     expect(result.trustPanel?.provenance.totalSources).toBeGreaterThan(0);
     expect(result.trustPanel?.provenance.withEli).toBeGreaterThan(0);
     expect(result.trustPanel?.provenance.akomaArticles).toBeGreaterThanOrEqual(1);
+    expect(result.agent.code).toBe('conseil_recherche');
+    expect(result.agent.tools.length).toBeGreaterThan(0);
   }, 15000);
 
   it('forces a trust-panel HITL when case quality is blocked', async () => {

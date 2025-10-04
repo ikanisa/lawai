@@ -7,8 +7,10 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
+import { Bell } from 'lucide-react';
 import type { Locale, Messages } from '../../lib/i18n';
 import { DEMO_ORG_ID, fetchHitlQueue, fetchHitlMetrics, fetchMatterDetail, submitHitlAction } from '../../lib/api';
+import { useDigest } from '../../hooks/use-digest';
 
 interface HitlViewProps {
   messages: Messages;
@@ -33,6 +35,7 @@ export function HitlView({ messages, locale }: HitlViewProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [comment, setComment] = useState('');
   const queryClient = useQueryClient();
+  const { enabled: digestEnabled, enable: enableDigest, loading: digestLoading } = useDigest();
 
   const queueQuery = useQuery({ queryKey: ['hitl'], queryFn: () => fetchHitlQueue(DEMO_ORG_ID) });
   const detailQuery = useQuery({
@@ -66,6 +69,7 @@ export function HitlView({ messages, locale }: HitlViewProps) {
   const flaggedBenchmarks = fairness?.flagged?.benchmarks ?? [];
   const queueBreakdown = metrics?.queue?.byType ?? {};
   const hasQueueBreakdown = Object.keys(queueBreakdown).length > 0;
+  const detailResidency = detailQuery.data?.matter?.provenance?.residency ?? [];
 
   const parseNumber = (value: unknown) => {
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -82,6 +86,20 @@ export function HitlView({ messages, locale }: HitlViewProps) {
     fairness && fairness.overall && typeof fairness.overall === 'object' ? fairness.overall : null;
   const fairnessTotalRuns = fairnessOverall ? parseNumber((fairnessOverall as Record<string, unknown>).totalRuns) : null;
   const fairnessHitlRate = fairnessOverall ? parseNumber((fairnessOverall as Record<string, unknown>).hitlRate) : null;
+
+  async function handleEnableDigest() {
+    try {
+      const granted = await enableDigest();
+      if (granted) {
+        toast.success(messages.workspace.digestEnabled);
+      } else {
+        toast.error(messages.workspace.digestError);
+      }
+    } catch (error) {
+      console.error('digest_enable_failed', error);
+      toast.error(messages.workspace.digestError);
+    }
+  }
 
   return (
     <div className="grid gap-6 xl:grid-cols-[340px,1fr]">
@@ -108,12 +126,47 @@ export function HitlView({ messages, locale }: HitlViewProps) {
       </aside>
       <section className="space-y-5">
         <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.hitl.title}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.hitl.auditTrail}</p>
+          <CardHeader className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-slate-100">{messages.hitl.title}</CardTitle>
+              <p className="text-sm text-slate-400">{messages.hitl.auditTrail}</p>
+            </div>
+            {digestEnabled ? (
+              <Badge variant="outline" className="gap-1 text-xs text-teal-200">
+                <Bell className="h-3 w-3" aria-hidden />
+                {messages.workspace.digestEnabledBadge}
+              </Badge>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 border-slate-700/60 text-slate-200"
+                onClick={handleEnableDigest}
+                disabled={digestLoading}
+              >
+                <Bell className="h-3 w-3" aria-hidden />
+                {messages.workspace.enableDigest}
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-slate-200">
             <p>{detailQuery.data?.matter?.question ?? messages.hitl.empty}</p>
+            {Array.isArray(detailResidency) && detailResidency.length > 0 ? (
+              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-3 text-xs text-slate-300">
+                <p className="mb-2 font-semibold uppercase tracking-wide text-slate-400">
+                  {messages.research.trust.provenanceResidencyHeading}
+                </p>
+                <ul className="space-y-1">
+                  {detailResidency.map((entry: { zone: string; count: number }) => (
+                    <li key={`${entry.zone}-${entry.count}`}>
+                      {messages.research.trust.provenanceResidencyItem
+                        .replace('{zone}', entry.zone)
+                        .replace('{count}', entry.count.toString())}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <div className="space-y-2">
               {((detailQuery.data?.matter?.citations ?? []) as MatterCitation[]).map((citation) => (
                 <div key={citation.url} className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
@@ -155,9 +208,28 @@ export function HitlView({ messages, locale }: HitlViewProps) {
           </CardContent>
         </Card>
         <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.hitl.metricsTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.hitl.metricsSubtitle}</p>
+          <CardHeader className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-slate-100">{messages.hitl.metricsTitle}</CardTitle>
+              <p className="text-sm text-slate-400">{messages.hitl.metricsSubtitle}</p>
+            </div>
+            {digestEnabled ? (
+              <Badge variant="outline" className="gap-1 text-xs text-teal-200">
+                <Bell className="h-3 w-3" aria-hidden />
+                {messages.workspace.digestEnabledBadge}
+              </Badge>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 border-slate-700/60 text-slate-200"
+                onClick={handleEnableDigest}
+                disabled={digestLoading}
+              >
+                <Bell className="h-3 w-3" aria-hidden />
+                {messages.workspace.enableDigest}
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-slate-200">
             {metricsQuery.isLoading ? (

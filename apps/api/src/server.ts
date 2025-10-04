@@ -1,12 +1,19 @@
-import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyBaseLogger, type FastifyReply, type FastifyRequest } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
 import { createHash } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { createServiceClient } from '@avocat-ai/supabase';
-import { ACCEPTANCE_THRESHOLDS, type IRACPayload } from '@avocat-ai/shared';
+import {
+  ACCEPTANCE_THRESHOLDS,
+  type IRACPayload,
+  getAutonomousSuiteManifest,
+  listUserTypes,
+  getUserType,
+} from '@avocat-ai/shared';
 import { env } from './config.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent.js';
+import type { AgentRunResult, TrustPanelPayload, VerificationResult } from './agent.js';
 import {
   getServiceAccountAccessToken,
   getStartPageToken as gdriveGetStartPageToken,
@@ -60,6 +67,8 @@ import { logAuditEvent } from './audit.js';
 import { InMemoryRateLimiter } from './rate-limit.js';
 import { generateOtp, hashOtp, verifyOtp, OTP_POLICY } from './otp.js';
 import { createWhatsAppAdapter } from './whatsapp.js';
+import { signC2PA, type C2PASignature } from './c2pa.js';
+import { AUTONOMOUS_JUSTICE_SUITE } from '@avocat-ai/shared';
 
 async function embedQuery(text: string): Promise<number[]> {
   const response = await fetch('https://api.openai.com/v1/embeddings', {
@@ -101,6 +110,14 @@ const whatsappAdapter = createWhatsAppAdapter(app.log);
 
 const phoneRateLimiter = new InMemoryRateLimiter({ limit: 3, windowMs: 60_000 });
 const ipRateLimiter = new InMemoryRateLimiter({ limit: 10, windowMs: 60_000 });
+
+app.get('/manifest/autonomous-suite', async (_request, reply) => {
+  return reply.send(getAutonomousSuiteManifest());
+});
+
+app.get('/manifest/autonomous-suite/user-types', async (_request, reply) => {
+  return reply.send({ userTypes: listUserTypes() });
+});
 
 type StressEntry = { count: number; resetAt: number };
 const phoneStressMap = new Map<string, StressEntry>();
@@ -169,6 +186,1113 @@ const GO_NO_GO_DECISIONS = new Set(['go', 'no-go']);
 const FRIA_CRITERION = 'EU AI Act (high-risk): FRIA completed';
 const ORG_ROLES = new Set(['owner', 'admin', 'reviewer', 'member', 'viewer', 'compliance_officer', 'auditor']);
 const LEARNING_METRIC_LIMIT = 200;
+const JURISDICTION_RESIDENCY_MAP: Record<string, string> = {
+  FR: 'eu',
+  BE: 'eu',
+  LU: 'eu',
+  EU: 'eu',
+  MC: 'eu',
+  CH: 'ch',
+  'CA-QC': 'ca',
+  CA: 'ca',
+  OHADA: 'ohada',
+  MA: 'maghreb',
+  TN: 'maghreb',
+  DZ: 'maghreb',
+  RW: 'rw',
+};
+
+function mapJurisdictionToResidency(code?: string | null): string | null {
+  if (!code) return null;
+  return JURISDICTION_RESIDENCY_MAP[code.toUpperCase()] ?? null;
+}
+
+type DraftCitation = {
+  title: string;
+  url: string;
+  publisher?: string | null;
+  jurisdiction?: string | null;
+  binding: boolean;
+  residencyZone?: string | null;
+  note?: string | null;
+};
+
+type ClauseComparisonSource = {
+  clauseId: string;
+  title: string;
+  rationale: string;
+  baseline: string;
+  proposed: string;
+  recommendation: string;
+  riskLevel: 'low' | 'medium' | 'high';
+  citations: DraftCitation[];
+};
+
+type ClauseComparisonRecord = {
+  clauseId: string;
+  title: string;
+  rationale: string;
+  baseline: string;
+  proposed: string;
+  diff: {
+    summary: { additions: number; deletions: number; net: number };
+    changes: Array<{ type: 'added' | 'removed' | 'context'; text: string }>;
+    recommendation: string;
+  };
+  riskLevel: 'low' | 'medium' | 'high';
+  citations: DraftCitation[];
+};
+
+type DraftExportRecord = {
+  format: string;
+  status: 'ready' | 'pending' | 'failed';
+  bucket?: string | null;
+  storagePath?: string | null;
+  bytes?: number | null;
+  sha256?: string | null;
+  c2pa?: {
+    keyId: string;
+    signedAt: string;
+    algorithm: string;
+    statementId: string;
+  };
+};
+
+type DraftDataset = {
+  summary: string;
+  citations: DraftCitation[];
+  clauses: ClauseComparisonSource[];
+};
+
+const DRAFTING_LIBRARY: Record<string, DraftDataset> = {
+  FR: {
+    summary:
+      'Encadrer les obligations contractuelles en rappelant la bonne foi (art. 1104 C. civ.) et en proportionnant les penalites conformement a l article 1231-5.',
+    citations: [
+      {
+        title: 'Code civil - Article 1104',
+        url: 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000032040720/',
+        publisher: 'Legifrance',
+        jurisdiction: 'FR',
+        binding: true,
+        residencyZone: 'eu',
+      },
+      {
+        title: 'Code civil - Article 1231-5',
+        url: 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000032041184/',
+        publisher: 'Legifrance',
+        jurisdiction: 'FR',
+        binding: true,
+        residencyZone: 'eu',
+      },
+    ],
+    clauses: [
+      {
+        clauseId: 'clause-penale-fr',
+        title: 'Clause penale',
+        rationale: 'Le juge peut moderer la penalite excessive selon l article 1231-5 du Code civil.',
+        baseline:
+          'En cas de manquement a ses obligations contractuelles, la Partie debitrice versera a la Partie creanciere une penalite forfaitaire de 5 000 euros par infraction constatee.',
+        proposed:
+          'En cas de manquement caracterise et notifie par ecrit, la Partie debitrice versera a la Partie creanciere une penalite de 12 000 euros par infraction constatee et prendra en charge les frais d expertise raisonnablement engages.',
+        recommendation:
+          'Verifier que l aggravation du montant est justifiee et proportionnee; prevoir une clause de moderation expresse si necessaire.',
+        riskLevel: 'medium',
+        citations: [
+          {
+            title: 'Code civil - Article 1231-5',
+            url: 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000032041184/',
+            publisher: 'Legifrance',
+            jurisdiction: 'FR',
+            binding: true,
+            residencyZone: 'eu',
+          },
+        ],
+      },
+      {
+        clauseId: 'clause-confidentialite-fr',
+        title: 'Clause de confidentialite',
+        rationale: 'Les informations sensibles doivent rester protegees au-dela de la phase d execution, avec notification rapide en cas de fuite.',
+        baseline:
+          'Chaque Partie s engage a conserver strictement confidentielles les informations techniques et commerciales pendant une duree de trois (3) ans a compter de la signature.',
+        proposed:
+          'Chaque Partie conserve confidentielles les informations techniques, commerciales et personnelles pendant cinq (5) ans et notifie toute divulgation non autorisee dans les quarante-huit (48) heures.',
+        recommendation:
+          'La prolongation et l obligation de notification renforcent la protection mais augmentent la charge; verifier la compatibilite RGPD et les capacites operationnelles.',
+        riskLevel: 'low',
+        citations: [
+          {
+            title: 'Code civil - Article 1104',
+            url: 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000032040720/',
+            publisher: 'Legifrance',
+            jurisdiction: 'FR',
+            binding: true,
+            residencyZone: 'eu',
+          },
+        ],
+      },
+    ],
+  },
+  MA: {
+    summary:
+      'S assurer que la clause de non-concurrence reste proportionnee en matiere de duree, de perimetre et de contrepartie financiere (Code du travail 65-99).',
+    citations: [
+      {
+        title: 'Code du travail marocain - Article 61 bis',
+        url: 'https://www.sgg.gov.ma/Portals/1/lois/Loi_travail_65-99.pdf',
+        publisher: 'Secretariat General du Gouvernement',
+        jurisdiction: 'MA',
+        binding: true,
+        residencyZone: 'maghreb',
+      },
+      {
+        title: 'Cour de cassation (MA) 2019-115',
+        url: 'https://www.courdecassation.ma/jurisprudence/social/2019-115',
+        publisher: 'Cour de cassation Marocaine',
+        jurisdiction: 'MA',
+        binding: true,
+        residencyZone: 'maghreb',
+      },
+    ],
+    clauses: [
+      {
+        clauseId: 'clause-noncompete-ma',
+        title: 'Clause de non-concurrence',
+        rationale: 'La validite est subordonnee a la protection d un interet legitime, une limitation raisonnable et une contrepartie adequate.',
+        baseline:
+          'Le salarie s engage a ne pas exercer d activites concurrentes pendant douze (12) mois dans un rayon de dix (10) kilometres apres la rupture du contrat.',
+        proposed:
+          'Le salarie s engage a ne pas exercer d activites concurrentes pendant vingt-quatre (24) mois sur le territoire marocain, moyennant une indemnisation mensuelle egale a 30% de la remuneration moyenne.',
+        recommendation:
+          'Verifier que la duree et l etendue geographique restent proportionnees et que l indemnisation couvre l effort exige.',
+        riskLevel: 'medium',
+        citations: [
+          {
+            title: 'Code du travail marocain - Article 61 bis',
+            url: 'https://www.sgg.gov.ma/Portals/1/lois/Loi_travail_65-99.pdf',
+            publisher: 'Secretariat General du Gouvernement',
+            jurisdiction: 'MA',
+            binding: true,
+            residencyZone: 'maghreb',
+          },
+        ],
+      },
+      {
+        clauseId: 'clause-confidentialite-hard-ma',
+        title: 'Clause de confidentialite',
+        rationale: 'Les donnees sensibles doivent rester protegees avec rappel du devoir de discretion post-contractuel.',
+        baseline:
+          'Le salarie respecte la confidentialite des informations de l employeur pendant le contrat et douze (12) mois apres sa cessation.',
+        proposed:
+          'Le salarie respecte la confidentialite pendant et apres le contrat, sans limitation de duree pour les secrets d affaires et avec restitution immediate des supports.',
+        recommendation:
+          'Confirmer la definition du secret d affaires et informer sur les sanctions en cas de violation.',
+        riskLevel: 'low',
+        citations: [
+          {
+            title: 'Loi 31-05 relative au secret d affaires',
+            url: 'https://adala.justice.gov.ma/production/legislation/fr/2018/loi/2018-31-05.pdf',
+            publisher: 'Ministere de la Justice',
+            jurisdiction: 'MA',
+            binding: true,
+            residencyZone: 'maghreb',
+          },
+        ],
+      },
+    ],
+  },
+  OHADA: {
+    summary:
+      'Verifier la compatibilite des clauses contractuelles avec l AUSCGIE et les mecanismes d arbitrage CCJA pour anticiper les renegociations.',
+    citations: [
+      {
+        title: 'AUSCGIE 2014 - Articles 10 et suivants',
+        url: 'https://www.ohada.org/wp-content/uploads/2023/01/auscgie-2014.pdf',
+        publisher: 'OHADA',
+        jurisdiction: 'OHADA',
+        binding: true,
+        residencyZone: 'ohada',
+      },
+      {
+        title: 'Reglement d arbitrage CCJA 2017',
+        url: 'https://www.ohada.org/wp-content/uploads/2018/05/reglement-arbitrage-ccja-2017.pdf',
+        publisher: 'OHADA',
+        jurisdiction: 'OHADA',
+        binding: true,
+        residencyZone: 'ohada',
+      },
+    ],
+    clauses: [
+      {
+        clauseId: 'clause-hardship-ohada',
+        title: 'Clause de hardship',
+        rationale: 'Prevoir une renegociation obligatoire en cas de bouleversement notable des circonstances, conforme a l AUSCGIE.',
+        baseline:
+          'Les Parties conviennent de renegocier de bonne foi le contrat en cas de changement economique majeur affectant l equilibre initial.',
+        proposed:
+          'Les Parties s engagent a renegocier dans les quinze (15) jours suivant la notification d un evenement qui bouleverse l equilibre economique; a defaut d accord, le litige est soumis a la CCJA.',
+        recommendation:
+          'Documenter les criteres declencheurs et prevoir un proces-verbal de desaccord pour relancer la CCJA.',
+        riskLevel: 'medium',
+        citations: [
+          {
+            title: 'AUSCGIE 2014 - Article 10',
+            url: 'https://www.ohada.org/wp-content/uploads/2023/01/auscgie-2014.pdf',
+            publisher: 'OHADA',
+            jurisdiction: 'OHADA',
+            binding: true,
+            residencyZone: 'ohada',
+          },
+        ],
+      },
+      {
+        clauseId: 'clause-competence-ohada',
+        title: 'Clause compromissoire',
+        rationale: 'Securiser le recours a l arbitrage CCJA en rappelant les formalismes de l article 3 du reglement.',
+        baseline:
+          'Tout litige sera tranche definitivement suivant le reglement d arbitrage de la CCJA par trois arbitres designes conformement audit reglement.',
+        proposed:
+          'Tout litige est tranche par la CCJA; la Partie demanderesse depose une requete conforme a l article 3 et les arbitres statuent dans un delai de 120 jours sauf prorogation motivee.',
+        recommendation:
+          'Verifier l information donnee aux parties sur les couts CCJA et les delais; prevoir un relais interne HITL pour suivre la procedure.',
+        riskLevel: 'low',
+        citations: [
+          {
+            title: 'Reglement d arbitrage CCJA 2017 - Article 3',
+            url: 'https://www.ohada.org/wp-content/uploads/2018/05/reglement-arbitrage-ccja-2017.pdf',
+            publisher: 'OHADA',
+            jurisdiction: 'OHADA',
+            binding: true,
+            residencyZone: 'ohada',
+          },
+        ],
+      },
+    ],
+  },
+  DEFAULT: {
+    summary:
+      'Fournir un canevas generique integrant les obligations de bonne foi et une verification des penalites contractuelles.',
+    citations: [
+      {
+        title: 'Guide generique - Clause de bonne foi',
+        url: 'https://example.org/guides/bonne-foi',
+        publisher: 'Avocat AI',
+        jurisdiction: null,
+        binding: false,
+        residencyZone: null,
+        note: 'Remplacer par une source officielle lors de la validation.',
+      },
+    ],
+    clauses: [
+      {
+        clauseId: 'clause-generique-equilibre',
+        title: 'Clause d equilibre contractuel',
+        rationale: 'Rappeler l obligation d equilibre et de bonne foi entre les parties.',
+        baseline:
+          'Les Parties cooperent de bonne foi a l execution du present contrat et s abstiennent de toute action susceptible de porter atteinte a l equilibre contractuel.',
+        proposed:
+          'Les Parties cooperent de bonne foi, documentent les difficultés majeures et se reunissent sous quinze (15) jours pour proposer des mesures correctives preserveant l equilibre contractuel.',
+        recommendation:
+          'Orienter la revue juridique vers des references propres a la juridiction du dossier.',
+        riskLevel: 'low',
+        citations: [
+          {
+            title: 'Guide generique - Clause de bonne foi',
+            url: 'https://example.org/guides/bonne-foi',
+            publisher: 'Avocat AI',
+            jurisdiction: null,
+            binding: false,
+            residencyZone: null,
+            note: 'Remplacer par une source officielle lors de la validation.',
+          },
+        ],
+      },
+    ],
+  },
+};
+
+function resolveDraftDatasetKey(jurisdiction?: string | null): string {
+  if (!jurisdiction) {
+    return 'DEFAULT';
+  }
+  const upper = jurisdiction.toUpperCase();
+  if (DRAFTING_LIBRARY[upper]) {
+    return upper;
+  }
+  if (['MA', 'TN', 'DZ'].includes(upper)) {
+    return 'MA';
+  }
+  if (
+    ['BJ', 'BF', 'CM', 'CF', 'CG', 'CI', 'GA', 'GN', 'GQ', 'GW', 'ML', 'NE', 'SN', 'TD', 'TG'].includes(
+      upper,
+    )
+  ) {
+    return 'OHADA';
+  }
+  if (upper.includes('-')) {
+    const base = upper.split('-')[0];
+    if (DRAFTING_LIBRARY[base]) {
+      return base;
+    }
+  }
+  return 'DEFAULT';
+}
+
+function selectDraftDataset(jurisdiction?: string | null): DraftDataset {
+  return DRAFTING_LIBRARY[resolveDraftDatasetKey(jurisdiction)] ?? DRAFTING_LIBRARY.DEFAULT;
+}
+
+function buildClauseComparisons(sources: ClauseComparisonSource[]): ClauseComparisonRecord[] {
+  return sources.map((source) => {
+    const parts = diffWordsWithSpace(source.baseline, source.proposed);
+    let additions = 0;
+    let deletions = 0;
+    const changes = parts.map((part) => {
+      if (part.added) additions += part.value.length;
+      if (part.removed) deletions += part.value.length;
+      return {
+        type: part.added ? 'added' : part.removed ? 'removed' : 'context',
+        text: part.value,
+      } as { type: 'added' | 'removed' | 'context'; text: string };
+    });
+    return {
+      clauseId: source.clauseId,
+      title: source.title,
+      rationale: source.rationale,
+      baseline: source.baseline,
+      proposed: source.proposed,
+      riskLevel: source.riskLevel,
+      citations: source.citations,
+      diff: {
+        summary: { additions, deletions, net: additions - deletions },
+        changes,
+        recommendation: source.recommendation,
+      },
+    };
+  });
+}
+
+type NormalisedTemplateSection = { heading: string; body: string };
+
+function normaliseTemplateSections(
+  sections?: Array<{ heading?: string | null; body?: string | null }> | null,
+): NormalisedTemplateSection[] | null {
+  if (!Array.isArray(sections)) {
+    return null;
+  }
+  const normalised: NormalisedTemplateSection[] = [];
+  for (const section of sections) {
+    if (!section || typeof section !== 'object') {
+      continue;
+    }
+    const heading = typeof section.heading === 'string' && section.heading.trim().length > 0
+      ? section.heading.trim()
+      : 'Section';
+    const body = typeof section.body === 'string' && section.body.trim().length > 0
+      ? section.body.trim()
+      : 'Contenu à compléter.';
+    normalised.push({ heading, body });
+  }
+  return normalised.length > 0 ? normalised : null;
+}
+
+function buildDraftFillIns(templateFillIns: unknown, provided?: string[]): string[] {
+  const set = new Set<string>();
+  const addValue = (input: unknown) => {
+    if (typeof input === 'string') {
+      const trimmed = input.trim();
+      if (trimmed.length > 0) {
+        set.add(trimmed);
+      }
+    }
+  };
+  if (Array.isArray(templateFillIns)) {
+    for (const value of templateFillIns) {
+      addValue(value);
+    }
+  }
+  if (Array.isArray(provided)) {
+    for (const value of provided) {
+      addValue(value);
+    }
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
+}
+
+function deriveDraftCitationsFromPayload(payload: IRACPayload, residencyZone: string | null): DraftCitation[] {
+  const ruleByUrl = new Map(payload.rules.map((rule) => [rule.source_url, rule]));
+  return payload.citations.map((citation) => {
+    const rule = ruleByUrl.get(citation.url);
+    return {
+      title: citation.title,
+      url: citation.url,
+      publisher: citation.court_or_publisher,
+      jurisdiction: payload.jurisdiction.country,
+      binding: rule ? rule.binding : true,
+      residencyZone,
+      note: citation.note ?? null,
+    } satisfies DraftCitation;
+  });
+}
+
+function mergeDraftCitations(primary: DraftCitation[], extras: DraftCitation[]): DraftCitation[] {
+  const map = new Map<string, DraftCitation>();
+  const add = (citation: DraftCitation) => {
+    if (!citation.url) {
+      return;
+    }
+    const key = citation.url.toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, citation);
+    }
+  };
+  primary.forEach(add);
+  extras.forEach(add);
+  return Array.from(map.values());
+}
+
+type RenderDraftMarkdownOptions = {
+  title: string;
+  prompt: string;
+  generatedAt: string;
+  payload: IRACPayload;
+  datasetSummary: string;
+  clauseComparisons: ClauseComparisonRecord[];
+  fillIns: string[];
+  templateSections: NormalisedTemplateSection[] | null;
+  citations: DraftCitation[];
+  plan: AgentRunResult['plan'];
+  trustPanel: TrustPanelPayload | null;
+  verification: VerificationResult | null | undefined;
+};
+
+function renderDraftMarkdown({
+  title,
+  prompt,
+  generatedAt,
+  payload,
+  datasetSummary,
+  clauseComparisons,
+  fillIns,
+  templateSections,
+  citations,
+  plan,
+  trustPanel,
+  verification,
+}: RenderDraftMarkdownOptions): string {
+  const lines: string[] = [];
+  lines.push(`# ${title}`, '');
+  lines.push(`> Juridiction : ${payload.jurisdiction.country.toUpperCase()}  `);
+  lines.push(`> Généré : ${generatedAt}  `);
+  lines.push(`> Prompt : ${prompt}`);
+  lines.push('');
+
+  lines.push('## Synthèse', '', datasetSummary, '');
+
+  lines.push('## Analyse IRAC', '');
+  lines.push('### Question', '', payload.issue, '');
+
+  if (payload.rules.length > 0) {
+    lines.push('### Règles', '');
+    for (const rule of payload.rules) {
+      const bindingLabel = rule.binding ? 'obligatoire' : 'indicative';
+      lines.push(`- ${rule.citation} (${bindingLabel}, ${rule.effective_date}) \u2014 ${rule.source_url}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('### Application', '', payload.application, '');
+  lines.push('### Conclusion', '', payload.conclusion, '');
+
+  lines.push('### Risque', '');
+  lines.push(`- Niveau : ${payload.risk.level}`);
+  lines.push(`- HITL requis : ${payload.risk.hitl_required ? 'oui' : 'non'}`);
+  lines.push(`- Raison : ${payload.risk.why}`);
+  lines.push('');
+
+  if (verification) {
+    lines.push('## Vérification', '');
+    lines.push(`- Statut : ${verification.status}`);
+    if (verification.notes && verification.notes.length > 0) {
+      lines.push('### Notes');
+      for (const note of verification.notes) {
+        lines.push(`- (${note.severity}) ${note.code} — ${note.message}`);
+      }
+    }
+    if (Array.isArray(verification.allowlistViolations) && verification.allowlistViolations.length > 0) {
+      lines.push('### Violations d\'allowlist');
+      for (const item of verification.allowlistViolations) {
+        lines.push(`- ${item}`);
+      }
+    }
+    lines.push('');
+  }
+
+  if (Array.isArray(plan) && plan.length > 0) {
+    lines.push('## Plan analytique', '');
+    plan.forEach((step, index) => {
+      const record = (step ?? {}) as Record<string, unknown>;
+      const name = typeof record.name === 'string' ? record.name : `Étape ${index + 1}`;
+      const status = typeof record.status === 'string' ? record.status : 'inconnue';
+      lines.push(`- ${name} (${status})`);
+      if (typeof record.description === 'string' && record.description.trim().length > 0) {
+        lines.push(`  - ${record.description.trim()}`);
+      }
+    });
+    lines.push('');
+  }
+
+  if (trustPanel) {
+    lines.push('## Confiance & provenance', '');
+    if (trustPanel.risk) {
+      lines.push(`- Risque global : ${trustPanel.risk.level}`);
+      lines.push(`- HITL requis : ${trustPanel.risk.hitlRequired ? 'oui' : 'non'}`);
+      lines.push(`- Motif : ${trustPanel.risk.reason}`);
+    }
+    if (trustPanel.citationSummary) {
+      lines.push(
+        `- Citations vérifiées : ${trustPanel.citationSummary.allowlisted}/${trustPanel.citationSummary.total}`,
+      );
+    }
+    if (trustPanel.provenance) {
+      lines.push(
+        `- Provenance : ${trustPanel.provenance.residencyBreakdown
+          .map((entry) => `${entry.zone}:${entry.count}`)
+          .join(', ')}`,
+      );
+    }
+    lines.push('');
+  }
+
+  if (fillIns.length > 0) {
+    lines.push('## Données à renseigner', '');
+    fillIns.forEach((item) => {
+      lines.push(`- ${item}`);
+    });
+    lines.push('');
+  }
+
+  const defaultSections: NormalisedTemplateSection[] = [
+    { heading: 'Faits', body: 'Présenter les faits essentiels et les pièces de référence.' },
+    { heading: 'Discussion', body: 'Exposer les fondements juridiques en citant les sources officielles.' },
+    { heading: 'Conclusions', body: 'Formuler les demandes et obligations recommandées.' },
+  ];
+  const sectionsToRender = templateSections && templateSections.length > 0 ? templateSections : defaultSections;
+  sectionsToRender.forEach((section) => {
+    lines.push(`## ${section.heading}`, '', section.body, '');
+  });
+
+  lines.push('## Clauses critiques', '');
+  clauseComparisons.forEach((clause, index) => {
+    lines.push(`### ${index + 1}. ${clause.title}`, '', clause.rationale, '');
+    lines.push('**Version proposée**', '', clause.proposed, '');
+    lines.push('**Analyse des changements**', '');
+    lines.push(`- Ajouts : ${clause.diff.summary.additions}`);
+    lines.push(`- Retraits : ${clause.diff.summary.deletions}`);
+    lines.push(`- Recommandation : ${clause.diff.recommendation}`, '');
+    if (clause.citations.length > 0) {
+      lines.push('Citations associées :');
+      clause.citations.forEach((citation) => {
+        lines.push(`- ${citation.title} (${citation.url})`);
+      });
+      lines.push('');
+    }
+  });
+
+  lines.push('## Citations vérifiées', '');
+  citations.forEach((citation) => {
+    const bindingLabel = citation.binding ? 'obligatoire' : 'à vérifier';
+    const residencyLabel = citation.residencyZone ? ` — zone ${citation.residencyZone}` : '';
+    lines.push(`- ${citation.title} (${bindingLabel}${residencyLabel}) — ${citation.url}`);
+  });
+  lines.push('');
+
+  lines.push('---', '', `_Brouillon généré automatiquement le ${generatedAt}. Soumettre à revue HITL avant diffusion externe._`);
+
+  return lines.join('\n');
+}
+
+function addDays(base: Date, days: number): Date {
+  const result = new Date(base.getTime());
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
+function addBusinessDays(base: Date, days: number): Date {
+  const result = new Date(base.getTime());
+  let remaining = Math.max(0, Math.floor(days));
+  while (remaining > 0) {
+    result.setUTCDate(result.getUTCDate() + 1);
+    const day = result.getUTCDay();
+    if (day !== 0 && day !== 6) {
+      remaining -= 1;
+    }
+  }
+  return result;
+}
+
+function formatIcsDate(date: Date): string {
+  const pad = (value: number, length = 2) => value.toString().padStart(length, '0');
+  const year = date.getUTCFullYear();
+  const month = pad(date.getUTCMonth() + 1);
+  const day = pad(date.getUTCDate());
+  const hours = pad(date.getUTCHours());
+  const minutes = pad(date.getUTCMinutes());
+  const seconds = pad(date.getUTCSeconds());
+  return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+}
+
+function escapeIcsText(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/[;,\n]/g, (match) => {
+    switch (match) {
+      case ';':
+        return '\\;';
+      case ',':
+        return '\\,';
+      case '\n':
+        return '\\n';
+      default:
+        return match;
+    }
+  });
+}
+
+function computeMatterSchedule(options: {
+  jurisdiction?: string | null;
+  filingDate?: string | null;
+  procedure?: string | null;
+  calendarType?: 'calendar' | 'court';
+  timezone?: string | null;
+  method?: 'standard' | 'expedited' | 'extended';
+} = {}): Array<{
+  name: string;
+  dueAt: string;
+  ruleReference: string;
+  notes: string;
+}> {
+  const base = (() => {
+    if (options?.filingDate) {
+      const parsed = new Date(options.filingDate);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    return new Date();
+  })();
+
+  const jurisdiction = options?.jurisdiction?.toUpperCase() ?? 'FR';
+  const procedure = options?.procedure ?? 'general';
+  const calendarType = options?.calendarType === 'court' ? 'court' : 'calendar';
+  const method = options?.method === 'expedited' || options?.method === 'extended' ? options.method : 'standard';
+
+  const addFn = calendarType === 'court' ? addBusinessDays : addDays;
+
+  const jurisdictionOffsets = {
+    first: jurisdiction === 'CA' ? 20 : 15,
+    second: jurisdiction === 'OHADA' ? 35 : 30,
+    third: procedure.includes('appeal') ? 60 : 45,
+  };
+
+  const methodDelta = method === 'expedited' ? -3 : method === 'extended' ? 5 : 0;
+
+  const clampDays = (value: number) => Math.max(3, value);
+
+  const first = addFn(base, clampDays(jurisdictionOffsets.first + methodDelta));
+  const second = addFn(base, clampDays(jurisdictionOffsets.second + methodDelta));
+  const third = addFn(base, clampDays(jurisdictionOffsets.third + methodDelta));
+
+  return [
+    {
+      name: 'Initial response',
+      dueAt: first.toISOString(),
+      ruleReference: `${jurisdiction} • ${calendarType === 'court' ? 'Jours de cour' : 'Jours calendaires'}`,
+      notes: 'Auto-généré – personnalisez selon la juridiction et la procédure.',
+    },
+    {
+      name: 'Hearing preparation',
+      dueAt: second.toISOString(),
+      ruleReference: `${jurisdiction} • Préparation audience (${method})`,
+      notes: 'Inclut la collecte de pièces, la revue HITL et la coordination interne.',
+    },
+    {
+      name: 'Final submissions',
+      dueAt: third.toISOString(),
+      ruleReference: `${procedure} • Dépôt final`,
+      notes: 'Mettre à jour avant transmission tribunal et confirmer la sign-off HITL.',
+    },
+  ];
+}
+
+function renderMatterCalendar(
+  matter: {
+    id: string;
+    title: string;
+    description?: string | null;
+    jurisdiction_code?: string | null;
+    procedure?: string | null;
+  },
+  deadlines: Array<{ id?: string; name: string; due_at: string; rule_reference?: string | null; notes?: string | null }>,
+  options?: { timezone?: string | null },
+): string {
+  const lines: string[] = [];
+  lines.push('BEGIN:VCALENDAR');
+  lines.push('VERSION:2.0');
+  lines.push('PRODID:-//Avocat-AI//Matters//FR');
+  lines.push('CALSCALE:GREGORIAN');
+  lines.push('METHOD:PUBLISH');
+  if (options?.timezone && typeof options.timezone === 'string' && options.timezone.trim().length > 0) {
+    lines.push(`X-WR-TIMEZONE:${escapeIcsText(options.timezone.trim())}`);
+  }
+  const now = new Date();
+
+  for (const deadline of deadlines) {
+    const due = new Date(deadline.due_at);
+    if (Number.isNaN(due.getTime())) {
+      continue;
+    }
+    const end = addDays(due, 1);
+    lines.push('BEGIN:VEVENT');
+    lines.push(`UID:${escapeIcsText(`${matter.id}-${deadline.id ?? deadline.name}`)}@avocat.ai`);
+    lines.push(`DTSTAMP:${formatIcsDate(now)}`);
+    lines.push(`SUMMARY:${escapeIcsText(`${deadline.name} – ${matter.title}`)}`);
+    const descriptionPieces = [matter.procedure ?? '', deadline.rule_reference ?? '', deadline.notes ?? '']
+      .filter((value) => value && value.length > 0)
+      .join(' | ');
+    if (descriptionPieces.length > 0) {
+      lines.push(`DESCRIPTION:${escapeIcsText(descriptionPieces)}`);
+    }
+    lines.push(`DTSTART:${formatIcsDate(due)}`);
+    lines.push(`DTEND:${formatIcsDate(end)}`);
+    if (matter.jurisdiction_code) {
+      lines.push(`LOCATION:${escapeIcsText(matter.jurisdiction_code)}`);
+    }
+    lines.push('END:VEVENT');
+  }
+
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
+type CalendarSettings = {
+  type: 'calendar' | 'court';
+  timezone: string;
+  method: 'standard' | 'expedited' | 'extended';
+};
+
+function extractCalendarSettings(metadata: Record<string, unknown> | null | undefined): CalendarSettings {
+  const defaultSettings: CalendarSettings = {
+    type: 'calendar',
+    timezone: 'Europe/Paris',
+    method: 'standard',
+  };
+
+  if (!metadata || typeof metadata !== 'object') {
+    return defaultSettings;
+  }
+
+  const raw = (metadata as Record<string, unknown>).calendar;
+  if (!raw || typeof raw !== 'object') {
+    return defaultSettings;
+  }
+
+  const object = raw as Record<string, unknown>;
+  const type = object.type === 'court' ? 'court' : 'calendar';
+  const timezone = typeof object.timezone === 'string' && object.timezone.trim().length > 0 ? object.timezone.trim() : defaultSettings.timezone;
+  const method = object.method === 'expedited' || object.method === 'extended' ? object.method : 'standard';
+
+  return { type, timezone, method } satisfies CalendarSettings;
+}
+
+function buildCalendarPath(orgId: string, matterId: string): string {
+  return `${orgId}/matters/${matterId}.ics`;
+}
+
+async function persistMatterCalendar(options: {
+  orgId: string;
+  matter: { id: string; title: string; description?: string | null; jurisdiction_code?: string | null; procedure?: string | null };
+  deadlines: Array<{ id?: string; name: string; due_at: string; rule_reference?: string | null; notes?: string | null }>;
+  settings: CalendarSettings;
+  logger: FastifyBaseLogger;
+}): Promise<{ calendar: string; storagePath: string | null; signedUrl: string | null }> {
+  const calendar = renderMatterCalendar(options.matter, options.deadlines, { timezone: options.settings.timezone });
+  const path = buildCalendarPath(options.orgId, options.matter.id);
+  const buffer = Buffer.from(calendar, 'utf-8');
+
+  const upload = await supabase.storage
+    .from('snapshots')
+    .upload(path, buffer, { contentType: 'text/calendar', upsert: true });
+
+  if (upload.error) {
+    options.logger.warn({ err: upload.error, orgId: options.orgId, matterId: options.matter.id }, 'matter_calendar_upload_failed');
+    return { calendar, storagePath: null, signedUrl: null };
+  }
+
+  const signed = await supabase.storage.from('snapshots').createSignedUrl(path, 600);
+  if (signed.error) {
+    options.logger.warn({ err: signed.error, orgId: options.orgId, matterId: options.matter.id }, 'matter_calendar_signed_url_failed');
+    return { calendar, storagePath: path, signedUrl: null };
+  }
+
+  return { calendar, storagePath: path, signedUrl: signed.data?.signedUrl ?? null };
+}
+
+async function deleteMatterCalendar(orgId: string, matterId: string, logger: FastifyBaseLogger): Promise<void> {
+  const path = buildCalendarPath(orgId, matterId);
+  const { error } = await supabase.storage.from('snapshots').remove([path]);
+  if (error) {
+    logger.warn({ err: error, orgId, matterId }, 'matter_calendar_delete_failed');
+  }
+}
+
+type CiteCheckSummary = {
+  total: number;
+  verified: number;
+  pending: number;
+  manual: number;
+};
+
+function summariseCiteCheckStatus(statuses: Array<string | null | undefined>): CiteCheckSummary {
+  const summary: CiteCheckSummary = { total: 0, verified: 0, pending: 0, manual: 0 };
+  for (const status of statuses) {
+    summary.total += 1;
+    if (!status) {
+      summary.pending += 1;
+      continue;
+    }
+    const normalized = status.toLowerCase();
+    if (normalized === 'verified' || normalized === 'ok') {
+      summary.verified += 1;
+    } else if (normalized === 'manual') {
+      summary.manual += 1;
+    } else {
+      summary.pending += 1;
+    }
+  }
+  return summary;
+}
+
+async function loadMatterDetail(options: {
+  orgId: string;
+  matterId: string;
+  logger: FastifyBaseLogger;
+}): Promise<
+  | {
+      matter: {
+        id: string;
+        title: string;
+        description: string | null;
+        status: string;
+        riskLevel: string | null;
+        hitlRequired: boolean;
+        jurisdiction: string | null;
+        procedure: string | null;
+        residencyZone: string | null;
+        filingDate: string | null;
+        decisionDate: string | null;
+        createdAt: string;
+        updatedAt: string;
+        metadata: Record<string, unknown>;
+        structuredPayload: unknown;
+        agentRunId: string | null;
+        primaryDocumentId: string | null;
+      };
+      deadlines: Array<{
+        id: string;
+        name: string;
+        dueAt: string | null;
+        ruleReference: string | null;
+        notes: string | null;
+        metadata: Record<string, unknown>;
+      }>;
+      documents: Array<{
+        id: string;
+        documentId: string | null;
+        name: string | null;
+        storagePath: string | null;
+        bucket: string | null;
+        mimeType: string | null;
+        bytes: number | null;
+        residencyZone: string | null;
+        role: string | null;
+        citeCheckStatus: string | null;
+        metadata: Record<string, unknown>;
+      }>;
+      calendar: string;
+      calendarUrl: string | null;
+      calendarSettings: CalendarSettings;
+      citeCheck: CiteCheckSummary;
+    }
+  | null
+> {
+  const matterResult = await supabase
+    .from('matters')
+    .select(
+      'id, org_id, title, description, status, risk_level, hitl_required, jurisdiction_code, procedure, residency_zone, filing_date, decision_date, structured_payload, metadata, created_at, updated_at, agent_run_id, primary_document_id',
+    )
+    .eq('org_id', options.orgId)
+    .eq('id', options.matterId)
+    .maybeSingle();
+
+  if (matterResult.error) {
+    options.logger.error({ err: matterResult.error, orgId: options.orgId, matterId: options.matterId }, 'matter_detail_query_failed');
+    throw new Error('matter_detail_query_failed');
+  }
+
+  if (!matterResult.data) {
+    return null;
+  }
+
+  const matterRow = normaliseMatterRow(matterResult.data as Record<string, unknown>);
+
+  const [deadlinesResult, documentsResult] = await Promise.all([
+    supabase
+      .from('matter_deadlines')
+      .select('id, name, due_at, rule_reference, notes, metadata')
+      .eq('matter_id', options.matterId)
+      .order('due_at', { ascending: true }),
+    supabase
+      .from('matter_documents')
+      .select(
+        'id, role, cite_check_status, metadata, document:documents(id, name, storage_path, bucket_id, mime_type, bytes, residency_zone)',
+      )
+      .eq('matter_id', options.matterId),
+  ]);
+
+  if (deadlinesResult.error) {
+    options.logger.warn({ err: deadlinesResult.error, matterId: options.matterId }, 'matter_deadlines_detail_query_failed');
+  }
+
+  if (documentsResult.error) {
+    options.logger.warn({ err: documentsResult.error, matterId: options.matterId }, 'matter_documents_detail_query_failed');
+  }
+
+  const deadlines = (deadlinesResult.data ?? []).map((row) => ({
+    id: String(row.id),
+    name: typeof row.name === 'string' ? row.name : 'Deadline',
+    dueAt: typeof row.due_at === 'string' ? row.due_at : null,
+    ruleReference: typeof row.rule_reference === 'string' ? row.rule_reference : null,
+    notes: typeof row.notes === 'string' ? row.notes : null,
+    metadata:
+      row.metadata && typeof row.metadata === 'object' ? (row.metadata as Record<string, unknown>) : ({} as Record<string, unknown>),
+  }));
+
+  const documents = (documentsResult.data ?? []).map((row) => {
+    const document = (row as Record<string, unknown>).document as Record<string, unknown> | null;
+    return {
+      id: String(row.id),
+      documentId: document && typeof document.id === 'string' ? document.id : null,
+      name: document && typeof document.name === 'string' ? document.name : null,
+      storagePath: document && typeof document.storage_path === 'string' ? document.storage_path : null,
+      bucket: document && typeof document.bucket_id === 'string' ? document.bucket_id : null,
+      mimeType: document && typeof document.mime_type === 'string' ? document.mime_type : null,
+      bytes: document && typeof document.bytes === 'number' ? document.bytes : null,
+      residencyZone: document && typeof document.residency_zone === 'string' ? document.residency_zone : null,
+      role: typeof row.role === 'string' ? row.role : null,
+      citeCheckStatus: typeof row.cite_check_status === 'string' ? row.cite_check_status : null,
+      metadata:
+        row.metadata && typeof row.metadata === 'object'
+          ? (row.metadata as Record<string, unknown>)
+          : ({} as Record<string, unknown>),
+    };
+  });
+
+  const calendarSettings = extractCalendarSettings(matterRow.metadata);
+  const calendarPayload = await persistMatterCalendar({
+    orgId: options.orgId,
+    matter: {
+      id: matterRow.id,
+      title: matterRow.title,
+      description: matterRow.description,
+      jurisdiction_code: matterRow.jurisdiction_code,
+      procedure: matterRow.procedure,
+    },
+    deadlines: deadlines
+      .filter((deadline) => Boolean(deadline.dueAt))
+      .map((deadline) => ({
+        id: deadline.id,
+        name: deadline.name,
+        due_at: deadline.dueAt!,
+        rule_reference: deadline.ruleReference,
+        notes: deadline.notes,
+      })),
+    settings: calendarSettings,
+    logger: options.logger,
+  });
+
+  const citeCheck = summariseCiteCheckStatus(documents.map((doc) => doc.citeCheckStatus));
+
+  return {
+    matter: {
+      id: matterRow.id,
+      title: matterRow.title,
+      description: matterRow.description,
+      status: matterRow.status,
+      riskLevel: matterRow.risk_level,
+      hitlRequired: matterRow.hitl_required ?? false,
+      jurisdiction: matterRow.jurisdiction_code,
+      procedure: matterRow.procedure,
+      residencyZone: matterRow.residency_zone,
+      filingDate: matterRow.filing_date,
+      decisionDate: matterRow.decision_date,
+      createdAt: matterRow.created_at,
+      updatedAt: matterRow.updated_at,
+      metadata: matterRow.metadata ?? {},
+      structuredPayload: matterRow.structured_payload,
+      agentRunId: matterRow.agent_run_id,
+      primaryDocumentId: matterRow.primary_document_id,
+    },
+    deadlines,
+    documents,
+    calendar: calendarPayload.calendar,
+    calendarUrl: calendarPayload.signedUrl,
+    calendarSettings,
+    citeCheck,
+  };
+}
+
+type MatterRow = {
+  id: string;
+  org_id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  risk_level: string | null;
+  hitl_required: boolean | null;
+  jurisdiction_code: string | null;
+  procedure: string | null;
+  residency_zone: string | null;
+  filing_date: string | null;
+  decision_date: string | null;
+  structured_payload: unknown;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  agent_run_id: string | null;
+  primary_document_id: string | null;
+};
+
+function normaliseMatterRow(row: Record<string, unknown>): MatterRow {
+  return {
+    id: String(row.id),
+    org_id: String(row.org_id),
+    title: typeof row.title === 'string' ? row.title : 'Matter',
+    description: typeof row.description === 'string' ? row.description : null,
+    status: typeof row.status === 'string' ? row.status : 'open',
+    risk_level: typeof row.risk_level === 'string' ? row.risk_level : null,
+    hitl_required: typeof row.hitl_required === 'boolean' ? row.hitl_required : Boolean(row.hitl_required),
+    jurisdiction_code: typeof row.jurisdiction_code === 'string' ? row.jurisdiction_code : null,
+    procedure: typeof row.procedure === 'string' ? row.procedure : null,
+    residency_zone: typeof row.residency_zone === 'string' ? row.residency_zone : null,
+    filing_date: typeof row.filing_date === 'string' ? row.filing_date : null,
+    decision_date: typeof row.decision_date === 'string' ? row.decision_date : null,
+    structured_payload: row.structured_payload ?? null,
+    metadata: (row.metadata && typeof row.metadata === 'object' ? (row.metadata as Record<string, unknown>) : null) ?? {},
+    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+    updated_at: typeof row.updated_at === 'string' ? row.updated_at : new Date().toISOString(),
+    agent_run_id: typeof row.agent_run_id === 'string' ? row.agent_run_id : null,
+    primary_document_id: typeof row.primary_document_id === 'string' ? row.primary_document_id : null,
+  };
+}
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) {
@@ -722,6 +1846,392 @@ app.post<{ Body: z.infer<typeof whatsappVerifySchema> }>('/auth/wa/verify', asyn
     needs_org: needsOrg,
     is_new_user: isNewUser,
     memberships,
+  });
+});
+
+// Draft generation endpoint: builds content, persists metadata, and stores clause comparisons.
+// Body: { orgId, userId?, prompt, title?, jurisdiction?, matterType?, templateId?, fillIns? }
+app.post<{
+  Body: {
+    orgId?: string;
+    userId?: string;
+    prompt?: string;
+    title?: string;
+    jurisdiction?: string;
+    matterType?: string;
+    templateId?: string;
+    fillIns?: string[];
+    context?: string;
+  };
+}>('/drafts', async (request, reply) => {
+  const body = request.body ?? {};
+  const rawOrgId = typeof body.orgId === 'string' ? body.orgId : undefined;
+  const headerOrgId = typeof request.headers['x-org-id'] === 'string' ? (request.headers['x-org-id'] as string) : undefined;
+  const orgId = rawOrgId && rawOrgId.trim().length > 0 ? rawOrgId : headerOrgId;
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+
+  if (!orgId || prompt.length === 0) {
+    return reply.code(400).send({ error: 'orgId and prompt are required' });
+  }
+
+  const rawUserId = typeof body.userId === 'string' ? body.userId : undefined;
+  const headerUserId = typeof request.headers['x-user-id'] === 'string' ? (request.headers['x-user-id'] as string) : undefined;
+  const actor = rawUserId && rawUserId.trim().length > 0 ? rawUserId : headerUserId;
+
+  if (!actor) {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  let access: OrgAccessContext;
+  try {
+    access = await authorizeRequestWithGuards('drafts:create', orgId, actor, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof (error as any).statusCode === 'number') {
+      return reply.code((error as any).statusCode).send({ error: (error as Error).message });
+    }
+    request.log.warn({ err: error, orgId, actor }, 'draft_authorization_failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  type TemplateRow = {
+    id: string;
+    title?: string | null;
+    sections?: Array<{ heading?: string; body?: string }> | null;
+    locale?: string | null;
+    jurisdiction_code?: string | null;
+    matter_type?: string | null;
+    summary?: string | null;
+    fill_ins?: unknown;
+  } | null;
+
+  let template: TemplateRow = null;
+  try {
+    let tplQuery = supabase
+      .from('pleading_templates')
+      .select('id, title, sections, locale, jurisdiction_code, matter_type, summary, fill_ins')
+      .or(`org_id.eq.${orgId},org_id.is.null`)
+      .limit(1);
+    if (body.templateId) {
+      tplQuery = tplQuery.eq('id', body.templateId);
+    } else {
+      if (body.jurisdiction) {
+        tplQuery = tplQuery.eq('jurisdiction_code', body.jurisdiction);
+      }
+      if (body.matterType) {
+        tplQuery = tplQuery.eq('matter_type', body.matterType);
+      }
+    }
+    const res = await tplQuery.maybeSingle();
+    if (!res.error) {
+      template = (res.data as TemplateRow) ?? null;
+    } else if (res.error) {
+      request.log.warn({ err: res.error, orgId }, 'draft_template_lookup_failed');
+    }
+  } catch (error) {
+    request.log.warn({ err: error, orgId }, 'draft_template_lookup_failed');
+  }
+
+  const templateSections = normaliseTemplateSections(template?.sections);
+  const fillInList = buildDraftFillIns(template?.fill_ins, body.fillIns);
+
+  const contextPieces: string[] = [];
+  if (typeof body.context === 'string' && body.context.trim().length > 0) {
+    contextPieces.push(body.context.trim());
+  }
+  if (typeof template?.summary === 'string' && template.summary.trim().length > 0) {
+    contextPieces.push(template.summary.trim());
+  }
+  if (fillInList.length > 0) {
+    contextPieces.push(`Champs à renseigner : ${fillInList.join(', ')}`);
+  }
+
+  let agentResult: AgentRunResult;
+  try {
+    agentResult = await runLegalAgent(
+      {
+        question: prompt,
+        context: contextPieces.length > 0 ? contextPieces.join('\n\n') : undefined,
+        orgId,
+        userId: actor,
+        confidentialMode: access.policies.confidentialMode,
+      },
+      access,
+    );
+  } catch (error) {
+    request.log.error({ err: error, orgId, actor }, 'draft_agent_run_failed');
+    const status = error instanceof Error && 'statusCode' in error && typeof (error as any).statusCode === 'number'
+      ? (error as any).statusCode
+      : 502;
+    return reply.code(status).send({ error: 'draft_generation_failed', message: (error as Error)?.message ?? 'agent_failed' });
+  }
+
+  const payload = agentResult.payload;
+  const resolvedJurisdiction = (payload?.jurisdiction?.country ?? body.jurisdiction ?? template?.jurisdiction_code ?? 'FR').toUpperCase();
+  const resolvedMatterType = body.matterType ?? template?.matter_type ?? 'general';
+  const dataset = selectDraftDataset(resolvedJurisdiction);
+
+  const residencyZone = mapJurisdictionToResidency(resolvedJurisdiction);
+  const agentCitations = deriveDraftCitationsFromPayload(payload, residencyZone);
+  const datasetCitations = dataset.citations.map((citation) => ({
+    ...citation,
+    residencyZone:
+      citation.residencyZone ?? (citation.jurisdiction ? mapJurisdictionToResidency(citation.jurisdiction) : residencyZone),
+    binding: citation.binding ?? true,
+  }));
+  const citations = mergeDraftCitations(agentCitations, datasetCitations);
+
+  const clauseComparisons = buildClauseComparisons(dataset.clauses);
+  const generatedAt = new Date();
+  const generatedIso = generatedAt.toISOString();
+  const draftTitle = body.title ?? template?.title ?? 'Projet de document';
+
+  const markdown = renderDraftMarkdown({
+    title: draftTitle,
+    prompt,
+    generatedAt: generatedIso,
+    payload,
+    datasetSummary: dataset.summary,
+    clauseComparisons,
+    fillIns: fillInList,
+    templateSections,
+    citations,
+    plan: agentResult.plan ?? [],
+    trustPanel: agentResult.trustPanel ?? null,
+    verification: agentResult.verification ?? null,
+  });
+
+  const safeTitle = draftTitle
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const name = `${safeTitle || 'draft'}.md`;
+  const storagePath = makeStoragePath(orgId, name);
+  const bucket = 'uploads';
+
+  const buffer = Buffer.from(markdown, 'utf8');
+  const contentSha = createHash('sha256').update(buffer).digest('hex');
+  const signature: C2PASignature = signC2PA({ orgId, userId: actor, contentSha256: contentSha, filename: name });
+
+  const uploadResult = await supabase.storage
+    .from(bucket)
+    .upload(storagePath, new Blob([buffer], { type: 'text/markdown' }), {
+      upsert: true,
+      contentType: 'text/markdown',
+    });
+  if (uploadResult.error) {
+    request.log.error({ err: uploadResult.error, orgId }, 'draft_upload_failed');
+    return reply.code(500).send({ error: 'draft_upload_failed' });
+  }
+
+  const documentInsert = await supabase
+    .from('documents')
+    .insert({
+      org_id: orgId,
+      source_id: null,
+      name,
+      storage_path: storagePath,
+      bucket_id: bucket,
+      mime_type: 'text/markdown',
+      bytes: buffer.byteLength,
+      vector_store_status: 'pending',
+      summary_status: 'pending',
+      chunk_count: 0,
+      residency_zone: residencyZone,
+    })
+    .select('id')
+    .single();
+  if (documentInsert.error || !documentInsert.data) {
+    request.log.error({ err: documentInsert.error, orgId }, 'draft_document_insert_failed');
+    return reply.code(500).send({ error: 'draft_insert_failed' });
+  }
+
+  const documentId = (documentInsert.data as { id: string }).id;
+
+  const exportsMeta: DraftExportRecord[] = [
+    {
+      format: 'markdown',
+      status: 'ready',
+      bucket,
+      storagePath,
+      bytes: buffer.byteLength,
+      sha256: contentSha,
+      c2pa: {
+        keyId: signature.keyId,
+        signedAt: signature.signedAt,
+        algorithm: signature.algorithm,
+        statementId: signature.statementId,
+      },
+    },
+    { format: 'pdf', status: 'pending' },
+    { format: 'docx', status: 'pending' },
+  ];
+
+  const draftInsert = await supabase
+    .from('drafts')
+    .insert({
+      org_id: orgId,
+      document_id: documentId,
+      agent_run_id: agentResult.runId,
+      created_by: actor,
+      prompt,
+      title: draftTitle,
+      status: agentResult.verification?.status === 'hitl_escalated' ? 'review_required' : 'draft',
+      jurisdiction_code: resolvedJurisdiction,
+      matter_type: resolvedMatterType,
+      body: markdown,
+      structured_payload: payload as Record<string, unknown>,
+      citations,
+      clause_comparisons: clauseComparisons,
+      exports: exportsMeta,
+      plan: agentResult.plan ?? [],
+      trust_panel: agentResult.trustPanel ?? null,
+      verification: agentResult.verification ?? null,
+      fill_ins: fillInList,
+      metadata: {
+        templateId: template?.id ?? null,
+        datasetKey: resolvedJurisdiction,
+        reusedAgentRun: Boolean(agentResult.reused),
+      },
+      residency_zone: residencyZone,
+      content_sha256: contentSha,
+      signature_manifest: signature as unknown as Record<string, unknown>,
+    })
+    .select('id')
+    .single();
+
+  if (draftInsert.error || !draftInsert.data) {
+    request.log.error({ err: draftInsert.error, orgId }, 'draft_metadata_insert_failed');
+    return reply.code(500).send({ error: 'draft_metadata_failed' });
+  }
+
+  const draftId = (draftInsert.data as { id: string }).id;
+
+  try {
+    await logAuditEvent({
+      orgId,
+      actorId: actor,
+      kind: 'draft.created',
+      object: draftId,
+      after: {
+        documentId,
+        agentRunId: agentResult.runId,
+        jurisdiction: resolvedJurisdiction,
+        matterType: resolvedMatterType,
+        exports: exportsMeta.map((entry) => ({ format: entry.format, status: entry.status })),
+      },
+    });
+  } catch (error) {
+    request.log.warn({ err: error, orgId, draftId }, 'draft_audit_failed');
+  }
+
+  return reply.send({
+    draftId,
+    documentId,
+    agentRunId: agentResult.runId,
+    title: draftTitle,
+    jurisdiction: resolvedJurisdiction,
+    matterType: resolvedMatterType,
+    bucket,
+    storagePath,
+    bytes: buffer.byteLength,
+    preview: markdown.slice(0, 400),
+    citations,
+    clauseComparisons,
+    exports: exportsMeta,
+    signature,
+    contentSha256: contentSha,
+    fillIns: fillInList,
+    risk: payload.risk,
+    verification: agentResult.verification ?? null,
+    structuredPayload: payload,
+    trustPanel: agentResult.trustPanel ?? null,
+    plan: agentResult.plan ?? [],
+    reused: Boolean(agentResult.reused),
+  });
+});
+
+app.get<{
+  Querystring: { orgId?: string; documentId?: string };
+}>('/drafts/preview', async (request, reply) => {
+  const { orgId, documentId } = request.query;
+  if (!orgId || !documentId) {
+    return reply.code(400).send({ error: 'orgId and documentId are required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('drafts:view', orgId, userHeader, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof (error as any).statusCode === 'number') {
+      return reply.code((error as any).statusCode).send({ error: (error as Error).message });
+    }
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const document = await supabase
+    .from('documents')
+    .select('id, bucket_id, storage_path, mime_type, bytes, created_at, summary_status, chunk_count')
+    .eq('org_id', orgId)
+    .eq('id', documentId)
+    .maybeSingle();
+  if (document.error) {
+    request.log.error({ err: document.error }, 'draft_lookup_failed');
+    return reply.code(500).send({ error: 'draft_lookup_failed' });
+  }
+  if (!document.data) {
+    return reply.code(404).send({ error: 'draft_not_found' });
+  }
+
+  const draftRecordPromise = supabase
+    .from('drafts')
+    .select(
+      'id, title, status, jurisdiction_code, matter_type, citations, clause_comparisons, exports, signature_manifest, content_sha256, fill_ins, structured_payload, plan, trust_panel, verification',
+    )
+    .eq('org_id', orgId)
+    .eq('document_id', documentId)
+    .maybeSingle();
+
+  const { data: blob, error: downloadError } = await supabase.storage
+    .from(document.data.bucket_id ?? 'uploads')
+    .download(document.data.storage_path);
+  if (downloadError || !blob) {
+    request.log.error({ err: downloadError }, 'draft_download_failed');
+    return reply.code(500).send({ error: 'draft_download_failed' });
+  }
+
+  const draftRecord = await draftRecordPromise;
+  if (draftRecord.error) {
+    request.log.error({ err: draftRecord.error }, 'draft_metadata_lookup_failed');
+  }
+
+  const text = await blob.text();
+  return reply.send({
+    documentId,
+    draftId: draftRecord.data?.id ?? null,
+    title: (draftRecord.data as { title?: string } | null)?.title ?? null,
+    jurisdiction: (draftRecord.data as { jurisdiction_code?: string } | null)?.jurisdiction_code ?? null,
+    matterType: (draftRecord.data as { matter_type?: string } | null)?.matter_type ?? null,
+    content: text,
+    mimeType: document.data.mime_type ?? 'text/markdown',
+    bytes: document.data.bytes ?? text.length,
+    createdAt: document.data.created_at,
+    summaryStatus: document.data.summary_status ?? null,
+    chunkCount: document.data.chunk_count ?? 0,
+    citations: (draftRecord.data as { citations?: unknown } | null)?.citations ?? [],
+    clauseComparisons: (draftRecord.data as { clause_comparisons?: unknown } | null)?.clause_comparisons ?? [],
+    exports: (draftRecord.data as { exports?: unknown } | null)?.exports ?? [],
+    signature: (draftRecord.data as { signature_manifest?: unknown } | null)?.signature_manifest ?? null,
+    contentSha256: (draftRecord.data as { content_sha256?: string } | null)?.content_sha256 ?? null,
+    status: (draftRecord.data as { status?: string } | null)?.status ?? null,
+    fillIns: (draftRecord.data as { fill_ins?: unknown } | null)?.fill_ins ?? [],
+    structuredPayload: (draftRecord.data as { structured_payload?: unknown } | null)?.structured_payload ?? null,
+    plan: (draftRecord.data as { plan?: unknown } | null)?.plan ?? [],
+    trustPanel: (draftRecord.data as { trust_panel?: unknown } | null)?.trust_panel ?? null,
+    verification: (draftRecord.data as { verification?: unknown } | null)?.verification ?? null,
   });
 });
 
@@ -1936,9 +3446,17 @@ app.post<{
 
 
 app.post<{
-  Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
+  Body: {
+    question: string;
+    context?: string;
+    orgId?: string;
+    userId?: string;
+    confidentialMode?: boolean;
+    agentCode?: string;
+    agentSettings?: Record<string, unknown> | null;
+  };
 }>('/runs', async (request, reply) => {
-  const { question, context, orgId, userId, confidentialMode } = request.body;
+  const { question, context, orgId, userId, confidentialMode, agentCode, agentSettings } = request.body;
 
   if (!question) {
     return reply.code(400).send({ error: 'question is required' });
@@ -1951,8 +3469,20 @@ app.post<{
   try {
     const access = await authorizeRequestWithGuards('runs:execute', orgId, userId, request);
     const effectiveConfidential = access.policies.confidentialMode || Boolean(confidentialMode);
+    const normalizedAgentSettings =
+      agentSettings && typeof agentSettings === 'object' && !Array.isArray(agentSettings)
+        ? (agentSettings as Record<string, unknown>)
+        : undefined;
     const result = await runLegalAgent(
-      { question, context, orgId, userId, confidentialMode: effectiveConfidential },
+      {
+        question,
+        context,
+        orgId,
+        userId,
+        confidentialMode: effectiveConfidential,
+        agentCode,
+        agentSettings: normalizedAgentSettings ?? null,
+      },
       access,
     );
     return {
@@ -1964,6 +3494,7 @@ app.post<{
       reused: Boolean(result.reused),
       verification: result.verification ?? null,
       trustPanel: result.trustPanel ?? null,
+      agent: result.agent,
     };
   } catch (error) {
     request.log.error({ err: error }, 'agent execution failed');
@@ -2191,6 +3722,7 @@ app.get<{ Params: { orgId: string } }>('/admin/org/:orgId/operations/overview', 
       cepejViolationResult,
       evaluationCoverageResult,
       webVitalsResult,
+      provenanceCoverageResult,
     ] = await Promise.all([
       supabase
         .from('slo_snapshots')
@@ -2243,6 +3775,12 @@ app.get<{ Params: { orgId: string } }>('/admin/org/:orgId/operations/overview', 
         .gte('created_at', thirtyDaysAgoIso)
         .order('created_at', { ascending: false })
         .limit(2000),
+      supabase
+        .from('org_provenance_metrics')
+        .select('total_sources, sources_with_binding, sources_with_residency')
+        .eq('org_id', orgId)
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     if (sloResult.error) {
@@ -2283,6 +3821,11 @@ app.get<{ Params: { orgId: string } }>('/admin/org/:orgId/operations/overview', 
     if (webVitalsResult.error) {
       request.log.error({ err: webVitalsResult.error }, 'operations web vitals query failed');
       return reply.code(500).send({ error: 'operations_web_vitals_failed' });
+    }
+
+    if (provenanceCoverageResult.error) {
+      request.log.error({ err: provenanceCoverageResult.error }, 'operations provenance metrics query failed');
+      return reply.code(500).send({ error: 'operations_provenance_failed' });
     }
 
     const sloRows = (sloResult.data ?? []).map((row) => ({
@@ -2383,6 +3926,14 @@ app.get<{ Params: { orgId: string } }>('/admin/org/:orgId/operations/overview', 
       maghrebBanner: toNumber(evaluationCoverageRow?.maghreb_banner_coverage) ?? null,
       rwandaNotice: toNumber(evaluationCoverageRow?.rwanda_notice_coverage) ?? null,
     };
+    const provenanceCoverageRow = provenanceCoverageResult.data ?? null;
+    const totalSources = provenanceCoverageRow?.total_sources ?? 0;
+    const bindingCoverage = totalSources > 0
+      ? toNumber(provenanceCoverageRow?.sources_with_binding) / totalSources
+      : null;
+    const residencyCoverage = totalSources > 0
+      ? toNumber(provenanceCoverageRow?.sources_with_residency) / totalSources
+      : null;
 
     const complianceAlerts: Array<{ code: string; level: 'info' | 'warning' | 'critical' }> = [];
     if (cepejSummary.assessedRuns > 0 && cepejSummary.violationRuns > 0) {
@@ -2402,6 +3953,12 @@ app.get<{ Params: { orgId: string } }>('/admin/org/:orgId/operations/overview', 
       evaluationCoverage.rwandaNotice < ACCEPTANCE_THRESHOLDS.rwandaLanguageNoticeCoverage
     ) {
       complianceAlerts.push({ code: 'rwanda_notice_low', level: 'critical' });
+    }
+    if (bindingCoverage !== null && bindingCoverage < ACCEPTANCE_THRESHOLDS.citationsAllowlistedP95) {
+      complianceAlerts.push({ code: 'binding_coverage_low', level: 'warning' });
+    }
+    if (residencyCoverage !== null && residencyCoverage < 0.95) {
+      complianceAlerts.push({ code: 'residency_coverage_low', level: 'warning' });
     }
 
     const vitalsRows = webVitalsResult.data ?? [];
@@ -2491,6 +4048,8 @@ app.get<{ Params: { orgId: string } }>('/admin/org/:orgId/operations/overview', 
       compliance: {
         cepej: cepejSummary,
         evaluationCoverage,
+        bindingCoverage,
+        residencyCoverage,
         alerts: complianceAlerts,
       },
       webVitals: {
@@ -2777,7 +4336,7 @@ app.post<{
       supabase.from('organizations').select('id, name').eq('id', orgId).maybeSingle(),
       supabase
         .from('agent_runs')
-        .select('risk_level, hitl_required, started_at, finished_at, confidential_mode')
+        .select('risk_level, hitl_required, started_at, finished_at, confidential_mode, agent_code')
         .eq('org_id', orgId)
         .gte('started_at', range.start)
         .lte('started_at', range.end),
@@ -4580,7 +6139,7 @@ app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply
       supabase.from('jurisdictions').select('code, name, eu, ohada').order('name', { ascending: true }),
       supabase
         .from('agent_runs')
-        .select('id, question, risk_level, hitl_required, status, started_at, finished_at, jurisdiction_json')
+        .select('id, question, risk_level, hitl_required, status, started_at, finished_at, jurisdiction_json, agent_code')
         .eq('org_id', orgId)
         .order('started_at', { ascending: false })
         .limit(8),
@@ -4640,6 +6199,7 @@ app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply
       startedAt: row.started_at,
       finishedAt: row.finished_at,
       jurisdiction: extractCountry(row.jurisdiction_json),
+      agentCode: typeof row.agent_code === 'string' ? row.agent_code : null,
     }));
 
     const complianceWatch = complianceRows.map((row) => ({
@@ -4706,7 +6266,7 @@ app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply
   const { data, error } = await supabase
     .from('sources')
     .select(
-      'id, title, source_type, jurisdiction_code, source_url, publisher, binding_lang, consolidated, language_note, effective_date, created_at, capture_sha256, link_last_status, link_last_checked_at',
+      'id, title, source_type, jurisdiction_code, source_url, publisher, binding_lang, consolidated, language_note, effective_date, created_at, capture_sha256, link_last_status, link_last_checked_at, residency_zone',
     )
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
@@ -4733,6 +6293,7 @@ app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply
       effectiveDate: row.effective_date,
       capturedAt: row.created_at,
       checksum: row.capture_sha256,
+      residencyZone: row.residency_zone ?? null,
       stale:
         row.link_last_status === 'stale' ||
         (row.link_last_checked_at && now - new Date(row.link_last_checked_at).getTime() > staleThresholdMs)
@@ -5435,31 +6996,1005 @@ app.get<{ Querystring: { orgId?: string } }>('/matters', async (request, reply) 
     return reply.code(403).send({ error: 'forbidden' });
   }
 
-  const { data, error } = await supabase
-    .from('agent_runs')
-    .select('id, question, risk_level, hitl_required, status, started_at, finished_at, jurisdiction_json, irac')
+  const matterResult = await supabase
+    .from('matters')
+    .select(
+      'id, org_id, title, description, status, risk_level, hitl_required, jurisdiction_code, procedure, residency_zone, filing_date, decision_date, structured_payload, metadata, created_at, updated_at, agent_run_id, primary_document_id',
+    )
     .eq('org_id', orgId)
-    .order('started_at', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(50);
 
-  if (error) {
-    request.log.error({ err: error }, 'matters query failed');
+  if (matterResult.error) {
+    request.log.error({ err: matterResult.error }, 'matters query failed');
     return reply.code(500).send({ error: 'matters_failed' });
   }
 
-  const matters = (data ?? []).map((row) => ({
-    id: row.id,
-    question: row.question,
-    riskLevel: row.risk_level,
-    status: row.status,
-    hitlRequired: row.hitl_required,
-    startedAt: row.started_at,
-    finishedAt: row.finished_at,
-    jurisdiction: extractCountry(row.jurisdiction_json),
-    conclusion: typeof row.irac === 'object' ? (row.irac as { conclusion?: string }).conclusion ?? null : null,
-  }));
+  const matterRows = (matterResult.data ?? []).map((row) => normaliseMatterRow(row as Record<string, unknown>));
+  const matterIds = matterRows.map((row) => row.id);
+  const deadlinesMap = new Map<string, Array<{ id: string; name: string; due_at: string; rule_reference: string | null; notes: string | null }>>();
+  const citeCheckMap = new Map<string, CiteCheckSummary>();
+
+  if (matterIds.length > 0) {
+    const deadlinesResult = await supabase
+      .from('matter_deadlines')
+      .select('id, matter_id, name, due_at, rule_reference, notes')
+      .in('matter_id', matterIds)
+      .order('due_at', { ascending: true });
+
+    if (deadlinesResult.error) {
+      request.log.warn({ err: deadlinesResult.error }, 'matter_deadlines query failed');
+    } else {
+      for (const row of deadlinesResult.data ?? []) {
+        const matterId = typeof row.matter_id === 'string' ? row.matter_id : null;
+        const dueAt = typeof row.due_at === 'string' ? row.due_at : null;
+        if (!matterId || !dueAt) {
+          continue;
+        }
+        const list = deadlinesMap.get(matterId) ?? [];
+        list.push({
+          id: String(row.id),
+          name: typeof row.name === 'string' ? row.name : 'Deadline',
+          due_at: dueAt,
+          rule_reference: typeof row.rule_reference === 'string' ? row.rule_reference : null,
+          notes: typeof row.notes === 'string' ? row.notes : null,
+        });
+        deadlinesMap.set(matterId, list);
+      }
+    }
+  }
+
+  if (matterIds.length > 0) {
+    const documentsResult = await supabase
+      .from('matter_documents')
+      .select('matter_id, cite_check_status')
+      .in('matter_id', matterIds);
+
+    if (documentsResult.error) {
+      request.log.warn({ err: documentsResult.error }, 'matter_documents_status_query_failed');
+    } else {
+      const statusMap = new Map<string, Array<string | null>>();
+      for (const row of documentsResult.data ?? []) {
+        const matterId = typeof row.matter_id === 'string' ? row.matter_id : null;
+        if (!matterId) continue;
+        const list = statusMap.get(matterId) ?? [];
+        list.push(typeof row.cite_check_status === 'string' ? row.cite_check_status : null);
+        statusMap.set(matterId, list);
+      }
+      for (const [matterId, statuses] of statusMap.entries()) {
+        citeCheckMap.set(matterId, summariseCiteCheckStatus(statuses));
+      }
+    }
+  }
+
+  const now = Date.now();
+  const matters = matterRows.map((row) => {
+    const deadlines = deadlinesMap.get(row.id) ?? [];
+    let nextDeadline: { name: string; dueAt: string; ruleReference: string | null } | null = null;
+    for (const deadline of deadlines) {
+      const dueTime = new Date(deadline.due_at).getTime();
+      if (Number.isNaN(dueTime)) {
+        continue;
+      }
+      if (dueTime >= now && (!nextDeadline || dueTime < new Date(nextDeadline.dueAt).getTime())) {
+        nextDeadline = {
+          name: deadline.name,
+          dueAt: deadline.due_at,
+          ruleReference: deadline.rule_reference ?? null,
+        };
+      }
+    }
+
+    const calendarSettings = extractCalendarSettings(row.metadata);
+    const citeCheck = citeCheckMap.get(row.id) ?? { total: 0, verified: 0, pending: 0, manual: 0 };
+
+    return {
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      riskLevel: row.risk_level,
+      hitlRequired: row.hitl_required ?? false,
+      jurisdiction: row.jurisdiction_code,
+      procedure: row.procedure,
+      residencyZone: row.residency_zone,
+      filingDate: row.filing_date,
+      decisionDate: row.decision_date,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      calendarSettings,
+      citeCheck,
+      nextDeadline,
+    };
+  });
 
   return { matters };
+});
+
+app.post<{
+  Body: {
+    orgId?: string;
+    userId?: string;
+    title?: string;
+    description?: string;
+    jurisdiction?: string;
+    procedure?: string;
+    status?: string;
+    riskLevel?: string;
+    hitlRequired?: boolean;
+    filingDate?: string;
+    decisionDate?: string;
+    agentRunId?: string;
+    draftId?: string;
+    primaryDocumentId?: string;
+    deadlines?: Array<{
+      id?: string;
+      name: string;
+      dueAt: string;
+      ruleReference?: string;
+      notes?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+    documents?: Array<{
+      id?: string;
+      documentId: string;
+      role?: string;
+      citeCheckStatus?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+    metadata?: Record<string, unknown>;
+    structuredPayload?: unknown;
+    calendarType?: 'calendar' | 'court';
+    calendarTimezone?: string;
+    calendarMethod?: 'standard' | 'expedited' | 'extended';
+  };
+}>('/matters', async (request, reply) => {
+  const body = request.body ?? {};
+  const orgId = typeof body.orgId === 'string' ? body.orgId : undefined;
+  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  if (!orgId || title.length === 0) {
+    return reply.code(400).send({ error: 'orgId and title are required' });
+  }
+
+  const headerUser = typeof request.headers['x-user-id'] === 'string' ? (request.headers['x-user-id'] as string) : undefined;
+  const actor = typeof body.userId === 'string' && body.userId.trim().length > 0 ? body.userId : headerUser;
+  if (!actor) {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('cases:manage', orgId, actor, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof (error as any).statusCode === 'number') {
+      return reply.code((error as any).statusCode).send({ error: (error as Error).message });
+    }
+    request.log.warn({ err: error, orgId, actor }, 'matter_authorization_failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const description = typeof body.description === 'string' ? body.description : null;
+  const jurisdiction = typeof body.jurisdiction === 'string' ? body.jurisdiction.toUpperCase() : null;
+  const residencyZone = mapJurisdictionToResidency(jurisdiction);
+  const procedure = typeof body.procedure === 'string' ? body.procedure : null;
+  const status = typeof body.status === 'string' ? body.status : 'open';
+  const filingDate = typeof body.filingDate === 'string' ? body.filingDate : null;
+  const decisionDate = typeof body.decisionDate === 'string' ? body.decisionDate : null;
+
+  let riskLevel = typeof body.riskLevel === 'string' ? body.riskLevel : null;
+  let hitlRequired = typeof body.hitlRequired === 'boolean' ? body.hitlRequired : undefined;
+  let structuredPayload = body.structuredPayload ?? null;
+  let metadata =
+    body.metadata && typeof body.metadata === 'object'
+      ? { ...(body.metadata as Record<string, unknown>) }
+      : ({} as Record<string, unknown>);
+
+  const calendarType = body.calendarType === 'court' ? 'court' : 'calendar';
+  const calendarTimezone =
+    typeof body.calendarTimezone === 'string' && body.calendarTimezone.trim().length > 0
+      ? body.calendarTimezone.trim()
+      : 'Europe/Paris';
+  const calendarMethod =
+    body.calendarMethod === 'expedited' || body.calendarMethod === 'extended'
+      ? body.calendarMethod
+      : 'standard';
+
+  const calendarSettings: CalendarSettings = {
+    type: calendarType,
+    timezone: calendarTimezone,
+    method: calendarMethod,
+  };
+
+  metadata = {
+    ...metadata,
+    calendar: calendarSettings,
+  };
+
+  const agentRunId = typeof body.agentRunId === 'string' ? body.agentRunId : null;
+  if (agentRunId) {
+    const run = await supabase
+      .from('agent_runs')
+      .select('id, org_id, question, jurisdiction_json, irac, risk_level, hitl_required, plan_trace, verification')
+      .eq('org_id', orgId)
+      .eq('id', agentRunId)
+      .maybeSingle();
+    if (run.error) {
+      request.log.warn({ err: run.error, orgId, agentRunId }, 'agent_run_lookup_failed');
+    } else if (run.data) {
+      const row = run.data as Record<string, unknown>;
+      structuredPayload = structuredPayload ?? row.irac ?? null;
+      if (!riskLevel && typeof row.risk_level === 'string') {
+        riskLevel = row.risk_level;
+      }
+      if (hitlRequired === undefined && typeof row.hitl_required === 'boolean') {
+        hitlRequired = row.hitl_required;
+      }
+      metadata = {
+        ...metadata,
+        agentRun: {
+          question: row.question ?? null,
+          jurisdiction: extractCountry(row.jurisdiction_json),
+          planTrace: row.plan_trace ?? null,
+          verification: row.verification ?? null,
+        },
+      };
+    }
+  }
+
+  const draftId = typeof body.draftId === 'string' ? body.draftId : null;
+  let primaryDocumentId = typeof body.primaryDocumentId === 'string' ? body.primaryDocumentId : null;
+  if (draftId) {
+    const draftLookup = await supabase
+      .from('drafts')
+      .select('id, document_id, structured_payload, verification, plan, trust_panel')
+      .eq('org_id', orgId)
+      .eq('id', draftId)
+      .maybeSingle();
+    if (draftLookup.error) {
+      request.log.warn({ err: draftLookup.error, orgId, draftId }, 'draft_lookup_failed');
+    } else if (draftLookup.data) {
+      const row = draftLookup.data as Record<string, unknown>;
+      if (!structuredPayload && row.structured_payload) {
+        structuredPayload = row.structured_payload;
+      }
+      primaryDocumentId = primaryDocumentId ?? (typeof row.document_id === 'string' ? row.document_id : null);
+      metadata = {
+        ...metadata,
+        draft: {
+          id: row.id,
+          verification: row.verification ?? null,
+          plan: row.plan ?? null,
+          trustPanel: row.trust_panel ?? null,
+        },
+      };
+    }
+  }
+
+  const schedule: Array<{
+    name: string;
+    due_at: string;
+    rule_reference?: string | null;
+    notes?: string | null;
+    metadata?: Record<string, unknown>;
+  }> =
+    Array.isArray(body.deadlines) && body.deadlines.length > 0
+      ? body.deadlines
+          .filter((deadline) => typeof deadline?.name === 'string' && typeof deadline?.dueAt === 'string')
+          .map((deadline) => ({
+            name: deadline.name!,
+            due_at: deadline.dueAt!,
+            rule_reference: deadline.ruleReference ?? null,
+            notes: deadline.notes ?? null,
+            metadata:
+              deadline.metadata && typeof deadline.metadata === 'object'
+                ? (deadline.metadata as Record<string, unknown>)
+                : {},
+          }))
+      : computeMatterSchedule({
+          jurisdiction,
+          filingDate,
+          procedure,
+          calendarType: calendarSettings.type,
+          timezone: calendarSettings.timezone,
+          method: calendarSettings.method,
+        }).map((item) => ({
+          name: item.name,
+          due_at: item.dueAt,
+          rule_reference: item.ruleReference,
+          notes: item.notes,
+          metadata: {},
+        }));
+
+  const matterInsert = await supabase
+    .from('matters')
+    .insert({
+      org_id: orgId,
+      created_by: actor,
+      agent_run_id: agentRunId,
+      primary_document_id: primaryDocumentId,
+      title,
+      description,
+      jurisdiction_code: jurisdiction,
+      procedure,
+      status,
+      risk_level: riskLevel,
+      hitl_required: hitlRequired ?? false,
+      filing_date: filingDate,
+      decision_date: decisionDate,
+      structured_payload: structuredPayload,
+      metadata,
+      residency_zone: residencyZone,
+    })
+    .select(
+      'id, org_id, title, description, status, risk_level, hitl_required, jurisdiction_code, procedure, residency_zone, filing_date, decision_date, structured_payload, metadata, created_at, updated_at, agent_run_id, primary_document_id',
+    )
+    .single();
+
+  if (matterInsert.error || !matterInsert.data) {
+    request.log.error({ err: matterInsert.error, orgId }, 'matter_insert_failed');
+    return reply.code(500).send({ error: 'matter_create_failed' });
+  }
+
+  const matterRow = normaliseMatterRow(matterInsert.data as Record<string, unknown>);
+
+  let insertedDeadlines: Array<{
+    id: string;
+    name: string;
+    dueAt: string;
+    ruleReference: string | null;
+    notes: string | null;
+    metadata: Record<string, unknown>;
+  }> = [];
+  if (schedule.length > 0) {
+    const insertDeadlines = await supabase
+      .from('matter_deadlines')
+      .insert(
+        schedule.map((item) => ({
+          matter_id: matterRow.id,
+          name: item.name,
+          due_at: item.due_at,
+          rule_reference: item.rule_reference ?? null,
+          notes: item.notes ?? null,
+          metadata: item.metadata ?? {},
+        })),
+      )
+      .select('id, name, due_at, rule_reference, notes, metadata');
+    if (insertDeadlines.error) {
+      request.log.warn({ err: insertDeadlines.error, orgId, matterId: matterRow.id }, 'matter_deadlines_insert_failed');
+    } else {
+      insertedDeadlines = (insertDeadlines.data ?? []).map((row) => ({
+        id: String(row.id),
+        name: row.name as string,
+        dueAt: row.due_at as string,
+        ruleReference: (row.rule_reference as string | null) ?? null,
+        notes: (row.notes as string | null) ?? null,
+        metadata:
+          row.metadata && typeof row.metadata === 'object'
+            ? (row.metadata as Record<string, unknown>)
+            : {},
+      }));
+    }
+  }
+
+  const documentLinks: Array<{
+    id: string;
+    documentId: string | null;
+    name: string | null;
+    role: string | null;
+    citeCheckStatus: string | null;
+    metadata: Record<string, unknown>;
+  }> = [];
+  const documentsInput = Array.isArray(body.documents) ? body.documents : [];
+  if (documentsInput.length > 0) {
+    const toInsert = documentsInput
+      .filter((doc) => typeof doc?.documentId === 'string')
+      .map((doc) => ({
+        matter_id: matterRow.id,
+        document_id: doc.documentId!,
+        role: doc.role ?? null,
+        cite_check_status: doc.citeCheckStatus ?? null,
+        metadata:
+          doc.metadata && typeof doc.metadata === 'object'
+            ? (doc.metadata as Record<string, unknown>)
+            : {},
+      }));
+    if (toInsert.length > 0) {
+      const docResult = await supabase
+        .from('matter_documents')
+        .insert(toInsert)
+        .select('id, document_id, role, cite_check_status, metadata');
+      if (docResult.error) {
+        request.log.warn({ err: docResult.error, orgId, matterId: matterRow.id }, 'matter_documents_insert_failed');
+      } else {
+        documentLinks.push(
+          ...(docResult.data ?? []).map((row) => ({
+            id: String(row.id),
+            documentId: typeof row.document_id === 'string' ? row.document_id : null,
+            name: null,
+            role: typeof row.role === 'string' ? row.role : null,
+            citeCheckStatus: typeof row.cite_check_status === 'string' ? row.cite_check_status : null,
+            metadata:
+              row.metadata && typeof row.metadata === 'object'
+                ? (row.metadata as Record<string, unknown>)
+                : {},
+          })),
+        );
+      }
+    }
+  }
+  let detail;
+  try {
+    detail = await loadMatterDetail({ orgId, matterId: matterRow.id, logger: request.log });
+  } catch (error) {
+    request.log.error({ err: error, orgId, matterId: matterRow.id }, 'matter_detail_fetch_failed_post');
+    return reply.code(500).send({ error: 'matter_detail_unavailable' });
+  }
+
+  if (!detail) {
+    return reply.code(500).send({ error: 'matter_detail_missing_post' });
+  }
+
+  try {
+    await logAuditEvent({
+      orgId,
+      actorId: actor,
+      kind: 'matter.created',
+      object: matterRow.id,
+      metadata: {
+        title,
+        status,
+        jurisdiction,
+        riskLevel,
+        hitlRequired: hitlRequired ?? false,
+        calendar: calendarSettings,
+        deadlines: detail.deadlines.length,
+        documents: detail.documents.length,
+        citeCheck: detail.citeCheck,
+      },
+    });
+  } catch (error) {
+    request.log.warn({ err: error, orgId, matterId: matterRow.id }, 'matter_create_audit_failed');
+  }
+
+  return reply.code(201).send(detail);
+});
+
+app.post<{
+  Body: {
+    orgId?: string;
+    jurisdiction?: string;
+    procedure?: string;
+    filingDate?: string;
+    calendarType?: 'calendar' | 'court';
+    calendarTimezone?: string;
+    calendarMethod?: 'standard' | 'expedited' | 'extended';
+  };
+}>('/matters/deadlines/preview', async (request, reply) => {
+  const body = request.body ?? {};
+  const orgId = typeof body.orgId === 'string' ? body.orgId : undefined;
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('cases:view', orgId, userHeader, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error, orgId }, 'deadline_preview_authorization_failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const calendarType = body.calendarType === 'court' ? 'court' : 'calendar';
+  const calendarTimezone =
+    typeof body.calendarTimezone === 'string' && body.calendarTimezone.trim().length > 0
+      ? body.calendarTimezone.trim()
+      : 'Europe/Paris';
+  const calendarMethod =
+    body.calendarMethod === 'expedited' || body.calendarMethod === 'extended'
+      ? body.calendarMethod
+      : 'standard';
+
+  const calendarSettings: CalendarSettings = {
+    type: calendarType,
+    timezone: calendarTimezone,
+    method: calendarMethod,
+  };
+
+  const schedule = computeMatterSchedule({
+    jurisdiction: body.jurisdiction,
+    filingDate: body.filingDate,
+    procedure: body.procedure,
+    calendarType: calendarSettings.type,
+    timezone: calendarSettings.timezone,
+    method: calendarSettings.method,
+  });
+
+  const methodNote =
+    calendarMethod === 'expedited'
+      ? 'Expedited timeline condenses each step by ~3 jours; valider la compatibilité avec la juridiction.'
+      : calendarMethod === 'extended'
+        ? 'Extended timeline ajoute un tampon de 5 jours pour absorber les revues internes.'
+        : 'Standard timeline applique les délais par défaut pour la juridiction sélectionnée.';
+
+  const calendarNote =
+    calendarType === 'court'
+      ? 'Court days ignorent les week-ends et jours fériés; pensez à vérifier les calendriers locaux.'
+      : 'Calendar days incluent week-ends et jours fériés; ajuster selon les règles de procédure.';
+
+  return reply.send({
+    calendarSettings,
+    deadlines: schedule.map((item) => ({
+      name: item.name,
+      dueAt: item.dueAt,
+      ruleReference: item.ruleReference,
+      notes: item.notes,
+    })),
+    notes: {
+      method: methodNote,
+      calendar: calendarNote,
+    },
+  });
+});
+
+app.patch<{
+  Params: { id: string };
+  Body: {
+    orgId?: string;
+    userId?: string;
+    title?: string;
+    description?: string | null;
+    jurisdiction?: string | null;
+    procedure?: string | null;
+    status?: string | null;
+    riskLevel?: string | null;
+    hitlRequired?: boolean;
+    filingDate?: string | null;
+    decisionDate?: string | null;
+    agentRunId?: string | null;
+    draftId?: string | null;
+    primaryDocumentId?: string | null;
+    structuredPayload?: unknown;
+    metadata?: Record<string, unknown>;
+    calendarType?: 'calendar' | 'court';
+    calendarTimezone?: string;
+    calendarMethod?: 'standard' | 'expedited' | 'extended';
+    deadlines?: Array<{
+      id?: string;
+      name: string;
+      dueAt: string;
+      ruleReference?: string;
+      notes?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+    documents?: Array<{
+      documentId: string;
+      role?: string;
+      citeCheckStatus?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+  };
+}>('/matters/:id', async (request, reply) => {
+  const { id } = request.params;
+  const body = request.body ?? {};
+  const orgId = typeof body.orgId === 'string' ? body.orgId : undefined;
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+
+  const headerUser = typeof request.headers['x-user-id'] === 'string' ? (request.headers['x-user-id'] as string) : undefined;
+  const actor = typeof body.userId === 'string' && body.userId.trim().length > 0 ? body.userId : headerUser;
+  if (!actor) {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('cases:manage', orgId, actor, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof (error as any).statusCode === 'number') {
+      return reply.code((error as any).statusCode).send({ error: (error as Error).message });
+    }
+    request.log.warn({ err: error, orgId, actor }, 'matter_update_authorization_failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const existingResult = await supabase
+    .from('matters')
+    .select(
+      'id, org_id, title, description, status, risk_level, hitl_required, jurisdiction_code, procedure, residency_zone, filing_date, decision_date, structured_payload, metadata, created_at, updated_at, agent_run_id, primary_document_id',
+    )
+    .eq('org_id', orgId)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (existingResult.error) {
+    request.log.error({ err: existingResult.error, orgId, matterId: id }, 'matter_update_fetch_failed');
+    return reply.code(500).send({ error: 'matter_fetch_failed' });
+  }
+
+  if (!existingResult.data) {
+    return reply.code(404).send({ error: 'matter_not_found' });
+  }
+
+  const existing = normaliseMatterRow(existingResult.data as Record<string, unknown>);
+  let metadata = existing.metadata ? { ...existing.metadata } : ({} as Record<string, unknown>);
+  if (body.metadata && typeof body.metadata === 'object') {
+    metadata = { ...metadata, ...(body.metadata as Record<string, unknown>) };
+  }
+
+  const updates: Record<string, unknown> = {};
+  const changedFields: string[] = [];
+
+  if (typeof body.title === 'string' && body.title.trim().length > 0 && body.title.trim() !== existing.title) {
+    updates.title = body.title.trim();
+    changedFields.push('title');
+  }
+
+  if (body.description !== undefined) {
+    const value = typeof body.description === 'string' ? body.description : null;
+    updates.description = value;
+    changedFields.push('description');
+  }
+
+  if (body.status !== undefined && typeof body.status === 'string' && body.status.trim().length > 0) {
+    updates.status = body.status.trim();
+    changedFields.push('status');
+  }
+
+  if (body.riskLevel !== undefined) {
+    updates.risk_level = typeof body.riskLevel === 'string' && body.riskLevel.trim().length > 0 ? body.riskLevel.trim() : null;
+    changedFields.push('riskLevel');
+  }
+
+  if (body.hitlRequired !== undefined) {
+    updates.hitl_required = Boolean(body.hitlRequired);
+    changedFields.push('hitlRequired');
+  }
+
+  if (body.filingDate !== undefined) {
+    updates.filing_date = typeof body.filingDate === 'string' ? body.filingDate : null;
+    changedFields.push('filingDate');
+  }
+
+  if (body.decisionDate !== undefined) {
+    updates.decision_date = typeof body.decisionDate === 'string' ? body.decisionDate : null;
+    changedFields.push('decisionDate');
+  }
+
+  if (body.procedure !== undefined) {
+    updates.procedure = typeof body.procedure === 'string' && body.procedure.trim().length > 0 ? body.procedure.trim() : null;
+    changedFields.push('procedure');
+  }
+
+  if (body.jurisdiction !== undefined) {
+    const jurisdiction = typeof body.jurisdiction === 'string' && body.jurisdiction.trim().length > 0 ? body.jurisdiction.trim().toUpperCase() : null;
+    updates.jurisdiction_code = jurisdiction;
+    updates.residency_zone = mapJurisdictionToResidency(jurisdiction);
+    changedFields.push('jurisdiction');
+  }
+
+  if ('agentRunId' in body) {
+    updates.agent_run_id = typeof body.agentRunId === 'string' && body.agentRunId.trim().length > 0 ? body.agentRunId : null;
+    changedFields.push('agentRunId');
+  }
+
+  if ('primaryDocumentId' in body) {
+    updates.primary_document_id =
+      typeof body.primaryDocumentId === 'string' && body.primaryDocumentId.trim().length > 0
+        ? body.primaryDocumentId
+        : null;
+    changedFields.push('primaryDocumentId');
+  }
+
+  if (body.structuredPayload !== undefined) {
+    updates.structured_payload = body.structuredPayload ?? null;
+    changedFields.push('structuredPayload');
+  }
+
+  const calendarType = body.calendarType === 'court' ? 'court' : undefined;
+  const calendarTimezone =
+    typeof body.calendarTimezone === 'string' && body.calendarTimezone.trim().length > 0
+      ? body.calendarTimezone.trim()
+      : undefined;
+  const calendarMethod =
+    body.calendarMethod === 'expedited' || body.calendarMethod === 'extended' ? body.calendarMethod : undefined;
+
+  if (calendarType || calendarTimezone || calendarMethod) {
+    const currentSettings = extractCalendarSettings(metadata);
+    const nextSettings: CalendarSettings = {
+      type: calendarType ?? currentSettings.type,
+      timezone: calendarTimezone ?? currentSettings.timezone,
+      method: calendarMethod ?? currentSettings.method,
+    };
+    metadata = { ...metadata, calendar: nextSettings };
+    updates.metadata = metadata;
+    changedFields.push('calendar');
+    changedFields.push('metadata');
+  } else if (body.metadata && typeof body.metadata === 'object') {
+    updates.metadata = metadata;
+    changedFields.push('metadata');
+  }
+
+  if (Object.keys(updates).length > 0) {
+    const updateResult = await supabase
+      .from('matters')
+      .update(updates)
+      .eq('org_id', orgId)
+      .eq('id', id)
+      .select(
+        'id, org_id, title, description, status, risk_level, hitl_required, jurisdiction_code, procedure, residency_zone, filing_date, decision_date, structured_payload, metadata, created_at, updated_at, agent_run_id, primary_document_id',
+      )
+      .maybeSingle();
+
+    if (updateResult.error) {
+      request.log.error({ err: updateResult.error, orgId, matterId: id }, 'matter_update_failed');
+      return reply.code(500).send({ error: 'matter_update_failed' });
+    }
+
+    if (updateResult.data) {
+      // Refresh baseline metadata for downstream logging
+      metadata = normaliseMatterRow(updateResult.data as Record<string, unknown>).metadata ?? metadata;
+    }
+  }
+
+  let deadlinesChanged = false;
+  if (Array.isArray(body.deadlines)) {
+    deadlinesChanged = true;
+    const sanitized = body.deadlines
+      .filter((deadline) => typeof deadline?.name === 'string' && typeof deadline?.dueAt === 'string')
+      .map((deadline) => ({
+        id: typeof deadline?.id === 'string' ? deadline.id : undefined,
+        name: deadline.name!,
+        due_at: deadline.dueAt!,
+        rule_reference: deadline.ruleReference ?? null,
+        notes: deadline.notes ?? null,
+        metadata:
+          deadline.metadata && typeof deadline.metadata === 'object'
+            ? (deadline.metadata as Record<string, unknown>)
+            : {},
+      }));
+
+    const existingDeadlines = await supabase
+      .from('matter_deadlines')
+      .select('id')
+      .eq('matter_id', id);
+
+    if (existingDeadlines.error) {
+      request.log.warn({ err: existingDeadlines.error, orgId, matterId: id }, 'matter_deadlines_fetch_for_update_failed');
+    } else {
+      const existingIds = new Set((existingDeadlines.data ?? []).map((row) => String(row.id)));
+      const incomingIds = new Set(sanitized.filter((deadline) => deadline.id).map((deadline) => deadline.id!));
+      const toDelete = [...existingIds].filter((deadlineId) => !incomingIds.has(deadlineId));
+      if (toDelete.length > 0) {
+        const deleteResult = await supabase.from('matter_deadlines').delete().in('id', toDelete);
+        if (deleteResult.error) {
+          request.log.warn({ err: deleteResult.error, orgId, matterId: id }, 'matter_deadlines_delete_failed');
+        }
+      }
+    }
+
+    if (sanitized.length > 0) {
+      const payload = sanitized.map((deadline) => ({
+        ...(deadline.id ? { id: deadline.id } : {}),
+        matter_id: id,
+        name: deadline.name,
+        due_at: deadline.due_at,
+        rule_reference: deadline.rule_reference ?? null,
+        notes: deadline.notes ?? null,
+        metadata: deadline.metadata ?? {},
+      }));
+
+      const upsert = await supabase
+        .from('matter_deadlines')
+        .upsert(payload, { onConflict: 'id' })
+        .select('id');
+      if (upsert.error) {
+        request.log.warn({ err: upsert.error, orgId, matterId: id }, 'matter_deadlines_upsert_failed');
+      }
+    }
+  }
+
+  let documentsChanged = false;
+  if (Array.isArray(body.documents)) {
+    documentsChanged = true;
+    const sanitizedDocs = body.documents
+      .filter((doc) => typeof doc?.documentId === 'string')
+      .map((doc) => ({
+        document_id: doc.documentId!,
+        role: doc.role ?? null,
+        cite_check_status: doc.citeCheckStatus ?? null,
+        metadata:
+          doc.metadata && typeof doc.metadata === 'object'
+            ? (doc.metadata as Record<string, unknown>)
+            : {},
+      }));
+
+    const existingDocs = await supabase
+      .from('matter_documents')
+      .select('id, document_id')
+      .eq('matter_id', id);
+
+    if (existingDocs.error) {
+      request.log.warn({ err: existingDocs.error, orgId, matterId: id }, 'matter_documents_fetch_for_update_failed');
+    } else {
+      const incomingDocIds = new Set(sanitizedDocs.map((doc) => doc.document_id));
+      const toDelete = (existingDocs.data ?? [])
+        .filter((doc) => !incomingDocIds.has(typeof doc.document_id === 'string' ? doc.document_id : ''))
+        .map((doc) => String(doc.id));
+      if (toDelete.length > 0) {
+        const deleteResult = await supabase.from('matter_documents').delete().in('id', toDelete);
+        if (deleteResult.error) {
+          request.log.warn({ err: deleteResult.error, orgId, matterId: id }, 'matter_documents_delete_failed');
+        }
+      }
+    }
+
+    if (sanitizedDocs.length > 0) {
+      const payload = sanitizedDocs.map((doc) => ({
+        matter_id: id,
+        document_id: doc.document_id,
+        role: doc.role,
+        cite_check_status: doc.cite_check_status,
+        metadata: doc.metadata,
+      }));
+
+      const upsert = await supabase
+        .from('matter_documents')
+        .upsert(payload, { onConflict: 'matter_id,document_id' })
+        .select('id');
+
+      if (upsert.error) {
+        request.log.warn({ err: upsert.error, orgId, matterId: id }, 'matter_documents_upsert_failed');
+      }
+    }
+  }
+
+  let detail;
+  try {
+    detail = await loadMatterDetail({ orgId, matterId: id, logger: request.log });
+  } catch (error) {
+    request.log.error({ err: error, orgId, matterId: id }, 'matter_detail_fetch_failed_patch');
+    return reply.code(500).send({ error: 'matter_detail_unavailable' });
+  }
+
+  if (!detail) {
+    return reply.code(404).send({ error: 'matter_not_found' });
+  }
+
+  try {
+    await logAuditEvent({
+      orgId,
+      actorId: actor,
+      kind: 'matter.updated',
+      object: id,
+      metadata: {
+        changedFields,
+        deadlinesChanged,
+        documentsChanged,
+        calendar: detail.calendarSettings,
+        citeCheck: detail.citeCheck,
+      },
+    });
+  } catch (error) {
+    request.log.warn({ err: error, orgId, matterId: id }, 'matter_update_audit_failed');
+  }
+
+  return reply.send(detail);
+});
+
+app.delete<{
+  Params: { id: string };
+  Querystring: { orgId?: string;
+    userId?: string };
+}>('/matters/:id', async (request, reply) => {
+  const { id } = request.params;
+  const { orgId, userId } = request.query ?? {};
+
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+
+  const headerUser = typeof request.headers['x-user-id'] === 'string' ? (request.headers['x-user-id'] as string) : undefined;
+  const actor = typeof userId === 'string' && userId.trim().length > 0 ? userId : headerUser;
+  if (!actor) {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('cases:manage', orgId, actor, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof (error as any).statusCode === 'number') {
+      return reply.code((error as any).statusCode).send({ error: (error as Error).message });
+    }
+    request.log.warn({ err: error, orgId, actor }, 'matter_delete_authorization_failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const deletion = await supabase
+    .from('matters')
+    .delete()
+    .eq('org_id', orgId)
+    .eq('id', id)
+    .select('id, title, status, jurisdiction_code, metadata')
+    .maybeSingle();
+
+  if (deletion.error) {
+    request.log.error({ err: deletion.error, orgId, matterId: id }, 'matter_delete_failed');
+    return reply.code(500).send({ error: 'matter_delete_failed' });
+  }
+
+  if (!deletion.data) {
+    return reply.code(404).send({ error: 'matter_not_found' });
+  }
+
+  await deleteMatterCalendar(orgId, id, request.log);
+
+  try {
+    await logAuditEvent({
+      orgId,
+      actorId: actor,
+      kind: 'matter.deleted',
+      object: id,
+      metadata: {
+        title: deletion.data.title ?? null,
+        status: deletion.data.status ?? null,
+        jurisdiction: deletion.data.jurisdiction_code ?? null,
+      },
+    });
+  } catch (error) {
+    request.log.warn({ err: error, orgId, matterId: id }, 'matter_delete_audit_failed');
+  }
+
+  return reply.code(204).send();
+});
+
+app.get<{
+  Params: { id: string };
+  Querystring: { orgId?: string };
+}>('/matters/:id/calendar', async (request, reply) => {
+  const { id } = request.params;
+  const { orgId } = request.query;
+
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('cases:view', orgId, userHeader, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error, orgId, matterId: id }, 'matter_calendar_authorization_failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  let detail;
+  try {
+    detail = await loadMatterDetail({ orgId, matterId: id, logger: request.log });
+  } catch (error) {
+    request.log.error({ err: error, orgId, matterId: id }, 'matter_calendar_fetch_failed');
+    return reply.code(500).send({ error: 'matter_calendar_failed' });
+  }
+
+  if (!detail) {
+    return reply.code(404).send({ error: 'matter_not_found' });
+  }
+
+  return reply.send({
+    calendar: detail.calendar,
+    calendarUrl: detail.calendarUrl,
+    calendarSettings: detail.calendarSettings,
+  });
 });
 
 app.get<{ Params: { id: string }; Querystring: { orgId?: string } }>('/matters/:id', async (request, reply) => {
@@ -5485,54 +8020,19 @@ app.get<{ Params: { id: string }; Querystring: { orgId?: string } }>('/matters/:
     return reply.code(403).send({ error: 'forbidden' });
   }
 
-  const run = await supabase
-    .from('agent_runs')
-    .select('id, question, jurisdiction_json, irac, risk_level, started_at, finished_at, hitl_required, status')
-    .eq('org_id', orgId)
-    .eq('id', id)
-    .single();
+  let detail;
+  try {
+    detail = await loadMatterDetail({ orgId, matterId: id, logger: request.log });
+  } catch (error) {
+    request.log.error({ err: error, orgId, matterId: id }, 'matter_detail_fetch_failed');
+    return reply.code(500).send({ error: 'matter_failed' });
+  }
 
-  if (run.error || !run.data) {
-    request.log.error({ err: run.error }, 'matter detail failed');
+  if (!detail) {
     return reply.code(404).send({ error: 'matter_not_found' });
   }
 
-  const citations = await supabase
-    .from('run_citations')
-    .select('title, publisher, url, domain_ok, note')
-    .eq('run_id', id);
-  const tools = await supabase
-    .from('tool_invocations')
-    .select('name, args, output, created_at')
-    .eq('run_id', id)
-    .order('created_at', { ascending: true });
-
-  return {
-    matter: {
-      id: run.data.id,
-      question: run.data.question,
-      jurisdiction: extractCountry(run.data.jurisdiction_json),
-      irac: run.data.irac,
-      riskLevel: run.data.risk_level,
-      startedAt: run.data.started_at,
-      finishedAt: run.data.finished_at,
-      status: run.data.status,
-      hitlRequired: run.data.hitl_required,
-      citations: (citations.data ?? []).map((citation) => ({
-        title: citation.title,
-        publisher: citation.publisher,
-        url: citation.url,
-        domainOk: citation.domain_ok,
-        note: citation.note ?? null,
-      })),
-      tools: (tools.data ?? []).map((tool) => ({
-        name: tool.name,
-        args: tool.args,
-        output: tool.output,
-        createdAt: tool.created_at,
-      })),
-    },
-  };
+  return detail;
 });
 
 app.get<{ Querystring: { orgId?: string } }>('/corpus', async (request, reply) => {
@@ -5557,11 +8057,13 @@ app.get<{ Querystring: { orgId?: string } }>('/corpus', async (request, reply) =
   }
 
   const [domains, snapshots, uploads, ingestions, summaries] = await Promise.all([
-    supabase.from('authority_domains').select('jurisdiction_code, host, active, last_ingested_at'),
+    supabase
+      .from('authority_domains')
+      .select('jurisdiction_code, host, active, last_ingested_at'),
     supabase
       .from('documents')
       .select(
-        'id, name, storage_path, vector_store_status, vector_store_synced_at, created_at, bytes, mime_type, summary_status, summary_generated_at, summary_error, chunk_count, bucket_id, source_id',
+        'id, name, storage_path, vector_store_status, vector_store_synced_at, created_at, bytes, mime_type, summary_status, summary_generated_at, summary_error, chunk_count, bucket_id, source_id, residency_zone',
       )
       .eq('org_id', orgId)
       .eq('bucket_id', 'authorities')
@@ -5606,6 +8108,7 @@ app.get<{ Querystring: { orgId?: string } }>('/corpus', async (request, reply) =
       host: row.host,
       active: row.active ?? true,
       lastIngestedAt: row.last_ingested_at,
+      residencyZone: mapJurisdictionToResidency(row.jurisdiction_code),
     })),
     snapshots: (snapshots.data ?? []).map((doc) => {
       const summaryRow = summaryMap.get(doc.id) ?? null;
@@ -5624,6 +8127,7 @@ app.get<{ Querystring: { orgId?: string } }>('/corpus', async (request, reply) =
         chunkCount: doc.chunk_count ?? 0,
         summary: summaryRow?.summary ?? null,
         highlights: Array.isArray(summaryRow?.outline) ? summaryRow?.outline : null,
+        residencyZone: doc.residency_zone ?? null,
       };
     }),
     uploads: (uploads.data ?? []).map((doc) => ({
@@ -6210,27 +8714,58 @@ if (process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') {
 }
 
 export { app };
-// C2PA signing (simplified placeholder: returns a signature over content hash)
-app.post<{ Body: { orgId?: string; contentSha256?: string; filename?: string } }>('/exports/sign', async (request, reply) => {
-  const { orgId, contentSha256, filename } = request.body ?? {};
-  if (!orgId || !contentSha256) {
-    return reply.code(400).send({ error: 'orgId and contentSha256 are required' });
-  }
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-  try {
-    await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
-  } catch (error) {
-    return reply.code(403).send({ error: 'forbidden' });
-  }
-  // In a real implementation, perform C2PA signing with a private key and embed manifest.
-  const keyId = process.env.C2PA_SIGNING_KEY_ID ?? 'dev-key';
-  const signedAt = new Date().toISOString();
-  const signature = `${keyId}.${contentSha256}.${Buffer.from(signedAt).toString('base64url')}`;
-  return { signature, keyId, signedAt, filename: filename ?? null };
-});
+// C2PA signing endpoint
+app.post<{ Body: { orgId?: string; contentSha256?: string; filename?: string } }>(
+  '/exports/sign',
+  async (request, reply) => {
+    const { orgId, contentSha256, filename } = request.body ?? {};
+    if (!orgId || !contentSha256) {
+      return reply.code(400).send({ error: 'orgId and contentSha256 are required' });
+    }
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
+    try {
+      await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
+    } catch (error) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    try {
+      const signature = signC2PA({
+        orgId,
+        userId: userHeader,
+        contentSha256,
+        filename: filename ?? null,
+      });
+
+      await logAuditEvent({
+        orgId,
+        actorId: userHeader,
+        kind: 'export.signed',
+        object: filename ?? contentSha256,
+        metadata: {
+          keyId: signature.keyId,
+          statementId: signature.statementId,
+          algorithm: signature.algorithm,
+        },
+      });
+
+      return {
+        signature: signature.signature,
+        keyId: signature.keyId,
+        algorithm: signature.algorithm,
+        signedAt: signature.signedAt,
+        statementId: signature.statementId,
+        manifest: signature.manifest,
+      };
+    } catch (error) {
+      request.log.error({ err: error }, 'c2pa_sign_failed');
+      return reply.code(500).send({ error: 'signing_failed' });
+    }
+  },
+);
 
 // Admin policies
 app.get<{ Params: { orgId: string } }>(
@@ -6410,7 +8945,9 @@ app.post<{ Params: { orgId: string }; Body: { format?: 'csv' | 'json' } }>(
     // Build export snapshot
     const { data: sources, error } = await supabase
       .from('sources')
-      .select('jurisdiction_code, source_type, title, publisher, source_url, binding_lang, consolidated, effective_date, eli, ecli, link_last_status')
+      .select(
+        'jurisdiction_code, source_type, title, publisher, source_url, binding_lang, consolidated, effective_date, eli, ecli, link_last_status, residency_zone',
+      )
       .eq('org_id', orgId);
     if (error) return reply.code(500).send({ error: 'export_query_failed' });
 
@@ -6418,8 +8955,19 @@ app.post<{ Params: { orgId: string }; Body: { format?: 'csv' | 'json' } }>(
     let status: 'completed' | 'failed' = 'completed';
     let errorMessage: string | null = null;
     try {
+      const totalSources = sources?.length ?? 0;
+      const bindingCount = (sources ?? []).reduce((acc, s: any) => acc + (s.binding_lang ? 1 : 0), 0);
+      const residencyCount = (sources ?? []).reduce((acc, s: any) => acc + (s.residency_zone ? 1 : 0), 0);
+      const bindingCoverage = totalSources > 0 ? bindingCount / totalSources : null;
+      const residencyCoverage = totalSources > 0 ? residencyCount / totalSources : null;
+      const summary = {
+        totalSources,
+        bindingCoverage,
+        residencyCoverage,
+      };
       if ((format ?? 'csv') === 'json') {
-        const blob = new Blob([JSON.stringify(sources ?? [], null, 2)], { type: 'application/json' });
+        const payload = { summary, sources: sources ?? [] };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const up = await supabase.storage.from('snapshots').upload(filePath, blob, { upsert: true, contentType: 'application/json' });
         if (up.error) throw new Error(up.error.message);
       } else {
@@ -6436,6 +8984,7 @@ app.post<{ Params: { orgId: string }; Body: { format?: 'csv' | 'json' } }>(
           'eli',
           'ecli',
           'link_status',
+          'residency_zone',
         ];
         const rows = (sources ?? []).map((s: any) => [
           s.jurisdiction_code ?? '',
@@ -6449,9 +8998,23 @@ app.post<{ Params: { orgId: string }; Body: { format?: 'csv' | 'json' } }>(
           s.eli ?? '',
           s.ecli ?? '',
           s.link_last_status ?? '',
+          s.residency_zone ?? '',
         ]);
-        const csv = [header, ...rows]
-          .map((r) => r.map((v) => `"${String(v)}"`).join(','))
+        const summaryLine = `# binding_ratio=${bindingCoverage === null ? '' : bindingCoverage.toFixed(4)}, residency_coverage=${
+          residencyCoverage === null ? '' : residencyCoverage.toFixed(4)
+        }`;
+        const csv = [summaryLine, header, ...rows]
+          .map((r) =>
+            Array.isArray(r)
+              ? r
+                  .map((v) => {
+                    const value = String(v);
+                    const escaped = value.replaceAll('"', '""');
+                    return `"${escaped}"`;
+                  })
+                  .join(',')
+              : r,
+          )
           .join('\n');
         const blob = new Blob([csv], { type: 'text/csv' });
         const up = await supabase.storage.from('snapshots').upload(filePath, blob, { upsert: true, contentType: 'text/csv' });

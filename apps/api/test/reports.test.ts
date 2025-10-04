@@ -39,6 +39,7 @@ describe('reports helpers', () => {
         started_at: new Date('2024-07-01T10:00:00Z').toISOString(),
         finished_at: new Date('2024-07-01T10:00:02Z').toISOString(),
         confidential_mode: true,
+        agent_code: 'conseil_recherche',
       },
       {
         risk_level: 'LOW',
@@ -46,6 +47,15 @@ describe('reports helpers', () => {
         started_at: new Date('2024-07-02T10:00:00Z').toISOString(),
         finished_at: new Date('2024-07-02T10:00:03Z').toISOString(),
         confidential_mode: false,
+        agent_code: 'concierge',
+      },
+      {
+        risk_level: 'LOW',
+        hitl_required: false,
+        started_at: new Date('2024-07-03T10:00:00Z').toISOString(),
+        finished_at: new Date('2024-07-03T10:00:04Z').toISOString(),
+        confidential_mode: false,
+        agent_code: 'conseil_recherche',
       },
     ]);
 
@@ -83,10 +93,14 @@ describe('reports helpers', () => {
     });
 
     expect(report.organisation.name).toBe('Org Test');
-    expect(report.operations.totalRuns).toBe(2);
+    expect(report.operations.totalRuns).toBe(3);
     expect(report.compliance.cepejPassRate).toBe(1);
     expect(report.ingestion.succeeded).toBe(1);
     expect(report.evaluations.passRate).toBeCloseTo(0.5, 3);
+    expect(report.operations.agentsByCode).toEqual([
+      { code: 'conseil_recherche', count: 2 },
+      { code: 'concierge', count: 1 },
+    ]);
   });
 
   it('summarises SLO snapshots', () => {

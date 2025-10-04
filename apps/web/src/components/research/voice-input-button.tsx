@@ -13,14 +13,10 @@ interface VoiceInputButtonProps {
   };
 }
 
-type SpeechRecognitionType = typeof window extends { SpeechRecognition: infer R }
-  ? R
-  : typeof window extends { webkitSpeechRecognition: infer W }
-  ? W
-  : never;
+type SpeechRecognitionType = any;
 
 export function VoiceInputButton({ onTranscript, messages }: VoiceInputButtonProps) {
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
   const [supported, setSupported] = useState<boolean>(false);
   const [listening, setListening] = useState(false);
 
@@ -40,7 +36,7 @@ export function VoiceInputButton({ onTranscript, messages }: VoiceInputButtonPro
     recognition.lang = 'fr-FR';
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: any) => {
       const transcript = event.results?.[0]?.[0]?.transcript;
       if (transcript) {
         onTranscript(transcript.trim());

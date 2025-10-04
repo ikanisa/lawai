@@ -3,12 +3,26 @@
 import * as React from 'react';
 import { cn } from '../../lib/utils';
 
-export interface SwitchProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface SwitchProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onChange'> {
   checked?: boolean;
   label?: string;
+  onCheckedChange?: (checked: boolean) => void;
 }
 
-export function Switch({ checked, label, className, ...props }: SwitchProps) {
+export function Switch({
+  checked = false,
+  label,
+  className,
+  onCheckedChange,
+  onClick,
+  ...props
+}: SwitchProps) {
+  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    onClick?.(event);
+    if (event.defaultPrevented) return;
+    onCheckedChange?.(!checked);
+  };
+
   return (
     <button
       role="switch"
@@ -18,6 +32,7 @@ export function Switch({ checked, label, className, ...props }: SwitchProps) {
         checked ? 'border-teal-400/80 text-teal-200' : 'text-slate-300',
         className,
       )}
+      onClick={handleClick}
       {...props}
     >
       <span

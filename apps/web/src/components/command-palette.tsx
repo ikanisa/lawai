@@ -2,7 +2,7 @@
 
 import * as Dialog from '@radix-ui/react-dialog';
 import { useRouter, usePathname } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   LayoutGrid,
   Search,
@@ -16,6 +16,7 @@ import {
   Wand2,
   Sparkle,
 } from 'lucide-react';
+import type { Route } from 'next';
 import type { Locale, Messages } from '../lib/i18n';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -58,7 +59,7 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
     setQuery('');
   }, [pathname, setOpen]);
 
-  const localizedHref = (href: string) => `/${locale}${href}`;
+  const localizedHref = useCallback((href: string) => `/${locale}${href}` as Route, [locale]);
 
   const commands = useMemo<CommandItem[]>(
     () => [
@@ -164,7 +165,7 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
         perform: () => router.push(localizedHref('/drafting')),
       },
     ],
-    [messages, router, togglePlanDrawer, locale],
+    [messages, router, togglePlanDrawer, locale, localizedHref],
   );
 
   const filtered = useMemo(() => {

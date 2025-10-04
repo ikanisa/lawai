@@ -1,5 +1,6 @@
 -- Sync auth.users metadata into public.profiles automatically.
 
+
 create or replace function public.sync_profile_from_auth()
 returns trigger
 language plpgsql
@@ -30,7 +31,9 @@ begin
 end;
 $$;
 
+drop trigger if exists sync_profile_on_auth_user on auth.users;
+
 create trigger sync_profile_on_auth_user
   after insert or update on auth.users
   for each row
-  execute procedure public.sync_profile_from_auth();
+  execute function public.sync_profile_from_auth();

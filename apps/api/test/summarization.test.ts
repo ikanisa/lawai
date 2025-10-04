@@ -23,7 +23,7 @@ describe('summariseDocumentFromPayload', () => {
   });
 
   it('skips when the extracted text is too short', async () => {
-    const { summariseDocumentFromPayload } = await import('../src/summarization.js');
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
 
     const payload = encoder.encode('Bref');
     const result = await summariseDocumentFromPayload({
@@ -81,7 +81,7 @@ describe('summariseDocumentFromPayload', () => {
       throw new Error(`Unexpected fetch ${url}`);
     });
 
-    const { summariseDocumentFromPayload } = await import('../src/summarization.js');
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
 
     const result = await summariseDocumentFromPayload({
       payload: encoder.encode(text),
@@ -110,7 +110,7 @@ describe('summariseDocumentFromPayload', () => {
       }),
     );
 
-    const { summariseDocumentFromPayload } = await import('../src/summarization.js');
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
 
     const result = await summariseDocumentFromPayload({
       payload: encoder.encode('Article 1 — Long texte '.repeat(20)),

@@ -1,7 +1,7 @@
 # Security & Privacy Report
 
 ## Row-Level Security & Access Controls
-- Supabase RLS enabled on tenant tables and helper `public.is_org_member(p_org)` defined (`db/migrations/0002_auth_orgs.sql:22-33`, `db/migrations/0005_rls.sql:1-44`).
+- Supabase RLS enabled on tenant tables and helper `public.is_org_member(p_org)` defined (`supabase/migrations/20240101000200_auth_orgs.sql:22-33`, `supabase/migrations/20240101000500_rls.sql:1-44`).
 - Access middleware enforces RBAC/ABAC, MFA/passkey headers, consent + IP allow-list checks (`apps/api/src/access-control.ts:180-357`).
 
 ## Secrets & Environment Hygiene
@@ -18,7 +18,7 @@
 - Telemetry is suppressed when confidential mode is active; web search already disabled via agent configuration (`apps/api/src/agent.ts:3935-3949`).
 
 ## Data Residency & Retention
-- Residency enforcement functions guard storage prefixes and residency zones (`db/migrations/0053_storage_residency_enforcement.sql`).
+- Residency enforcement functions guard storage prefixes and residency zones (`supabase/migrations/20240101005400_storage_residency_enforcement.sql`).
 - Residency matrix documented (`docs/governance/data_residency_matrix.md`).
 
 ## DPIA / FRIA / EU AI Act
@@ -27,7 +27,7 @@
 
 ## CEPEJ & France Policy Checks
 - France judge analytics guard produces HITL-only response (`apps/api/src/agent.ts:4043-4125`).
-- CEPEJ metrics views exist (`db/migrations/0046_cepej_metrics_view.sql`), surfaced through `/metrics/cepej` (`apps/api/src/server.ts:826-868`).
+- CEPEJ metrics views exist (`supabase/migrations/20240101004700_cepej_metrics_view.sql`), surfaced through `/metrics/cepej` (`apps/api/src/server.ts:826-868`).
 
 ## Outstanding Risks
 1. Secrets leak (BLOCKER) – rotate OpenAI/Supabase keys at provider level despite repo sanitisation.

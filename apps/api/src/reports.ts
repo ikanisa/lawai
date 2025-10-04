@@ -13,6 +13,7 @@ export interface RunRecord {
   started_at: string;
   finished_at: NullableDate;
   confidential_mode?: boolean | null;
+  agent_code?: string | null;
 }
 
 export interface HitlRecord {
@@ -50,6 +51,7 @@ export interface RunSummary {
   averageLatencyMs: number;
   medianLatencyMs: number | null;
   hitlTriggered: number;
+  agentsByCode: Array<{ code: string; count: number }>;
 }
 
 export interface HitlSummary {
@@ -313,6 +315,7 @@ export function summariseRuns(rows: RunRecord[]): RunSummary {
   let hitlTriggered = 0;
   let confidential = 0;
   const latencies: number[] = [];
+  const agentCounts = new Map<string, number>();
 
   for (const row of rows) {
     if (row.risk_level === 'HIGH') {
@@ -324,6 +327,9 @@ export function summariseRuns(rows: RunRecord[]): RunSummary {
     if (row.confidential_mode) {
       confidential += 1;
     }
+    const agentCodeRaw = typeof row.agent_code === 'string' ? row.agent_code.trim() : '';
+    const agentCode = agentCodeRaw.length > 0 ? agentCodeRaw : 'unspecified';
+    agentCounts.set(agentCode, (agentCounts.get(agentCode) ?? 0) + 1);
     const latency = toMs(row.started_at, row.finished_at);
     if (latency !== null) {
       latencies.push(latency);
@@ -332,6 +338,9 @@ export function summariseRuns(rows: RunRecord[]): RunSummary {
 
   const totalRuns = rows.length;
   const averageLatencyMs = latencies.length === 0 ? 0 : Math.round(latencies.reduce((sum, value) => sum + value, 0) / latencies.length);
+  const agentsByCode = Array.from(agentCounts.entries())
+    .map(([code, count]) => ({ code, count }))
+    .sort((a, b) => (b.count - a.count) || a.code.localeCompare(b.code));
 
   return {
     totalRuns,
@@ -340,6 +349,7 @@ export function summariseRuns(rows: RunRecord[]): RunSummary {
     averageLatencyMs,
     medianLatencyMs: median(latencies),
     hitlTriggered,
+    agentsByCode,
   };
 }
 
@@ -507,6 +517,7 @@ export function buildTransparencyReport(input: TransparencyInputs) {
       averageLatencyMs: input.runs.averageLatencyMs,
       medianLatencyMs: input.runs.medianLatencyMs,
       hitlTriggered: input.runs.hitlTriggered,
+      agentsByCode: input.runs.agentsByCode,
       hitl: {
         total: input.hitl.total,
         pending: input.hitl.pending,

@@ -16,7 +16,10 @@ import {
   IRACPayload,
   IRACSchema,
   OFFICIAL_DOMAIN_ALLOWLIST,
+  getAgentDefinition,
+  getAutonomousSuiteManifest,
 } from '@avocat-ai/shared';
+import type { AutonomousAgentCode, AutonomousJusticeSuiteManifest } from '@avocat-ai/shared';
 import { diffWordsWithSpace } from 'diff';
 import { createServiceClient } from '@avocat-ai/supabase';
 import { createHash } from 'node:crypto';
@@ -68,6 +71,8 @@ export interface AgentRunInput {
   orgId: string;
   userId: string;
   confidentialMode?: boolean;
+  agentCode?: string | null;
+  agentSettings?: Record<string, unknown> | null;
 }
 
 export interface AgentRunResult {
@@ -80,6 +85,13 @@ export interface AgentRunResult {
   notices?: AgentPlanNotice[];
   verification?: VerificationResult;
   trustPanel?: TrustPanelPayload;
+  agent: {
+    key: AutonomousAgentCode;
+    code: string;
+    label: string;
+    settings: Record<string, unknown>;
+    tools: string[];
+  };
 }
 
 interface JurisdictionHint {
@@ -106,10 +118,17 @@ interface AgentExecutionContext {
   lastJurisdiction: JurisdictionHint | null;
   confidentialMode: boolean;
   allowedJurisdictions: string[];
+  residencyZone: string | null;
+  sensitiveTopicHitl: boolean;
   toolUsage: Record<string, number>;
   toolBudgets: Record<string, number>;
   synonymExpansions: Record<string, string[]>;
   policyVersion: PolicyVersionContext | null;
+  agentKey: AutonomousAgentCode;
+  agentCode: string;
+  agentLabel: string;
+  agentSettings: Record<string, unknown>;
+  allowedTools: string[];
 }
 
 interface PolicyVersionContext {
@@ -238,7 +257,180 @@ const TOOL_BUDGET_DEFAULTS: Record<string, number> = {
   evaluate_case_alignment: 3,
   compute_case_score: 3,
   build_treatment_graph: 1,
+  court_fees: 2,
+  service_of_process: 2,
+  hearing_schedule: 1,
+  exhibit_bundler: 1,
+  document_parser: 1,
+  risk_assessor: 2,
 };
+
+const DEFAULT_TOOL_BUDGET = 3;
+
+type AgentManifestEntry = AutonomousJusticeSuiteManifest['agents'][AutonomousAgentCode];
+
+interface SelectedAgentProfile {
+  key: AutonomousAgentCode;
+  manifestCode: string;
+  label: string;
+  mission: string | null;
+  declaredTools: string[];
+  allowedToolKeys: string[];
+  settings: Record<string, unknown>;
+  allowOverrideApplied: boolean;
+}
+
+const DEFAULT_AGENT_KEY: AutonomousAgentCode = 'counsel_research';
+
+const SUITE_MANIFEST = getAutonomousSuiteManifest();
+
+function normaliseAgentSettings(input: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (!input || typeof input !== 'object') {
+    return {};
+  }
+  if (Array.isArray(input)) {
+    return {};
+  }
+  return { ...input };
+}
+
+function resolveAgentKey(code: string | null | undefined): AutonomousAgentCode {
+  if (typeof code !== 'string' || code.trim().length === 0) {
+    return DEFAULT_AGENT_KEY;
+  }
+  const target = code.trim().toLowerCase();
+  const entries = Object.entries(SUITE_MANIFEST.agents) as Array<[
+    AutonomousAgentCode,
+    AgentManifestEntry,
+  ]>;
+  for (const [key, definition] of entries) {
+    if (key.toLowerCase() === target) {
+      return key;
+    }
+    const manifestCode = typeof definition.code === 'string' ? definition.code.trim().toLowerCase() : null;
+    if (manifestCode && manifestCode === target) {
+      return key;
+    }
+  }
+  return DEFAULT_AGENT_KEY;
+}
+
+const TOOL_CODE_OVERRIDES: Record<string, string> = {
+  generate_template: 'generate_pleading_template',
+  pleading_template: 'generate_pleading_template',
+  case_alignment: 'evaluate_case_alignment',
+};
+
+function normaliseManifestToolCode(code: string | null | undefined): string | null {
+  if (typeof code !== 'string') {
+    return null;
+  }
+  const trimmed = code.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const withoutSuffix = trimmed.replace(/\?$/, '');
+  const snake = withoutSuffix
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[\s-]+/g, '_')
+    .toLowerCase();
+  if (TOOL_CODE_OVERRIDES[snake]) {
+    return TOOL_CODE_OVERRIDES[snake];
+  }
+  if (TOOL_CODE_OVERRIDES[withoutSuffix]) {
+    return TOOL_CODE_OVERRIDES[withoutSuffix];
+  }
+  return snake || null;
+}
+
+function deriveAllowedToolKeys(
+  definition: AgentManifestEntry,
+  settings: Record<string, unknown>,
+): { manifestTools: string[]; allowedKeys: string[]; overrideApplied: boolean } {
+  const declaredTools = Array.isArray(definition.tools)
+    ? definition.tools.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+  const manifestToolKeys = declaredTools
+    .map((tool) => normaliseManifestToolCode(tool))
+    .filter((tool): tool is string => Boolean(tool));
+
+  const defaults = manifestToolKeys.length > 0 ? manifestToolKeys : Object.keys(TOOL_BUDGET_DEFAULTS);
+  const baseSet = new Set(defaults);
+  baseSet.add('route_jurisdiction');
+  baseSet.add('validate_citation');
+
+  let overrideApplied = false;
+  const allowTools = settings.allow_tools;
+  if (Array.isArray(allowTools)) {
+    const overrideKeys = allowTools
+      .map((entry) => (typeof entry === 'string' ? normaliseManifestToolCode(entry) : null))
+      .filter((entry): entry is string => Boolean(entry));
+    if (overrideKeys.length > 0) {
+      overrideApplied = true;
+      const allowedOverride = new Set(overrideKeys);
+      for (const key of Array.from(baseSet)) {
+        if (!allowedOverride.has(key)) {
+          baseSet.delete(key);
+        }
+      }
+    }
+  }
+
+  if (baseSet.size === 0) {
+    for (const key of Object.keys(TOOL_BUDGET_DEFAULTS)) {
+      baseSet.add(key);
+    }
+    baseSet.add('route_jurisdiction');
+    baseSet.add('validate_citation');
+  }
+
+  return {
+    manifestTools: declaredTools,
+    allowedKeys: Array.from(baseSet),
+    overrideApplied,
+  };
+}
+
+function deriveToolBudgets(allowedKeys: string[]): Record<string, number> {
+  if (!Array.isArray(allowedKeys) || allowedKeys.length === 0) {
+    return { ...TOOL_BUDGET_DEFAULTS };
+  }
+  const allowedSet = new Set(allowedKeys);
+  const budgets: Record<string, number> = {};
+  for (const [tool, budget] of Object.entries(TOOL_BUDGET_DEFAULTS)) {
+    budgets[tool] = allowedSet.has(tool) ? budget : 0;
+  }
+  for (const tool of allowedSet) {
+    if (!(tool in budgets)) {
+      budgets[tool] = DEFAULT_TOOL_BUDGET;
+    }
+  }
+  return budgets;
+}
+
+function resolveAgentProfile(
+  agentCode: string | null | undefined,
+  agentSettings: Record<string, unknown> | null | undefined,
+): SelectedAgentProfile {
+  const key = resolveAgentKey(agentCode);
+  const definition = getAgentDefinition(key);
+  const settings = normaliseAgentSettings(agentSettings ?? null);
+  const { manifestTools, allowedKeys, overrideApplied } = deriveAllowedToolKeys(definition, settings);
+  const label = typeof definition.label === 'string' ? definition.label : definition.code ?? key;
+  const mission = typeof definition.mission === 'string' ? definition.mission : null;
+  const manifestCode = typeof definition.code === 'string' ? definition.code : key;
+
+  return {
+    key,
+    manifestCode,
+    label,
+    mission,
+    declaredTools: manifestTools,
+    allowedToolKeys: allowedKeys,
+    settings,
+    allowOverrideApplied: overrideApplied,
+  };
+}
 
 function countAkomaArticles(value: unknown): number {
   if (!value || typeof value !== 'object') {
@@ -264,6 +456,7 @@ interface PlannerOutcome {
   ohadaInsight: string | null;
   deadlineInsight: string | null;
   franceAnalyticsGuard: FranceAnalyticsGuardResult;
+  agentProfile: SelectedAgentProfile;
 }
 
 type PlanStepOptions<T> = {
@@ -353,7 +546,12 @@ function summariseHybridSnippets(snippets: HybridSnippet[]): Record<string, unkn
   };
 }
 
-function createRunKey(input: AgentRunInput, routing: RoutingResult, confidentialMode: boolean): string {
+function createRunKey(
+  input: AgentRunInput,
+  routing: RoutingResult,
+  confidentialMode: boolean,
+  profile: SelectedAgentProfile,
+): string {
   const hash = createHash('sha256');
   hash.update(input.orgId);
   hash.update('|');
@@ -367,6 +565,27 @@ function createRunKey(input: AgentRunInput, routing: RoutingResult, confidential
   if (routing.primary?.country) {
     hash.update('|');
     hash.update(routing.primary.country);
+  }
+  hash.update('|');
+  hash.update(profile.manifestCode);
+  const sortedTools = [...profile.allowedToolKeys].sort();
+  if (sortedTools.length > 0) {
+    hash.update('|tools:');
+    hash.update(sortedTools.join(','));
+  }
+  const settingsEntries = Object.entries(profile.settings).sort(([a], [b]) => a.localeCompare(b));
+  if (settingsEntries.length > 0) {
+    hash.update('|settings:');
+    for (const [key, value] of settingsEntries) {
+      hash.update(key);
+      hash.update('=');
+      hash.update(
+        typeof value === 'string'
+          ? value
+          : JSON.stringify(value ?? null),
+      );
+      hash.update(';');
+    }
   }
   return hash.digest('hex');
 }
@@ -397,6 +616,11 @@ function resolveResidencyZone(accessContext: OrgAccessContext | null | undefined
   if (!accessContext) {
     return null;
   }
+  const abacZone = accessContext.abac?.residencyZone ?? null;
+  if (abacZone) {
+    return abacZone.toLowerCase();
+  }
+
   const raw = (accessContext.rawPolicies ?? {})['residency_zone'];
   if (!raw) {
     return null;
@@ -544,8 +768,31 @@ async function planRun(
   accessContext: OrgAccessContext | null,
   useStub: boolean,
   toolLogs: ToolInvocationLog[],
+  profile: SelectedAgentProfile,
 ): Promise<PlannerOutcome> {
   const planTrace: AgentPlanStep[] = [];
+
+  await recordPlanStep<SelectedAgentProfile>(
+    planTrace,
+    'agent_selection',
+    'Agent délégué',
+    'Sélection du profil agent dans le manifeste Autonomous Suite.',
+    async () => profile,
+    {
+      detail: (value) => ({
+        manifestCode: value.manifestCode,
+        label: value.label,
+        declaredTools: value.declaredTools,
+        allowedTools: value.allowedToolKeys,
+        overrideApplied: value.allowOverrideApplied,
+      }),
+    },
+  );
+
+  const allowedToolKeys = profile.allowedToolKeys.length > 0
+    ? Array.from(new Set(profile.allowedToolKeys))
+    : Object.keys(TOOL_BUDGET_DEFAULTS);
+  const toolBudgets = deriveToolBudgets(allowedToolKeys);
 
   const initialRouting =
     (await recordPlanStep<RoutingResult>(
@@ -599,6 +846,10 @@ async function planRun(
     : [];
 
   const enforcedConfidentialMode = Boolean(accessContext?.policies.confidentialMode) || Boolean(input.confidentialMode);
+
+  const residencyZone = resolveResidencyZone(accessContext);
+  const sensitiveTopicHitlEnabled =
+    accessContext?.abac?.sensitiveTopicHitl ?? accessContext?.policies.sensitiveTopicHitl ?? true;
 
   const synonymMap =
     (await recordPlanStep<Map<string, string[]>>(
@@ -656,10 +907,17 @@ async function planRun(
     lastJurisdiction: initialRouting.primary,
     confidentialMode: enforcedConfidentialMode,
     allowedJurisdictions,
+    residencyZone,
+    sensitiveTopicHitl: sensitiveTopicHitlEnabled,
     toolUsage: {},
-    toolBudgets: { ...TOOL_BUDGET_DEFAULTS },
+    toolBudgets,
     synonymExpansions: synonymRecord,
     policyVersion,
+    agentKey: profile.key,
+    agentCode: profile.manifestCode,
+    agentLabel: profile.label,
+    agentSettings: profile.settings,
+    allowedTools: allowedToolKeys,
   };
 
   if (enforcedConfidentialMode) {
@@ -745,6 +1003,7 @@ async function planRun(
     ohadaInsight: ohadaInsight ?? null,
     deadlineInsight: deadlineInsight ?? null,
     franceAnalyticsGuard,
+    agentProfile: profile,
   };
 }
 
@@ -2771,21 +3030,29 @@ async function handleGuardrailFailure(
     complianceOutcome.assessment,
     planner.planTrace,
     verification,
+    planner.agentProfile,
     runKey,
     planner.context.confidentialMode,
   );
 
-  return {
-    runId,
-    payload,
-    allowlistViolations: [],
-    toolLogs,
-    plan: planner.planTrace,
-    notices,
-    verification,
-    trustPanel,
-  };
-}
+    return {
+      runId,
+      payload,
+      allowlistViolations: [],
+      toolLogs,
+      plan: planner.planTrace,
+      notices,
+      verification,
+      trustPanel,
+      agent: {
+        key: planner.agentProfile.key,
+        code: planner.agentProfile.manifestCode,
+        label: planner.agentProfile.label,
+        settings: planner.agentProfile.settings,
+        tools: [...planner.agentProfile.allowedToolKeys],
+      },
+    };
+  }
 
 function buildTrustPanel(
   payload: IRACPayload,
@@ -3146,6 +3413,7 @@ async function persistRun(
   complianceAssessment: ComplianceAssessment | null = null,
   planTrace: AgentPlanStep[] = [],
   verification: VerificationResult,
+  agentProfile: SelectedAgentProfile,
   runKey: string | null = null,
   confidentialMode = false,
 ): Promise<{ runId: string; trust: TrustPanelPayload }> {
@@ -3167,6 +3435,14 @@ async function persistRun(
     run_key: runKey,
     verification_status: verification.status,
     verification_notes: verification.notes,
+    agent_code: agentProfile.manifestCode,
+    agent_profile: {
+      key: agentProfile.key,
+      code: agentProfile.manifestCode,
+      label: agentProfile.label,
+      tools: agentProfile.allowedToolKeys,
+      settings: agentProfile.settings,
+    },
   };
 
   const { data: runData, error: runError } = await supabase
@@ -3634,6 +3910,9 @@ function buildAgent(
   telemetry: ToolTelemetry[],
   context: AgentExecutionContext,
 ): Agent<AgentExecutionContext, typeof IRACSchema> {
+  const allowedSet = new Set(context.allowedTools ?? []);
+  const allowTool = (key: string) => (allowedSet.size === 0 ? true : allowedSet.has(key));
+
   const routeJurisdictionTool = tool<AgentExecutionContext>({
     name: 'route_jurisdiction',
     description:
@@ -4386,9 +4665,12 @@ function buildAgent(
     },
   };
 
-  const hostedTools = [budgetedFileSearch];
+  const hostedTools: any[] = [];
+  if (allowTool('file_search')) {
+    hostedTools.push(budgetedFileSearch);
+  }
 
-  if (!context.confidentialMode) {
+  if (!context.confidentialMode && allowTool('web_search')) {
     const baseWebSearch = webSearchTool({
       filters: { allowedDomains: DOMAIN_ALLOWLIST },
       searchContextSize: 'medium',
@@ -4403,38 +4685,70 @@ function buildAgent(
     hostedTools.unshift(budgetedWebSearch);
   }
 
+  const outputGuardrails = [
+    citationsAllowlistGuardrail,
+    bindingLanguageGuardrail,
+    structuredIracGuardrail,
+  ];
+  if (context.sensitiveTopicHitl) {
+    outputGuardrails.push(sensitiveTopicGuardrail);
+  }
+
+  const functionTools: any[] = [];
+  if (allowTool('route_jurisdiction')) {
+    functionTools.push(routeJurisdictionTool);
+  }
+  if (allowTool('lookup_code_article')) {
+    functionTools.push(lookupCodeArticleTool);
+  }
+  if (allowTool('deadline_calculator')) {
+    functionTools.push(deadlineCalculatorTool);
+  }
+  if (allowTool('ohada_uniform_act')) {
+    functionTools.push(ohadaUniformActTool);
+  }
+  if (allowTool('limitation_check')) {
+    functionTools.push(limitationTool);
+  }
+  if (allowTool('interest_calculator')) {
+    functionTools.push(interestTool);
+  }
+  if (allowTool('check_binding_language')) {
+    functionTools.push(bindingLanguageTool);
+  }
+  if (allowTool('validate_citation')) {
+    functionTools.push(validateCitationTool);
+  }
+  if (allowTool('redline_contract')) {
+    functionTools.push(redlineTool);
+  }
+  if (allowTool('snapshot_authority')) {
+    functionTools.push(snapshotAuthorityTool);
+  }
+  if (allowTool('generate_pleading_template')) {
+    functionTools.push(generateTemplateTool);
+  }
+  if (allowTool('evaluate_case_alignment')) {
+    functionTools.push(caseAlignmentTool);
+  }
+  if (allowTool('compute_case_score')) {
+    functionTools.push(computeCaseScoreTool);
+  }
+  if (allowTool('build_treatment_graph')) {
+    functionTools.push(buildTreatmentGraphTool);
+  }
+
   return new Agent<AgentExecutionContext, typeof IRACSchema>({
-    name: 'avocat-francophone',
+    name: context.agentLabel ?? context.agentCode ?? 'avocat-francophone',
     instructions: buildInstructions(
       context.initialRouting,
       context.confidentialMode,
       context.allowedJurisdictions,
     ),
     model: env.AGENT_MODEL,
-    tools: [
-      ...hostedTools,
-      routeJurisdictionTool,
-      lookupCodeArticleTool,
-      deadlineCalculatorTool,
-      ohadaUniformActTool,
-      limitationTool,
-      interestTool,
-      bindingLanguageTool,
-      validateCitationTool,
-      redlineTool,
-      snapshotAuthorityTool,
-      caseAlignmentTool,
-      computeCaseScoreTool,
-      buildTreatmentGraphTool,
-      generateTemplateTool,
-    ],
+    tools: [...hostedTools, ...functionTools],
     outputType: IRACSchema,
-    outputGuardrails: [
-      citationsAllowlistGuardrail,
-      bindingLanguageGuardrail,
-      structuredIracGuardrail,
-      sensitiveTopicGuardrail,
-    ],
+    outputGuardrails,
   });
 }
 
@@ -4451,9 +4765,15 @@ export async function runLegalAgent(
   const toolLogs: ToolInvocationLog[] = [];
   const telemetryRecords: ToolTelemetry[] = [];
   const useStub = shouldUseStubAgent();
-  const planner = await planRun(input, accessContext ?? null, useStub, toolLogs);
+  const agentProfile = resolveAgentProfile(input.agentCode ?? null, input.agentSettings ?? null);
+  const planner = await planRun(input, accessContext ?? null, useStub, toolLogs, agentProfile);
 
-  const runKey = createRunKey(input, planner.initialRouting, planner.context.confidentialMode);
+  const runKey = createRunKey(
+    input,
+    planner.initialRouting,
+    planner.context.confidentialMode,
+    planner.agentProfile,
+  );
   const existing = await findExistingRun(runKey, input.orgId);
   if (existing) {
     const payload: IRACPayload = {
@@ -4498,6 +4818,13 @@ export async function runLegalAgent(
       reused: true,
       verification: existing.verification,
       trustPanel,
+      agent: {
+        key: planner.agentProfile.key,
+        code: planner.agentProfile.manifestCode,
+        label: planner.agentProfile.label,
+        settings: planner.agentProfile.settings,
+        tools: [...planner.agentProfile.allowedToolKeys],
+      },
     };
   }
 
@@ -4611,6 +4938,7 @@ export async function runLegalAgent(
       complianceOutcome.assessment,
       planner.planTrace,
       verification,
+      planner.agentProfile,
       runKey,
       planner.context.confidentialMode,
     );
@@ -4677,6 +5005,7 @@ export async function runLegalAgent(
         complianceOutcome.assessment,
         planner.planTrace,
         verification,
+        planner.agentProfile,
         runKey,
         planner.context.confidentialMode,
       );
@@ -4702,6 +5031,13 @@ export async function runLegalAgent(
       notices,
       verification,
       trustPanel,
+      agent: {
+        key: planner.agentProfile.key,
+        code: planner.agentProfile.manifestCode,
+        label: planner.agentProfile.label,
+        settings: planner.agentProfile.settings,
+        tools: [...planner.agentProfile.allowedToolKeys],
+      },
     };
   }
 
@@ -4793,6 +5129,7 @@ export async function runLegalAgent(
     complianceOutcome.assessment,
     planner.planTrace,
     verification,
+    planner.agentProfile,
     runKey,
     planner.context.confidentialMode,
   );
@@ -4806,6 +5143,13 @@ export async function runLegalAgent(
     notices,
     verification,
     trustPanel,
+    agent: {
+      key: planner.agentProfile.key,
+      code: planner.agentProfile.manifestCode,
+      label: planner.agentProfile.label,
+      settings: planner.agentProfile.settings,
+      tools: [...planner.agentProfile.allowedToolKeys],
+    },
   };
 }
 

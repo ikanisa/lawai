@@ -3,7 +3,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { IRACPayload, SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
+import { SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
+import { AUTONOMOUS_JUSTICE_SUITE } from '../../../../../packages/shared/src/config/autonomous-suite';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { Switch } from '../../components/ui/switch';
@@ -35,12 +36,61 @@ import { Separator } from '../ui/separator';
 import { exportIracToDocx, exportIracToPdf } from '../../lib/exporters';
 import { useOnlineStatus } from '../../hooks/use-online-status';
 import { useOutbox, type OutboxItem } from '../../hooks/use-outbox';
+import { isDateStale } from '../../lib/staleness';
 import { cn } from '../../lib/utils';
+
+const SUITE_MANIFEST = AUTONOMOUS_JUSTICE_SUITE;
+const AGENT_OPTIONS = Object.entries(SUITE_MANIFEST.agents)
+  .map(([key, definition]) => {
+    const code = typeof definition.code === 'string' ? definition.code : key;
+    const label = typeof definition.label === 'string' ? definition.label : code;
+    const mission = typeof definition.mission === 'string' ? definition.mission : '';
+    return { key, code, label, mission };
+  })
+  .filter((option) => option.code)
+  .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+
+const DEFAULT_AGENT_CODE =
+  AGENT_OPTIONS.find((option) => option.key === 'counsel_research')?.code ??
+  SUITE_MANIFEST.agents.counsel_research?.code ??
+  AGENT_OPTIONS[0]?.code ??
+  'conseil_recherche';
 
 interface ResearchViewProps {
   messages: Messages;
   locale: Locale;
 }
+
+type IracRule = {
+  citation: string;
+  source_url: string;
+  binding: boolean;
+  effective_date: string;
+};
+
+type IracPayload = {
+  jurisdiction: {
+    country: string;
+    eu: boolean;
+    ohada: boolean;
+  };
+  issue: string;
+  rules: IracRule[];
+  application: string;
+  conclusion: string;
+  citations: Array<{
+    title: string;
+    court_or_publisher: string;
+    date: string;
+    url: string;
+    note?: string;
+  }>;
+  risk: {
+    level: 'LOW' | 'MEDIUM' | 'HIGH';
+    why: string;
+    hitl_required: boolean;
+  };
+};
 
 export function ResearchView({ messages, locale }: ResearchViewProps) {
   const [question, setQuestion] = useState('');
@@ -48,15 +98,29 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const [ohadaMode, setOhadaMode] = useState(true);
   const [euOverlay, setEuOverlay] = useState(true);
   const [confidentialMode, setConfidentialMode] = useState(false);
+  const [agentCode, setAgentCode] = useState<string>(DEFAULT_AGENT_CODE);
   const [latestRun, setLatestRun] = useState<AgentRunResponse | null>(null);
   const { open, toggle } = usePlanDrawer();
   const online = useOnlineStatus();
   const { items: outboxItems, enqueue, remove, flush } = useOutbox();
 
+  const agentOptions = AGENT_OPTIONS;
+  const selectedAgent = useMemo(
+    () => agentOptions.find((option) => option.code === agentCode) ?? agentOptions[0],
+    [agentOptions, agentCode],
+  );
+  const executedAgentLabel = latestRun?.agent?.label ?? selectedAgent?.label ?? '';
+
   const badgeMessages = messages.research.badges;
-  const jurisdictionEntries = useMemo(
+  const agentSelectorMessages = messages.research.agentSelector;
+  const jurisdictionEntries = useMemo<Array<{
+    code: string;
+    id: string;
+    label: string;
+    badges: NonNullable<JurisdictionChipProps['badges']>;
+  }>>(
     () =>
-      SUPPORTED_JURISDICTIONS.map((jurisdiction) => {
+      SUPPORTED_JURISDICTIONS.map((jurisdiction: (typeof SUPPORTED_JURISDICTIONS)[number]) => {
         const label = locale === 'fr' ? jurisdiction.labelFr : jurisdiction.labelEn;
         const badges: NonNullable<JurisdictionChipProps['badges']> = [];
 
@@ -138,7 +202,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     mutationFn: submitResearchQuestion,
   });
 
-  const payload: IRACPayload | null = latestRun?.data ?? null;
+  const payload: IracPayload | null = (latestRun?.data as IracPayload | null) ?? null;
   const jurisdictionCode = payload?.jurisdiction.country;
   const isMaghreb = jurisdictionCode === 'MA' || jurisdictionCode === 'TN' || jurisdictionCode === 'DZ';
   const isCanadian = jurisdictionCode === 'CA-QC' || jurisdictionCode === 'CA';
@@ -203,9 +267,13 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const trustPanel = latestRun?.trustPanel ?? null;
   const trustCitationSummary = trustPanel?.citationSummary ?? null;
   const trustProvenance = trustPanel?.provenance ?? null;
+  const residencyBreakdown = trustProvenance?.residencyBreakdown ?? [];
   const trustRisk = trustPanel?.risk ?? null;
   const verification = latestRun?.verification ?? trustRisk?.verification ?? null;
-  const allowlistViolations = verification?.allowlistViolations ?? [];
+  const allowlistViolations = useMemo(
+    () => verification?.allowlistViolations ?? [],
+    [verification?.allowlistViolations],
+  );
   const verificationNotes = verification?.notes ?? [];
   const verificationStatus = verification?.status ?? null;
 
@@ -245,7 +313,9 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     : fallbackViolationHosts;
 
   const fallbackTranslationWarnings = useMemo(() => {
-    if (!payload?.citations?.length) return [] as typeof payload.citations;
+    if (!payload || !payload.citations.length) {
+      return [] as IracPayload['citations'];
+    }
     return payload.citations.filter((citation) => {
       const note = citation.note?.toLowerCase() ?? '';
       return note.includes('traduction') || note.includes('translation') || note.includes('langue');
@@ -257,12 +327,16 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     : fallbackTranslationWarnings.map((citation) => `${citation.title} — ${citation.note ?? ''}`.trim());
 
   const nonBindingRules = useMemo(() => {
-    if (!payload?.rules?.length) return [] as typeof payload.rules;
+    if (!payload || !payload.rules.length) {
+      return [] as IracPayload['rules'];
+    }
     return payload.rules.filter((rule) => !rule.binding);
   }, [payload]);
 
   const citationHosts = useMemo(() => {
-    if (!payload?.citations?.length) return [] as Array<{ host: string; count: number }>;
+    if (!payload || !payload.citations.length) {
+      return [] as Array<{ host: string; count: number }>;
+    }
     const counts = new Map<string, number>();
     for (const citation of payload.citations) {
       try {
@@ -315,10 +389,17 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     }
 
     if (!online) {
-      enqueue({ question, context, confidentialMode });
+      enqueue({
+        question,
+        context,
+        confidentialMode,
+        agentCode,
+        agentLabel: selectedAgent?.label ?? agentCode,
+        agentSettings: null,
+      });
       toast.info(outboxMessages.queued);
       if (telemetryEnabled) {
-        void sendTelemetryEvent('outbox_enqueued', { offline: true });
+        void sendTelemetryEvent('outbox_enqueued', { offline: true, agent: agentCode });
       }
       setQuestion('');
       setContext('');
@@ -331,6 +412,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         ohadaMode,
         euOverlay,
         confidentialMode,
+        agent: agentCode,
       });
     }
 
@@ -341,6 +423,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         orgId: DEMO_ORG_ID,
         userId: DEMO_USER_ID,
         confidentialMode,
+        agentCode,
       });
       setLatestRun(data);
       toggle(true);
@@ -353,18 +436,26 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
           runId: data.runId,
           jurisdiction: data.data?.jurisdiction.country ?? null,
           risk: data.data?.risk.level ?? null,
+          agent: data.agent?.code ?? agentCode,
         });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Agent indisponible';
       toast.error(message);
       if (telemetryEnabled) {
-        void sendTelemetryEvent('run_failed', { message });
+        void sendTelemetryEvent('run_failed', { message, agent: agentCode });
       }
-      enqueue({ question, context, confidentialMode });
+      enqueue({
+        question,
+        context,
+        confidentialMode,
+        agentCode,
+        agentLabel: selectedAgent?.label ?? agentCode,
+        agentSettings: null,
+      });
       toast.info(outboxMessages.queued);
       if (telemetryEnabled) {
-        void sendTelemetryEvent('outbox_enqueued', { offline: false });
+        void sendTelemetryEvent('outbox_enqueued', { offline: false, agent: agentCode });
       }
     }
   }
@@ -388,14 +479,9 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   }
 
   const staleThresholdDays = 90;
-  const staleCutoff = Date.now() - staleThresholdDays * 24 * 60 * 60 * 1000;
 
-  const isCitationStale = (date: string) => {
-    if (!online) return true;
-    const parsed = new Date(date);
-    if (Number.isNaN(parsed.getTime())) return true;
-    return parsed.getTime() < staleCutoff;
-  };
+  const isCitationStale = (date: string) =>
+    isDateStale(date, { thresholdDays: staleThresholdDays, offline: !online });
 
   const processOutboxItem = useCallback(
     async (item: OutboxItem, source: 'manual' | 'auto') => {
@@ -409,6 +495,8 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
           orgId: DEMO_ORG_ID,
           userId: DEMO_USER_ID,
           confidentialMode: item.confidentialMode,
+          agentCode: item.agentCode,
+          agentSettings: item.agentSettings ?? undefined,
         });
         setLatestRun(data);
         if (source === 'manual' || !open) {
@@ -425,6 +513,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
           void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
             success: true,
             runId: data.runId,
+            agent: data.agent?.code ?? item.agentCode,
           });
         }
         return true;
@@ -436,6 +525,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
           void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
             success: false,
             message,
+            agent: item.agentCode,
           });
         }
         return false;
@@ -494,6 +584,26 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
               />
               <CameraOcrButton messages={ocrMessages} onText={handleOcrText} />
             </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-200" htmlFor="agent-profile">
+                {agentSelectorMessages.label}
+              </label>
+              <select
+                id="agent-profile"
+                value={agentCode}
+                onChange={(event) => setAgentCode(event.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 focus:border-slate-400 focus:outline-none"
+              >
+                {agentOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-400">
+                {selectedAgent?.mission || agentSelectorMessages.helper}
+              </p>
+            </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
                 <Switch checked={ohadaMode} onClick={() => setOhadaMode((prev) => !prev)} label={messages.research.ohadaMode} />
@@ -511,6 +621,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
           </form>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <Badge variant="outline">{executedAgentLabel || agentSelectorMessages.badge}</Badge>
           <Badge variant="outline">{autoDetectionLabel}</Badge>
           <Badge variant="success">{ohadaPriorityLabel}</Badge>
           <Badge variant="outline">{wcagLabel}</Badge>
@@ -793,6 +904,22 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
               <CardTitle>{messages.research.evidence}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {residencyBreakdown.length > 0 ? (
+                <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4 text-xs text-slate-300">
+                  <p className="mb-2 font-semibold uppercase tracking-wide text-slate-400">
+                    {trustMessages.provenanceResidencyHeading}
+                  </p>
+                  <ul className="space-y-1">
+                    {residencyBreakdown.map((entry) => (
+                      <li key={`${entry.zone}-${entry.count}`}>
+                        {trustMessages.provenanceResidencyItem
+                          .replace('{zone}', entry.zone)
+                          .replace('{count}', entry.count.toString())}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               {payload?.citations?.length ? (
                 payload.citations.map((citation) => {
                   const stale = isCitationStale(citation.date ?? '');

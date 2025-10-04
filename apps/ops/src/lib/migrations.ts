@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
 
 export interface ApplyMigrationsOptions {
@@ -7,7 +8,9 @@ export interface ApplyMigrationsOptions {
   report?: (event: { filename: string; status: 'pending' | 'success' | 'error'; error?: Error }) => void;
 }
 
-const DEFAULT_MIGRATIONS_DIR = path.resolve(process.cwd(), 'db', 'migrations');
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(moduleDir, '../../../../');
+const DEFAULT_MIGRATIONS_DIR = path.join(repoRoot, 'supabase', 'migrations');
 
 async function ensureMigrationTable(client: Client): Promise<void> {
   await client.query('create schema if not exists supabase_migrations');

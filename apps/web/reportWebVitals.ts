@@ -28,6 +28,8 @@ export function reportWebVitals(metric: NextWebVitalsMetric) {
       ? (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)
       : undefined;
   const connection = (navigator as unknown as { connection?: Record<string, unknown> } | undefined)?.connection ?? null;
+  const delta = 'delta' in metric ? (metric as { delta: number }).delta : null;
+  const rating = 'rating' in metric ? (metric as { rating: string }).rating : null;
 
   sendTelemetry({
     orgId: DEMO_ORG_ID,
@@ -37,11 +39,10 @@ export function reportWebVitals(metric: NextWebVitalsMetric) {
       metric: metric.name,
       id: metric.id,
       value: metric.value,
-      delta: metric.delta,
-      rating: metric.rating,
+      delta,
+      rating,
       navigationType: navigationEntry?.type ?? null,
       connection,
     },
   });
 }
-

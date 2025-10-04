@@ -18,20 +18,36 @@ function percent(value: number, total: number): string {
   return `${Math.round((value / total) * 100)} %`;
 }
 
+function coverageVariant(ratio: number | null): 'success' | 'warning' | 'danger' | 'outline' {
+  if (ratio === null) return 'outline';
+  if (ratio >= 0.9) return 'success';
+  if (ratio >= 0.6) return 'warning';
+  return 'danger';
+}
+
 export function JurisdictionCoverageCard({ messages, data, loading = false }: JurisdictionCoverageCardProps) {
   const coverageMessages = messages.admin.compliance;
-  const jurisdictionLabels = useMemo(() => new Map(SUPPORTED_JURISDICTIONS.map((entry) => [entry.id, entry.labelFr])), []);
-
-  const rows = useMemo(
+  const jurisdictionLabels = useMemo(
     () =>
-      [...data]
-        .map((row) => ({
+      new Map(
+        SUPPORTED_JURISDICTIONS.map((entry: (typeof SUPPORTED_JURISDICTIONS)[number]) => [
+          entry.id,
+          entry.labelFr,
+        ]),
+      ),
+    [],
+  );
+
+  const rows = useMemo(() => {
+    const withLabels = data.map(
+      (row) =>
+        ({
           ...row,
           label: jurisdictionLabels.get(row.jurisdiction) ?? row.jurisdiction,
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label, 'fr')),
-    [data, jurisdictionLabels],
-  );
+        }) as GovernanceMetricsResponse['jurisdictions'][number] & { label: string },
+    );
+    return withLabels.sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }, [data, jurisdictionLabels]);
 
   return (
     <Card className="glass-card border border-slate-800/60">
@@ -79,6 +95,11 @@ export function JurisdictionCoverageCard({ messages, data, loading = false }: Ju
                   const consolidatedPercent = percent(row.sourcesConsolidated, total);
                   const languagePercent = percent(row.sourcesWithLanguageNote, total);
                   const identifiersPercent = percent(row.sourcesWithEli + row.sourcesWithEcli, total);
+                  const bindingRatio = total > 0 ? row.sourcesWithBinding / total : null;
+                  const consolidatedRatio = total > 0 ? row.sourcesConsolidated / total : null;
+                  const languageRatio = total > 0 ? row.sourcesWithLanguageNote / total : null;
+                  const identifiersRatio =
+                    total > 0 ? (row.sourcesWithEli + row.sourcesWithEcli) / total : null;
                   const isRwanda = row.jurisdiction === 'RW';
                   return (
                     <tr key={row.jurisdiction} className="hover:bg-slate-900/40">
@@ -88,12 +109,28 @@ export function JurisdictionCoverageCard({ messages, data, loading = false }: Ju
                           {isRwanda ? <Badge variant="success">RW</Badge> : null}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-slate-300">{row.residencyZone || '—'}</td>
+                      <td className="px-4 py-3 text-slate-300">
+                        {row.residencyZone ? (
+                          <Badge variant="outline" className="text-xs text-slate-200">
+                            {row.residencyZone}
+                          </Badge>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right text-slate-200">{total}</td>
-                      <td className="px-4 py-3 text-right text-slate-200">{bindingPercent}</td>
-                      <td className="px-4 py-3 text-right text-slate-200">{consolidatedPercent}</td>
-                      <td className="px-4 py-3 text-right text-slate-200">{languagePercent}</td>
-                      <td className="px-4 py-3 text-right text-slate-200">{identifiersPercent}</td>
+                      <td className="px-4 py-3 text-right text-slate-200">
+                        <Badge variant={coverageVariant(bindingRatio)}>{bindingPercent}</Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-200">
+                        <Badge variant={coverageVariant(consolidatedRatio)}>{consolidatedPercent}</Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-200">
+                        <Badge variant={coverageVariant(languageRatio)}>{languagePercent}</Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-200">
+                        <Badge variant={coverageVariant(identifiersRatio)}>{identifiersPercent}</Badge>
+                      </td>
                     </tr>
                   );
                 })}

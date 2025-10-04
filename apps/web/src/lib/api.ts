@@ -1,6 +1,6 @@
 import { AgentPlanNotice, AgentPlanStep, IRACPayload } from '@avocat-ai/shared';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3333';
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3333';
 
 export const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -109,6 +109,13 @@ export interface AgentRunResponse {
   reused?: boolean;
   verification?: VerificationResult | null;
   trustPanel?: TrustPanelPayload | null;
+  agent: {
+    key: string;
+    code: string;
+    label: string;
+    settings: Record<string, unknown>;
+    tools: string[];
+  };
 }
 
 export interface HitlMetricsResponse {
@@ -235,6 +242,8 @@ export interface OperationsOverviewResponse {
       maghrebBanner: number | null;
       rwandaNotice: number | null;
     };
+    bindingCoverage: number | null;
+    residencyCoverage: number | null;
     alerts: Array<{ code: string; level: 'info' | 'warning' | 'critical' }>;
   };
   webVitals: {
@@ -517,6 +526,14 @@ export async function createOrgInvite(orgId: string, userId: string, payload: { 
   return (await response.json()) as { token: string; expires_at: string };
 }
 
+export async function fetchAutonomousUserTypes() {
+  const response = await fetch(`${API_BASE}/manifest/autonomous-suite/user-types`);
+  if (!response.ok) {
+    throw new Error('manifest_user_types_failed');
+  }
+  return response.json() as Promise<{ userTypes: Array<{ code: string; label: string; default_role: string; features: string[] }> }>;
+}
+
 export async function updateMemberRole(orgId: string, actorUserId: string, targetUserId: string, role: string) {
   const response = await fetch(`${API_BASE}/admin/org/members/${encodeURIComponent(targetUserId)}/role`, {
     method: 'POST',
@@ -673,6 +690,8 @@ export async function submitResearchQuestion(input: {
   orgId: string;
   userId: string;
   confidentialMode?: boolean;
+  agentCode?: string;
+  agentSettings?: Record<string, unknown> | null;
 }): Promise<AgentRunResponse> {
   const response = await fetch(`${API_BASE}/runs`, {
     method: 'POST',
@@ -861,22 +880,250 @@ export async function submitHitlAction(id: string, action: 'approve' | 'request_
   return response.json();
 }
 
-export async function fetchMatters(orgId: string) {
-  const response = await fetch(`${API_BASE}/matters?orgId=${encodeURIComponent(orgId)}`);
+export interface MatterCalendarSettings {
+  type: 'calendar' | 'court';
+  timezone: string;
+  method: 'standard' | 'expedited' | 'extended';
+}
+
+export interface MatterCiteCheckSummary {
+  total: number;
+  verified: number;
+  pending: number;
+  manual: number;
+}
+
+export interface MatterSummary {
+  id: string;
+  title: string;
+  status: string | null;
+  riskLevel: string | null;
+  hitlRequired: boolean;
+  jurisdiction: string | null;
+  procedure: string | null;
+  residencyZone: string | null;
+  filingDate: string | null;
+  decisionDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  calendarSettings: MatterCalendarSettings;
+  citeCheck: MatterCiteCheckSummary;
+  nextDeadline: { name: string; dueAt: string; ruleReference: string | null } | null;
+}
+
+export interface MatterDeadline {
+  id: string;
+  name: string;
+  dueAt: string | null;
+  ruleReference: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface MatterDocument {
+  id: string;
+  documentId: string | null;
+  name: string | null;
+  storagePath: string | null;
+  bucket: string | null;
+  mimeType: string | null;
+  bytes: number | null;
+  residencyZone: string | null;
+  role: string | null;
+  citeCheckStatus: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface MatterDetailResponse {
+  matter: {
+    id: string;
+    title: string;
+    description: string | null;
+    question?: string | null;
+    status: string;
+    riskLevel: string | null;
+    hitlRequired: boolean;
+    jurisdiction: string | null;
+    procedure: string | null;
+    residencyZone: string | null;
+    filingDate: string | null;
+    decisionDate: string | null;
+    createdAt: string;
+    updatedAt: string;
+    metadata: Record<string, unknown>;
+    structuredPayload: unknown;
+    agentRunId: string | null;
+    primaryDocumentId: string | null;
+    provenance?: {
+      residency?: Array<{ zone: string; count: number }>;
+    };
+    citations?: Array<{
+      title?: string | null;
+      publisher?: string | null;
+      url: string;
+    }>;
+  };
+  deadlines: MatterDeadline[];
+  documents: MatterDocument[];
+  calendar: string;
+  calendarUrl: string | null;
+  calendarSettings: MatterCalendarSettings;
+  citeCheck: MatterCiteCheckSummary;
+}
+
+export interface MatterListResponse {
+  matters: MatterSummary[];
+}
+
+export async function fetchMatters(orgId: string): Promise<MatterListResponse> {
+  const response = await fetch(`${API_BASE}/matters?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch matters');
   }
-  return response.json();
+  return (await response.json()) as MatterListResponse;
 }
 
-export async function fetchMatterDetail(orgId: string, id: string) {
+export async function fetchMatterDetail(orgId: string, id: string): Promise<MatterDetailResponse> {
   const response = await fetch(
     `${API_BASE}/matters/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`,
+    {
+      headers: { 'x-user-id': DEMO_USER_ID },
+    },
   );
   if (!response.ok) {
     throw new Error('Unable to fetch matter');
   }
-  return response.json();
+  return (await response.json()) as MatterDetailResponse;
+}
+
+export interface MatterUpsertPayload {
+  orgId: string;
+  userId?: string;
+  title?: string;
+  description?: string | null;
+  jurisdiction?: string | null;
+  procedure?: string | null;
+  status?: string | null;
+  riskLevel?: string | null;
+  hitlRequired?: boolean;
+  filingDate?: string | null;
+  decisionDate?: string | null;
+  agentRunId?: string | null;
+  draftId?: string | null;
+  primaryDocumentId?: string | null;
+  structuredPayload?: unknown;
+  metadata?: Record<string, unknown>;
+  calendarType?: 'calendar' | 'court';
+  calendarTimezone?: string;
+  calendarMethod?: 'standard' | 'expedited' | 'extended';
+  deadlines?: Array<{
+    id?: string;
+    name: string;
+    dueAt: string;
+    ruleReference?: string | null;
+    notes?: string | null;
+    metadata?: Record<string, unknown>;
+  }>;
+  documents?: Array<{
+    documentId: string;
+    role?: string | null;
+    citeCheckStatus?: string | null;
+    metadata?: Record<string, unknown>;
+  }>;
+}
+
+export async function previewMatterDeadlines(payload: {
+  orgId: string;
+  jurisdiction?: string;
+  procedure?: string;
+  filingDate?: string;
+  calendarType?: 'calendar' | 'court';
+  calendarTimezone?: string;
+  calendarMethod?: 'standard' | 'expedited' | 'extended';
+}): Promise<{
+  calendarSettings: MatterCalendarSettings;
+  deadlines: Array<{ name: string; dueAt: string; ruleReference: string; notes: string }>;
+  notes: { method: string; calendar: string };
+}> {
+  const response = await fetch(`${API_BASE}/matters/deadlines/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error('Unable to preview deadlines');
+  }
+  return (await response.json()) as {
+    calendarSettings: MatterCalendarSettings;
+    deadlines: Array<{ name: string; dueAt: string; ruleReference: string; notes: string }>;
+    notes: { method: string; calendar: string };
+  };
+}
+
+export async function createMatter(payload: MatterUpsertPayload): Promise<MatterDetailResponse> {
+  const userId = payload.userId ?? DEMO_USER_ID;
+  const response = await fetch(`${API_BASE}/matters`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+    body: JSON.stringify({ ...payload, userId }),
+  });
+  if (!response.ok) {
+    throw new Error('Unable to create matter');
+  }
+  return (await response.json()) as MatterDetailResponse;
+}
+
+export async function updateMatter(id: string, payload: MatterUpsertPayload): Promise<MatterDetailResponse> {
+  const userId = payload.userId ?? DEMO_USER_ID;
+  const response = await fetch(`${API_BASE}/matters/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+    body: JSON.stringify({ ...payload, userId }),
+  });
+  if (!response.ok) {
+    throw new Error('Unable to update matter');
+  }
+  return (await response.json()) as MatterDetailResponse;
+}
+
+export async function deleteMatter(orgId: string, id: string, userId?: string): Promise<void> {
+  const params = new URLSearchParams({ orgId });
+  if (userId) {
+    params.set('userId', userId);
+  }
+  const response = await fetch(
+    `${API_BASE}/matters/${encodeURIComponent(id)}?${params.toString()}`,
+    {
+      method: 'DELETE',
+      headers: { 'x-user-id': userId ?? DEMO_USER_ID },
+    },
+  );
+  if (!response.ok && response.status !== 204) {
+    throw new Error('Unable to delete matter');
+  }
+}
+
+export interface MatterCalendarExport {
+  calendar: string;
+  calendarUrl: string | null;
+  calendarSettings: MatterCalendarSettings;
+}
+
+export async function fetchMatterCalendar(orgId: string, id: string): Promise<MatterCalendarExport> {
+  const response = await fetch(
+    `${API_BASE}/matters/${encodeURIComponent(id)}/calendar?orgId=${encodeURIComponent(orgId)}`,
+    {
+      headers: { 'x-user-id': DEMO_USER_ID },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch matter calendar');
+  }
+
+  return (await response.json()) as MatterCalendarExport;
 }
 
 export async function fetchCorpus(orgId: string) {
@@ -1190,7 +1437,11 @@ export async function deleteIpAllowlistEntry(orgId: string, entryId: string) {
   }
 }
 
-export async function fetchDraftingTemplates(orgId: string, params?: { jurisdiction?: string; matterType?: string }) {
+export async function fetchDraftingTemplates(
+  orgId: string,
+  params?: { jurisdiction?: string; matterType?: string },
+  userId: string = DEMO_USER_ID,
+) {
   const search = new URLSearchParams({ orgId });
   if (params?.jurisdiction) {
     search.set('jurisdiction', params.jurisdiction);
@@ -1198,7 +1449,12 @@ export async function fetchDraftingTemplates(orgId: string, params?: { jurisdict
   if (params?.matterType) {
     search.set('matterType', params.matterType);
   }
-  const response = await fetch(`${API_BASE}/drafting/templates?${search.toString()}`);
+  const response = await fetch(`${API_BASE}/drafting/templates?${search.toString()}`, {
+    headers: {
+      'x-user-id': userId,
+      'x-org-id': orgId,
+    },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch templates');
   }
@@ -1216,6 +1472,7 @@ export interface WorkspaceOverviewResponse {
     startedAt: string | null;
     finishedAt: string | null;
     jurisdiction: string | null;
+    agentCode: string | null;
   }>;
   complianceWatch: Array<{
     id: string;
@@ -1239,4 +1496,146 @@ export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOv
     throw new Error('Unable to fetch workspace overview');
   }
   return response.json();
+}
+
+export interface DraftCitation {
+  title: string;
+  url: string;
+  publisher?: string | null;
+  jurisdiction?: string | null;
+  binding: boolean;
+  residencyZone?: string | null;
+  note?: string | null;
+}
+
+export interface DraftClauseDiffChange {
+  type: 'added' | 'removed' | 'context';
+  text: string;
+}
+
+export interface DraftClauseDiff {
+  summary: { additions: number; deletions: number; net: number };
+  changes: DraftClauseDiffChange[];
+  recommendation: string;
+}
+
+export interface DraftClauseComparison {
+  clauseId: string;
+  title: string;
+  rationale: string;
+  baseline: string;
+  proposed: string;
+  diff: DraftClauseDiff;
+  riskLevel: 'low' | 'medium' | 'high';
+  citations: DraftCitation[];
+}
+
+export interface DraftExportMeta {
+  format: string;
+  status: 'ready' | 'pending' | 'failed';
+  bucket?: string | null;
+  storagePath?: string | null;
+  bytes?: number | null;
+  sha256?: string | null;
+  c2pa?: {
+    keyId: string;
+    signedAt: string;
+    algorithm: string;
+    statementId: string;
+  };
+}
+
+export interface DraftSignature {
+  keyId: string;
+  signedAt: string;
+  algorithm: string;
+  statementId: string;
+  manifest: Record<string, unknown>;
+}
+
+export interface DraftGenerationResponse {
+  draftId: string;
+  documentId: string;
+  title: string;
+  jurisdiction: string | null;
+  matterType: string | null;
+  bucket: string;
+  storagePath: string;
+  bytes: number;
+  preview: string;
+  citations: DraftCitation[];
+  clauseComparisons: DraftClauseComparison[];
+  exports: DraftExportMeta[];
+  signature: DraftSignature;
+  contentSha256: string;
+  fillIns: string[];
+  agentRunId: string;
+  structuredPayload: IRACPayload;
+  risk: IRACPayload['risk'];
+  verification: VerificationResult | null;
+  trustPanel?: TrustPanelPayload | null;
+  plan?: AgentPlanStep[];
+  reused?: boolean;
+}
+
+export async function createDraft(input: {
+  orgId: string;
+  userId: string;
+  prompt: string;
+  title?: string;
+  jurisdiction?: string;
+  matterType?: string;
+  templateId?: string;
+  fillIns?: string[];
+  context?: string;
+}): Promise<DraftGenerationResponse> {
+  const response = await fetch(`${API_BASE}/drafts`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': input.userId,
+      'x-org-id': input.orgId,
+    },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || 'draft_create_failed');
+  }
+  return (await response.json()) as DraftGenerationResponse;
+}
+
+export async function fetchDraftPreview(orgId: string, documentId: string) {
+  const params = new URLSearchParams({ orgId, documentId });
+  const response = await fetch(`${API_BASE}/drafts/preview?${params.toString()}`, {
+    headers: { 'x-user-id': DEMO_USER_ID, 'x-org-id': orgId },
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || 'draft_preview_failed');
+  }
+  return (await response.json()) as {
+    documentId: string;
+    draftId: string | null;
+    title: string | null;
+    jurisdiction: string | null;
+    matterType: string | null;
+    content: string;
+    mimeType: string;
+    bytes: number;
+    createdAt: string | null;
+    summaryStatus: string | null;
+    chunkCount: number;
+    citations: DraftCitation[];
+    clauseComparisons: DraftClauseComparison[];
+    exports: DraftExportMeta[];
+    signature: DraftSignature | null;
+    contentSha256: string | null;
+    status: string | null;
+    fillIns: string[];
+    structuredPayload: IRACPayload | null;
+    plan: AgentPlanStep[];
+    trustPanel: TrustPanelPayload | null;
+    verification: VerificationResult | null;
+  };
 }

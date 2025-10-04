@@ -3,7 +3,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarCheck, ChevronRight, Clock, ExternalLink, ShieldAlert } from 'lucide-react';
+import { CalendarCheck, ChevronRight, Clock, ExternalLink, ShieldAlert, Bell } from 'lucide-react';
 import {
   DEMO_ORG_ID,
   fetchWorkspaceOverview,
@@ -20,6 +20,8 @@ import { usePlanDrawer } from '../../state/plan-drawer';
 import { PlanDrawer } from '../plan-drawer';
 import { useOnlineStatus } from '../../hooks/use-online-status';
 import { useOutbox } from '../../hooks/use-outbox';
+import { useDigest } from '../../hooks/use-digest';
+import { toast } from 'sonner';
 
 interface WorkspaceViewProps {
   messages: Messages;
@@ -73,6 +75,21 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
   const workspaceQuery = useWorkspaceData(locale);
   const online = useOnlineStatus();
   const { items: outboxItems } = useOutbox();
+  const { enabled: digestEnabled, enable: enableDigest, loading: digestLoading } = useDigest();
+
+  async function handleEnableDigest() {
+    try {
+      const granted = await enableDigest();
+      if (granted) {
+        toast.success(messages.workspace.digestEnabled);
+      } else {
+        toast.error(messages.workspace.digestError);
+      }
+    } catch (error) {
+      console.error('digest_enable_failed', error);
+      toast.error(messages.workspace.digestError);
+    }
+  }
 
   const matters = workspaceQuery.data?.matters ?? [];
   const complianceWatch = workspaceQuery.data?.complianceWatch ?? [];
@@ -127,11 +144,29 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
                 placeholder={messages.research.heroPlaceholder}
               />
               <div className="flex flex-wrap items-center gap-3">
-                <Button type="submit" className="shadow-lg" disabled={!online || mutation.isPending}>
+                <Button type="submit" className="shadow-lg" disabled={!online}>
                   {messages.workspace.heroCta}
                 </Button>
                 <Badge variant="outline">{messages.workspace.keyboardHint}</Badge>
                 <Badge variant="success">{messages.workspace.wcagBadge}</Badge>
+                {digestEnabled ? (
+                  <Badge variant="outline" className="gap-2 text-xs uppercase tracking-wide text-teal-200">
+                    <Bell className="h-3 w-3" aria-hidden />
+                    {messages.workspace.digestEnabledBadge}
+                  </Badge>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-slate-700/60 text-slate-200"
+                    onClick={handleEnableDigest}
+                    disabled={digestLoading}
+                  >
+                    <Bell className="h-3 w-3" aria-hidden />
+                    {messages.workspace.enableDigest}
+                  </Button>
+                )}
               </div>
               {!online ? (
                 <p className="text-xs text-amber-300">
@@ -185,7 +220,15 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
         <Card className="glass-card border border-slate-800/60">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>{messages.workspace.recentMatters}</CardTitle>
-            <Badge variant="outline">{matters.length}</Badge>
+            <div className="flex items-center gap-2">
+              {digestEnabled ? (
+                <Badge variant="outline" className="gap-1 text-xs text-teal-200">
+                  <Bell className="h-3 w-3" aria-hidden />
+                  {messages.workspace.digestEnabledBadge}
+                </Badge>
+              ) : null}
+              <Badge variant="outline">{matters.length}</Badge>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {workspaceQuery.isLoading ? (
@@ -287,6 +330,17 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
                       </div>
                       <Badge variant="outline">{item.jurisdiction ?? '—'}</Badge>
                     </div>
+                    {Array.isArray(item.residency) && item.residency.length > 0 ? (
+                      <div className="mt-3 space-y-1 text-xs text-slate-400">
+                        {item.residency.map((entry: { zone: string; count: number }) => (
+                          <p key={`${entry.zone}-${entry.count}`}>
+                            {messages.research.trust.provenanceResidencyItem
+                              .replace('{zone}', entry.zone)
+                              .replace('{count}', entry.count.toString())}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
                       {item.consolidated && <Badge variant="success">{messages.workspace.consolidated}</Badge>}
                       {item.effectiveDate && <span>{formatDate(item.effectiveDate, locale)}</span>}

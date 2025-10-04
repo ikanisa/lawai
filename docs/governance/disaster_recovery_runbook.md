@@ -47,11 +47,16 @@ documents the rollback drills that must be executed quarterly.
    supabase db restore --project-ref $SUPABASE_PROJECT_REF \
      --backup-id $BACKUP_ID --region $FAILOVER_REGION
    ```
-3. After restore completes, apply pending migrations:
+3. After restore completes, record legacy migrations if the project was using the
+   older `db/migrations` layout (run once per environment):
+   ```bash
+   pnpm --filter @apps/ops backfill-migrations
+   ```
+4. Apply pending migrations:
    ```bash
    pnpm db:migrate -- --project $SUPABASE_PROJECT_REF
    ```
-4. Run smoke tests: `pnpm ops:rls-smoke` and `pnpm ops:check -- --ci` against the
+5. Run smoke tests: `pnpm ops:rls-smoke` and `pnpm ops:check -- --ci` against the
    restored endpoint.
 
 ### 3.4 Vector store & evidence artifacts
@@ -116,4 +121,3 @@ documents the rollback drills that must be executed quarterly.
 - OpenAI vector store snapshot procedure
 - Incident response plan (`incident_response_plan.md`)
 - Change management playbook (`change_management_playbook.md`)
-

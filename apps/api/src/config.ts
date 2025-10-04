@@ -28,6 +28,8 @@ const envSchema = z.object({
   AGENT_STUB_MODE: z
     .enum(['auto', 'always', 'never'])
     .default('auto'),
+  C2PA_SIGNING_PRIVATE_KEY: z.string().optional(),
+  C2PA_SIGNING_KEY_ID: z.string().optional(),
 });
 
 type Env = z.infer<typeof envSchema>;

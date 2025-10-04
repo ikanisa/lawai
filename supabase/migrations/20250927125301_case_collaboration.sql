@@ -84,6 +84,8 @@ begin
 end;
 $$;
 
+drop trigger if exists insert_case_owner_collaborator on public.cases;
+
 create trigger insert_case_owner_collaborator
   after insert on public.cases
   for each row
@@ -115,6 +117,7 @@ create policy "Collaborators manage"
 
 -- Refresh existing policies to rely on helper functions.
 drop policy if exists "Cases visible to owner" on public.cases;
+drop policy if exists "Cases visible to members" on public.cases;
 drop policy if exists "Cases modifiable by owner" on public.cases;
 drop policy if exists "Cases deletable by owner" on public.cases;
 drop policy if exists "Cases owned by creator" on public.cases;
@@ -137,11 +140,10 @@ create policy "Cases deletable by owner"
   on public.cases
   for delete using (public.user_is_case_owner(id));
 
--- Documents policy refresh.
-drop policy if exists "Documents follow case ownership" on public.documents;
-drop policy if exists "Documents visible to members" on public.documents;
+drop policy if exists "Documents follow case ownership" on public.case_documents;
+drop policy if exists "Documents visible to members" on public.case_documents;
 create policy "Documents visible to members"
-  on public.documents
+  on public.case_documents
   using (public.user_can_access_case(case_id))
   with check (public.user_can_access_case(case_id));
 

@@ -2,6 +2,7 @@
   "name": "@avocat-ai/web",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "predev": "node ./scripts/generate-icons.mjs",
     "prebuild": "node ./scripts/generate-icons.mjs",
@@ -10,7 +11,7 @@
     "build": "next build && node ./scripts/inject-sw.mjs",
     "prepare-sw": "node ./scripts/prepare-sw.mjs",
     "start": "next start",
-    "lint": "eslint --max-warnings=0 --ext .ts,.tsx app src",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint --max-warnings=0 app src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "icons:generate": "node ./scripts/generate-icons.mjs"

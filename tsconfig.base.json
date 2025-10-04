@@ -11,6 +11,10 @@
     "types": ["node"],
     "allowSyntheticDefaultImports": true,
     "lib": ["ES2022", "DOM"],
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@avocat-ai/shared": ["packages/shared/src/index.ts"],
+      "@avocat-ai/shared/*": ["packages/shared/src/*"]
+    }
   }
 }

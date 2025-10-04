@@ -1,3 +1,4 @@
+import { getPermissionsMatrix } from '@avocat-ai/shared';
 import { createServiceClient } from '@avocat-ai/supabase';
 import ipaddr from 'ipaddr.js';
 import { env } from './config.js';
@@ -20,6 +21,8 @@ type OrgPolicyFlags = {
   ipAllowlistEnforced: boolean;
   consentVersion?: string | null;
   councilOfEuropeDisclosureVersion?: string | null;
+  sensitiveTopicHitl: boolean;
+  residencyZone?: string | null;
 };
 
 export type OrgAccessContext = {
@@ -34,6 +37,12 @@ export type OrgAccessContext = {
     requiredVersion?: string | null;
     latestAcceptedVersion?: string | null;
   };
+  abac: {
+    jurisdictionEntitlements: Map<string, { canRead: boolean; canWrite: boolean }>;
+    confidentialMode: boolean;
+    sensitiveTopicHitl: boolean;
+    residencyZone?: string | null;
+  };
 };
 
 type PermissionKey =
@@ -47,7 +56,10 @@ type PermissionKey =
   | 'workspace:view'
   | 'citations:view'
   | 'cases:view'
+  | 'cases:manage'
   | 'templates:view'
+  | 'drafts:view'
+  | 'drafts:create'
   | 'hitl:view'
   | 'hitl:act'
   | 'corpus:view'
@@ -60,7 +72,13 @@ type PermissionKey =
   | 'admin:security'
   | 'governance:red-team'
   | 'governance:go-no-go'
-  | 'governance:go-no-go-signoff';
+  | 'governance:go-no-go-signoff'
+  | 'billing:manage'
+  | 'audit:read'
+  | 'allowlist:toggle'
+  | 'residency:change'
+  | 'people:manage'
+  | 'data:export-delete';
 
 const PERMISSIONS: Record<PermissionKey, OrgRole[]> = {
   'runs:execute': ['owner', 'admin', 'member', 'reviewer'],
@@ -70,7 +88,10 @@ const PERMISSIONS: Record<PermissionKey, OrgRole[]> = {
   'workspace:view': ['owner', 'admin', 'member', 'reviewer', 'viewer', 'compliance_officer', 'auditor'],
   'citations:view': ['owner', 'admin', 'member', 'reviewer', 'viewer', 'compliance_officer', 'auditor'],
   'cases:view': ['owner', 'admin', 'member', 'reviewer', 'compliance_officer', 'auditor'],
+  'cases:manage': ['owner', 'admin', 'member', 'reviewer'],
   'templates:view': ['owner', 'admin', 'member', 'reviewer'],
+  'drafts:view': ['owner', 'admin', 'member', 'reviewer', 'viewer', 'compliance_officer', 'auditor'],
+  'drafts:create': ['owner', 'admin', 'member', 'reviewer', 'compliance_officer'],
   'hitl:view': ['owner', 'admin', 'reviewer', 'compliance_officer', 'auditor'],
   'hitl:act': ['owner', 'admin', 'reviewer'],
   'corpus:view': ['owner', 'admin', 'member', 'reviewer', 'compliance_officer'],
@@ -87,7 +108,36 @@ const PERMISSIONS: Record<PermissionKey, OrgRole[]> = {
   'governance:dispatch': ['owner', 'admin', 'compliance_officer'],
   'governance:go-no-go': ['owner', 'admin', 'compliance_officer'],
   'governance:go-no-go-signoff': ['owner', 'compliance_officer'],
+  'billing:manage': ['owner'],
+  'audit:read': ['owner', 'admin', 'compliance_officer', 'auditor'],
+  'allowlist:toggle': ['owner', 'admin'],
+  'residency:change': ['owner'],
+  'people:manage': ['owner', 'admin'],
+  'data:export-delete': ['owner'],
 };
+
+const MANIFEST_PERMISSION_ALIASES: Record<string, PermissionKey> = {
+  'research.run': 'runs:execute',
+  'drafting.edit': 'drafts:create',
+  'hitl.review': 'hitl:act',
+  'corpus.manage': 'corpus:manage',
+  'policies.manage': 'admin:manage',
+  'billing.manage': 'billing:manage',
+  'audit.read': 'audit:read',
+  'allowlist.toggle': 'allowlist:toggle',
+  'residency.change': 'residency:change',
+  'people.manage': 'people:manage',
+  'data.export_delete': 'data:export-delete',
+};
+
+const manifestPermissions = getPermissionsMatrix();
+for (const [key, roles] of Object.entries(manifestPermissions)) {
+  const permissionKey = MANIFEST_PERMISSION_ALIASES[key];
+  if (!permissionKey) {
+    continue;
+  }
+  PERMISSIONS[permissionKey] = roles as OrgRole[];
+}
 
 const supabase = createServiceClient({
   SUPABASE_URL: env.SUPABASE_URL,
@@ -184,6 +234,8 @@ function resolvePolicyFlags(policyRecord: PolicyRecord): OrgPolicyFlags {
   const ipAllowlist = policyRecord['ip_allowlist_enforced'];
   const consentVersion = policyRecord['ai_assist_consent_version'];
   const coeDisclosure = policyRecord['coe_ai_framework_version'];
+  const sensitiveHitl = policyRecord['sensitive_topic_hitl'];
+  const residencyZone = policyRecord['residency_zone'];
 
   return {
     confidentialMode: Boolean(confidential && typeof confidential === 'object' ? (confidential as { enabled?: boolean }).enabled : confidential),
@@ -206,6 +258,18 @@ function resolvePolicyFlags(policyRecord: PolicyRecord): OrgPolicyFlags {
       typeof coeDisclosure === 'object'
         ? (coeDisclosure as { version?: string }).version ?? null
         : (coeDisclosure as string | null | undefined) ?? null,
+    sensitiveTopicHitl:
+      sensitiveHitl === undefined
+        ? true
+        : Boolean(
+            typeof sensitiveHitl === 'object'
+              ? (sensitiveHitl as { enabled?: boolean }).enabled
+              : sensitiveHitl,
+          ),
+    residencyZone:
+      typeof residencyZone === 'object'
+        ? ((residencyZone as { value?: string }).value ?? null)
+        : (residencyZone as string | null | undefined) ?? null,
   };
 }
 
@@ -235,6 +299,12 @@ export async function authorizeAction(
     fetchLatestConsent(orgId, userId),
   ]);
   const flags = resolvePolicyFlags(policies);
+  const abac = {
+    jurisdictionEntitlements: entitlements,
+    confidentialMode: flags.confidentialMode,
+    sensitiveTopicHitl: flags.sensitiveTopicHitl,
+    residencyZone: flags.residencyZone ?? null,
+  } as const;
 
   return {
     orgId,
@@ -248,6 +318,7 @@ export async function authorizeAction(
       requiredVersion: flags.consentVersion ?? null,
       latestAcceptedVersion: latestConsent,
     },
+    abac,
   };
 }
 

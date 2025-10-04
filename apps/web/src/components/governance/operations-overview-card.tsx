@@ -1,7 +1,6 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { ACCEPTANCE_THRESHOLDS } from '@avocat-ai/shared';
 import type { Messages } from '../../lib/i18n';
 import type { OperationsOverviewResponse } from '../../lib/api';
 
@@ -11,6 +10,14 @@ interface OperationsOverviewCardProps {
   loading?: boolean;
   locale: string;
 }
+
+const ACCEPTANCE_THRESHOLDS = {
+  citationsAllowlistedP95: 0.95,
+  temporalValidityP95: 0.95,
+  maghrebBindingBannerCoverage: 1,
+  rwandaLanguageNoticeCoverage: 1,
+  linkHealthFailureRatioMax: 0.05,
+} as const;
 
 function formatDate(value: string | null | undefined, locale: string): string {
   if (!value) return '—';
@@ -44,11 +51,17 @@ export function OperationsOverviewCard({ messages, data, loading = false, locale
   const compliance = data?.compliance ?? null;
   const webVitals = data?.webVitals ?? null;
 
+  const bindingCoverage = compliance?.bindingCoverage ?? null;
+  const residencyCoverage = compliance?.residencyCoverage ?? null;
+  const residencyTarget = 0.95;
+
   const complianceAlertMessages: Record<string, string> = {
     cepej_violation: opsMessages.complianceAlertCepej,
     fria_required: opsMessages.complianceAlertFria,
     maghreb_banner_low: opsMessages.complianceAlertMaghreb,
     rwanda_notice_low: opsMessages.complianceAlertRwanda,
+    binding_coverage_low: opsMessages.complianceAlertBinding,
+    residency_coverage_low: opsMessages.complianceAlertResidency,
   };
 
   const webVitalAlertMessages: Record<string, string> = {
@@ -100,7 +113,7 @@ export function OperationsOverviewCard({ messages, data, loading = false, locale
             <p className="text-sm text-slate-400">{opsMessages.complianceEmpty}</p>
           ) : (
             <div className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                 <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4">
                   <p className="text-xs text-slate-400 uppercase">{opsMessages.cepejPassRate}</p>
                   <p className="text-sm text-slate-200">
@@ -140,6 +153,23 @@ export function OperationsOverviewCard({ messages, data, loading = false, locale
                       '{target}',
                       `${Math.round(ACCEPTANCE_THRESHOLDS.rwandaLanguageNoticeCoverage * 100)} %`,
                     )}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4">
+                  <p className="text-xs text-slate-400 uppercase">{opsMessages.bindingCoverage}</p>
+                  <p className="text-sm text-slate-200">{formatPercent(bindingCoverage)}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {opsMessages.bindingBudget.replace(
+                      '{target}',
+                      `${Math.round(ACCEPTANCE_THRESHOLDS.citationsAllowlistedP95 * 100)} %`,
+                    )}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4">
+                  <p className="text-xs text-slate-400 uppercase">{opsMessages.residencyCoverage}</p>
+                  <p className="text-sm text-slate-200">{formatPercent(residencyCoverage)}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {opsMessages.residencyBudget.replace('{target}', `${Math.round(residencyTarget * 100)} %`)}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4">

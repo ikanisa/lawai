@@ -1,10 +1,23 @@
 import { useState } from 'react';
-import { IRACPayload } from '@avocat-ai/shared';
 import { Button } from './ui/button';
 import { Clipboard, Loader2 } from 'lucide-react';
 
+type IracRule = {
+  citation: string;
+  source_url: string;
+  binding: boolean;
+  effective_date: string;
+};
+
+type IracPayload = {
+  issue: string;
+  rules: IracRule[];
+  application: string;
+  conclusion: string;
+};
+
 interface IRACAccordionProps {
-  payload: IRACPayload;
+  payload: IracPayload;
   labels: {
     issue: string;
     rules: string;
@@ -41,7 +54,7 @@ export function IRACAccordion({
     }
   }
 
-  const sections: Array<{ key: keyof IRACPayload; label: string; content: string | IRACPayload['rules'] }> = [
+  const sections: Array<{ key: keyof IracPayload; label: string; content: string | IracPayload['rules'] }> = [
     { key: 'issue', label: labels.issue, content: payload.issue },
     { key: 'rules', label: labels.rules, content: payload.rules },
     { key: 'application', label: labels.application, content: payload.application },

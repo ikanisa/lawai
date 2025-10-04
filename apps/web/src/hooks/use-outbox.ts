@@ -1,5 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AUTONOMOUS_JUSTICE_SUITE } from '../../../../packages/shared/src/config/autonomous-suite';
 import { submitResearchQuestion, DEMO_ORG_ID, DEMO_USER_ID } from '../lib/api';
+
+const SUITE_MANIFEST = AUTONOMOUS_JUSTICE_SUITE;
+const AGENT_LABEL_MAP = new Map<string, string>();
+for (const [key, definition] of Object.entries(SUITE_MANIFEST.agents)) {
+  const externalCode = typeof definition.code === 'string' ? definition.code : key;
+  const label = typeof definition.label === 'string' ? definition.label : externalCode;
+  if (externalCode) {
+    AGENT_LABEL_MAP.set(externalCode, label);
+  }
+}
+
+const DEFAULT_AGENT_CODE =
+  typeof SUITE_MANIFEST.agents.counsel_research?.code === 'string'
+    ? SUITE_MANIFEST.agents.counsel_research.code
+    : 'conseil_recherche';
+const DEFAULT_AGENT_LABEL = AGENT_LABEL_MAP.get(DEFAULT_AGENT_CODE) ?? DEFAULT_AGENT_CODE;
 import { useOnlineStatus } from './use-online-status';
 
 export interface OutboxItem {
@@ -9,6 +26,9 @@ export interface OutboxItem {
   confidentialMode: boolean;
   createdAt: string;
   resumedAt?: string;
+  agentCode: string;
+  agentLabel: string;
+  agentSettings?: Record<string, unknown> | null;
 }
 
 const STORAGE_KEY = 'avocat-ai-outbox';
@@ -22,12 +42,36 @@ function loadInitial(): OutboxItem[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is OutboxItem =>
-      typeof item === 'object' &&
-      item !== null &&
-      typeof (item as OutboxItem).id === 'string' &&
-      typeof (item as OutboxItem).question === 'string',
-    );
+    return parsed
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+      .filter((item) => typeof item.question === 'string' && typeof item.id === 'string')
+      .map((item) => {
+        const agentCode = typeof item.agentCode === 'string' && item.agentCode.trim().length > 0
+          ? item.agentCode
+          : DEFAULT_AGENT_CODE;
+        const agentLabel = typeof item.agentLabel === 'string' && item.agentLabel.trim().length > 0
+          ? item.agentLabel
+          : AGENT_LABEL_MAP.get(agentCode) ?? DEFAULT_AGENT_LABEL;
+        const agentSettings =
+          item.agentSettings && typeof item.agentSettings === 'object' && !Array.isArray(item.agentSettings)
+            ? (item.agentSettings as Record<string, unknown>)
+            : null;
+
+        return {
+          id: String(item.id),
+          question: String(item.question),
+          context: typeof item.context === 'string' ? item.context : undefined,
+          confidentialMode: Boolean(item.confidentialMode),
+          createdAt:
+            typeof item.createdAt === 'string' && item.createdAt.trim().length > 0
+              ? item.createdAt
+              : new Date().toISOString(),
+          resumedAt: typeof item.resumedAt === 'string' ? item.resumedAt : undefined,
+          agentCode,
+          agentLabel,
+          agentSettings,
+        } satisfies OutboxItem;
+      });
   } catch (error) {
     console.warn('outbox_load_failed', error);
     return [];
@@ -65,7 +109,7 @@ export function useOutbox() {
     setItems([]);
   }, []);
 
-  const flush = useCallback(async () => {
+  const flush = useCallback(async (handler?: (item: OutboxItem) => Promise<boolean>) => {
     if (!online) return;
     const snapshot = items
       .slice()
@@ -82,12 +126,23 @@ export function useOutbox() {
 
     for (const item of snapshot) {
       try {
+        if (handler) {
+          const handled = await handler(item);
+          if (handled) {
+            completed.add(item.id);
+            continue;
+          }
+          failed.set(item.id, { ...item, resumedAt: resumeTime });
+          continue;
+        }
         await submitResearchQuestion({
           question: item.question,
           context: item.context,
           orgId: DEMO_ORG_ID,
           userId: DEMO_USER_ID,
           confidentialMode: item.confidentialMode,
+          agentCode: item.agentCode,
+          agentSettings: item.agentSettings ?? undefined,
         });
         completed.add(item.id);
       } catch (error) {

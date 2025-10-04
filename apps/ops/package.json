@@ -22,6 +22,7 @@
     "phase": "tsx src/phase-progress.ts",
     "learning-cycle": "tsx src/run-learning-cycle.ts",
     "link-health": "tsx src/link-health.ts",
+    "backfill-migrations": "tsx src/backfill-migrations.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src --ext .ts",
     "test": "vitest run"

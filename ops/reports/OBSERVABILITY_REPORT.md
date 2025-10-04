@@ -7,7 +7,7 @@
 
 ## Metrics
 - Governance endpoints expose retrieval, evaluation, CEPEJ, SLO snapshots (`apps/api/src/server.ts:712-905`, `1085-2184`).
-- Supabase views `org_retrieval_metrics`, `org_evaluation_metrics` aggregate data (`db/migrations/0067_retrieval_metrics_views.sql`, `0071_org_evaluation_metrics.sql`).
+- Supabase views `org_retrieval_metrics`, `org_evaluation_metrics` aggregate data (`supabase/migrations/20240101010800_retrieval_metrics_views.sql`, `0071_org_evaluation_metrics.sql`).
 - Gaps: No automated alerting on threshold breach; evaluation CLI ignores metrics failures (`apps/ops/src/evaluate.ts:400-520`).
 
 ## Traces

@@ -15,22 +15,139 @@ begin
 end;
 $$;
 
--- Custom enumerations -------------------------------------------------------
-create type public.case_status as enum ('draft', 'in_review', 'awaiting_client', 'closed');
-create type public.message_actor as enum ('client', 'lawyer', 'assistant', 'system');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = 'case_status'
+      AND n.nspname = 'public'
+  ) THEN
+    CREATE TYPE public.case_status AS ENUM ('draft', 'in_review', 'awaiting_client', 'closed');
+  END IF;
+END
+$$;
 
--- Profiles ------------------------------------------------------------------
-create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  full_name text,
-  preferred_language text not null default 'fr',
-  role text not null default 'client' check (role in ('client', 'lawyer', 'admin')),
-  organisation text,
-  timezone text default 'Europe/Paris',
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = 'message_actor'
+      AND n.nspname = 'public'
+  ) THEN
+    CREATE TYPE public.message_actor AS ENUM ('client', 'lawyer', 'assistant', 'system');
+  END IF;
+END
+$$;
+
+alter table public.profiles
+  add column if not exists id uuid,
+  add column if not exists preferred_language text,
+  add column if not exists role text,
+  add column if not exists organisation text,
+  add column if not exists timezone text,
+  add column if not exists metadata jsonb,
+  add column if not exists email text,
+  add column if not exists phone_e164 text,
+  add column if not exists professional_type text,
+  add column if not exists bar_number text,
+  add column if not exists court_id text,
+  add column if not exists verified boolean default false,
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now();
+
+update public.profiles
+  set id = user_id
+  where id is null;
+
+update public.profiles
+  set preferred_language = coalesce(preferred_language, locale, 'fr');
+
+update public.profiles
+  set role = coalesce(role, 'client');
+
+update public.profiles
+  set timezone = coalesce(timezone, 'Europe/Paris');
+
+update public.profiles
+  set metadata = '{}'::jsonb
+  where metadata is null;
+
+update public.profiles
+  set verified = false
+  where verified is null;
+
+alter table public.profiles
+  alter column id set not null;
+
+alter table public.profiles
+  alter column preferred_language set default 'fr';
+
+alter table public.profiles
+  alter column role set default 'client';
+
+alter table public.profiles
+  alter column timezone set default 'Europe/Paris';
+
+alter table public.profiles
+  alter column metadata set default '{}'::jsonb;
+
+alter table public.profiles
+  alter column preferred_language set not null;
+
+alter table public.profiles
+  alter column role set not null;
+
+alter table public.profiles
+  alter column timezone set not null;
+
+alter table public.profiles
+  alter column metadata set not null;
+
+alter table public.profiles
+  alter column verified set default false;
+
+alter table public.profiles
+  alter column verified set not null;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'profiles_id_key'
+      AND conrelid = 'public.profiles'::regclass
+  ) THEN
+    ALTER TABLE public.profiles
+      ADD CONSTRAINT profiles_id_key UNIQUE (id);
+  END IF;
+END
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint c
+    join pg_class rel on rel.oid = c.conrelid
+    where rel.relname = 'profiles'
+      and c.conname = 'profiles_id_auth_fkey'
+  ) then
+    begin
+      alter table public.profiles
+        add constraint profiles_id_auth_fkey foreign key (id) references auth.users(id) on delete cascade;
+    exception
+      when others then
+        raise notice 'Skipping auth.users FK for profiles.id: %', sqlerrm;
+    end;
+  end if;
+end
+$$;
+
+drop trigger if exists set_profiles_updated_at on public.profiles;
 
 create trigger set_profiles_updated_at
   before update on public.profiles
@@ -53,16 +170,17 @@ create table if not exists public.cases (
   updated_at timestamptz not null default now()
 );
 
-create index cases_owner_idx on public.cases(owner_id);
-create index cases_status_idx on public.cases(status);
+create index if not exists cases_owner_idx on public.cases(owner_id);
+create index if not exists cases_status_idx on public.cases(status);
+
+drop trigger if exists set_cases_updated_at on public.cases;
 
 create trigger set_cases_updated_at
   before update on public.cases
   for each row
   execute procedure public.set_updated_at();
 
--- Documents -----------------------------------------------------------------
-create table if not exists public.documents (
+create table if not exists public.case_documents (
   id uuid primary key default gen_random_uuid(),
   case_id uuid not null references public.cases(id) on delete cascade,
   title text not null,
@@ -75,11 +193,13 @@ create table if not exists public.documents (
   updated_at timestamptz not null default now()
 );
 
-create index documents_case_idx on public.documents(case_id);
-create index documents_language_idx on public.documents(language);
+create index if not exists case_documents_case_idx on public.case_documents(case_id);
+create index if not exists case_documents_language_idx on public.case_documents(language);
 
-create trigger set_documents_updated_at
-  before update on public.documents
+drop trigger if exists set_case_documents_updated_at on public.case_documents;
+
+create trigger set_case_documents_updated_at
+  before update on public.case_documents
   for each row
   execute procedure public.set_updated_at();
 
@@ -95,7 +215,7 @@ create table if not exists public.case_messages (
   created_at timestamptz not null default now()
 );
 
-create index case_messages_case_idx on public.case_messages(case_id, created_at);
+create index if not exists case_messages_case_idx on public.case_messages(case_id, created_at);
 
 -- Task tracking -------------------------------------------------------------
 create table if not exists public.tasks (
@@ -110,8 +230,10 @@ create table if not exists public.tasks (
   updated_at timestamptz not null default now()
 );
 
-create index tasks_case_idx on public.tasks(case_id);
-create index tasks_owner_idx on public.tasks(owner_id);
+create index if not exists tasks_case_idx on public.tasks(case_id);
+create index if not exists tasks_owner_idx on public.tasks(owner_id);
+
+drop trigger if exists set_tasks_updated_at on public.tasks;
 
 create trigger set_tasks_updated_at
   before update on public.tasks
@@ -121,48 +243,51 @@ create trigger set_tasks_updated_at
 -- Row-Level Security --------------------------------------------------------
 alter table public.profiles enable row level security;
 alter table public.cases enable row level security;
-alter table public.documents enable row level security;
+alter table public.case_documents enable row level security;
 alter table public.case_messages enable row level security;
 alter table public.tasks enable row level security;
 
--- Allow a user to manage their own profile.
+drop policy if exists "Profiles are accessible by owner" on public.profiles;
 create policy "Profiles are accessible by owner"
   on public.profiles
   using (id = auth.uid())
   with check (id = auth.uid());
 
 -- Allow the authenticated user to create a profile matching their UID.
+drop policy if exists "Insert own profile" on public.profiles;
 create policy "Insert own profile"
   on public.profiles
   for insert
   with check (id = auth.uid());
 
 -- Cases: owner-based access.
+drop policy if exists "Cases visible to owner" on public.cases;
 create policy "Cases visible to owner"
   on public.cases
   for select using (owner_id = auth.uid());
 
+drop policy if exists "Cases modifiable by owner" on public.cases;
 create policy "Cases modifiable by owner"
   on public.cases
   for all
   using (owner_id = auth.uid())
   with check (owner_id = auth.uid());
 
--- Documents follow case ownership.
+drop policy if exists "Documents follow case ownership" on public.case_documents;
 create policy "Documents follow case ownership"
-  on public.documents
+  on public.case_documents
   using (exists (
     select 1 from public.cases c
-    where c.id = documents.case_id
+    where c.id = case_documents.case_id
       and c.owner_id = auth.uid()
   ))
   with check (exists (
     select 1 from public.cases c
-    where c.id = documents.case_id
+    where c.id = case_documents.case_id
       and c.owner_id = auth.uid()
   ));
 
--- Messages follow case ownership.
+drop policy if exists "Messages follow case ownership" on public.case_messages;
 create policy "Messages follow case ownership"
   on public.case_messages
   using (exists (
@@ -176,7 +301,7 @@ create policy "Messages follow case ownership"
       and c.owner_id = auth.uid()
   ));
 
--- Tasks follow case ownership.
+drop policy if exists "Tasks follow case ownership" on public.tasks;
 create policy "Tasks follow case ownership"
   on public.tasks
   using (exists (

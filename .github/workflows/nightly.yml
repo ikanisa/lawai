@@ -55,3 +55,11 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{}'
 
+      - name: Recompute case scores
+        if: env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != ''
+        run: |
+          set -e
+          curl -sSf -X POST "${SUPABASE_URL%/}/functions/v1/case-recompute" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H 'Content-Type: application/json' \
+            -d '{}'

@@ -57,7 +57,7 @@ where not exists (
 with example_case as (
   select id from public.cases where title = 'Dossier exemple - Contrat SaaS' limit 1
 )
-insert into public.documents (case_id, title, doc_type, language, storage_path, content_preview)
+insert into public.case_documents (case_id, title, doc_type, language, storage_path, content_preview)
 select
   ec.id,
   'Projet de contrat SaaS',
@@ -67,7 +67,7 @@ select
   'Clause de résiliation, responsabilité, SLA. Version à relire.'
 from example_case ec
 where not exists (
-  select 1 from public.documents d where d.title = 'Projet de contrat SaaS'
+  select 1 from public.case_documents d where d.title = 'Projet de contrat SaaS'
 );
 
 -- Seed a conversation history for the example case.

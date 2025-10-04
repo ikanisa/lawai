@@ -16,6 +16,7 @@ interface OutboxPanelProps {
     retry: string;
     remove: string;
     queuedAt: string;
+    agent: string;
   };
 }
 
@@ -43,6 +44,9 @@ export function OutboxPanel({ items, locale, onRetry, onRemove, messages }: Outb
                 <div className="space-y-2 text-xs text-amber-100">
                   <p className="font-semibold text-amber-50">{item.question}</p>
                   {item.context ? <p className="text-amber-100/80">{item.context}</p> : null}
+                  <p className="text-amber-200/80">
+                    {messages.agent}: {item.agentLabel}
+                  </p>
                   <p className="text-amber-200/70">
                     {messages.queuedAt}: {createdLabel}
                   </p>

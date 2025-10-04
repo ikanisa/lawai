@@ -1,7 +1,4 @@
--- Extend evaluation metrics with Rwanda language notice coverage
-alter table public.eval_results
-  add column if not exists rwanda_notice boolean;
-
+-- Aggregate evaluation telemetry for operator dashboards
 create or replace view public.org_evaluation_metrics as
 select
   o.id as org_id,
@@ -13,7 +10,6 @@ select
   results.citation_precision_coverage,
   results.temporal_validity_coverage,
   results.maghreb_banner_coverage,
-  results.rwanda_notice_coverage,
   results.last_result_at
 from public.organizations o
 left join (
@@ -45,24 +41,15 @@ left join (
       when count(*) filter (where upper(coalesce(r.jurisdiction, '')) in ('MA', 'TN', 'DZ')) = 0 then null
       else sum(
         case
-          when upper(coalesce(r.jurisdiction, '')) in ('MA', 'TN', 'DZ') and coalesce(r.maghreb_banner, false) then 1
-          when upper(coalesce(r.jurisdiction, '')) in ('MA', 'TN', 'DZ') then 0
+          when upper(coalesce(r.jurisdiction, '')) in ('MA', 'TN', 'DZ') and coalesce(r.maghreb_banner, false)
+            then 1
+          when upper(coalesce(r.jurisdiction, '')) in ('MA', 'TN', 'DZ')
+            then 0
           else null
         end
       )::numeric /
       nullif(count(*) filter (where upper(coalesce(r.jurisdiction, '')) in ('MA', 'TN', 'DZ')), 0)
     end as maghreb_banner_coverage,
-    case
-      when count(*) filter (where upper(coalesce(r.jurisdiction, '')) = 'RW') = 0 then null
-      else sum(
-        case
-          when upper(coalesce(r.jurisdiction, '')) = 'RW' and coalesce(r.rwanda_notice, false) then 1
-          when upper(coalesce(r.jurisdiction, '')) = 'RW' then 0
-          else null
-        end
-      )::numeric /
-      nullif(count(*) filter (where upper(coalesce(r.jurisdiction, '')) = 'RW'), 0)
-    end as rwanda_notice_coverage,
     max(r.created_at) as last_result_at
   from public.eval_cases c
   left join public.eval_results r on r.case_id = c.id
@@ -90,12 +77,7 @@ select
     when upper(coalesce(r.jurisdiction, '')) in ('MA', 'TN', 'DZ') then
       sum(case when coalesce(r.maghreb_banner, false) then 1 else 0 end)::numeric / nullif(count(r.id), 0)
     else null
-  end as maghreb_banner_coverage,
-  case
-    when upper(coalesce(r.jurisdiction, '')) = 'RW' then
-      sum(case when coalesce(r.rwanda_notice, false) then 1 else 0 end)::numeric / nullif(count(r.id), 0)
-    else null
-  end as rwanda_notice_coverage
+  end as maghreb_banner_coverage
 from public.eval_cases c
 join public.eval_results r on r.case_id = c.id
 group by c.org_id, jurisdiction;

@@ -19,6 +19,9 @@ interface AllowlistDomain {
   host: string;
   active: boolean;
   lastIngestedAt?: string | null;
+  residencyZone?: string | null;
+  residency?: Array<{ zone: string; count: number }> | null;
+  bindingLanguages?: string[] | null;
 }
 
 interface SnapshotDocument {
@@ -33,6 +36,7 @@ interface SnapshotDocument {
   chunkCount?: number | null;
   summary?: string | null;
   highlights?: Array<{ heading: string; detail: string }> | null;
+  residency?: Array<{ zone: string; count: number }> | null;
 }
 
 interface UploadDocument {
@@ -183,6 +187,32 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
               <p>
                 {messages.corpus.lastRun}: {domain.lastIngestedAt ?? '—'}
               </p>
+              {domain.residencyZone ? (
+                <div className="flex flex-wrap items-center gap-2 text-slate-300">
+                  <Badge variant="outline">{domain.residencyZone}</Badge>
+                  <span className="text-xs text-slate-400">{messages.research.trust.provenanceResidencyHeading}</span>
+                </div>
+              ) : null}
+              {Array.isArray(domain.residency) && domain.residency.length > 0 ? (
+                <ul className="space-y-1 text-xs text-slate-300">
+                  {domain.residency.map((entry) => (
+                    <li key={`${domain.host}-${entry.zone}`}>
+                      {messages.research.trust.provenanceResidencyItem
+                        .replace('{zone}', entry.zone)
+                        .replace('{count}', entry.count.toString())}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {Array.isArray(domain.bindingLanguages) && domain.bindingLanguages.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {domain.bindingLanguages.map((language) => (
+                    <Badge key={`${domain.host}-${language}`} variant="outline">
+                      {language.toUpperCase()}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
               <Button
                 size="sm"
                 variant="outline"
@@ -205,6 +235,7 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
           <CardContent className="space-y-3 text-sm text-slate-200">
             {snapshots.map((doc) => {
               const highlights = Array.isArray(doc.highlights) ? doc.highlights : [];
+              const residency = Array.isArray(doc.residency) ? doc.residency : [];
               const status = doc.summaryStatus ?? 'pending';
               const isRefreshing = resummarizeMutation.isPending && resummarizeMutation.variables === doc.id;
               return (
@@ -227,6 +258,22 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
                     <p>
                       {messages.corpus.ingestion}: {doc.status ?? '—'}
                     </p>
+                    {residency.length > 0 ? (
+                      <div className="space-y-1 text-slate-300">
+                        <p className="mt-2 font-semibold uppercase tracking-wide text-slate-400">
+                          {messages.research.trust.provenanceResidencyHeading}
+                        </p>
+                        <ul className="space-y-1">
+                          {residency.map((entry) => (
+                            <li key={`${doc.id}-${entry.zone}`}>
+                              {messages.research.trust.provenanceResidencyItem
+                                .replace('{zone}', entry.zone)
+                                .replace('{count}', entry.count.toString())}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                   </div>
                   {doc.summary ? (
                     <div className="space-y-2 text-sm text-slate-100">

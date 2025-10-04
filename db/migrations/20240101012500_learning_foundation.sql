@@ -22,7 +22,7 @@ create policy "learning_signals_policy" on public.learning_signals
 
 create table if not exists public.learning_metrics (
   id uuid primary key default gen_random_uuid(),
-  window text not null,
+  "window" text not null,
   metric text not null,
   value double precision not null,
   dims jsonb not null default '{}'::jsonb,
@@ -125,4 +125,3 @@ create policy "denylist_deboost_policy" on public.denylist_deboost
   );
 
 create index if not exists idx_denylist_deboost_org on public.denylist_deboost(org_id, juris_code);
-

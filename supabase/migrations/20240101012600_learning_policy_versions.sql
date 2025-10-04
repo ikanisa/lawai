@@ -44,7 +44,7 @@ create policy "agent_learning_jobs_policy" on public.agent_learning_jobs
   using (public.is_org_member(org_id))
   with check (public.is_org_member(org_id));
 
-create function public.touch_agent_learning_jobs()
+create or replace function public.touch_agent_learning_jobs()
 returns trigger
 language plpgsql
 as $$
@@ -60,4 +60,3 @@ create trigger trg_touch_agent_learning_jobs
   before update on public.agent_learning_jobs
   for each row
   execute function public.touch_agent_learning_jobs();
-

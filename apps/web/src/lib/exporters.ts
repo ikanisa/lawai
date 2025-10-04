@@ -1,5 +1,5 @@
 import { IRACPayload } from '@avocat-ai/shared';
-import { DEMO_ORG_ID } from './api';
+import { API_BASE, DEMO_ORG_ID, DEMO_USER_ID } from './api';
 import { jsPDF } from 'jspdf';
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
 import { saveAs } from 'file-saver';
@@ -10,18 +10,53 @@ function formatRules(payload: IRACPayload) {
     .join('\n\n');
 }
 
-async function signExport(text: string, filename: string) {
+function formatProofMetadata(proof: C2PASignature) {
+  const signedAt = new Date(proof.signedAt);
+  const firstLine = `Signature ${proof.algorithm}/${proof.keyId} — ${proof.signature.slice(0, 32)}…`;
+  const secondLine = `Statement ${proof.statementId} — ${signedAt.toLocaleString()}`;
+  return [firstLine, secondLine];
+}
+
+interface C2PASignature {
+  signature: string;
+  keyId: string;
+  algorithm: string;
+  signedAt: string;
+  statementId: string;
+  manifest: {
+    '@context': string;
+    version: string;
+    claim_generator: string;
+    statement_id: string;
+    signed_at: string;
+    assertions: Array<{
+      label: string;
+      digest: { algorithm: string; value: string };
+      filename?: string | null;
+    }>;
+    subject?: { org: string; user: string };
+  };
+}
+
+async function signExport(text: string, filename: string): Promise<C2PASignature | null> {
   const encoder = new TextEncoder();
   const data = encoder.encode(text);
   const digest = await crypto.subtle.digest('SHA-256', data);
   const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
-  const res = await fetch('/exports/sign', {
+  const res = await fetch(`${API_BASE}/exports/sign`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_ORG_ID },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': DEMO_USER_ID,
+      'x-org-id': DEMO_ORG_ID,
+    },
     body: JSON.stringify({ orgId: DEMO_ORG_ID, contentSha256: hash, filename }),
   });
-  if (!res.ok) return null;
-  return (await res.json()) as { signature: string; keyId: string; signedAt: string };
+  if (!res.ok) {
+    console.warn('export_sign_failed', await res.text());
+    return null;
+  }
+  return (await res.json()) as C2PASignature;
 }
 
 export async function exportIracToPdf(payload: IRACPayload, locale: 'fr' | 'en' = 'fr') {
@@ -64,8 +99,9 @@ export async function exportIracToPdf(payload: IRACPayload, locale: 'fr' | 'en' 
   if (proof) {
     doc.setFont('Helvetica', 'normal');
     doc.setFontSize(9);
-    const footer = `Signed (${proof.keyId}) at ${new Date(proof.signedAt).toLocaleString()} — ${proof.signature.slice(0, 24)}…`;
-    doc.text(footer, margin, 820);
+    const [line1, line2] = formatProofMetadata(proof);
+    doc.text(line1, margin, 800);
+    doc.text(line2, margin, 814);
   }
 
   doc.save(`analyse-irac-${payload.jurisdiction.country.toLowerCase()}.pdf`);
@@ -107,11 +143,13 @@ export async function exportIracToDocx(payload: IRACPayload, locale: 'fr' | 'en'
             ? new Paragraph({ text: locale === 'fr' ? 'Revue humaine requise.' : 'Human review required.' })
             : new Paragraph({ text: '' }),
           ...(proof
-            ? [
-                new Paragraph({
-                  text: `Signed (${proof.keyId}) at ${new Date(proof.signedAt).toLocaleString()} — ${proof.signature.slice(0, 24)}…`,
-                }),
-              ]
+            ? (() => {
+                const proofLines = formatProofMetadata(proof);
+                return [
+                  new Paragraph({ text: proofLines[0] }),
+                  new Paragraph({ text: proofLines[1] }),
+                ];
+              })()
             : []),
         ],
       },

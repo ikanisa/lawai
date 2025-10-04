@@ -488,6 +488,20 @@ describe('API routes', () => {
         builder.limit.mockReturnValue(builder);
         return builder;
       }
+      if (table === 'org_provenance_metrics') {
+        const builder = createQueryBuilder({
+          data: {
+            total_sources: 10,
+            sources_with_binding: 9,
+            sources_with_residency: 8,
+          },
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
       throw new Error(`unexpected table ${table}`);
     });
 
@@ -506,6 +520,8 @@ describe('API routes', () => {
       compliance: {
         cepej: { assessedRuns: number; violationRuns: number };
         evaluationCoverage: { maghrebBanner: number | null; rwandaNotice: number | null };
+        bindingCoverage: number | null;
+        residencyCoverage: number | null;
         alerts: Array<{ code: string }>;
       };
       webVitals: {
@@ -518,6 +534,8 @@ describe('API routes', () => {
     expect(body.incidents.total).toBe(1);
     expect(body.incidents.entries[0]?.id).toBe('incident-1');
     expect(body.changeLog.entries[0]?.id).toBe('change-1');
+    expect(body.compliance.bindingCoverage).toBeCloseTo(0.9);
+    expect(body.compliance.residencyCoverage).toBeCloseTo(0.8);
     expect(body.goNoGo.criteria[0]).toMatchObject({ criterion: 'SLO >= 99%', recordedStatus: 'satisfied' });
     expect(body.compliance.cepej.assessedRuns).toBe(4);
     expect(body.compliance.evaluationCoverage.rwandaNotice).toBeCloseTo(0.6);
@@ -917,5 +935,52 @@ describe('API routes', () => {
     expect(akoma.meta?.publication?.consolidated ?? null).toBeNull();
     expect(updates.eli).toBe('loi/2020/05/12/2020-1234/jo/texte');
     expect(sourceUpdateEq).toHaveBeenCalledWith('id', 'src-1');
+  });
+
+  it('signs exports with C2PA manifest metadata', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/exports/sign',
+      headers: { 'x-user-id': 'user-1' },
+      payload: {
+        orgId: 'org-1',
+        filename: 'analyse.pdf',
+        contentSha256: 'a'.repeat(64),
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      keyId: string;
+      algorithm: string;
+      signature: string;
+      manifest: {
+        statement_id: string;
+        assertions: Array<{ digest: { value: string } }>;
+        subject?: { org: string; user: string };
+      };
+    };
+
+    expect(body.keyId).toBeTruthy();
+    expect(body.algorithm).toBe('ed25519');
+    expect(body.signature).toMatch(/^[a-zA-Z0-9+/=]+$/);
+    expect(body.manifest.statement_id).toBeTruthy();
+    expect(body.manifest.assertions[0]?.digest.value).toBe('a'.repeat(64));
+    expect(body.manifest.subject?.org).toBe('org-1');
+    expect(body.manifest.subject?.user).toBe('user-1');
+  });
+
+  it('rejects missing content hash when signing', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/exports/sign',
+      headers: { 'x-user-id': 'user-1' },
+      payload: {
+        orgId: 'org-1',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'orgId and contentSha256 are required' });
   });
 });

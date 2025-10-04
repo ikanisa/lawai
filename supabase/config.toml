@@ -2,7 +2,7 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "JB"
+project_id = "jb"
 
 [api]
 enabled = true
@@ -20,6 +20,9 @@ max_rows = 1000
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
 enabled = false
+# Paths to self-signed certificate pair.
+# cert_path = "../certs/my-cert.pem"
+# key_path = "../certs/my-key.pem"
 
 [db]
 # Port to use for the local database URL.
@@ -50,7 +53,7 @@ max_client_conn = 100
 enabled = true
 # Specifies an ordered list of schema files that describe your database.
 # Supports glob patterns relative to supabase directory: "./schemas/*.sql"
-schema_paths = []
+schema_paths = ["supabase/migrations"]
 
 [db.seed]
 # If enabled, seeds the database after migrations during a db reset.
@@ -301,6 +304,15 @@ enabled = false
 # Obtain from https://clerk.com/setup/supabase
 # domain = "example.clerk.accounts.dev"
 
+# OAuth server configuration
+[auth.oauth_server]
+# Enable OAuth server functionality
+enabled = false
+# Path for OAuth consent flow UI
+authorization_url_path = "/oauth/consent"
+# Allow dynamic client registration
+allow_dynamic_registration = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
@@ -333,86 +345,3 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
-
-# -------------------------
-# Scheduled Edge Functions
-# -------------------------
-
-[functions."crawl-authorities"]
-verify_jwt = false
-
-[[functions."crawl-authorities".schedules]]
-cron = "0 */6 * * *"
-
-[functions."process-learning"]
-verify_jwt = false
-
-[[functions."process-learning".schedules]]
-cron = "0 * * * *"
-args = "{\"mode\":\"hourly\"}"
-
-[[functions."process-learning".schedules]]
-cron = "30 2 * * *"
-args = "{\"mode\":\"nightly\"}"
-
-[functions."drive-watcher"]
-verify_jwt = false
-
-[[functions."drive-watcher".schedules]]
-cron = "*/15 * * * *"
-
-[functions."regulator-digest"]
-verify_jwt = false
-
-[[functions."regulator-digest".schedules]]
-cron = "0 6 * * *"
-args = "{\"days\":7}"
-
-[functions."gdrive-delta"]
-verify_jwt = false
-
-[[functions."gdrive-delta".schedules]]
-cron = "*/10 * * * *"
-args = "{}"
-
-[functions."learning-collector"]
-verify_jwt = false
-
-[[functions."learning-collector".schedules]]
-cron = "*/10 * * * *"
-args = "{}"
-
-[functions."learning-diagnoser"]
-verify_jwt = false
-
-[[functions."learning-diagnoser".schedules]]
-cron = "*/30 * * * *"
-args = "{}"
-
-[functions."learning-applier"]
-verify_jwt = false
-
-[[functions."learning-applier".schedules]]
-cron = "0 * * * *"
-args = "{}"
-
-[functions."evaluate-and-gate"]
-verify_jwt = false
-
-[[functions."evaluate-and-gate".schedules]]
-cron = "30 2 * * *"
-args = "{}"
-
-[functions."link-health"]
-verify_jwt = false
-
-[[functions."link-health".schedules]]
-cron = "0 3 * * *"
-args = "{}"
-
-[functions."case-recompute"]
-verify_jwt = false
-
-[[functions."case-recompute".schedules]]
-cron = "30 1 * * *"
-args = "{}"
