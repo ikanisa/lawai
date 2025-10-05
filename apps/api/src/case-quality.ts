@@ -2,21 +2,6 @@ import { differenceInCalendarDays } from 'date-fns';
 
 export type CaseScoreAxis = 'PW' | 'ST' | 'SA' | 'PI' | 'JF' | 'LB' | 'RC' | 'CQ';
 
-export interface TreatmentSignal {
-  treatment: string;
-  weight?: number | null;
-  decidedAt?: string | null;
-}
-
-export interface StatuteAlignmentSignal {
-  alignmentScore?: number | null;
-}
-
-export interface RiskSignal {
-  flag: string;
-  note?: string | null;
-}
-
 export interface CaseQualitySignals {
   trustTier: 'T1' | 'T2' | 'T3' | 'T4';
   courtRank?: string | null;
@@ -37,6 +22,42 @@ export interface CaseQualityResult {
   score: number;
   hardBlock: boolean;
   notes: string[];
+}
+
+export interface TreatmentSignal {
+  treatment: string;
+  weight?: number | null;
+  decidedAt?: string | null;
+}
+
+export interface StatuteAlignmentSignal {
+  alignmentScore?: number | null;
+}
+
+export interface RiskSignal {
+  flag: string;
+  note?: string | null;
+}
+
+export interface CaseTreatmentGraphNode {
+  caseUrl: string;
+  treatment: string;
+  decidedAt?: string | null;
+  weight?: number | null;
+}
+
+export interface CaseRiskFlag {
+  caseUrl: string;
+  flag: string;
+  note?: string | null;
+}
+
+export interface CaseStatuteSnippet {
+  caseUrl: string;
+  statuteUrl: string;
+  article: string | null;
+  alignmentScore: number | null;
+  rationale?: string | null;
 }
 
 const AXES: CaseScoreAxis[] = ['PW', 'ST', 'SA', 'PI', 'JF', 'LB', 'RC', 'CQ'];
@@ -88,6 +109,23 @@ function yearsSince(dateIso?: string | null): number | null {
   return diffDays / 365.25;
 }
 
+function recencyWeight(decidedAt?: string | null): number {
+  const years = yearsSince(decidedAt);
+  if (years === null) {
+    return 1;
+  }
+  if (years <= 3) {
+    return 1;
+  }
+  if (years <= 6) {
+    return 0.85;
+  }
+  if (years <= 10) {
+    return 0.65;
+  }
+  return 0.45;
+}
+
 export function evaluateCaseQuality(signals: CaseQualitySignals): CaseQualityResult {
   if (signals.override) {
     const overrideScore = clamp(signals.override.score);
@@ -121,19 +159,23 @@ export function evaluateCaseQuality(signals: CaseQualitySignals): CaseQualityRes
   for (const treatment of signals.treatments) {
     const normalized = (treatment.treatment ?? '').toLowerCase();
     const weight = treatment.weight ?? 1;
+    const recency = recencyWeight(treatment.decidedAt);
     switch (normalized) {
       case 'followed':
       case 'applied':
       case 'affirmed':
-        stScore += 10 * weight;
+        stScore += 10 * weight * recency;
+        if (recency < 1) {
+          notes.push('treatment_recency_discount');
+        }
         break;
       case 'distinguished':
-        stScore -= 5 * weight;
+        stScore -= 5 * weight * recency;
         break;
       case 'criticized':
       case 'negative':
       case 'questioned':
-        stScore -= 15 * weight;
+        stScore -= 15 * weight * recency;
         notes.push(`negative_treatment:${normalized}`);
         break;
       case 'pending_appeal':
@@ -175,6 +217,9 @@ export function evaluateCaseQuality(signals: CaseQualitySignals): CaseQualityRes
   for (const risk of signals.riskOverlays) {
     axisPI -= 40;
     notes.push(`risk_overlay:${risk.flag}`);
+    if (risk.note) {
+      notes.push(`risk_note:${risk.note}`);
+    }
   }
   axisPI = clamp(axisPI);
 

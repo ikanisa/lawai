@@ -7,6 +7,9 @@ create table if not exists public.compliance_assessments (
   fria_reasons text[] not null default array[]::text[],
   cepej_passed boolean not null default true,
   cepej_violations text[] not null default array[]::text[],
+  statute_passed boolean not null default true,
+  statute_violations text[] not null default array[]::text[],
+  disclosures_missing text[] not null default array[]::text[],
   created_at timestamptz not null default now(),
   unique (run_id)
 );

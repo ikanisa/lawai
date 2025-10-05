@@ -47,6 +47,7 @@ const learningInsertMock = vi.fn(async () => ({ error: null }));
 const auditInsertMock = vi.fn(async () => ({ error: null }));
 const caseScoresInsertMock = vi.fn(async () => ({ error: null }));
 const supabaseRpcMock = vi.fn(async () => ({ data: [], error: null }));
+const goNoGoUpsertMock = vi.fn(async () => ({ error: null }));
 function createAsyncQuery(initialData = [], initialError = null) {
     const builder = {
         __response: { data: initialData, error: initialError },
@@ -208,6 +209,7 @@ beforeEach(() => {
     learningInsertMock.mockClear();
     auditInsertMock.mockClear();
     caseScoresInsertMock.mockClear();
+    goNoGoUpsertMock.mockClear();
     supabaseRpcMock.mockReset();
     supabaseRpcMock.mockResolvedValue({ data: [], error: null });
     templateQuery.select.mockClear();
@@ -359,6 +361,9 @@ beforeEach(() => {
                 if (table === 'pleading_templates') {
                     return templateQuery;
                 }
+                if (table === 'go_no_go_evidence') {
+                    return { upsert: goNoGoUpsertMock };
+                }
                 throw new Error(`unexpected table ${table}`);
             },
         })),
@@ -400,6 +405,9 @@ describe('runLegalAgent', () => {
         expect(result.trustPanel?.provenance.totalSources).toBeGreaterThan(0);
         expect(result.trustPanel?.provenance.withEli).toBeGreaterThan(0);
         expect(result.trustPanel?.provenance.akomaArticles).toBeGreaterThanOrEqual(1);
+        expect(goNoGoUpsertMock).toHaveBeenCalled();
+        const cepejCall = goNoGoUpsertMock.mock.calls.find(([payload]) => { var _a; return ((_a = payload === null || payload === void 0 ? void 0 : payload.criterion) === null || _a === void 0 ? void 0 : _a) === 'CEPEJ 5 principles automated checks'; });
+        expect((cepejCall === null || cepejCall === void 0 ? void 0 : cepejCall[0])).toMatchObject({ status: 'satisfied', section: 'A' });
     }, 15000);
     it('forces a trust-panel HITL when case quality is blocked', async () => {
         caseScoresQuery.setResponse([

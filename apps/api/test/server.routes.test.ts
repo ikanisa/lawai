@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { __resetLaunchStateForTests } from '../src/launch.js';
+import { __resetWebVitalsForTests } from '../src/metrics.js';
+import { __resetPostLaunchStateForTests, enqueueOfflineOutboxItem } from '../src/post-launch.js';
 
 process.env.NODE_ENV = 'test';
 
@@ -100,6 +103,9 @@ function createQueryBuilder(result: { data: unknown; error: unknown }) {
 
 describe('API routes', () => {
   beforeEach(() => {
+    __resetLaunchStateForTests();
+    __resetWebVitalsForTests();
+    __resetPostLaunchStateForTests();
     supabaseMock.from.mockReset();
     supabaseMock.rpc.mockReset();
     storageFromMock.mockReset();
@@ -131,6 +137,124 @@ describe('API routes', () => {
       agent: { key: 'concierge', code: 'concierge', label: 'Concierge', settings: {}, tools: [] },
     });
     getHybridRetrievalContextMock.mockResolvedValue({ snippetCount: 0, topHosts: [] });
+  });
+
+  it('returns workspace overview with the phase C multi-agent desk', async () => {
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'jurisdictions') {
+        const builder = createQueryBuilder({
+          data: [{ code: 'FR', name: 'France', eu: true, ohada: false }],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'agent_runs') {
+        const builder = createQueryBuilder({
+          data: [
+            {
+              id: 'run-1',
+              question: 'Civil claim deadline?',
+              risk_level: 'LOW',
+              hitl_required: false,
+              status: 'research',
+              started_at: '2024-06-01T10:00:00Z',
+              finished_at: '2024-06-01T10:01:00Z',
+              jurisdiction_json: { country: 'FR' },
+              agent_code: 'bench_memo',
+            },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'sources') {
+        const builder = createQueryBuilder({ data: [], error: null });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'hitl_queue') {
+        const builder = createQueryBuilder({ data: [], error: null });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/workspace?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      desk: {
+        playbooks: Array<{ id: string }>;
+        quickActions: Array<{ id: string }>;
+        personas: Array<{ agentCode: string }>;
+        toolChips: Array<{ id: string }>;
+      };
+      jurisdictions: Array<{ code: string }>;
+    };
+
+    expect(body.jurisdictions).toHaveLength(1);
+    expect(body.jurisdictions[0].code).toBe('FR');
+    expect(body.desk.playbooks.some((playbook) => playbook.id === 'fr-civil-claim')).toBe(true);
+    expect(body.desk.quickActions.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['open-plan', 'trust-dashboard']),
+    );
+    expect(body.desk.personas.some((persona) => persona.agentCode === 'bench_memo')).toBe(true);
+    expect(body.desk.toolChips.some((chip) => chip.id === 'mode-trust')).toBe(true);
+    expect(authorizeActionMock).toHaveBeenCalledWith('workspace:view', 'org-1', 'user-1');
+  });
+
+  it('records and lists core web vitals metrics', async () => {
+    const postResponse = await app.inject({
+      method: 'POST',
+      url: '/metrics/web-vitals',
+      headers: { 'x-user-id': 'user-1', 'x-org-id': 'org-1' },
+      payload: {
+        id: 'metric-1',
+        name: 'LCP',
+        value: 1800,
+        delta: 12,
+        label: 'web-vital',
+        rating: 'good',
+        page: '/research',
+        locale: 'fr',
+        navigationType: 'navigate',
+      },
+    });
+
+    expect(postResponse.statusCode).toBe(204);
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/metrics/web-vitals',
+      headers: { 'x-user-id': 'user-1', 'x-org-id': 'org-1' },
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    const body = listResponse.json() as { metrics: Array<{ name: string; rating: string; page: string }> };
+    expect(body.metrics).toHaveLength(1);
+    expect(body.metrics[0]).toMatchObject({ name: 'LCP', rating: 'good', page: '/research' });
+  });
+
+  it('requires authentication headers for web vitals ingestion', async () => {
+    const response = await app.inject({ method: 'POST', url: '/metrics/web-vitals', payload: {} });
+    expect(response.statusCode).toBe(400);
   });
 
   it('returns learning reports including fairness metrics', async () => {
@@ -254,6 +378,204 @@ describe('API routes', () => {
     expect(body.jurisdictions).toHaveLength(3);
     const rwandaRow = body.jurisdictions.find((row) => row.jurisdiction === 'RW');
     expect(rwandaRow?.rwandaNoticeCoverage).toBe(1);
+  });
+
+  it('returns retrieval metrics with jurisdiction rollups and fairness trend', async () => {
+    const now = '2024-09-05T10:00:00Z';
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'org_retrieval_metrics') {
+        const builder = createQueryBuilder({
+          data: {
+            runs_total: 12,
+            avg_local_snippets: 4,
+            avg_file_snippets: 2,
+            allowlisted_ratio: 0.75,
+            runs_with_translation_warnings: 2,
+            runs_without_citations: 1,
+            last_run_at: now,
+          },
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        builder.maybeSingle.mockResolvedValue(builder.__result);
+        return builder;
+      }
+      if (table === 'org_retrieval_origin_metrics') {
+        const builder = createQueryBuilder({
+          data: [
+            { origin: 'local', snippet_count: 6, avg_similarity: 0.92, avg_weight: 0.6 },
+            { origin: 'file_search', snippet_count: 3, avg_similarity: 0.75, avg_weight: 0.4 },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'org_retrieval_host_metrics') {
+        const builder = createQueryBuilder({
+          data: [
+            {
+              host: 'legifrance.gouv.fr',
+              citation_count: 4,
+              allowlisted_count: 4,
+              translation_warnings: 1,
+              last_cited_at: now,
+            },
+            {
+              host: 'example.org',
+              citation_count: 2,
+              allowlisted_count: 0,
+              translation_warnings: 0,
+              last_cited_at: now,
+            },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'agent_learning_reports') {
+        const builder = createQueryBuilder({
+          data: {
+            payload: {
+              capturedAt: now,
+              overall: { hitlRate: 0.25, highRiskShare: 0.2 },
+              jurisdictions: [
+                {
+                  code: 'FR',
+                  totalRuns: 4,
+                  hitlRate: 0.5,
+                  highRiskShare: 0.3,
+                  benchmarkRate: 0.9,
+                  synonyms: { terms: 2, expansions: 5 },
+                },
+                {
+                  code: 'MA',
+                  totalRuns: 2,
+                  hitlRate: 0.1,
+                  highRiskShare: 0.05,
+                  benchmarkRate: 0.6,
+                  synonyms: { terms: 0, expansions: 0 },
+                },
+              ],
+              flagged: {
+                jurisdictions: ['FR'],
+                benchmarks: ['lexglue:fr'],
+                synonyms: ['MA'],
+              },
+            },
+            report_date: now,
+          },
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        builder.maybeSingle.mockResolvedValue(builder.__result);
+        return builder;
+      }
+      if (table === 'agent_runs') {
+        const builder = createQueryBuilder({
+          data: [
+            {
+              id: 'run-1',
+              jurisdiction_json: { country: 'FR' },
+              risk_level: 'HIGH',
+              hitl_required: true,
+            },
+            {
+              id: 'run-2',
+              jurisdiction_json: { country: 'MA' },
+              risk_level: 'LOW',
+              hitl_required: false,
+            },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'run_citations') {
+        const builder = createQueryBuilder({
+          data: [
+            { run_id: 'run-1', url: 'https://www.legifrance.gouv.fr', note: 'Traduction officielle' },
+            { run_id: 'run-2', url: 'https://example.org', note: null },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.in.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'run_retrieval_sets') {
+        const builder = createQueryBuilder({
+          data: [
+            { run_id: 'run-1', weight: 0.8, origin: 'local' },
+            { run_id: 'run-2', weight: 0.4, origin: 'file_search' },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.in.mockReturnValue(builder);
+        return builder;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/metrics/retrieval?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      summary: { runsTotal: number; allowlistedRatio: number | null; lastRunAt: string | null } | null;
+      origins: Array<{ origin: string; snippetCount: number }>;
+      hosts: Array<{ host: string; citationCount: number }>;
+      jurisdictions: Array<{ jurisdiction: string; runCount: number; allowlistedRatio: number | null }>;
+      fairness: {
+        capturedAt: string | null;
+        flagged: { jurisdictions: string[]; benchmarks: string[]; synonyms: string[] };
+        jurisdictions: Array<{ jurisdiction: string; synonyms?: { terms: number; expansions: number } | null }>;
+      } | null;
+    };
+
+    expect(body.summary).toMatchObject({ runsTotal: 12, allowlistedRatio: 0.75, lastRunAt: now });
+    expect(body.origins).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ origin: 'local', snippetCount: 6 }),
+        expect.objectContaining({ origin: 'file_search', snippetCount: 3 }),
+      ]),
+    );
+    expect(body.hosts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ host: 'legifrance.gouv.fr', citationCount: 4 }),
+        expect.objectContaining({ host: 'example.org', citationCount: 2 }),
+      ]),
+    );
+    expect(body.jurisdictions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ jurisdiction: 'FR', runCount: 1, allowlistedRatio: 1 }),
+        expect.objectContaining({ jurisdiction: 'MA', runCount: 1, allowlistedRatio: 0 }),
+      ]),
+    );
+    expect(body.fairness?.capturedAt).toBe(now);
+    expect(body.fairness?.flagged.jurisdictions).toContain('FR');
+    expect(body.fairness?.flagged.synonyms).toContain('MA');
+    const frFairness = body.fairness?.jurisdictions.find((entry) => entry.jurisdiction === 'FR');
+    expect(frFairness?.synonyms).toMatchObject({ terms: 2, expansions: 5 });
   });
 
   it('returns 500 when evaluation metrics query fails', async () => {
@@ -1396,5 +1718,119 @@ describe('API routes', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: 'orgId and contentSha256 are required' });
+  });
+
+  it('returns launch collateral bundles', async () => {
+    const response = await app.inject({ method: 'GET', url: '/launch/collateral' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      pilotOnboarding: Array<{ title: string }>;
+      pricingPacks: Array<{ name: string }>;
+      transparency: Array<{ label: string }>;
+    };
+    expect(body.pilotOnboarding.length).toBeGreaterThan(0);
+    expect(body.pricingPacks[0]?.name).toContain('pack');
+    expect(body.transparency.some((item) => item.label.toLowerCase().includes('cepej'))).toBe(true);
+  });
+
+  it('enqueues regulator digests and summarises SLO metrics', async () => {
+    const postResponse = await app.inject({
+      method: 'POST',
+      url: '/launch/digests',
+      payload: {
+        jurisdiction: 'FR',
+        channel: 'email',
+        frequency: 'weekly',
+        recipients: ['ops@example.com', 'legal@example.com'],
+        topics: ['governance', 'slo'],
+        sloSnapshots: [
+          {
+            captured_at: '2024-03-10T00:00:00Z',
+            api_uptime_percent: 99.92,
+            hitl_response_p95_seconds: 180,
+            retrieval_latency_p95_seconds: 140,
+            citation_precision_p95: 0.97,
+          },
+          {
+            captured_at: '2024-03-09T00:00:00Z',
+            api_uptime_percent: 99.5,
+            hitl_response_p95_seconds: 190,
+            retrieval_latency_p95_seconds: 160,
+            citation_precision_p95: 0.96,
+          },
+        ],
+      },
+    });
+
+    expect(postResponse.statusCode).toBe(201);
+    const postBody = postResponse.json() as { digest: { id: string; sloSummary: { snapshots: number; apiUptimeP95: number | null } } };
+    expect(postBody.digest.id).toBeTruthy();
+    expect(postBody.digest.sloSummary.snapshots).toBe(2);
+    expect(postBody.digest.sloSummary.apiUptimeP95).toBeGreaterThan(0);
+
+    const listResponse = await app.inject({ method: 'GET', url: '/launch/digests' });
+    expect(listResponse.statusCode).toBe(200);
+    const listBody = listResponse.json() as { digests: Array<{ jurisdiction: string; recipients: string[] }> };
+    expect(listBody.digests[0]?.jurisdiction).toBe('FR');
+    expect(listBody.digests[0]?.recipients.length).toBe(2);
+  });
+
+  it('returns a launch readiness snapshot for the org', async () => {
+    __resetWebVitalsForTests();
+    enqueueOfflineOutboxItem({
+      orgId: 'org-1',
+      channel: 'export',
+      label: 'Offline export',
+      locale: 'fr',
+    });
+
+    const readinessResponse = await app.inject({
+      method: 'GET',
+      url: '/launch/readiness?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(readinessResponse.statusCode).toBe(200);
+    const body = readinessResponse.json() as { readinessScore: number; offlineOutbox: { queued: number } };
+    expect(body.readinessScore).toBeGreaterThan(0);
+    expect(body.offlineOutbox.queued).toBeGreaterThanOrEqual(1);
+  });
+
+  it('allows creating and updating offline outbox items', async () => {
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/launch/offline-outbox',
+      headers: { 'x-user-id': 'user-1' },
+      payload: {
+        orgId: 'org-1',
+        channel: 'filing',
+        label: 'Offline filing',
+        locale: 'fr',
+      },
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    const created = createResponse.json() as { item: { id: string } };
+
+    const updateResponse = await app.inject({
+      method: 'PATCH',
+      url: `/launch/offline-outbox/${created.item.id}`,
+      headers: { 'x-user-id': 'user-1' },
+      payload: { orgId: 'org-1', status: 'syncing' },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    const updated = updateResponse.json() as { item: { status: string } };
+    expect(updated.item.status).toBe('syncing');
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/launch/offline-outbox?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    const listBody = listResponse.json() as { items: Array<{ id: string }> };
+    expect(listBody.items.length).toBeGreaterThanOrEqual(1);
   });
 });

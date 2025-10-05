@@ -13,11 +13,27 @@ export interface CitationCardProps {
   staleLabel?: string;
   verifyLabel?: string;
   onVerify?: (url: string) => void;
+  id?: string;
+  visitLabel?: string;
 }
 
-export function CitationCard({ title, publisher, date, url, note, badges, onVisit, stale, staleLabel, verifyLabel, onVerify }: CitationCardProps) {
+export function CitationCard({
+  title,
+  publisher,
+  date,
+  url,
+  note,
+  badges,
+  onVisit,
+  stale,
+  staleLabel,
+  verifyLabel,
+  onVerify,
+  id,
+  visitLabel,
+}: CitationCardProps) {
   return (
-    <article className="glass-card rounded-2xl border border-slate-700/60 p-4">
+    <article id={id} className="glass-card scroll-mt-32 rounded-2xl border border-slate-700/60 p-4">
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h4 className="text-sm font-semibold text-slate-100">{title}</h4>
@@ -45,7 +61,7 @@ export function CitationCard({ title, publisher, date, url, note, badges, onVisi
           rel="noopener noreferrer"
           onClick={() => onVisit?.(url)}
         >
-          Consulter la source officielle
+          {visitLabel ?? 'Consulter la source officielle'}
         </a>
         {stale && verifyLabel ? (
           <Button size="sm" variant="outline" onClick={() => onVerify?.(url)}>

@@ -95,6 +95,30 @@ describe('ResearchView trust panel', () => {
           minScore: null,
           maxScore: null,
           forceHitl: false,
+          treatmentGraph: [
+            {
+              caseUrl: 'https://example.com/case',
+              treatment: 'Followed',
+              decidedAt: '2024-01-15T00:00:00Z',
+              weight: 1,
+            },
+          ],
+          statuteAlignments: [
+            {
+              caseUrl: 'https://example.com/case',
+              statuteUrl: 'https://example.com/statute',
+              article: 'Article 10',
+              alignmentScore: 85,
+              rationale: 'Aligned with Article 10 requirements.',
+            },
+          ],
+          politicalFlags: [
+            {
+              caseUrl: 'https://example.com/case',
+              flag: 'ELECTION_SENSITIVE',
+              note: 'Upcoming municipal elections',
+            },
+          ],
         },
         risk: {
           level: 'LOW',
@@ -146,5 +170,9 @@ describe('ResearchView trust panel', () => {
 
     const akomaText = messagesEn.research.trust.provenanceAkoma.replace('{count}', '5');
     expect(screen.getByText(akomaText)).toBeInTheDocument();
+    expect(await screen.findByText('Followed')).toBeInTheDocument();
+    expect(screen.getByText('Article 10')).toBeInTheDocument();
+    expect(screen.getByText('ELECTION_SENSITIVE')).toBeInTheDocument();
+    expect(screen.getByText('Upcoming municipal elections')).toBeInTheDocument();
   });
 });

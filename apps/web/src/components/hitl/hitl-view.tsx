@@ -67,6 +67,7 @@ export function HitlView({ messages, locale }: HitlViewProps) {
   const fairness = metrics?.fairness;
   const flaggedJurisdictions = fairness?.flagged?.jurisdictions ?? [];
   const flaggedBenchmarks = fairness?.flagged?.benchmarks ?? [];
+  const flaggedSynonyms = fairness?.flagged?.synonyms ?? [];
   const queueBreakdown = metrics?.queue?.byType ?? {};
   const hasQueueBreakdown = Object.keys(queueBreakdown).length > 0;
   const detailResidency = detailQuery.data?.matter?.provenance?.residency ?? [];
@@ -354,6 +355,20 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                           ))
                         ) : (
                           <span className="text-slate-400">{messages.hitl.metricsBenchmarksNone}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-400">{messages.hitl.metricsSynonymsFlagged}</p>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {flaggedSynonyms.length > 0 ? (
+                          flaggedSynonyms.map((code) => (
+                            <Badge key={code} variant="outline">
+                              {code}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-slate-400">{messages.hitl.metricsSynonymsNone}</span>
                         )}
                       </div>
                     </div>

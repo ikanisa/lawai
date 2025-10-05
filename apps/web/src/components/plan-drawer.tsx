@@ -1,19 +1,9 @@
 'use client';
 
 import { useMemo } from 'react';
+import type { AgentPlanStep } from '@avocat-ai/shared';
 import { Sheet, SheetSection } from './ui/sheet';
 import { Separator } from './ui/separator';
-
-type AgentPlanStep = {
-  id: string;
-  name: string;
-  description: string;
-  startedAt: string;
-  finishedAt: string;
-  status: 'success' | 'skipped' | 'failed';
-  attempts: number;
-  detail?: Record<string, unknown> | null;
-};
 
 interface PlanDrawerProps {
   open: boolean;

@@ -6,20 +6,19 @@ import { Button } from './ui/button';
 
 export interface BilingualToggleMessages {
   label: string;
-  fr: string;
-  en: string;
   note: string;
+  languages: Array<{ code: string; label: string }>;
 }
 
 interface BilingualToggleProps {
   messages: BilingualToggleMessages;
-  onSelect?: (language: 'fr' | 'en') => void;
+  onSelect?: (language: string) => void;
 }
 
 export function BilingualToggle({ messages, onSelect }: BilingualToggleProps) {
-  const [language, setLanguage] = useState<'fr' | 'en'>('fr');
+  const [language, setLanguage] = useState<string>(messages.languages[0]?.code ?? 'fr');
 
-  function handleSelect(next: 'fr' | 'en') {
+  function handleSelect(next: string) {
     setLanguage(next);
     onSelect?.(next);
   }
@@ -28,23 +27,18 @@ export function BilingualToggle({ messages, onSelect }: BilingualToggleProps) {
     <section className="glass-card space-y-3 rounded-2xl border border-slate-700/60 p-4 text-slate-200">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm font-semibold text-slate-100">{messages.label}</p>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={language === 'fr' ? 'default' : 'outline'}
-            onClick={() => handleSelect('fr')}
-          >
-            {messages.fr}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={language === 'en' ? 'default' : 'outline'}
-            onClick={() => handleSelect('en')}
-          >
-            {messages.en}
-          </Button>
+        <div className="flex flex-wrap gap-2">
+          {messages.languages.map((option) => (
+            <Button
+              key={option.code}
+              type="button"
+              size="sm"
+              variant={language === option.code ? 'default' : 'outline'}
+              onClick={() => handleSelect(option.code)}
+            >
+              {option.label}
+            </Button>
+          ))}
         </div>
       </header>
       <div className="flex items-start gap-2 text-xs text-slate-300">

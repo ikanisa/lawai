@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
@@ -23,6 +23,10 @@ import { usePlanDrawer } from '../../state/plan-drawer';
 import { VoiceInputButton } from './voice-input-button';
 import { CameraOcrButton } from './camera-ocr-button';
 import { OutboxPanel } from './outbox-panel';
+import { ReadingModeToggle } from './reading-mode-toggle';
+import { ArticleAnchorList } from './article-anchor-list';
+import { UserControlPrompts } from './user-control-prompts';
+import { ComplianceAlerts } from './compliance-alerts';
 import {
   DEMO_ORG_ID,
   DEMO_USER_ID,
@@ -36,6 +40,7 @@ import { Separator } from '../ui/separator';
 import { exportIracToDocx, exportIracToPdf } from '../../lib/exporters';
 import { useOnlineStatus } from '../../hooks/use-online-status';
 import { useOutbox, type OutboxItem } from '../../hooks/use-outbox';
+import { useReadingMode } from '../../hooks/use-reading-mode';
 import { isDateStale } from '../../lib/staleness';
 import { cn } from '../../lib/utils';
 
@@ -103,6 +108,8 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const { open, toggle } = usePlanDrawer();
   const online = useOnlineStatus();
   const { items: outboxItems, enqueue, remove, flush } = useOutbox();
+  const { mode, setMode } = useReadingMode();
+  const modeTelemetryRef = useRef(mode);
 
   const agentOptions = AGENT_OPTIONS;
   const selectedAgent = useMemo(
@@ -216,11 +223,27 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const runNotices = latestRun?.notices ?? [];
   const noticeMessages = Array.from(new Set(runNotices.map((notice) => notice.message)));
 
+  useEffect(() => {
+    if (!telemetryEnabled) {
+      modeTelemetryRef.current = mode;
+      return;
+    }
+    if (modeTelemetryRef.current === mode) {
+      return;
+    }
+    modeTelemetryRef.current = mode;
+    void sendTelemetryEvent('reading_mode_changed', { mode });
+  }, [mode, telemetryEnabled]);
+
   const outboxMessages = messages.research.outbox;
   const voiceMessages = messages.research.voice;
   const ocrMessages = messages.research.ocr;
   const staleMessages = messages.research.stale;
   const verifyLabel = staleMessages.verify;
+  const readingModeMessages = messages.research.readingModes;
+  const anchorMessages = messages.research.anchors;
+  const userControlMessages = messages.research.userControls;
+  const citationsVisitLabel = messages.research.citationsVisit;
 
   const handleVoiceTranscript = (text: string) => {
     setQuestion((current) => (current ? `${current.trim()} ${text}` : text));
@@ -246,6 +269,22 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     return badges.length > 0 ? badges : ['Officiel'];
   };
 
+  const handleAnchorSelect = useCallback((id: string) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const element = document.getElementById(id);
+    if (!(element instanceof HTMLElement)) {
+      return;
+    }
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    element.setAttribute('data-anchor-highlight', '1');
+    const cleanupTarget = element;
+    window.setTimeout(() => {
+      cleanupTarget.removeAttribute('data-anchor-highlight');
+    }, 1600);
+  }, []);
+
   const versionPoints = useMemo(() => {
     if (!payload?.rules?.length) return [] as Array<{ label: string; date: string; isCurrent?: boolean }>;
     const formatter = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' });
@@ -263,6 +302,36 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     });
   }, [payload, locale]);
 
+  const anchorItems = useMemo(() => {
+    if (!payload) {
+      return [] as Array<{ id: string; label: string }>;
+    }
+    const anchors: Array<{ id: string; label: string }> = [
+      { id: 'irac-issue', label: anchorMessages.issue },
+      { id: 'irac-rules', label: anchorMessages.rules },
+      { id: 'irac-application', label: anchorMessages.application },
+      { id: 'irac-conclusion', label: anchorMessages.conclusion },
+    ];
+
+    const ruleTemplate = anchorMessages.rule ?? 'Règle {index}';
+    payload.rules.forEach((_rule, index) => {
+      anchors.push({
+        id: `irac-rule-${index + 1}`,
+        label: ruleTemplate.replace('{index}', String(index + 1)),
+      });
+    });
+
+    const citationTemplate = anchorMessages.citation ?? 'Citation {index}';
+    payload.citations?.forEach((_citation, index) => {
+      anchors.push({
+        id: `citation-${index + 1}`,
+        label: citationTemplate.replace('{index}', String(index + 1)),
+      });
+    });
+
+    return anchors;
+  }, [payload, anchorMessages]);
+
   const trustMessages = messages.research.trust;
   const trustPanel = latestRun?.trustPanel ?? null;
   const trustCitationSummary = trustPanel?.citationSummary ?? null;
@@ -270,6 +339,21 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const residencyBreakdown = trustProvenance?.residencyBreakdown ?? [];
   const trustRisk = trustPanel?.risk ?? null;
   const verification = latestRun?.verification ?? trustRisk?.verification ?? null;
+  const trustCaseQuality = trustPanel?.caseQuality ?? null;
+  const treatmentGraph = trustCaseQuality?.treatmentGraph ?? [];
+  const statuteAlignments = trustCaseQuality?.statuteAlignments ?? [];
+  const politicalFlags = trustCaseQuality?.politicalFlags ?? [];
+  const treatmentDateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }), [locale]);
+  const formatTreatmentDate = (value?: string | null) => {
+    if (!value) {
+      return trustMessages.treatmentUnknownDate;
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return trustMessages.treatmentUnknownDate;
+    }
+    return treatmentDateFormatter.format(parsed);
+  };
   const allowlistViolations = useMemo(
     () => verification?.allowlistViolations ?? [],
     [verification?.allowlistViolations],
@@ -379,7 +463,23 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         .replace('{total}', trustCitationSummary.rules.total.toString())
     : null;
 
-  const resultContainerClass = cn('space-y-5', confidentialMode && 'confidential-blur');
+  const resultContainerClass = cn(
+    'space-y-5',
+    confidentialMode && 'confidential-blur',
+    mode === 'brief' && 'lg:mx-auto lg:max-w-3xl',
+  );
+
+  const gridClass = cn(
+    'grid gap-6',
+    mode === 'brief' ? 'xl:grid-cols-[320px_minmax(0,1fr)]' : 'xl:grid-cols-[320px_minmax(0,1fr)_320px]',
+  );
+
+  const showTrustPanel = Boolean(payload) && mode !== 'brief';
+  const showRightColumn = Boolean(payload) && mode !== 'brief';
+  const showTimelineCard = Boolean(payload) && mode !== 'brief';
+  const showOpposingCard = Boolean(payload) && mode === 'research';
+  const showEvidenceCard = Boolean(payload) && mode !== 'brief';
+  const showAnchorList = Boolean(payload) && mode === 'evidence';
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -460,7 +560,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     }
   }
 
-  function handleBilingualSelect(language: 'fr' | 'en') {
+  function handleBilingualSelect(language: string) {
     if (telemetryEnabled) {
       void sendTelemetryEvent('bilingual_toggle', {
         language,
@@ -482,6 +582,52 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
   const isCitationStale = (date: string) =>
     isDateStale(date, { thresholdDays: staleThresholdDays, offline: !online });
+
+  const handleOpenPlan = useCallback(() => {
+    toggle(true);
+    if (telemetryEnabled) {
+      void sendTelemetryEvent('user_control_plan');
+    }
+  }, [toggle, telemetryEnabled]);
+
+  const handleRequestHitl = useCallback(() => {
+    toast.info(hitlMessage);
+    if (telemetryEnabled) {
+      void sendTelemetryEvent('user_control_hitl');
+    }
+  }, [hitlMessage, telemetryEnabled]);
+
+  const handleViewSources = useCallback(() => {
+    if (payload?.citations?.length) {
+      handleAnchorSelect('citation-1');
+    } else {
+      toast.info(citationsEmpty);
+    }
+    if (telemetryEnabled) {
+      void sendTelemetryEvent('user_control_sources', {
+        hasCitations: Boolean(payload?.citations?.length),
+      });
+    }
+  }, [payload, handleAnchorSelect, citationsEmpty, telemetryEnabled]);
+
+  const handleExportBrief = useCallback(async () => {
+    if (!payload) {
+      toast.info(exportErrorMessage);
+      return;
+    }
+    const toastId = 'export-pdf-brief';
+    toast.loading(exportPdfMessage, { id: toastId });
+    try {
+      await exportIracToPdf(payload, locale);
+      toast.success(exportPdfSuccessMessage, { id: toastId });
+      if (telemetryEnabled) {
+        void sendTelemetryEvent('user_control_export', { format: 'pdf' });
+      }
+    } catch (error) {
+      console.error('export_pdf_failed', error);
+      toast.error(exportErrorMessage, { id: toastId });
+    }
+  }, [payload, exportPdfMessage, exportPdfSuccessMessage, exportErrorMessage, locale, telemetryEnabled]);
 
   const processOutboxItem = useCallback(
     async (item: OutboxItem, source: 'manual' | 'auto') => {
@@ -634,7 +780,19 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         </div>
       </header>
 
-      <section className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
+      {payload ? (
+        <ReadingModeToggle mode={mode} onModeChange={setMode} messages={readingModeMessages} />
+      ) : null}
+      {showAnchorList ? (
+        <ArticleAnchorList
+          items={anchorItems}
+          onSelect={handleAnchorSelect}
+          title={anchorMessages.title}
+          helper={anchorMessages.helper}
+        />
+      ) : null}
+
+      <section className={gridClass}>
         <div className="space-y-4">
           <OutboxPanel
             items={outboxItems}
@@ -689,9 +847,18 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
               {noticeMessages.map((message) => (
                 <LanguageBanner key={message} message={message} />
               ))}
+              {messages.research.compliance ? (
+                <ComplianceAlerts
+                  compliance={latestRun?.compliance ?? null}
+                  messages={messages.research.compliance}
+                />
+              ) : null}
               {isCanadian && (
                 <BilingualToggle messages={messages.research.bilingual} onSelect={handleBilingualSelect} />
               )}
+              {isRwanda && messages.research.rwandaToggle ? (
+                <BilingualToggle messages={messages.research.rwandaToggle} onSelect={handleBilingualSelect} />
+              ) : null}
               <IRACAccordion
                 payload={payload}
                 labels={messages.research.irac}
@@ -721,13 +888,23 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                 copyLabel={messages.actions.copy}
                 exportPdfLabel={messages.actions.exportPdf}
                 exportDocxLabel={messages.actions.exportDocx}
+                anchorPrefix="irac"
+                enableAnchors
               />
-              <Card>
-                <CardHeader>
-                  <CardTitle>{trustMessages.title}</CardTitle>
-                  <p className="text-sm text-slate-300">{trustMessages.description}</p>
-                </CardHeader>
-                <CardContent className="space-y-5 text-sm text-slate-200">
+              <UserControlPrompts
+                messages={userControlMessages}
+                onOpenPlan={handleOpenPlan}
+                onRequestHitl={handleRequestHitl}
+                onViewSources={handleViewSources}
+                onExport={handleExportBrief}
+              />
+              {showTrustPanel ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{trustMessages.title}</CardTitle>
+                    <p className="text-sm text-slate-300">{trustMessages.description}</p>
+                  </CardHeader>
+                  <CardContent className="space-y-5 text-sm text-slate-200">
                   <div>
                     <h4 className="font-semibold text-slate-100">{trustMessages.verificationHeading}</h4>
                     <p className="mt-1">{verificationMessage}</p>
@@ -777,6 +954,82 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                           <li key={`${rule.citation}-binding`}>{rule.citation}</li>
                         ))}
                       </ul>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-slate-100">{trustMessages.treatmentHeading}</h4>
+                    {treatmentGraph.length > 0 ? (
+                      <ul className="mt-2 space-y-2 text-slate-300">
+                        {treatmentGraph.map((entry, index) => (
+                          <li key={`${entry.caseUrl}-${entry.treatment}-${index}`} className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-slate-100">{entry.treatment}</span>
+                              <span className="text-xs text-slate-400">{formatTreatmentDate(entry.decidedAt)}</span>
+                            </div>
+                            <div className="text-xs text-slate-500 break-all">{entry.caseUrl}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-slate-400">{trustMessages.treatmentEmpty}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-slate-100">{trustMessages.statuteHeading}</h4>
+                    {statuteAlignments.length > 0 ? (
+                      <ul className="mt-2 space-y-2 text-slate-300">
+                        {statuteAlignments.map((entry, index) => (
+                          <li key={`${entry.caseUrl}-${entry.statuteUrl}-${index}`} className="space-y-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <a
+                                href={entry.statuteUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-medium text-legal-amber hover:underline"
+                              >
+                                {entry.article ?? trustMessages.statuteArticleFallback}
+                              </a>
+                              {typeof entry.alignmentScore === 'number' && (
+                                <span className="text-xs text-slate-400">
+                                  {trustMessages.statuteScoreLabel.replace(
+                                    '{score}',
+                                    Math.round(entry.alignmentScore).toString(),
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-slate-500 break-all">{entry.caseUrl}</div>
+                            {entry.rationale && (
+                              <p className="text-xs text-slate-400">
+                                <span className="font-semibold text-slate-300">
+                                  {trustMessages.statuteRationaleLabel}
+                                </span>{' '}
+                                {entry.rationale}
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-slate-400">{trustMessages.statuteEmpty}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-slate-100">{trustMessages.riskHeading}</h4>
+                    {politicalFlags.length > 0 ? (
+                      <ul className="mt-2 space-y-1 list-inside list-disc text-amber-200">
+                        {politicalFlags.map((entry, index) => (
+                          <li key={`${entry.caseUrl}-${entry.flag}-${index}`} className="space-y-1">
+                            <span className="font-medium text-slate-100">{entry.flag}</span>
+                            {entry.note && <p className="text-xs text-slate-400">{entry.note}</p>}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-slate-400">{trustMessages.riskEmpty}</p>
                     )}
                   </div>
 
@@ -884,6 +1137,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                   </div>
                 </CardContent>
               </Card>
+              ) : null}
             </div>
           ) : (
             <Card>
@@ -898,78 +1152,90 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
           )}
         </div>
 
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>{messages.research.evidence}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {residencyBreakdown.length > 0 ? (
-                <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4 text-xs text-slate-300">
-                  <p className="mb-2 font-semibold uppercase tracking-wide text-slate-400">
-                    {trustMessages.provenanceResidencyHeading}
-                  </p>
-                  <ul className="space-y-1">
-                    {residencyBreakdown.map((entry) => (
-                      <li key={`${entry.zone}-${entry.count}`}>
-                        {trustMessages.provenanceResidencyItem
-                          .replace('{zone}', entry.zone)
-                          .replace('{count}', entry.count.toString())}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {payload?.citations?.length ? (
-                payload.citations.map((citation) => {
-                  const stale = isCitationStale(citation.date ?? '');
-                  return (
-                    <CitationCard
-                      key={citation.url}
-                      title={citation.title}
-                      publisher={citation.court_or_publisher}
-                      date={citation.date}
-                      url={citation.url}
-                      note={citation.note}
-                      badges={citationBadges(citation.note)}
-                      onVisit={handleCitationVisit}
-                      stale={stale}
-                      staleLabel={staleMessages.label}
-                      verifyLabel={verifyLabel}
-                      onVerify={verifyCitation}
-                    />
-                  );
-                })
-              ) : (
-                <p className="text-sm text-slate-300">{citationsEmpty}</p>
-              )}
-            </CardContent>
-          </Card>
+        {showRightColumn ? (
+          <div className="space-y-4">
+            {showEvidenceCard ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{messages.research.evidence}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {residencyBreakdown.length > 0 ? (
+                    <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4 text-xs text-slate-300">
+                      <p className="mb-2 font-semibold uppercase tracking-wide text-slate-400">
+                        {trustMessages.provenanceResidencyHeading}
+                      </p>
+                      <ul className="space-y-1">
+                        {residencyBreakdown.map((entry) => (
+                          <li key={`${entry.zone}-${entry.count}`}>
+                            {trustMessages.provenanceResidencyItem
+                              .replace('{zone}', entry.zone)
+                              .replace('{count}', entry.count.toString())}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {payload?.citations?.length ? (
+                    payload.citations.map((citation, index) => {
+                      const stale = isCitationStale(citation.date ?? '');
+                      return (
+                        <CitationCard
+                          key={citation.url}
+                          id={`citation-${index + 1}`}
+                          title={citation.title}
+                          publisher={citation.court_or_publisher}
+                          date={citation.date}
+                          url={citation.url}
+                          note={citation.note}
+                          badges={citationBadges(citation.note)}
+                          onVisit={handleCitationVisit}
+                          stale={stale}
+                          staleLabel={staleMessages.label}
+                          verifyLabel={verifyLabel}
+                          onVerify={verifyCitation}
+                          visitLabel={citationsVisitLabel}
+                        />
+                      );
+                    })
+                  ) : (
+                    <p className="text-sm text-slate-300">{citationsEmpty}</p>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{messages.research.timeline}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {versionPoints.length > 0 ? (
-                <VersionTimeline points={versionPoints} />
-              ) : (
-                <p className="text-sm text-slate-300">{timelineEmpty}</p>
-              )}
-            </CardContent>
-          </Card>
+            {showTimelineCard ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{messages.research.timeline}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {versionPoints.length > 0 ? (
+                    <VersionTimeline points={versionPoints} />
+                  ) : (
+                    <p className="text-sm text-slate-300">{timelineEmpty}</p>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{messages.research.opposingView}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-300">
-              <p>{opposingDescription}</p>
-              <Separator />
-              <Button variant="outline" onClick={() => toast.info(opposingMessage)}>{opposingButton}</Button>
-            </CardContent>
-          </Card>
-        </div>
+            {showOpposingCard ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{messages.research.opposingView}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-slate-300">
+                  <p>{opposingDescription}</p>
+                  <Separator />
+                  <Button variant="outline" onClick={() => toast.info(opposingMessage)}>
+                    {opposingButton}
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <PlanDrawer

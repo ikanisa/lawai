@@ -7,9 +7,9 @@ export interface AcceptanceThresholds {
 }
 
 export const ACCEPTANCE_THRESHOLDS: AcceptanceThresholds = {
-  citationsAllowlistedP95: 0.95,
-  temporalValidityP95: 0.95,
+  citationsAllowlistedP95: 0.97,
+  temporalValidityP95: 0.97,
   maghrebBindingBannerCoverage: 1,
   rwandaLanguageNoticeCoverage: 1,
-  linkHealthFailureRatioMax: 0.05,
+  linkHealthFailureRatioMax: 0.03,
 };

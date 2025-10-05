@@ -61,6 +61,8 @@
     "adminDescription": "Review policies, alerts, and org settings.",
     "corpus": "Open corpus & sources",
     "corpusDescription": "Monitor ingestion, bindings, and provenance.",
+    "trust": "Open trust dashboard",
+    "trustDescription": "Review retrieval trust, fairness telemetry, and regulator exports.",
     "openPlan": "Show agent plan drawer",
     "openPlanDescription": "Peek at tool usage, provenance, and guardrails.",
     "security": "Security & MFA settings",
@@ -127,6 +129,16 @@
       "bindingAll": "All referenced rules are marked as binding.",
       "bindingWarnings": "References to confirm:",
       "bindingCounts": "{binding}/{total} rules marked as binding.",
+      "treatmentHeading": "Treatment history",
+      "treatmentEmpty": "No subsequent treatment recorded.",
+      "treatmentUnknownDate": "Date unknown",
+      "statuteHeading": "Statute alignment",
+      "statuteEmpty": "No statute alignment evidence recorded yet.",
+      "statuteArticleFallback": "Statute reference",
+      "statuteScoreLabel": "Alignment score {score}",
+      "statuteRationaleLabel": "Rationale:",
+      "riskHeading": "Political & risk flags",
+      "riskEmpty": "No political or risk flags recorded.",
       "provenanceHeading": "Provenance & identifiers",
       "provenanceSummary": "{count} authoritative sources analysed.",
       "provenanceEli": "{count} with ELI identifiers",
@@ -156,17 +168,73 @@
       "hitlRequired": "Human review required.",
       "hitlNotRequired": "Human review not required."
     },
+    "compliance": {
+      "title": "Compliance checkpoints",
+      "description": "Automated CEPEJ, EU AI Act, and disclosure checks for this run.",
+      "friaRequired": "FRIA checkpoint required before release.",
+      "friaReasonFallback": "Run classified as high-risk under the EU AI Act safeguards.",
+      "cepejFailed": "CEPEJ charter issues detected.",
+      "cepejDefaultDetail": "Review transparency and user-control obligations.",
+      "statuteFailed": "Statute-first enforcement triggered.",
+      "statuteDefaultDetail": "Ensure a binding statute anchors the analysis.",
+      "disclosuresRequired": "Disclosures require acknowledgement.",
+      "resolved": "All compliance gates satisfied.",
+      "resolvedDetail": "FRIA, CEPEJ, statute-first, and disclosure checks are complete.",
+      "cepejViolations": {
+        "transparency": "Provide at least one authoritative citation.",
+        "quality_security": "Populate the rules section and rerun guardrails.",
+        "fundamental_rights_screening": "Escalate fundamental-rights matters and increase risk level.",
+        "user_control": "Enable human-in-the-loop review for this scenario."
+      },
+      "statuteViolations": {
+        "first_rule_not_binding": "Ensure the first rule is binding in the cited jurisdiction.",
+        "first_rule_not_statute": "Lead with a statute before citing cases or commentary.",
+        "no_binding_statute_rule": "Add at least one binding statute to anchor the analysis.",
+        "missing_case_statute_alignment": "Link jurisprudence back to the governing statute."
+      },
+      "disclosuresMissing": {
+        "consent": "Display the consent banner and capture the required acceptance.",
+        "council_of_europe": "Record the Council of Europe disclosure acknowledgement."
+      }
+    },
     "bilingual": {
       "label": "Official bilingual versions",
-      "fr": "French",
-      "en": "English",
-      "note": "In Québec and Canada the French and English versions carry equal legal authority. Use the citations list to open each official text."
+      "note": "In Québec and Canada the French and English versions carry equal legal authority. Use the citations list to open each official text.",
+      "languages": [
+        { "code": "fr", "label": "French" },
+        { "code": "en", "label": "English" }
+      ]
+    },
+    "rwandaToggle": {
+      "label": "Rwanda Official Gazette",
+      "note": "Review both the Kinyarwanda and English Gazette publications before relying on translations.",
+      "languages": [
+        { "code": "rw", "label": "Kinyarwanda" },
+        { "code": "en", "label": "English" }
+      ]
     },
     "irac": {
       "issue": "Issue",
       "rules": "Rules",
       "application": "Application",
       "conclusion": "Conclusion"
+    },
+    "readingModes": {
+      "label": "Reading mode",
+      "helper": "Switch between the full research view, a brief summary, or an evidence-focused review.",
+      "research": "Research",
+      "brief": "Brief",
+      "evidence": "Evidence"
+    },
+    "anchors": {
+      "title": "Quick sections",
+      "helper": "Jump straight to the IRAC sections and authoritative citations.",
+      "issue": "Issue",
+      "rules": "Rules",
+      "application": "Application",
+      "conclusion": "Conclusion",
+      "rule": "Rule {index}",
+      "citation": "Citation {index}"
     },
     "voice": {
       "start": "Dictate",
@@ -194,7 +262,34 @@
     "stale": {
       "label": "Snapshot needs verification",
       "verify": "Verify now"
-    }
+    },
+    "userControls": {
+      "title": "CEPEJ user controls",
+      "description": "Stay in control of the plan, human review, official sources, and signed exports.",
+      "controls": {
+        "plan": {
+          "title": "Agent plan",
+          "helper": "Open the detected steps, tools, and consulted evidence.",
+          "cta": "Open plan"
+        },
+        "hitl": {
+          "title": "Human review",
+          "helper": "Escalate this answer to a certified reviewer.",
+          "cta": "Request review"
+        },
+        "sources": {
+          "title": "Official sources",
+          "helper": "Review citations, ELI/ECLI identifiers, and binding languages.",
+          "cta": "View sources"
+        },
+        "export": {
+          "title": "C2PA export",
+          "helper": "Download the signed summary for audit or filing.",
+          "cta": "Export PDF"
+        }
+      }
+    },
+    "citationsVisit": "Open the official source"
   },
   "workspace": {
     "heroTitle": "Legal operations control center",
@@ -235,6 +330,51 @@
       "research": "Research",
       "drafting": "Drafting",
       "hitl": "HITL review"
+    },
+    "desk": {
+      "title": "Multi-agent desk",
+      "subtitle": "Orchestrate Ask/Do/Review/Generate workflows with governed playbooks.",
+      "modeLabels": {
+        "ask": "Ask",
+        "do": "Do",
+        "review": "Review",
+        "generate": "Generate"
+      },
+      "status": {
+        "ready": "Ready",
+        "monitoring": "Monitoring",
+        "requiresHitl": "Requires HITL"
+      },
+      "playbooks": {
+        "title": "Process Navigator playbooks",
+        "subtitle": "Pre-wired flows with CEPEJ, EU AI Act, and statute-first guardrails.",
+        "jurisdiction": "Jurisdiction {code}",
+        "launch": "Launch playbook",
+        "stepLabel": "Step {index}",
+        "status": {
+          "success": "Success",
+          "skipped": "Skipped",
+          "failed": "Failed"
+        },
+        "ctaLabel": "Outputs synced to plan drawer"
+      },
+      "quickActions": {
+        "title": "Quick actions",
+        "subtitle": "Trigger governed workflows without leaving the desk."
+      },
+      "personas": {
+        "title": "Specialist personas",
+        "subtitle": "Switch personas with pre-approved guardrails and telemetry.",
+        "focusAreas": "Focus areas",
+        "guardrails": "Guardrails",
+        "launch": "Open persona"
+      },
+      "toolbelt": {
+        "title": "Toolbelt status",
+        "subtitle": "Track orchestration readiness across Ask/Do/Review/Generate."
+      },
+      "planTitlePrefix": "Plan •",
+      "planDescription": "Captured steps, tool calls, and governance evidence from the selected playbook."
     }
   },
   "drafting": {
@@ -412,6 +552,8 @@
     "metricsFairnessFlagged": "Jurisdictions flagged",
     "metricsBenchmarksFlagged": "Benchmarks to review",
     "metricsBenchmarksNone": "No benchmarks flagged",
+    "metricsSynonymsFlagged": "Jurisdictions missing synonyms",
+    "metricsSynonymsNone": "All jurisdictions have synonym coverage",
     "metricsNoneFlagged": "None flagged"
   },
   "corpus": {
@@ -465,6 +607,14 @@
     "download": "Download template",
     "empty": "Organization settings appear here based on your role.",
     "exportResidencyHint": "Exports include a residency_zone column reflecting zoning at capture time.",
+    "exportEmpty": "No exports generated yet.",
+    "exportSignatureLabel": "C2PA signature {alg} · {key}",
+    "exportSignatureMissing": "Signature pending",
+    "exportSignatureTimestamp": "Signed {timestamp}",
+    "exportDownload": "Download",
+    "exportCopyHash": "Copy fingerprint",
+    "exportShaLabel": "SHA-256 fingerprint",
+    "exportHashCopied": "Fingerprint copied to clipboard.",
     "metricsTitle": "Operations dashboard",
     "metricsDescription": "Monitor citation precision, HITL workload, and ingestion health across your teams.",
     "runs30d": "Runs (30 days)",
@@ -508,6 +658,19 @@
     "evaluationTemporalMedian": "Median validity",
     "evaluationBindingWarnings": "Binding warnings",
     "evaluationJurisdictionUnknown": "Unknown",
+    "webVitalsTitle": "Core Web Vitals",
+    "webVitalsDescription": "Mobile measurements (LCP, INP, CLS) captured from the PWA.",
+    "webVitalsEmpty": "No measurements received yet.",
+    "webVitalsMetric": "Metric",
+    "webVitalsValue": "Value",
+    "webVitalsRatingHeading": "Rating",
+    "webVitalsTimestamp": "Timestamp",
+    "webVitalsPage": "Page",
+    "webVitalsRating": {
+      "good": "Good",
+      "needs-improvement": "Needs attention",
+      "poor": "Action required"
+    },
     "policyDescription": "Download the signed responsibility, incident, and retention policies.",
     "incident": "Incident response plan",
     "toolPerformance": "Tool performance",
@@ -521,6 +684,56 @@
     "retrievalLocalAverage": "Local average",
     "retrievalFileAverage": "File Search average",
     "retrievalSnippetHint": "Hybrid snippet analysis",
+    "launchTitle": "Launch & regulators",
+    "launchDescription": "Publish launch collateral, schedule regulator digests, and track SLOs.",
+    "launchReadinessTitle": "Launch readiness",
+    "launchReadinessSubtitle": "Monitor vitals, offline outbox, and regulator readiness after go-live.",
+    "launchReadinessRefresh": "Refresh snapshot",
+    "launchReadinessAddOfflineSample": "Queue offline sample",
+    "launchReadinessScoreLabel": "Readiness score",
+    "launchReadinessScoreHint": "100 = green across vitals, offline queue, and digests.",
+    "launchReadinessVitalsLabel": "Core Web Vitals",
+    "launchReadinessVitalsHint": "Needs {needs} · Poor {poor}",
+    "launchReadinessOfflineLabel": "Offline outbox",
+    "launchReadinessOfflineHint": "{queued} queued · {syncing} syncing",
+    "launchReadinessDigestsLabel": "Regulator digests",
+    "launchReadinessDigestsHint": "Last created {last}",
+    "launchReadinessActionsTitle": "Priority actions",
+    "launchReadinessActionFallback": "No outstanding actions detected.",
+    "launchReadinessNotesTitle": "Operational notes",
+    "launchReadinessNotesFallback": "No additional notes recorded.",
+    "launchReadinessOfflineSection": "Offline queue",
+    "launchReadinessOfflineEmpty": "No offline items queued.",
+    "launchReadinessCollateralLabel": "Pilot onboarding packs: {count}",
+    "launchReadinessCollateralPricing": "Pricing packs: {count}",
+    "launchReadinessCollateralTransparency": "Transparency briefs: {count}",
+    "launchReadinessAddOfflineToast": "Offline item queued.",
+    "launchReadinessAddOfflineError": "Unable to queue offline item.",
+    "launchReadinessOfflineSampleLabel": "Field observation for regulators",
+    "launchCollateralHeading": "Collateral to share",
+    "launchCollateralEmpty": "No collateral available yet.",
+    "launchDownload": "Download",
+    "launchDigestFormTitle": "Schedule a regulator digest",
+    "launchDigestChannelEmail": "Email",
+    "launchDigestChannelSlack": "Slack",
+    "launchDigestChannelTeams": "Teams",
+    "launchDigestFrequencyWeekly": "Weekly",
+    "launchDigestFrequencyMonthly": "Monthly",
+    "launchDigestRecipientsPlaceholder": "Recipients (comma-separated)",
+    "launchDigestTopicsPlaceholder": "Topics (optional, comma-separated)",
+    "launchDigestSubmit": "Schedule digest",
+    "launchDigestsEmpty": "No digests scheduled yet.",
+    "launchDigestChannelLabel": "Channel: {channel}",
+    "launchDigestChannels": {
+      "email": "Email",
+      "slack": "Slack",
+      "teams": "Teams"
+    },
+    "launchDigestRecipientsLabel": "Recipients: {recipients}",
+    "launchDigestTopicsLabel": "Topics: {topics}",
+    "launchDigestSuccess": "Regulator digest scheduled.",
+    "launchDigestError": "Unable to schedule digest.",
+    "launchDigestRecipientsError": "Add at least one recipient.",
     "retrievalOriginLabel": "Origin",
     "retrievalOriginSnippets": "Snippets",
     "retrievalNoCitations": "Runs without citations",
@@ -538,6 +751,24 @@
     "retrievalHostAllowlisted": "% allowlist",
     "retrievalHostWarnings": "Warnings",
     "retrievalHostLastCited": "Last cited",
+    "retrievalJurisdictionsTitle": "Jurisdiction trust telemetry",
+    "retrievalJurisdictionsEmpty": "No jurisdiction metrics yet.",
+    "retrievalJurisdiction": "Jurisdiction",
+    "retrievalRuns": "Runs",
+    "retrievalAllowlistedRatio": "% allowlisted",
+    "retrievalTranslationWarnings": "Warnings",
+    "retrievalSnippetCount": "Snippets",
+    "retrievalHitlRate": "HITL rate",
+    "retrievalHighRiskRate": "High-risk rate",
+    "retrievalFairnessTitle": "Fairness snapshots",
+    "retrievalFairnessEmpty": "No fairness telemetry captured yet.",
+    "retrievalFairnessCaptured": "Captured",
+    "retrievalFairnessHitl": "Overall HITL rate",
+    "retrievalFairnessFlaggedJurisdictions": "Flagged jurisdictions",
+    "retrievalFairnessFlaggedBenchmarks": "Flagged benchmarks",
+    "retrievalFairnessFlaggedSynonyms": "Synonyms missing",
+    "retrievalFairnessNone": "None",
+    "retrievalSynonymsCovered": "All jurisdictions covered",
     "identifierTitle": "Identifier coverage",
     "identifierDescription": "Track ELI/ECLI metadata and Akoma Ntoso encoding across jurisdictions.",
     "identifierJurisdiction": "Jurisdiction",
