@@ -199,6 +199,21 @@ Deno.serve(async (request) => {
   const warningCount = validations.filter((entry) => entry.warnings.length > 0).length;
   const errorCount = validations.length - validCount;
 
+  const quarantineRows = validations
+    .filter((entry) => entry.errors.length > 0)
+    .map((validation) => ({
+      org_id: payload.orgId ?? null,
+      adapter_id: payload.manifestName ?? 'drive',
+      source_url: validation.entry.source_url,
+      canonical_url: validation.entry.canonical_url ?? null,
+      reason: validation.errors.join(';') || 'validation_failed',
+      metadata: {
+        warnings: validation.warnings,
+        entry: validation.entry,
+        manifestUrl: payload.manifestUrl ?? null,
+      },
+    }));
+
   const manifestInsert = await supabase
     .from('drive_manifests')
     .insert({
@@ -262,6 +277,15 @@ Deno.serve(async (request) => {
     }
   }
 
+  if (quarantineRows.length > 0) {
+    const { error: quarantineError } = await supabase
+      .from('ingestion_quarantine')
+      .insert(quarantineRows, { onConflict: 'org_id,source_url,reason' });
+    if (quarantineError) {
+      console.error('quarantine_insert_failed', quarantineError);
+    }
+  }
+
   return new Response(
     JSON.stringify({
       manifestId,
@@ -269,6 +293,7 @@ Deno.serve(async (request) => {
       validCount,
       warningCount,
       errorCount,
+      quarantined: quarantineRows.length,
     }),
     { headers: { 'Content-Type': 'application/json' } },
   );

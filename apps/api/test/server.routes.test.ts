@@ -10,6 +10,11 @@ const supabaseMock = {
   storage: { from: storageFromMock },
 };
 
+const authorizeActionMock = vi.fn();
+const ensureOrgAccessComplianceMock = vi.fn();
+const runLegalAgentMock = vi.fn();
+const getHybridRetrievalContextMock = vi.fn();
+
 const summariseDocumentFromPayloadMock = vi.fn();
 
 vi.mock('@avocat-ai/supabase', () => ({
@@ -17,8 +22,13 @@ vi.mock('@avocat-ai/supabase', () => ({
 }));
 
 vi.mock('../src/access-control.js', () => ({
-  authorizeAction: vi.fn(async () => ({ orgId: 'org-1', actorId: 'user-1' })),
-  ensureOrgAccessCompliance: vi.fn((ctx: unknown) => ctx),
+  authorizeAction: authorizeActionMock,
+  ensureOrgAccessCompliance: ensureOrgAccessComplianceMock,
+}));
+
+vi.mock('../src/agent.js', () => ({
+  runLegalAgent: runLegalAgentMock,
+  getHybridRetrievalContext: getHybridRetrievalContextMock,
 }));
 
 vi.mock('../src/audit.js', () => ({
@@ -30,6 +40,43 @@ vi.mock('../src/summarization.js', () => ({
 }));
 
 const { app } = await import('../src/server.ts');
+
+function makeAccessContext(overrides: Record<string, unknown> = {}) {
+  const base = {
+    orgId: 'org-1',
+    userId: 'user-1',
+    role: 'member',
+    policies: {
+      confidentialMode: false,
+      franceJudgeAnalyticsBlocked: true,
+      mfaRequired: false,
+      ipAllowlistEnforced: false,
+      consentVersion: null,
+      councilOfEuropeDisclosureVersion: null,
+      sensitiveTopicHitl: true,
+      residencyZone: null,
+    },
+    rawPolicies: {},
+    entitlements: new Map<string, { canRead: boolean; canWrite: boolean }>([['FR', { canRead: true, canWrite: true }]]),
+    ipAllowlistCidrs: [],
+    consent: { requiredVersion: null, latestAcceptedVersion: null },
+    abac: {
+      jurisdictionEntitlements: new Map<string, { canRead: boolean; canWrite: boolean }>([['FR', { canRead: true, canWrite: true }]]),
+      confidentialMode: false,
+      sensitiveTopicHitl: true,
+      residencyZone: null,
+    },
+  } as Record<string, unknown>;
+  return {
+    ...base,
+    ...overrides,
+    entitlements: overrides.entitlements ?? base.entitlements,
+    abac: {
+      ...(base.abac as Record<string, unknown>),
+      ...((overrides.abac ?? {}) as Record<string, unknown>),
+    },
+  };
+}
 
 function createQueryBuilder(result: { data: unknown; error: unknown }) {
   const builder: any = {
@@ -57,6 +104,33 @@ describe('API routes', () => {
     supabaseMock.rpc.mockReset();
     storageFromMock.mockReset();
     summariseDocumentFromPayloadMock.mockReset();
+    authorizeActionMock.mockReset();
+    ensureOrgAccessComplianceMock.mockReset();
+    runLegalAgentMock.mockReset();
+    getHybridRetrievalContextMock.mockReset();
+
+    authorizeActionMock.mockResolvedValue(makeAccessContext());
+    ensureOrgAccessComplianceMock.mockImplementation(() => undefined);
+    runLegalAgentMock.mockResolvedValue({
+      runId: 'run-123',
+      payload: {
+        issue: '',
+        rules: [],
+        application: '',
+        conclusion: '',
+        citations: [],
+        risk: { level: 'LOW', why: '', hitl_required: false },
+      },
+      toolLogs: [],
+      plan: [],
+      notices: [],
+      reused: false,
+      verification: null,
+      trustPanel: null,
+      allowlistViolations: [],
+      agent: { key: 'concierge', code: 'concierge', label: 'Concierge', settings: {}, tools: [] },
+    });
+    getHybridRetrievalContextMock.mockResolvedValue({ snippetCount: 0, topHosts: [] });
   });
 
   it('returns learning reports including fairness metrics', async () => {
@@ -209,6 +283,346 @@ describe('API routes', () => {
     expect(response.statusCode).toBe(500);
     const body = response.json() as { error: string };
     expect(body.error).toBe('metrics_evaluation_summary_failed');
+  });
+
+  it('returns 403 when agent execution is forbidden', async () => {
+    authorizeActionMock.mockRejectedValue(Object.assign(new Error('permission_denied'), { statusCode: 403 }));
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/runs',
+      payload: {
+        question: 'Analyse cette clause.',
+        orgId: 'org-1',
+        userId: 'user-1',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(runLegalAgentMock).not.toHaveBeenCalled();
+  });
+
+  it('enforces confidential mode from policy when executing runs', async () => {
+    authorizeActionMock.mockResolvedValue(
+      makeAccessContext({
+        policies: {
+          ...makeAccessContext().policies,
+          confidentialMode: true,
+        },
+        abac: {
+          ...makeAccessContext().abac,
+          confidentialMode: true,
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/runs',
+      payload: {
+        question: 'Analyse confidentielle.',
+        orgId: 'org-1',
+        userId: 'user-1',
+        confidentialMode: false,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(runLegalAgentMock).toHaveBeenCalledTimes(1);
+    const [inputArg, contextArg] = runLegalAgentMock.mock.calls[0];
+    expect(inputArg.confidentialMode).toBe(true);
+    expect(contextArg.policies?.confidentialMode).toBe(true);
+    expect(ensureOrgAccessComplianceMock).toHaveBeenCalled();
+  });
+
+  it('lists ingestion quarantine entries for an org', async () => {
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'ingestion_quarantine') {
+        const builder = createQueryBuilder({
+          data: [
+            {
+              id: 'quar-1',
+              org_id: 'org-1',
+              adapter_id: 'gdrive',
+              source_url: 'https://example.com/case.pdf',
+              canonical_url: null,
+              reason: 'non_allowlisted',
+              metadata: { status: 'pending' },
+              created_at: '2024-10-04T12:00:00Z',
+            },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        return builder;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ingestion/quarantine?orgId=org-1&adapterId=gdrive',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { entries: Array<Record<string, unknown>> };
+    expect(body.entries).toHaveLength(1);
+    expect(body.entries[0]).toMatchObject({ id: 'quar-1', adapterId: 'gdrive', reason: 'non_allowlisted' });
+    expect(authorizeActionMock).toHaveBeenCalledWith('corpus:manage', 'org-1', 'user-1');
+  });
+
+  it('returns 403 when listing quarantine without permission', async () => {
+    authorizeActionMock.mockRejectedValue(Object.assign(new Error('permission_denied'), { statusCode: 403 }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ingestion/quarantine?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(supabaseMock.from).not.toHaveBeenCalledWith('ingestion_quarantine');
+  });
+
+  it('returns 500 when quarantine query fails', async () => {
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'ingestion_quarantine') {
+        const builder = createQueryBuilder({ data: null, error: { message: 'boom' } });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        return builder;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ingestion/quarantine?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(500);
+    const body = response.json() as { error: string };
+    expect(body.error).toBe('quarantine_fetch_failed');
+  });
+
+  it('deletes a quarantine entry for an org', async () => {
+    const deleteBuilder: any = {
+      eq: vi.fn(() => deleteBuilder),
+      select: vi.fn(() => ({
+        maybeSingle: vi.fn(() => Promise.resolve({ data: { id: 'quar-1' }, error: null })),
+      })),
+    };
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'ingestion_quarantine') {
+        return {
+          delete: vi.fn(() => deleteBuilder),
+        } as unknown as typeof supabaseMock.from;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/ingestion/quarantine/quar-1?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ deleted: 'quar-1' });
+    expect(authorizeActionMock).toHaveBeenCalledWith('corpus:manage', 'org-1', 'user-1');
+  });
+
+  it('returns 404 when deleting a missing quarantine entry', async () => {
+    const deleteBuilder: any = {
+      eq: vi.fn(() => deleteBuilder),
+      select: vi.fn(() => ({
+        maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
+      })),
+    };
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'ingestion_quarantine') {
+        return {
+          delete: vi.fn(() => deleteBuilder),
+        } as unknown as typeof supabaseMock.from;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/ingestion/quarantine/quar-404?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: 'quarantine_entry_not_found' });
+  });
+
+  it('returns 500 when quarantine delete fails', async () => {
+    const deleteBuilder: any = {
+      eq: vi.fn(() => deleteBuilder),
+      select: vi.fn(() => ({
+        maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: { message: 'boom' } })),
+      })),
+    };
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'ingestion_quarantine') {
+        return {
+          delete: vi.fn(() => deleteBuilder),
+        } as unknown as typeof supabaseMock.from;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/ingestion/quarantine/quar-1?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ error: 'quarantine_delete_failed' });
+  });
+
+  it('summarises quarantine entries by adapter and reason', async () => {
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'ingestion_quarantine') {
+        const builder = createQueryBuilder({
+          data: [
+            { adapter_id: 'gdrive', reason: 'non_allowlisted' },
+            { adapter_id: 'gdrive', reason: 'non_allowlisted' },
+            { adapter_id: 'gdrive', reason: 'missing_metadata' },
+            { adapter_id: 'manual', reason: 'translation_without_binding' },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        return builder;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ingestion/quarantine/summary?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      adapters: Array<{ adapterId: string; reasons: Array<{ reason: string; count: number }> }>;
+    };
+    const gdrive = body.adapters.find((entry) => entry.adapterId === 'gdrive');
+    expect(gdrive).toBeDefined();
+    const allowlisted = gdrive?.reasons.find((r) => r.reason === 'non_allowlisted');
+    expect(allowlisted?.count).toBe(2);
+    expect(authorizeActionMock).toHaveBeenCalledWith('corpus:manage', 'org-1', 'user-1');
+  });
+
+  it('returns 403 when summarising quarantine without permission', async () => {
+    authorizeActionMock.mockRejectedValue(Object.assign(new Error('permission_denied'), { statusCode: 403 }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ingestion/quarantine/summary?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(supabaseMock.from).not.toHaveBeenCalledWith('ingestion_quarantine');
+  });
+
+  it('returns 500 when quarantine summary query fails', async () => {
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'ingestion_quarantine') {
+        const builder = createQueryBuilder({ data: null, error: { message: 'boom' } });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        return builder;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ingestion/quarantine/summary?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ error: 'quarantine_summary_failed' });
+  });
+
+  it('lists ingestion runs for an org', async () => {
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'ingestion_runs') {
+        const builder = createQueryBuilder({
+          data: [
+            {
+              id: 'run-1',
+              adapter_id: 'drive-watcher',
+              status: 'completed',
+              inserted_count: 3,
+              failed_count: 0,
+              skipped_count: 0,
+              finished_at: '2024-10-01T12:00:00Z',
+              error_message: null,
+            },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ingestion/runs?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { runs: Array<{ id: string }> };
+    expect(body.runs).toHaveLength(1);
+    expect(body.runs[0].id).toBe('run-1');
+    expect(authorizeActionMock).toHaveBeenCalledWith('corpus:manage', 'org-1', 'user-1');
+  });
+
+  it('returns 500 when ingestion runs query fails', async () => {
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'ingestion_runs') {
+        const builder = createQueryBuilder({ data: null, error: { message: 'boom' } });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ingestion/runs?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ error: 'ingestion_runs_failed' });
   });
 
   it('lists governance publications with filters', async () => {

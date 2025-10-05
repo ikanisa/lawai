@@ -912,6 +912,58 @@ describe('runLegalAgent', () => {
     expect(guardStep?.status).toBe('failed');
   });
 
+  it('blocks execution when jurisdiction entitlement is missing', async () => {
+    runMock.mockResolvedValue({ finalOutput: validPayload });
+
+    const { runLegalAgent } = await import('../src/agent.js');
+
+    await expect(
+      runLegalAgent(
+        {
+          question: "Analyse une clause contractuelle applicable devant le tribunal judiciaire de Paris, en France.",
+          orgId: '00000000-0000-0000-0000-000000000000',
+          userId: '00000000-0000-0000-0000-000000000000',
+        },
+        makeContext({
+          entitlements: new Map<string, { canRead: boolean; canWrite: boolean }>([['FR', { canRead: false, canWrite: false }]]),
+        }),
+      ),
+    ).rejects.toThrowError('jurisdiction_not_entitled');
+
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
+  it('disables web search when confidential mode is enforced via policy', async () => {
+    runMock.mockResolvedValue({ finalOutput: validPayload });
+
+    const { runLegalAgent } = await import('../src/agent.js');
+
+    await runLegalAgent(
+      {
+        question: 'Analyse confidentielle sur une clause de non-concurrence.',
+        confidentialMode: false,
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext({
+        policies: {
+          ...defaultAccessContext.policies,
+          confidentialMode: true,
+        },
+      }),
+    );
+
+    const plan = runMock.mock.calls[0]?.[0]?.plan_trace ?? [];
+    const agentContext = runMock.mock.calls[0]?.[0]?.context ?? {};
+
+    // Ensure web_search budget is zero when confidential mode enforced
+    expect(agentContext.toolBudgets?.web_search ?? 0).toBe(0);
+    // Ensure web search tool not invoked
+    const toolNames = (runMock.mock.calls[0]?.[0]?.tools ?? []).map((tool: { name: string }) => tool.name);
+    expect(toolNames).not.toContain('web_search');
+  });
+
+
   it('requires a FRIA checkpoint for EU litigation scenarios', async () => {
     runMock.mockResolvedValue({
       finalOutput: validPayload,

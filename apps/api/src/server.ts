@@ -3508,6 +3508,200 @@ app.post<{
   }
 });
 
+app.get<{
+  Querystring: { orgId?: string; adapterId?: string; reason?: string };
+}>('/ingestion/quarantine', async (request, reply) => {
+  const { orgId, adapterId, reason } = request.query;
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('corpus:manage', orgId, userHeader, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error }, 'quarantine authorization failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  let query = supabase
+    .from('ingestion_quarantine')
+    .select('id, adapter_id, source_url, canonical_url, reason, metadata, created_at')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false });
+
+  if (adapterId) {
+    query = query.eq('adapter_id', adapterId);
+  }
+  if (reason) {
+    query = query.eq('reason', reason);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    request.log.error({ err: error }, 'quarantine query failed');
+    return reply.code(500).send({ error: 'quarantine_fetch_failed' });
+  }
+
+  const entries = (data ?? []).map((row) => ({
+    id: row.id as string,
+    adapterId: row.adapter_id as string,
+    sourceUrl: row.source_url as string,
+    canonicalUrl: (row.canonical_url as string | null | undefined) ?? null,
+    reason: row.reason as string,
+    metadata: (row.metadata as Record<string, unknown> | null | undefined) ?? null,
+    createdAt: row.created_at as string,
+  }));
+
+  return reply.send({ entries });
+});
+
+app.delete<{
+  Params: { entryId: string };
+  Querystring: { orgId?: string };
+}>('/ingestion/quarantine/:entryId', async (request, reply) => {
+  const { entryId } = request.params;
+  const { orgId } = request.query;
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('corpus:manage', orgId, userHeader, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error }, 'quarantine delete authorization failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const { data, error } = await supabase
+    .from('ingestion_quarantine')
+    .delete()
+    .eq('org_id', orgId)
+    .eq('id', entryId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    request.log.error({ err: error }, 'quarantine delete failed');
+    return reply.code(500).send({ error: 'quarantine_delete_failed' });
+  }
+
+  if (!data) {
+    return reply.code(404).send({ error: 'quarantine_entry_not_found' });
+  }
+
+  return reply.send({ deleted: entryId });
+});
+
+app.get<{
+  Querystring: { orgId?: string };
+}>('/ingestion/quarantine/summary', async (request, reply) => {
+  const { orgId } = request.query;
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('corpus:manage', orgId, userHeader, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error }, 'quarantine summary authorization failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const { data, error } = await supabase
+    .from('ingestion_quarantine')
+    .select('reason, adapter_id')
+    .eq('org_id', orgId);
+
+  if (error) {
+    request.log.error({ err: error }, 'quarantine summary query failed');
+    return reply.code(500).send({ error: 'quarantine_summary_failed' });
+  }
+
+  const summary: Record<string, Record<string, number>> = {};
+  for (const row of data ?? []) {
+    const adapter = typeof row.adapter_id === 'string' ? row.adapter_id : 'unknown';
+    const reason = typeof row.reason === 'string' ? row.reason : 'unknown';
+    if (!summary[adapter]) {
+      summary[adapter] = {};
+    }
+    summary[adapter][reason] = (summary[adapter][reason] ?? 0) + 1;
+  }
+
+  const adapters = Object.entries(summary).map(([adapter, reasonCounts]) => ({
+    adapterId: adapter,
+    reasons: Object.entries(reasonCounts).map(([reason, count]) => ({ reason, count })),
+  }));
+
+  return reply.send({ adapters });
+});
+
+app.get<{ Querystring: { orgId?: string } }>('/ingestion/runs', async (request, reply) => {
+  const { orgId } = request.query;
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('corpus:manage', orgId, userHeader, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error }, 'ingestion runs authorization failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const { data, error } = await supabase
+    .from('ingestion_runs')
+    .select('id, adapter_id, status, inserted_count, failed_count, skipped_count, finished_at, error_message')
+    .eq('org_id', orgId)
+    .order('finished_at', { ascending: false })
+    .limit(50);
+
+  if (error) {
+    request.log.error({ err: error }, 'ingestion runs query failed');
+    return reply.code(500).send({ error: 'ingestion_runs_failed' });
+  }
+
+  const runs = (data ?? []).map((row) => ({
+    id: row.id as string,
+    adapterId: row.adapter_id as string,
+    status: row.status as string,
+    inserted: typeof row.inserted_count === 'number' ? row.inserted_count : 0,
+    failed: typeof row.failed_count === 'number' ? row.failed_count : 0,
+    skipped: typeof row.skipped_count === 'number' ? row.skipped_count : 0,
+    finishedAt: (row.finished_at as string | null) ?? null,
+    errorMessage: (row.error_message as string | null) ?? null,
+  }));
+
+  return reply.send({ runs });
+});
+
 app.get<{ Querystring: { orgId?: string } }>('/metrics/governance', async (request, reply) => {
   const { orgId } = request.query;
 
