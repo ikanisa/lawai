@@ -9,6 +9,13 @@ import {
   fetchWorkspaceOverview,
   type WorkspaceOverviewResponse,
 } from '../../lib/api';
+import type {
+  AgentPlanStep,
+  WorkspaceDeskPlaybook,
+  WorkspaceDeskQuickAction,
+  WorkspaceDeskPersona,
+  WorkspaceDeskToolChip,
+} from '@avocat-ai/shared';
 import type { Locale, Messages } from '../../lib/i18n';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -22,6 +29,7 @@ import { useOnlineStatus } from '../../hooks/use-online-status';
 import { useOutbox } from '../../hooks/use-outbox';
 import { useDigest } from '../../hooks/use-digest';
 import { toast } from 'sonner';
+import { MultiAgentDesk } from './multi-agent-desk';
 
 interface WorkspaceViewProps {
   messages: Messages;
@@ -72,10 +80,14 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
   const router = useRouter();
   const { open, toggle } = usePlanDrawer();
   const [heroQuestion, setHeroQuestion] = useState('');
+  const [activePlan, setActivePlan] = useState<AgentPlanStep[] | null>(null);
+  const [activePlanMeta, setActivePlanMeta] = useState<{ title: string; description: string } | null>(null);
   const workspaceQuery = useWorkspaceData(locale);
   const online = useOnlineStatus();
   const { items: outboxItems } = useOutbox();
   const { enabled: digestEnabled, enable: enableDigest, loading: digestLoading } = useDigest();
+
+  const localizedHref = (href: string) => `/${locale}${href}`;
 
   async function handleEnableDigest() {
     try {
@@ -119,8 +131,93 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
       return;
     }
     toggle(true);
-    router.push(`/${locale}/research`);
+    router.push(localizedHref('/research'));
   }
+
+  function handlePlanDrawerChange(nextOpen: boolean) {
+    if (!nextOpen) {
+      setActivePlan(null);
+      setActivePlanMeta(null);
+    }
+    toggle(nextOpen);
+  }
+
+  function handleLaunchPlaybook(playbook: WorkspaceDeskPlaybook) {
+    const now = Date.now();
+    const total = playbook.steps.length || 1;
+    const steps: AgentPlanStep[] = playbook.steps.map((step, index) => {
+      const startOffset = (total - index) * 45000;
+      const endOffset = (total - index - 1) * 45000;
+      return {
+        id: step.id,
+        name: step.name,
+        description: step.description,
+        status: step.status,
+        attempts: step.attempts,
+        startedAt: new Date(now - startOffset).toISOString(),
+        finishedAt: new Date(now - Math.max(endOffset, 0)).toISOString(),
+        detail: step.detail ?? null,
+      };
+    });
+
+    setActivePlan(steps);
+    setActivePlanMeta({
+      title: `${messages.workspace.desk.planTitlePrefix} ${playbook.title}`,
+      description: messages.workspace.desk.planDescription,
+    });
+    toggle(true);
+  }
+
+  function handleQuickAction(action: WorkspaceDeskQuickAction) {
+    if (action.action === 'plan') {
+      setActivePlan(null);
+      setActivePlanMeta({ title: messages.workspace.planTitle, description: messages.workspace.planDescription });
+      toggle(true);
+      return;
+    }
+
+    if (action.action === 'trust') {
+      router.push(localizedHref(action.href ?? '/trust'));
+      return;
+    }
+
+    if (action.action === 'hitl') {
+      router.push(localizedHref(action.href ?? '/hitl'));
+      return;
+    }
+
+    if (action.action === 'navigate' && action.href) {
+      router.push(localizedHref(action.href));
+    }
+  }
+
+  function handlePersonaSelect(persona: WorkspaceDeskPersona) {
+    router.push(localizedHref(persona.href));
+  }
+
+  function handleToolAction(chip: WorkspaceDeskToolChip) {
+    if (chip.action === 'plan') {
+      setActivePlanMeta({ title: messages.workspace.planTitle, description: messages.workspace.planDescription });
+      toggle(true);
+      return;
+    }
+
+    if (chip.action === 'trust') {
+      router.push(localizedHref(chip.href ?? '/trust'));
+      return;
+    }
+
+    if (chip.action === 'hitl') {
+      router.push(localizedHref(chip.href ?? '/hitl'));
+      return;
+    }
+
+    if (chip.action === 'navigate' && chip.href) {
+      router.push(localizedHref(chip.href));
+    }
+  }
+
+  const desk = workspaceQuery.data?.desk ?? null;
 
   return (
     <div className="space-y-10">
@@ -197,6 +294,16 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
             </div>
           </div>
         </div>
+        {desk ? (
+          <MultiAgentDesk
+            desk={desk}
+            messages={messages}
+            onLaunchPlaybook={handleLaunchPlaybook}
+            onQuickAction={handleQuickAction}
+            onPersonaSelect={handlePersonaSelect}
+            onToolAction={handleToolAction}
+          />
+        ) : null}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
@@ -366,10 +473,11 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
 
       <PlanDrawer
         open={open}
-        onOpenChange={toggle}
+        onOpenChange={handlePlanDrawerChange}
         toolLogs={[]}
-        title={messages.workspace.planTitle}
-        description={messages.workspace.planDescription}
+        plan={activePlan ?? undefined}
+        title={activePlanMeta?.title ?? messages.workspace.planTitle}
+        description={activePlanMeta?.description ?? messages.workspace.planDescription}
       />
     </div>
   );

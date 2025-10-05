@@ -5,6 +5,9 @@ export interface CepejRecord {
   cepej_violations: string[] | null;
   fria_required: boolean;
   created_at: string;
+  statute_passed?: boolean | null;
+  statute_violations?: string[] | null;
+  disclosures_missing?: string[] | null;
 }
 
 export interface RunRecord {
@@ -79,6 +82,10 @@ export interface CepejSummary {
   friaRequiredRuns: number;
   passRate: number | null;
   violations: Record<string, number>;
+  statuteAlerts: number;
+  statuteBreakdown: Record<string, number>;
+  disclosureAlerts: number;
+  disclosureBreakdown: Record<string, number>;
 }
 
 export interface RetrievalSummary {
@@ -106,10 +113,38 @@ export interface RetrievalHostMetric {
   lastCitedAt: string | null;
 }
 
+export interface RetrievalJurisdictionMetric {
+  jurisdiction: string;
+  runCount: number;
+  allowlistedRatio: number | null;
+  translationWarnings: number;
+  snippetCount: number;
+  avgWeight: number | null;
+  hitlRate: number | null;
+  highRiskRate: number | null;
+}
+
+export interface RetrievalFairnessTrend {
+  capturedAt: string | null;
+  overallHitlRate: number | null;
+  jurisdictions: Array<{
+    jurisdiction: string;
+    totalRuns: number;
+    hitlRate: number | null;
+    highRiskShare: number | null;
+    benchmarkRate: number | null;
+    synonyms?: { terms: number; expansions: number } | null;
+    flagged: boolean;
+  }>;
+  flagged: { jurisdictions: string[]; benchmarks: string[]; synonyms: string[] };
+}
+
 export interface RetrievalMetricsResponse {
   summary: RetrievalSummary | null;
   origins: RetrievalOriginMetric[];
   hosts: RetrievalHostMetric[];
+  jurisdictions: RetrievalJurisdictionMetric[];
+  fairness: RetrievalFairnessTrend | null;
 }
 
 export interface EvaluationMetricsSummary {
@@ -240,10 +275,88 @@ function toNumeric(value: unknown): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
+function normaliseFairnessTrend(
+  row: { payload?: unknown; report_date?: string | null } | null,
+): RetrievalFairnessTrend | null {
+  if (!row || !row.payload || typeof row.payload !== 'object') {
+    return null;
+  }
+  const payload = row.payload as Record<string, unknown>;
+  const capturedAt =
+    typeof payload.capturedAt === 'string'
+      ? payload.capturedAt
+      : typeof row.report_date === 'string'
+        ? row.report_date
+        : null;
+  const overall =
+    payload.overall && typeof payload.overall === 'object' ? (payload.overall as Record<string, unknown>) : null;
+  const overallHitlRate = overall ? toNumeric(overall.hitlRate) : null;
+  const jurisdictionEntries = Array.isArray(payload.jurisdictions)
+    ? (payload.jurisdictions as Array<Record<string, unknown>>)
+    : [];
+  const flaggedPayload =
+    payload.flagged && typeof payload.flagged === 'object'
+      ? (payload.flagged as { jurisdictions?: unknown; benchmarks?: unknown; synonyms?: unknown })
+      : null;
+
+  const jurisdictions = jurisdictionEntries.map((entry) => {
+    const jurisdiction =
+      typeof entry.code === 'string'
+        ? entry.code
+        : typeof entry.jurisdiction === 'string'
+          ? entry.jurisdiction
+          : 'UNKNOWN';
+    const totalRuns = typeof entry.totalRuns === 'number' ? entry.totalRuns : Number(entry.totalRuns ?? 0);
+    const hitlRate = toNumeric(entry.hitlRate);
+    const highRiskShare = toNumeric(entry.highRiskShare);
+    const benchmarkRate = toNumeric(entry.benchmarkRate);
+    const synonymsPayload =
+      entry.synonyms && typeof entry.synonyms === 'object' ? (entry.synonyms as Record<string, unknown>) : null;
+    const synonyms = synonymsPayload
+      ? {
+          terms: typeof synonymsPayload.terms === 'number' ? synonymsPayload.terms : Number(synonymsPayload.terms ?? 0),
+          expansions:
+            typeof synonymsPayload.expansions === 'number'
+              ? synonymsPayload.expansions
+              : Number(synonymsPayload.expansions ?? 0),
+        }
+      : null;
+    return {
+      jurisdiction,
+      totalRuns,
+      hitlRate,
+      highRiskShare,
+      benchmarkRate,
+      synonyms,
+      flagged: Boolean(
+        Array.isArray(flaggedPayload?.jurisdictions) &&
+          ((flaggedPayload?.jurisdictions as string[]) ?? []).includes(jurisdiction),
+      ),
+    };
+  });
+
+  const flagged = flaggedPayload ?? { jurisdictions: [], benchmarks: [], synonyms: [] };
+
+  return {
+    capturedAt,
+    overallHitlRate,
+    jurisdictions,
+    flagged: {
+      jurisdictions: Array.isArray(flagged.jurisdictions)
+        ? (flagged.jurisdictions as string[])
+        : [],
+      benchmarks: Array.isArray(flagged.benchmarks) ? (flagged.benchmarks as string[]) : [],
+      synonyms: Array.isArray(flagged.synonyms) ? (flagged.synonyms as string[]) : [],
+    },
+  };
+}
+
 export function buildRetrievalMetricsResponse(
   summaryRow: RetrievalSummaryRow | null,
   originRows: RetrievalOriginRow[],
   hostRows: RetrievalHostRow[],
+  jurisdictionMetrics: RetrievalJurisdictionMetric[],
+  fairnessRow: { payload?: unknown; report_date?: string | null } | null,
 ): RetrievalMetricsResponse {
   const summary = summaryRow
     ? {
@@ -272,7 +385,9 @@ export function buildRetrievalMetricsResponse(
     lastCitedAt: row.last_cited_at,
   }));
 
-  return { summary, origins, hosts };
+  const fairness = normaliseFairnessTrend(fairnessRow);
+
+  return { summary, origins, hosts, jurisdictions: jurisdictionMetrics, fairness };
 }
 
 export function buildEvaluationMetricsResponse(
@@ -420,9 +535,13 @@ export function summariseEvaluations(rows: EvaluationRecord[]): EvaluationSummar
 
 export function summariseCepej(records: CepejRecord[]): CepejSummary {
   const violations: Record<string, number> = {};
+  const statuteBreakdown: Record<string, number> = {};
+  const disclosureBreakdown: Record<string, number> = {};
   let passed = 0;
   let violationRuns = 0;
   let friaRequired = 0;
+  let statuteAlerts = 0;
+  let disclosureAlerts = 0;
 
   for (const record of records) {
     if (record.fria_required) {
@@ -430,13 +549,35 @@ export function summariseCepej(records: CepejRecord[]): CepejSummary {
     }
     if (record.cepej_passed) {
       passed += 1;
-      continue;
+    } else {
+      violationRuns += 1;
+      const items = Array.isArray(record.cepej_violations) ? record.cepej_violations : [];
+      for (const violation of items) {
+        const key = violation ?? 'unknown';
+        violations[key] = (violations[key] ?? 0) + 1;
+      }
     }
-    violationRuns += 1;
-    const items = Array.isArray(record.cepej_violations) ? record.cepej_violations : [];
-    for (const violation of items) {
-      const key = violation ?? 'unknown';
-      violations[key] = (violations[key] ?? 0) + 1;
+
+    if (record.statute_passed === false) {
+      statuteAlerts += 1;
+      const items = Array.isArray(record.statute_violations) ? record.statute_violations : [];
+      if (items.length === 0) {
+        statuteBreakdown.unknown = (statuteBreakdown.unknown ?? 0) + 1;
+      } else {
+        for (const item of items) {
+          const key = item ?? 'unknown';
+          statuteBreakdown[key] = (statuteBreakdown[key] ?? 0) + 1;
+        }
+      }
+    }
+
+    const disclosures = Array.isArray(record.disclosures_missing) ? record.disclosures_missing : [];
+    if (disclosures.length > 0) {
+      disclosureAlerts += 1;
+      for (const item of disclosures) {
+        const key = item ?? 'unknown';
+        disclosureBreakdown[key] = (disclosureBreakdown[key] ?? 0) + 1;
+      }
     }
   }
 
@@ -450,6 +591,10 @@ export function summariseCepej(records: CepejRecord[]): CepejSummary {
     friaRequiredRuns: friaRequired,
     passRate,
     violations,
+    statuteAlerts,
+    statuteBreakdown,
+    disclosureAlerts,
+    disclosureBreakdown,
   };
 }
 

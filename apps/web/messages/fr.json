@@ -61,6 +61,8 @@
     "adminDescription": "Configurez politiques, alertes et paramètres d’organisation.",
     "corpus": "Ouvrir Corpus & Sources",
     "corpusDescription": "Surveillez l’ingestion, les langues de référence et la provenance.",
+    "trust": "Ouvrir le tableau de confiance",
+    "trustDescription": "Consultez la confiance, l’équité et les exports régulateurs.",
     "openPlan": "Afficher le plan de l’agent",
     "openPlanDescription": "Visualisez outils, provenance et garde-fous.",
     "security": "Paramètres sécurité & MFA",
@@ -156,17 +158,73 @@
       "hitlRequired": "Revue humaine requise.",
       "hitlNotRequired": "Revue humaine non requise."
     },
+    "compliance": {
+      "title": "Points de contrôle conformité",
+      "description": "Vérifications automatisées CEPEJ, AI Act et disclosures pour cette exécution.",
+      "friaRequired": "Checkpoint FRIA obligatoire avant diffusion.",
+      "friaReasonFallback": "Requête classée à haut risque au titre de l’AI Act.",
+      "cepejFailed": "Non-conformités CEPEJ détectées.",
+      "cepejDefaultDetail": "Vérifier la transparence et le contrôle utilisateur.",
+      "statuteFailed": "Le garde-fou statute-first est déclenché.",
+      "statuteDefaultDetail": "Ancrer l’analyse sur un texte contraignant.",
+      "disclosuresRequired": "Des disclosures doivent être validées.",
+      "resolved": "Tous les contrôles de conformité sont satisfaits.",
+      "resolvedDetail": "FRIA, CEPEJ, statute-first et disclosures sont complétés.",
+      "cepejViolations": {
+        "transparency": "Fournir au moins une citation officielle.",
+        "quality_security": "Compléter le bloc Règles et relancer les gardes-fous.",
+        "fundamental_rights_screening": "Escalader la revue droits fondamentaux et renforcer le niveau de risque.",
+        "user_control": "Activer la revue humaine obligatoire pour ce scénario."
+      },
+      "statuteViolations": {
+        "first_rule_not_binding": "La première règle doit être juridiquement contraignante.",
+        "first_rule_not_statute": "Commencer par un texte législatif avant la jurisprudence.",
+        "no_binding_statute_rule": "Ajouter un texte législatif contraignant comme ancrage.",
+        "missing_case_statute_alignment": "Relier la jurisprudence à l’article législatif cité."
+      },
+      "disclosuresMissing": {
+        "consent": "Afficher la bannière de consentement et collecter l’acceptation requise.",
+        "council_of_europe": "Consigner l’accusé de réception de la divulgation Conseil de l’Europe."
+      }
+    },
     "bilingual": {
       "label": "Versions officielles bilingues",
-      "fr": "Français",
-      "en": "Anglais",
-      "note": "Au Québec et au Canada, les versions française et anglaise ont la même valeur juridique. Utilisez les citations pour ouvrir chaque version officielle."
+      "note": "Au Québec et au Canada, les versions française et anglaise ont la même valeur juridique. Utilisez les citations pour ouvrir chaque version officielle.",
+      "languages": [
+        { "code": "fr", "label": "Français" },
+        { "code": "en", "label": "Anglais" }
+      ]
+    },
+    "rwandaToggle": {
+      "label": "Gazette officielle Rwanda",
+      "note": "Consultez les versions kinyarwanda et anglaise publiées au Journal officiel avant toute décision.",
+      "languages": [
+        { "code": "rw", "label": "Kinyarwanda" },
+        { "code": "en", "label": "Anglais" }
+      ]
     },
     "irac": {
       "issue": "Question",
       "rules": "Règles",
       "application": "Application",
       "conclusion": "Conclusion"
+    },
+    "readingModes": {
+      "label": "Mode de lecture",
+      "helper": "Adaptez l’affichage pour l’analyse complète, le mémo rapide ou la revue des preuves.",
+      "research": "Recherche",
+      "brief": "Mémo",
+      "evidence": "Preuves"
+    },
+    "anchors": {
+      "title": "Sections rapides",
+      "helper": "Accédez directement aux étapes IRAC et aux citations officielles.",
+      "issue": "Question",
+      "rules": "Règles",
+      "application": "Application",
+      "conclusion": "Conclusion",
+      "rule": "Règle {index}",
+      "citation": "Citation {index}"
     },
     "voice": {
       "start": "Dicter",
@@ -194,7 +252,34 @@
     "stale": {
       "label": "Instantané à vérifier",
       "verify": "Vérifier maintenant"
-    }
+    },
+    "userControls": {
+      "title": "Contrôles CEPEJ",
+      "description": "Gardez la main sur le plan, la revue humaine, les sources et les exports signés.",
+      "controls": {
+        "plan": {
+          "title": "Plan de l’agent",
+          "helper": "Consulter les étapes, outils et preuves mobilisées.",
+          "cta": "Ouvrir le plan"
+        },
+        "hitl": {
+          "title": "Revue humaine",
+          "helper": "Escalader cette réponse vers une revue humaine certifiée.",
+          "cta": "Demander une revue"
+        },
+        "sources": {
+          "title": "Sources officielles",
+          "helper": "Afficher les citations, identifiants ELI/ECLI et langues contraignantes.",
+          "cta": "Voir les sources"
+        },
+        "export": {
+          "title": "Export C2PA",
+          "helper": "Télécharger la synthèse signée pour audit ou dépôt.",
+          "cta": "Exporter en PDF"
+        }
+      }
+    },
+    "citationsVisit": "Consulter la source officielle"
   },
   "workspace": {
     "heroTitle": "Centre de commandement juridique",
@@ -235,6 +320,51 @@
       "research": "Recherche",
       "drafting": "Rédaction",
       "hitl": "Revue humaine"
+    },
+    "desk": {
+      "title": "Bureau multi-agents",
+      "subtitle": "Orchestrez les modes Ask/Do/Review/Generate avec des playbooks gouvernés.",
+      "modeLabels": {
+        "ask": "Ask",
+        "do": "Do",
+        "review": "Review",
+        "generate": "Generate"
+      },
+      "status": {
+        "ready": "Prêt",
+        "monitoring": "Surveillance",
+        "requiresHitl": "HITL requis"
+      },
+      "playbooks": {
+        "title": "Playbooks Process Navigator",
+        "subtitle": "Flux pré-paramétrés avec contrôles CEPEJ, AI Act et priorité aux textes.",
+        "jurisdiction": "Juridiction {code}",
+        "launch": "Lancer le playbook",
+        "stepLabel": "Étape {index}",
+        "status": {
+          "success": "Succès",
+          "skipped": "Ignorée",
+          "failed": "Échec"
+        },
+        "ctaLabel": "Sorties synchronisées avec le plan"
+      },
+      "quickActions": {
+        "title": "Actions rapides",
+        "subtitle": "Déclenchez des flux gouvernés sans quitter le bureau."
+      },
+      "personas": {
+        "title": "Personas spécialisés",
+        "subtitle": "Basculez avec des garde-fous approuvés et une télémétrie complète.",
+        "focusAreas": "Domaines clés",
+        "guardrails": "Garde-fous",
+        "launch": "Ouvrir le persona"
+      },
+      "toolbelt": {
+        "title": "Statut du toolbelt",
+        "subtitle": "Suivez la préparation Ask/Do/Review/Generate."
+      },
+      "planTitlePrefix": "Plan •",
+      "planDescription": "Étapes, outils et preuves de gouvernance capturés pour le playbook sélectionné."
     }
   },
   "drafting": {
@@ -465,6 +595,14 @@
     "download": "Télécharger le modèle",
     "empty": "Les paramètres de l’organisation seront affichés ici selon votre rôle.",
     "exportResidencyHint": "Les exports incluent la colonne residency_zone pour tracer la zone lors de la capture.",
+    "exportEmpty": "Aucun export n’a encore été généré.",
+    "exportSignatureLabel": "Signature C2PA {alg} · {key}",
+    "exportSignatureMissing": "Signature en attente",
+    "exportSignatureTimestamp": "Signé le {timestamp}",
+    "exportDownload": "Télécharger",
+    "exportCopyHash": "Copier l’empreinte",
+    "exportShaLabel": "Empreinte SHA-256",
+    "exportHashCopied": "Empreinte copiée dans le presse-papiers.",
     "metricsTitle": "Tableau de pilotage",
     "metricsDescription": "Surveillez la précision des citations, la charge HITL et la santé de l’ingestion pour vos équipes.",
     "runs30d": "Exécutions (30 jours)",
@@ -508,6 +646,19 @@
     "evaluationTemporalMedian": "Validité médiane",
     "evaluationBindingWarnings": "Avertissements",
     "evaluationJurisdictionUnknown": "Inconnue",
+    "webVitalsTitle": "Core Web Vitals",
+    "webVitalsDescription": "Mesures mobiles (LCP, INP, CLS) collectées sur la PWA.",
+    "webVitalsEmpty": "Aucune mesure reçue pour l’instant.",
+    "webVitalsMetric": "Métrique",
+    "webVitalsValue": "Valeur",
+    "webVitalsRatingHeading": "Score",
+    "webVitalsTimestamp": "Horodatage",
+    "webVitalsPage": "Page",
+    "webVitalsRating": {
+      "good": "Bon",
+      "needs-improvement": "À surveiller",
+      "poor": "À corriger"
+    },
     "retrievalTitle": "Retrieval hybride",
     "retrievalDescription": "Suivez la contribution du File Search, la conformité allowlist et les domaines les plus cités.",
     "retrievalRunsLabel": "Runs analysés",
@@ -518,6 +669,56 @@
     "retrievalLocalAverage": "Local moyen",
     "retrievalFileAverage": "File Search moyen",
     "retrievalSnippetHint": "Analyse des extraits hybrides",
+    "launchTitle": "Lancement & régulateurs",
+    "launchDescription": "Publiez les kits de lancement, programmez les digests régulateurs et suivez les SLOs.",
+    "launchReadinessTitle": "Préparation au lancement",
+    "launchReadinessSubtitle": "Surveillez les vitals, la file hors ligne et la préparation régulateur après mise en service.",
+    "launchReadinessRefresh": "Actualiser l’instantané",
+    "launchReadinessAddOfflineSample": "Enregistrer un cas hors ligne",
+    "launchReadinessScoreLabel": "Score de préparation",
+    "launchReadinessScoreHint": "100 = indicateurs au vert (vitals, hors ligne, digests).",
+    "launchReadinessVitalsLabel": "Core Web Vitals",
+    "launchReadinessVitalsHint": "À surveiller {needs} · Critiques {poor}",
+    "launchReadinessOfflineLabel": "Boîte hors ligne",
+    "launchReadinessOfflineHint": "{queued} en file · {syncing} en synchro",
+    "launchReadinessDigestsLabel": "Digests régulateur",
+    "launchReadinessDigestsHint": "Dernier créé {last}",
+    "launchReadinessActionsTitle": "Actions prioritaires",
+    "launchReadinessActionFallback": "Aucune action en attente.",
+    "launchReadinessNotesTitle": "Notes opérationnelles",
+    "launchReadinessNotesFallback": "Aucune note supplémentaire.",
+    "launchReadinessOfflineSection": "File hors ligne",
+    "launchReadinessOfflineEmpty": "Aucun élément hors ligne.",
+    "launchReadinessCollateralLabel": "Packs onboarding pilote : {count}",
+    "launchReadinessCollateralPricing": "Packs tarifaires : {count}",
+    "launchReadinessCollateralTransparency": "Dossiers transparence : {count}",
+    "launchReadinessAddOfflineToast": "Élément hors ligne enregistré.",
+    "launchReadinessAddOfflineError": "Impossible d’enregistrer l’élément hors ligne.",
+    "launchReadinessOfflineSampleLabel": "Observation terrain pour régulateurs",
+    "launchCollateralHeading": "Dossiers à partager",
+    "launchCollateralEmpty": "Aucun livrable n’est prêt pour le moment.",
+    "launchDownload": "Télécharger",
+    "launchDigestFormTitle": "Programmer un digest régulateur",
+    "launchDigestChannelEmail": "Courriel",
+    "launchDigestChannelSlack": "Slack",
+    "launchDigestChannelTeams": "Teams",
+    "launchDigestFrequencyWeekly": "Hebdomadaire",
+    "launchDigestFrequencyMonthly": "Mensuel",
+    "launchDigestRecipientsPlaceholder": "Destinataires (séparés par des virgules)",
+    "launchDigestTopicsPlaceholder": "Sujets (optionnels, séparés par des virgules)",
+    "launchDigestSubmit": "Planifier le digest",
+    "launchDigestsEmpty": "Aucun digest programmé.",
+    "launchDigestChannelLabel": "Canal : {channel}",
+    "launchDigestChannels": {
+      "email": "Courriel",
+      "slack": "Slack",
+      "teams": "Teams"
+    },
+    "launchDigestRecipientsLabel": "Destinataires : {recipients}",
+    "launchDigestTopicsLabel": "Sujets : {topics}",
+    "launchDigestSuccess": "Digest régulateur planifié.",
+    "launchDigestError": "Impossible de planifier le digest.",
+    "launchDigestRecipientsError": "Ajoutez au moins un destinataire.",
     "retrievalOriginLabel": "Origine",
     "retrievalOriginSnippets": "Snippets",
     "retrievalNoCitations": "Runs sans citation",

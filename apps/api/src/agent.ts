@@ -26,7 +26,15 @@ import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { z } from 'zod';
 import { env, loadAllowlistOverride } from './config.js';
-import { CASE_TRUST_WEIGHTS, evaluateCaseQuality, type CaseScoreAxis } from './case-quality.js';
+import {
+  CASE_TRUST_WEIGHTS,
+  evaluateCaseQuality,
+  type CaseScoreAxis,
+  type CaseTreatmentGraphNode,
+  type CaseRiskFlag,
+  type CaseStatuteSnippet,
+  type TreatmentSignal,
+} from './case-quality.js';
 import { OrgAccessContext, isJurisdictionAllowed } from './access-control.js';
 import { evaluateCompliance } from './compliance.js';
 import type { ComplianceAssessment } from './compliance.js';
@@ -85,6 +93,7 @@ export interface AgentRunResult {
   notices?: AgentPlanNotice[];
   verification?: VerificationResult;
   trustPanel?: TrustPanelPayload;
+  compliance?: ComplianceAssessment | null;
   agent: {
     key: AutonomousAgentCode;
     code: string;
@@ -149,6 +158,9 @@ interface CaseQualitySummary {
   hardBlock: boolean;
   notes: string[];
   axes: Record<CaseScoreAxis, number>;
+  treatments: TreatmentSignal[];
+  statuteAlignments: CaseStatuteSnippet[];
+  riskSignals: Array<{ flag: string; note?: string | null }>;
 }
 
 const CASE_AXES: CaseScoreAxis[] = ['PW', 'ST', 'SA', 'PI', 'JF', 'LB', 'RC', 'CQ'];
@@ -176,6 +188,9 @@ interface TrustPanelCaseQualitySummary {
   minScore: number | null;
   maxScore: number | null;
   forceHitl: boolean;
+  treatmentGraph: CaseTreatmentGraphNode[];
+  statuteAlignments: CaseStatuteSnippet[];
+  politicalFlags: CaseRiskFlag[];
 }
 
 interface TrustPanelRetrievalSummary {
@@ -202,6 +217,20 @@ interface TrustPanelProvenanceSummary {
   residencyBreakdown: Array<{ zone: string; count: number }>;
   bindingLanguages: Array<{ language: string; count: number }>;
   akomaArticles: number;
+}
+
+interface StatuteAlignmentDetail {
+  caseUrl: string;
+  statuteUrl: string;
+  article: string | null;
+  alignmentScore: number | null;
+}
+
+interface ComplianceContext {
+  requiredConsentVersion?: string | null;
+  acknowledgedConsentVersion?: string | null;
+  requiredCoeVersion?: string | null;
+  acknowledgedCoeVersion?: string | null;
 }
 
 export interface TrustPanelPayload {
@@ -406,6 +435,165 @@ function deriveToolBudgets(allowedKeys: string[]): Record<string, number> {
     }
   }
   return budgets;
+}
+
+function createEmptyProvenance(): IRACPayload['provenance'] {
+  return {
+    eli: [],
+    ecli: [],
+    akoma_articles: 0,
+    feeds: [],
+    statute_alignments: [],
+    disclosures: {
+      consent: { required: null, acknowledged: null },
+      council_of_europe: { required: null, acknowledged: null },
+      satisfied: false,
+    },
+    quarantine: { flagged: false, reason: null },
+  };
+}
+
+function ensureProvenance(payload: IRACPayload): IRACPayload['provenance'] {
+  if (!payload.provenance) {
+    payload.provenance = createEmptyProvenance();
+    return payload.provenance;
+  }
+  const provenance = payload.provenance;
+  provenance.eli = Array.isArray(provenance.eli) ? provenance.eli : [];
+  provenance.ecli = Array.isArray(provenance.ecli) ? provenance.ecli : [];
+  provenance.akoma_articles = Number.isFinite(provenance.akoma_articles)
+    ? provenance.akoma_articles
+    : 0;
+  provenance.feeds = Array.isArray(provenance.feeds) ? provenance.feeds : [];
+  provenance.statute_alignments = Array.isArray(provenance.statute_alignments)
+    ? provenance.statute_alignments
+    : [];
+  provenance.disclosures = provenance.disclosures ?? {
+    consent: { required: null, acknowledged: null },
+    council_of_europe: { required: null, acknowledged: null },
+    satisfied: false,
+  };
+  provenance.disclosures.consent = provenance.disclosures.consent ?? {
+    required: null,
+    acknowledged: null,
+  };
+  provenance.disclosures.council_of_europe = provenance.disclosures.council_of_europe ?? {
+    required: null,
+    acknowledged: null,
+  };
+  if (typeof provenance.disclosures.satisfied !== 'boolean') {
+    provenance.disclosures.satisfied = false;
+  }
+  provenance.quarantine = provenance.quarantine ?? { flagged: false, reason: null };
+  if (typeof provenance.quarantine.flagged !== 'boolean') {
+    provenance.quarantine.flagged = false;
+  }
+  provenance.quarantine.reason = provenance.quarantine.reason ?? null;
+  return provenance;
+}
+
+function applyDisclosureProvenance(
+  payload: IRACPayload,
+  accessContext: OrgAccessContext | null | undefined,
+): void {
+  const provenance = ensureProvenance(payload);
+  const requiredConsent = accessContext?.consent.requiredVersion ?? null;
+  const acknowledgedConsent = accessContext?.consent.latestAcceptedVersion ?? null;
+  provenance.disclosures.consent.required = requiredConsent ?? null;
+  provenance.disclosures.consent.acknowledged = acknowledgedConsent ?? null;
+
+  const requiredCoe = accessContext?.policies.councilOfEuropeDisclosureVersion ?? null;
+  const acknowledgedCoe = requiredCoe ?? null;
+  provenance.disclosures.council_of_europe.required = requiredCoe ?? null;
+  provenance.disclosures.council_of_europe.acknowledged = acknowledgedCoe;
+
+  provenance.disclosures.satisfied = Boolean(
+    (!requiredConsent || acknowledgedConsent === requiredConsent) &&
+      (!requiredCoe || acknowledgedCoe === requiredCoe),
+  );
+}
+
+function deriveComplianceContext(accessContext: OrgAccessContext | null | undefined): ComplianceContext {
+  return {
+    requiredConsentVersion: accessContext?.consent.requiredVersion ?? null,
+    acknowledgedConsentVersion: accessContext?.consent.latestAcceptedVersion ?? null,
+    requiredCoeVersion: accessContext?.policies.councilOfEuropeDisclosureVersion ?? null,
+    acknowledgedCoeVersion: accessContext?.policies.councilOfEuropeDisclosureVersion ?? null,
+  };
+}
+
+function augmentProvenanceFromSnippets(payload: IRACPayload, snippets: HybridSnippet[]): void {
+  const provenance = ensureProvenance(payload);
+  const eliSet = new Set(provenance.eli ?? []);
+  const ecliSet = new Set(provenance.ecli ?? []);
+  const feedCounter = new Map<string, number>();
+  let akomaArticles = provenance.akoma_articles ?? 0;
+
+  for (const snippet of snippets) {
+    if (snippet.eli) {
+      eliSet.add(snippet.eli);
+    }
+    if (snippet.ecli) {
+      ecliSet.add(snippet.ecli);
+    }
+    if (typeof snippet.akomaArticleCount === 'number' && snippet.akomaArticleCount > 0) {
+      akomaArticles += snippet.akomaArticleCount;
+    }
+    const zone = typeof snippet.residencyZone === 'string' ? snippet.residencyZone.toLowerCase() : '';
+    if (zone && (zone.includes('maghreb') || zone.includes('rwanda'))) {
+      feedCounter.set(zone, (feedCounter.get(zone) ?? 0) + 1);
+    }
+  }
+
+  provenance.eli = Array.from(eliSet);
+  provenance.ecli = Array.from(ecliSet);
+  provenance.akoma_articles = akomaArticles;
+  provenance.feeds = Array.from(feedCounter.entries()).map(([region, count]) => ({ region, count }));
+}
+
+function augmentProvenanceWithCaseAlignments(
+  payload: IRACPayload,
+  alignments: StatuteAlignmentDetail[],
+): void {
+  const provenance = ensureProvenance(payload);
+  if (!Array.isArray(alignments) || alignments.length === 0) {
+    return;
+  }
+  const existing = provenance.statute_alignments ?? [];
+  const combined = [...existing];
+  for (const alignment of alignments) {
+    if (!alignment.caseUrl || !alignment.statuteUrl) {
+      continue;
+    }
+    combined.push({
+      case_url: alignment.caseUrl,
+      statute_url: alignment.statuteUrl,
+      article: alignment.article,
+      alignment_score: alignment.alignmentScore,
+    });
+  }
+  provenance.statute_alignments = combined;
+}
+
+function flagQuarantine(payload: IRACPayload, reason: string): void {
+  const provenance = ensureProvenance(payload);
+  provenance.quarantine.flagged = true;
+  if (!provenance.quarantine.reason) {
+    provenance.quarantine.reason = reason;
+  }
+}
+
+function normaliseRuleKinds(payload: IRACPayload): void {
+  if (!Array.isArray(payload.rules)) {
+    return;
+  }
+  payload.rules = payload.rules.map((rule) => ({
+    ...rule,
+    kind:
+      typeof rule.kind === 'string' && rule.kind.length > 0
+        ? (rule.kind as IRACPayload['rules'][number]['kind'])
+        : 'statute',
+  }));
 }
 
 function resolveAgentProfile(
@@ -682,6 +870,7 @@ async function findExistingRun(
       toolLogs: ToolInvocationLog[];
       confidentialMode: boolean;
       verification: VerificationResult;
+      compliance: ComplianceAssessment | null;
     }
   | null
 > {
@@ -745,6 +934,60 @@ async function findExistingRun(
     allowlistViolations: [],
   };
 
+  const complianceQuery = await supabase
+    .from('compliance_assessments')
+    .select(
+      'fria_required, fria_reasons, cepej_passed, cepej_violations, statute_passed, statute_violations, disclosures_missing',
+    )
+    .eq('run_id', row.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (complianceQuery.error) {
+    console.warn('existing_run_compliance_lookup_failed', complianceQuery.error.message);
+  }
+
+  const toStringArray = (input: unknown): string[] =>
+    Array.isArray(input) ? input.filter((value): value is string => typeof value === 'string') : [];
+
+  const complianceRow = complianceQuery.data as
+    | {
+        fria_required?: boolean | null;
+        fria_reasons?: unknown;
+        cepej_passed?: boolean | null;
+        cepej_violations?: unknown;
+        statute_passed?: boolean | null;
+        statute_violations?: unknown;
+        disclosures_missing?: unknown;
+      }
+    | null;
+
+  const compliance: ComplianceAssessment | null = complianceRow
+    ? {
+        fria: {
+          required: Boolean(complianceRow.fria_required),
+          reasons: toStringArray(complianceRow.fria_reasons),
+        },
+        cepej: {
+          passed: complianceRow.cepej_passed ?? true,
+          violations: toStringArray(complianceRow.cepej_violations),
+        },
+        statute: {
+          passed: complianceRow.statute_passed ?? true,
+          violations: toStringArray(complianceRow.statute_violations),
+        },
+        disclosures: (() => {
+          const missing = toStringArray(complianceRow.disclosures_missing);
+          return {
+            consentSatisfied: !missing.includes('consent'),
+            councilSatisfied: !missing.includes('council_of_europe'),
+            missing,
+          } satisfies ComplianceAssessment['disclosures'];
+        })(),
+      }
+    : null;
+
   return {
     id: row.id,
     payload: row.irac,
@@ -752,6 +995,7 @@ async function findExistingRun(
     toolLogs,
     confidentialMode: Boolean(row.confidential_mode),
     verification,
+    compliance,
   };
 }
 
@@ -1316,6 +1560,203 @@ type BindingLanguageInfo = {
   requiresBanner: boolean;
   source: string;
 };
+
+const MAGHREB_JURISDICTIONS = new Set(['MA', 'TN', 'DZ']);
+
+const GO_NO_GO_CRITERIA = {
+  cepej: { section: 'A', criterion: 'CEPEJ 5 principles automated checks' },
+  statute: { section: 'C', criterion: 'Statute-first policy enforced' },
+  disclosures: { section: 'A', criterion: 'Client disclosures & Council of Europe confirmations' },
+  franceJudgeAnalytics: { section: 'A', criterion: 'France judge-analytics ban enforced' },
+  ohadaPreemption: { section: 'A', criterion: 'OHADA pre-emption banner enforced' },
+  maghrebBinding: { section: 'C', criterion: 'Maghreb binding-language banners' },
+  confidentialMode: { section: 'D', criterion: 'Confidential mode hardening' },
+} as const;
+
+type GoNoGoCriterionKey = keyof typeof GO_NO_GO_CRITERIA;
+
+interface GoNoGoEvidenceContext {
+  orgId: string;
+  actorId: string;
+  runId: string;
+  compliance?: ComplianceAssessment | null;
+  bindingInfo?: (BindingLanguageInfo & { rationale: string }) | null;
+  notices?: AgentPlanNotice[];
+  confidentialMode?: boolean;
+  jurisdiction?: IRACPayload['jurisdiction'];
+  franceAnalyticsBlocked?: boolean;
+}
+
+function buildEvidenceNotes(base: Record<string, unknown>): Record<string, unknown> | null {
+  const cleanedEntries = Object.entries(base).filter(([, value]) => value !== undefined);
+  if (cleanedEntries.length === 0) {
+    return null;
+  }
+  return Object.fromEntries(cleanedEntries);
+}
+
+async function upsertGoNoGoEvidence(
+  orgId: string,
+  actorId: string,
+  key: GoNoGoCriterionKey,
+  status: 'pending' | 'satisfied',
+  notes: Record<string, unknown> | null,
+): Promise<void> {
+  const target = GO_NO_GO_CRITERIA[key];
+  const payload = {
+    org_id: orgId,
+    section: target.section,
+    criterion: target.criterion,
+    status,
+    notes,
+    recorded_by: actorId,
+    recorded_at: new Date().toISOString(),
+  };
+  const { error } = await supabase
+    .from('go_no_go_evidence')
+    .upsert(payload, { onConflict: 'org_id,section,criterion' });
+  if (error) {
+    console.warn('go_no_go_evidence_upsert_failed', {
+      criterion: target.criterion,
+      error: error.message,
+    });
+  }
+}
+
+async function recordGoNoGoEvidenceForRun(context: GoNoGoEvidenceContext): Promise<void> {
+  const {
+    orgId,
+    actorId,
+    runId,
+    compliance,
+    bindingInfo = null,
+    notices = [],
+    confidentialMode = false,
+    jurisdiction,
+    franceAnalyticsBlocked = false,
+  } = context;
+
+  try {
+    const updates: Array<Promise<void>> = [];
+
+    if (compliance) {
+      updates.push(
+        upsertGoNoGoEvidence(
+          orgId,
+          actorId,
+          'cepej',
+          compliance.cepej.passed ? 'satisfied' : 'pending',
+          buildEvidenceNotes({
+            runId,
+            violations: compliance.cepej.violations,
+            friaRequired: compliance.fria.required,
+            friaReasons: compliance.fria.reasons,
+          }),
+        ),
+      );
+
+      updates.push(
+        upsertGoNoGoEvidence(
+          orgId,
+          actorId,
+          'statute',
+          compliance.statute.passed ? 'satisfied' : 'pending',
+          buildEvidenceNotes({ runId, violations: compliance.statute.violations }),
+        ),
+      );
+
+      updates.push(
+        upsertGoNoGoEvidence(
+          orgId,
+          actorId,
+          'disclosures',
+          compliance.disclosures.missing.length === 0 ? 'satisfied' : 'pending',
+          buildEvidenceNotes({
+            runId,
+            missing: compliance.disclosures.missing,
+            consentSatisfied: compliance.disclosures.consentSatisfied,
+            councilSatisfied: compliance.disclosures.councilSatisfied,
+          }),
+        ),
+      );
+    }
+
+    if (franceAnalyticsBlocked) {
+      updates.push(
+        upsertGoNoGoEvidence(
+          orgId,
+          actorId,
+          'franceJudgeAnalytics',
+          'satisfied',
+          buildEvidenceNotes({ runId }),
+        ),
+      );
+    }
+
+    const jurisdictionCode = jurisdiction?.country?.toUpperCase() ?? null;
+    const isOhada = Boolean(jurisdiction?.ohada) || jurisdictionCode === 'OHADA';
+    if (isOhada) {
+      const ohadaNotice = notices.some((notice) => notice.type === 'ohada');
+      updates.push(
+        upsertGoNoGoEvidence(
+          orgId,
+          actorId,
+          'ohadaPreemption',
+          ohadaNotice ? 'satisfied' : 'pending',
+          buildEvidenceNotes({
+            runId,
+            jurisdiction: jurisdictionCode,
+            notice: ohadaNotice
+              ? notices.find((notice) => notice.type === 'ohada')?.message ?? null
+              : null,
+          }),
+        ),
+      );
+    }
+
+    const bindingJurisdiction = bindingInfo?.jurisdiction?.toUpperCase() ?? jurisdictionCode;
+    if (bindingJurisdiction && MAGHREB_JURISDICTIONS.has(bindingJurisdiction)) {
+      updates.push(
+        upsertGoNoGoEvidence(
+          orgId,
+          actorId,
+          'maghrebBinding',
+          bindingInfo?.requiresBanner ? 'satisfied' : 'pending',
+          buildEvidenceNotes({
+            runId,
+            jurisdiction: bindingJurisdiction,
+            bindingLanguage: bindingInfo?.bindingLang,
+            translationNotice: bindingInfo?.translationNotice ?? null,
+          }),
+        ),
+      );
+    }
+
+    if (confidentialMode) {
+      const confidentialNotice = notices.some((notice) => notice.type === 'confidential');
+      updates.push(
+        upsertGoNoGoEvidence(
+          orgId,
+          actorId,
+          'confidentialMode',
+          confidentialNotice ? 'satisfied' : 'pending',
+          buildEvidenceNotes({
+            runId,
+            notice: confidentialNotice
+              ? notices.find((notice) => notice.type === 'confidential')?.message ?? null
+              : null,
+          }),
+        ),
+      );
+    }
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
+    }
+  } catch (error) {
+    console.warn('go_no_go_evidence_record_failed', error);
+  }
+}
 
 const JURISDICTION_BINDING_RULES: Record<string, BindingLanguageInfo> = {
   MA: {
@@ -2268,6 +2709,7 @@ function applyComplianceGates(
   initialRouting: RoutingResult,
   input: AgentRunInput,
   baseJobs: Array<{ type: string; payload: unknown }>,
+  complianceContext?: ComplianceContext | null,
 ): {
   learningJobs: Array<{ type: string; payload: unknown }>;
   events: ComplianceEventRecord[];
@@ -2277,6 +2719,7 @@ function applyComplianceGates(
     question: input.question,
     payload,
     primaryJurisdiction: initialRouting.primary ?? null,
+    disclosures: complianceContext ?? null,
   });
 
   const jobs = [...baseJobs];
@@ -2325,6 +2768,68 @@ function applyComplianceGates(
         violations: compliance.cepej.violations,
       },
     });
+  }
+
+  if (!compliance.statute.passed) {
+    if (!payload.risk.hitl_required) {
+      payload.risk.hitl_required = true;
+    }
+    if (payload.risk.level === 'LOW') {
+      payload.risk.level = 'MEDIUM';
+    }
+    const reasons = compliance.statute.violations;
+    const message = reasons.join(', ');
+    if (message.length > 0 && !payload.risk.why.toLowerCase().includes(message.toLowerCase())) {
+      payload.risk.why = payload.risk.why.length > 0 ? `${payload.risk.why} | ${message}` : message;
+    }
+    jobs.push({
+      type: 'statute_alignment_ticket',
+      payload: {
+        question: input.question,
+        jurisdiction: payload.jurisdiction.country,
+        violations: reasons,
+      },
+    });
+    events.push({
+      kind: 'compliance.statute_alignment.failed',
+      metadata: {
+        jurisdiction: payload.jurisdiction.country,
+        violations: reasons,
+      },
+    });
+  }
+
+  if (!compliance.disclosures.consentSatisfied || !compliance.disclosures.councilSatisfied) {
+    if (!payload.risk.hitl_required) {
+      payload.risk.hitl_required = true;
+    }
+    if (payload.risk.level === 'LOW') {
+      payload.risk.level = 'MEDIUM';
+    }
+    const missing = compliance.disclosures.missing;
+    if (missing.length > 0) {
+      const detail = `disclosures:${missing.join(',')}`;
+      if (!payload.risk.why.toLowerCase().includes(detail.toLowerCase())) {
+        payload.risk.why = payload.risk.why.length > 0 ? `${payload.risk.why} | ${detail}` : detail;
+      }
+    }
+    jobs.push({
+      type: 'disclosure_followup_ticket',
+      payload: {
+        question: input.question,
+        jurisdiction: payload.jurisdiction.country,
+        missing: missing,
+      },
+    });
+    events.push({
+      kind: 'compliance.disclosure.missing',
+      metadata: {
+        jurisdiction: payload.jurisdiction.country,
+        missing,
+      },
+    });
+    const provenance = ensureProvenance(payload);
+    provenance.disclosures.satisfied = false;
   }
 
   return { learningJobs: jobs, events, assessment: compliance };
@@ -2444,6 +2949,7 @@ function buildStubPayload(
         why: 'Traduction non contraignante – validation HITL requise pour confirmer la version arabe.',
         hitl_required: true,
       },
+      provenance: createEmptyProvenance(),
     } satisfies IRACPayload;
   }
 
@@ -2491,6 +2997,7 @@ function buildStubPayload(
         why: 'Acte uniforme et jurisprudence CCJA directement applicables.',
         hitl_required: false,
       },
+      provenance: createEmptyProvenance(),
     } satisfies IRACPayload;
   }
 
@@ -2545,6 +3052,7 @@ function buildStubPayload(
       why: 'Analyse jurisprudentielle classique en droit français.',
       hitl_required: false,
     },
+    provenance: createEmptyProvenance(),
   } satisfies IRACPayload;
 }
 
@@ -2552,14 +3060,20 @@ async function computeCaseQuality(
   orgId: string,
   jurisdiction: string | null,
   citations: IRACPayload['citations'],
-): Promise<{ summaries: CaseQualitySummary[]; forceHitl: boolean }> {
+): Promise<{
+  summaries: CaseQualitySummary[];
+  forceHitl: boolean;
+  statuteAlignments: StatuteAlignmentDetail[];
+  treatmentGraph: CaseTreatmentGraphNode[];
+  riskFlags: CaseRiskFlag[];
+}> {
   if (!citations || citations.length === 0) {
-    return { summaries: [], forceHitl: false };
+    return { summaries: [], forceHitl: false, statuteAlignments: [], treatmentGraph: [], riskFlags: [] };
   }
 
   const urls = citations.map((citation) => citation.url).filter((url): url is string => typeof url === 'string' && url.length > 0);
   if (urls.length === 0) {
-    return { summaries: [], forceHitl: false };
+    return { summaries: [], forceHitl: false, statuteAlignments: [], treatmentGraph: [], riskFlags: [] };
   }
 
   const { data: sourceRows, error: sourceError } = await supabase
@@ -2572,7 +3086,7 @@ async function computeCaseQuality(
 
   if (sourceError) {
     console.warn('case_quality_source_lookup_failed', sourceError.message);
-    return { summaries: [], forceHitl: false };
+    return { summaries: [], forceHitl: false, statuteAlignments: [], treatmentGraph: [], riskFlags: [] };
   }
 
   const caseSources = (sourceRows ?? []).filter((row) => {
@@ -2581,7 +3095,7 @@ async function computeCaseQuality(
   });
 
   if (caseSources.length === 0) {
-    return { summaries: [], forceHitl: false };
+    return { summaries: [], forceHitl: false, statuteAlignments: [], treatmentGraph: [], riskFlags: [] };
   }
 
   const caseIds = caseSources.map((row) => row.id).filter((value): value is string => Boolean(value));
@@ -2594,7 +3108,7 @@ async function computeCaseQuality(
       .eq('org_id', orgId),
     supabase
       .from('case_statute_links')
-      .select('case_source_id, alignment_score')
+      .select('case_source_id, statute_url, article, alignment_score, rationale_json')
       .in('case_source_id', caseIds)
       .eq('org_id', orgId),
     supabase
@@ -2646,11 +3160,50 @@ async function computeCaseQuality(
   }
 
   const alignmentsBySource = new Map<string, { alignmentScore?: number | null }[]>();
+  const alignmentDetailBySource = new Map<string, CaseStatuteSnippet[]>();
+
+  function extractRationaleSnippet(input: unknown): string | null {
+    if (!input || typeof input !== 'object') {
+      return null;
+    }
+    if ('snippet' in (input as Record<string, unknown>)) {
+      const snippet = (input as { snippet?: unknown }).snippet;
+      if (typeof snippet === 'string') {
+        return snippet;
+      }
+    }
+    if ('highlights' in (input as Record<string, unknown>)) {
+      const highlights = (input as { highlights?: unknown }).highlights;
+      if (Array.isArray(highlights)) {
+        const first = highlights.find((entry) => typeof entry === 'string');
+        if (typeof first === 'string') {
+          return first;
+        }
+      }
+    }
+    if ('text' in (input as Record<string, unknown>)) {
+      const text = (input as { text?: unknown }).text;
+      if (typeof text === 'string') {
+        return text;
+      }
+    }
+    return null;
+  }
   for (const entry of alignmentResult.data ?? []) {
     if (!entry?.case_source_id) continue;
-    const list = alignmentsBySource.get(entry.case_source_id) ?? [];
-    list.push({ alignmentScore: entry.alignment_score });
-    alignmentsBySource.set(entry.case_source_id, list);
+    const scoreList = alignmentsBySource.get(entry.case_source_id) ?? [];
+    scoreList.push({ alignmentScore: entry.alignment_score });
+    alignmentsBySource.set(entry.case_source_id, scoreList);
+
+    const detailList = alignmentDetailBySource.get(entry.case_source_id) ?? [];
+    const statuteValue = (entry as { statute_url?: unknown }).statute_url;
+    detailList.push({
+      statuteUrl: typeof statuteValue === 'string' ? statuteValue : null,
+      article: (entry as { article?: string | null }).article ?? null,
+      alignmentScore: typeof entry.alignment_score === 'number' ? entry.alignment_score : null,
+      rationale: extractRationaleSnippet((entry as { rationale_json?: unknown }).rationale_json ?? null),
+    });
+    alignmentDetailBySource.set(entry.case_source_id, detailList);
   }
 
   const overridesBySource = new Map<string, { score: number; reason?: string | null }>();
@@ -2693,6 +3246,9 @@ async function computeCaseQuality(
   }
 
   const summaries: CaseQualitySummary[] = [];
+  const statuteAlignmentDetails: StatuteAlignmentDetail[] = [];
+  const treatmentGraph: CaseTreatmentGraphNode[] = [];
+  const riskFlagDetails: CaseRiskFlag[] = [];
   let forceHitl = false;
   const now = new Date();
 
@@ -2716,6 +3272,7 @@ async function computeCaseQuality(
 
     const override = overridesBySource.get(source.id);
 
+    const statuteSignals = alignmentsBySource.get(source.id) ?? [];
     const result = evaluateCaseQuality({
       trustTier: (source.trust_tier as 'T1' | 'T2' | 'T3' | 'T4') ?? 'T4',
       courtRank: source.court_rank ?? null,
@@ -2726,23 +3283,62 @@ async function computeCaseQuality(
       effectiveDate: source.effective_date ?? null,
       createdAt: source.created_at ?? null,
       treatments: treatmentsBySource.get(source.id) ?? [],
-      statuteAlignments: alignmentsBySource.get(source.id) ?? [],
+      statuteAlignments: statuteSignals,
       riskOverlays: riskCandidates.map((risk) => ({ flag: risk.flag, note: risk.note })),
       override: override ?? null,
     });
+
+    const details = alignmentDetailBySource.get(source.id) ?? [];
+    const caseUrl = source.source_url;
+    const statuteSnippets: CaseStatuteSnippet[] = details.map((detail) => ({
+      caseUrl,
+      statuteUrl: detail.statuteUrl,
+      article: detail.article ?? null,
+      alignmentScore: typeof detail.alignmentScore === 'number' ? detail.alignmentScore : null,
+      rationale: detail.rationale ?? null,
+    }));
+
+    for (const detail of statuteSnippets) {
+      if (!detail.statuteUrl) {
+        continue;
+      }
+      statuteAlignmentDetails.push({
+        caseUrl: detail.caseUrl,
+        statuteUrl: detail.statuteUrl,
+        article: detail.article,
+        alignmentScore: detail.alignmentScore,
+      });
+    }
 
     const persistedHardBlock = persistedHardBlockBySource.get(source.id) ?? false;
     const combinedHardBlock = result.hardBlock || persistedHardBlock;
     const persistedScore = persistedScoreBySource.get(source.id);
     const summaryScore = Number.isFinite(result.score) ? result.score : persistedScore ?? result.score;
 
+    const treatmentsForSource = treatmentsBySource.get(source.id) ?? [];
+    for (const treatment of treatmentsForSource) {
+      treatmentGraph.push({
+        caseUrl,
+        treatment: treatment.treatment,
+        decidedAt: treatment.decidedAt,
+        weight: treatment.weight ?? null,
+      });
+    }
+
+    for (const risk of riskCandidates) {
+      riskFlagDetails.push({ caseUrl, flag: risk.flag, note: risk.note ?? null });
+    }
+
     summaries.push({
       sourceId: source.id,
-      url: source.source_url,
+      url: caseUrl,
       score: summaryScore,
       hardBlock: combinedHardBlock,
       notes: persistedHardBlock && !result.hardBlock ? [...result.notes, 'hard_block_persisted'] : result.notes,
       axes: result.axes,
+      treatments: treatmentsForSource,
+      statuteAlignments: statuteSnippets,
+      riskSignals: riskCandidates.map((risk) => ({ flag: risk.flag, note: risk.note ?? null })),
     });
 
     if (combinedHardBlock || (typeof summaryScore === 'number' && summaryScore < 55)) {
@@ -2768,7 +3364,13 @@ async function computeCaseQuality(
     }
   }
 
-  return { summaries, forceHitl };
+  return {
+    summaries,
+    forceHitl,
+    statuteAlignments: statuteAlignmentDetails,
+    treatmentGraph,
+    riskFlags: riskFlagDetails,
+  };
 }
 
 async function computeCaseScoreForSource(
@@ -2973,7 +3575,10 @@ async function handleGuardrailFailure(
       why: guardReason,
       hitl_required: true,
     },
+    provenance: createEmptyProvenance(),
   };
+
+  applyDisclosureProvenance(payload, accessContext ?? null);
 
   const verification: VerificationResult = {
     status: 'hitl_escalated',
@@ -2999,7 +3604,14 @@ async function handleGuardrailFailure(
   });
 
   const baseLearningJobs = buildLearningJobs(payload, planner.initialRouting, input);
-  const complianceOutcome = applyComplianceGates(payload, planner.initialRouting, input, baseLearningJobs);
+  const complianceContext = deriveComplianceContext(accessContext ?? null);
+  const complianceOutcome = applyComplianceGates(
+    payload,
+    planner.initialRouting,
+    input,
+    baseLearningJobs,
+    complianceContext,
+  );
   const bindingBannerInfo = applyBindingLanguageNotices(payload, planner.initialRouting);
   if (bindingBannerInfo?.requiresBanner) {
     complianceOutcome.learningJobs.push({
@@ -3033,33 +3645,56 @@ async function handleGuardrailFailure(
     planner.agentProfile,
     runKey,
     planner.context.confidentialMode,
+    [],
   );
 
-    return {
-      runId,
-      payload,
-      allowlistViolations: [],
-      toolLogs,
-      plan: planner.planTrace,
-      notices,
-      verification,
-      trustPanel,
-      agent: {
-        key: planner.agentProfile.key,
-        code: planner.agentProfile.manifestCode,
-        label: planner.agentProfile.label,
-        settings: planner.agentProfile.settings,
-        tools: [...planner.agentProfile.allowedToolKeys],
-      },
-    };
-  }
+  await recordGoNoGoEvidenceForRun({
+    orgId: input.orgId,
+    actorId: input.userId,
+    runId,
+    compliance: complianceOutcome.assessment,
+    bindingInfo: bindingBannerInfo,
+    notices,
+    confidentialMode: planner.context.confidentialMode,
+    jurisdiction: payload.jurisdiction,
+  });
+
+  return {
+    runId,
+    payload,
+    allowlistViolations: [],
+    toolLogs,
+    plan: planner.planTrace,
+    notices,
+    verification,
+    trustPanel,
+    compliance: complianceOutcome.assessment,
+    agent: {
+      key: planner.agentProfile.key,
+      code: planner.agentProfile.manifestCode,
+      label: planner.agentProfile.label,
+      settings: planner.agentProfile.settings,
+      tools: [...planner.agentProfile.allowedToolKeys],
+    },
+  };
+}
 
 function buildTrustPanel(
   payload: IRACPayload,
   retrievalSnippets: HybridSnippet[],
-  caseQuality: { summaries: CaseQualitySummary[]; forceHitl: boolean },
+  caseQuality: {
+    summaries: CaseQualitySummary[];
+    forceHitl: boolean;
+    statuteAlignments?: StatuteAlignmentDetail[];
+    treatmentGraph?: CaseTreatmentGraphNode[];
+    riskFlags?: CaseRiskFlag[];
+  },
   verification: VerificationResult,
 ): TrustPanelPayload {
+  if (Array.isArray(caseQuality.statuteAlignments) && caseQuality.statuteAlignments.length > 0) {
+    augmentProvenanceWithCaseAlignments(payload, caseQuality.statuteAlignments);
+  }
+
   const citations = Array.isArray(payload.citations) ? payload.citations : [];
   let allowlistedCount = 0;
   const nonAllowlisted: Array<{ title: string; url: string }> = [];
@@ -3125,6 +3760,40 @@ function buildTrustPanel(
   }));
   const minScore = caseItems.length > 0 ? Math.min(...caseItems.map((item) => item.score)) : null;
   const maxScore = caseItems.length > 0 ? Math.max(...caseItems.map((item) => item.score)) : null;
+
+  const treatmentGraphNodes =
+    Array.isArray(caseQuality.treatmentGraph) && caseQuality.treatmentGraph.length > 0
+      ? caseQuality.treatmentGraph
+      : caseQuality.summaries.flatMap((summary) =>
+          (summary.treatments ?? []).map((treatment) => ({
+            caseUrl: summary.url,
+            treatment: treatment.treatment,
+            decidedAt: treatment.decidedAt,
+            weight: treatment.weight ?? null,
+          } satisfies CaseTreatmentGraphNode)),
+        );
+
+  const statuteSnippetDetails: CaseStatuteSnippet[] =
+    Array.isArray(caseQuality.statuteAlignments) && caseQuality.statuteAlignments.length > 0
+      ? caseQuality.statuteAlignments.map((detail) => ({
+          caseUrl: detail.caseUrl,
+          statuteUrl: detail.statuteUrl,
+          article: detail.article ?? null,
+          alignmentScore: detail.alignmentScore ?? null,
+          rationale: null,
+        }))
+      : caseQuality.summaries.flatMap((summary) => summary.statuteAlignments ?? []);
+
+  const politicalFlagDetails =
+    Array.isArray(caseQuality.riskFlags) && caseQuality.riskFlags.length > 0
+      ? caseQuality.riskFlags
+      : caseQuality.summaries.flatMap((summary) =>
+          (summary.riskSignals ?? []).map((signal) => ({
+            caseUrl: summary.url,
+            flag: signal.flag,
+            note: signal.note ?? null,
+          } satisfies CaseRiskFlag)),
+        );
 
   const provenanceBySource = new Map<
     string,
@@ -3232,6 +3901,9 @@ function buildTrustPanel(
       minScore,
       maxScore,
       forceHitl: caseQuality.forceHitl,
+      treatmentGraph: treatmentGraphNodes,
+      statuteAlignments: statuteSnippetDetails,
+      politicalFlags: politicalFlagDetails,
     },
     risk: {
       level: payload.risk.level,
@@ -3341,6 +4013,9 @@ async function loadCaseQualitySummaries(
       hardBlock: Boolean(row.hard_block),
       notes,
       axes,
+      treatments: [],
+      statuteAlignments: [],
+      riskSignals: [],
     });
   }
 
@@ -3395,7 +4070,12 @@ async function fetchTrustPanelForRun(
     const caseSummaries = await loadCaseQualitySummaries(orgId, payload.citations);
     const forceHitl = caseSummaries.some((item) => item.hardBlock || item.score < 55);
 
-    return buildTrustPanel(payload, retrievalSnippets, { summaries: caseSummaries, forceHitl }, verification);
+    return buildTrustPanel(
+      payload,
+      retrievalSnippets,
+      { summaries: caseSummaries, forceHitl, statuteAlignments: [], treatmentGraph: [], riskFlags: [] },
+      verification,
+    );
   } catch (error) {
     console.warn('trust_panel_fetch_failed', error);
     return null;
@@ -3416,8 +4096,15 @@ async function persistRun(
   agentProfile: SelectedAgentProfile,
   runKey: string | null = null,
   confidentialMode = false,
-): Promise<{ runId: string; trust: TrustPanelPayload }> {
+  allowlistViolations: string[] = [],
+): Promise<{ runId: string; trust: TrustPanelPayload; compliance: ComplianceAssessment | null }> {
   const startedAt = new Date().toISOString();
+  normaliseRuleKinds(payload);
+  augmentProvenanceFromSnippets(payload, retrievalSnippets);
+  if (allowlistViolations.length > 0) {
+    flagQuarantine(payload, 'allowlist_violation');
+  }
+
   const insertPayload = {
     org_id: input.orgId,
     user_id: input.userId,
@@ -3471,7 +4158,11 @@ async function persistRun(
             { summaries: [], forceHitl: payload.risk.hitl_required },
             verification,
           );
-        return { runId: existing.data.id as string, trust: restoredTrust };
+        return {
+          runId: existing.data.id as string,
+          trust: restoredTrust,
+          compliance: complianceAssessment ?? null,
+        };
       }
     }
     throw new Error(runError?.message ?? 'Unable to persist agent run');
@@ -3575,9 +4266,19 @@ async function persistRun(
       fria_reasons: complianceAssessment.fria.reasons,
       cepej_passed: complianceAssessment.cepej.passed,
       cepej_violations: complianceAssessment.cepej.violations,
+      statute_passed: complianceAssessment.statute.passed,
+      statute_violations: complianceAssessment.statute.violations,
+      disclosures_missing: complianceAssessment.disclosures.missing,
     });
     if (complianceError) {
       console.warn('compliance_assessment_insert_failed', complianceError.message);
+    }
+
+    if (!complianceAssessment.statute.passed) {
+      flagQuarantine(payload, 'statute_alignment');
+    }
+    if (complianceAssessment.disclosures.missing.length > 0) {
+      flagQuarantine(payload, 'disclosure_gap');
     }
   }
 
@@ -3607,7 +4308,12 @@ async function persistRun(
     }
   }
 
-  const caseQuality = await computeCaseQuality(input.orgId, payload.jurisdiction?.country ?? null, payload.citations);
+  const caseQuality = await computeCaseQuality(
+    input.orgId,
+    payload.jurisdiction?.country ?? null,
+    payload.citations,
+  );
+  augmentProvenanceWithCaseAlignments(payload, caseQuality.statuteAlignments);
   if (caseQuality.forceHitl) {
     const { error: riskUpdateError } = await supabase
       .from('agent_runs')
@@ -3641,9 +4347,17 @@ async function persistRun(
     }
   }
 
+  const { error: iracUpdateError } = await supabase
+    .from('agent_runs')
+    .update({ irac: payload })
+    .eq('id', runData.id);
+  if (iracUpdateError) {
+    console.warn('agent_run_irac_update_failed', iracUpdateError.message);
+  }
+
   const trustPanel = buildTrustPanel(payload, retrievalSnippets, caseQuality, verification);
 
-  return { runId: runData.id as string, trust: trustPanel };
+  return { runId: runData.id as string, trust: trustPanel, compliance: complianceAssessment ?? null };
 }
 
 function buildInstructions(
@@ -4780,6 +5494,7 @@ export async function runLegalAgent(
       ...existing.payload,
       risk: { ...existing.payload.risk },
     };
+    applyDisclosureProvenance(payload, accessContext ?? null);
     const notices = buildRunNotices(payload, {
       accessContext: accessContext ?? null,
       confidentialMode: existing.confidentialMode ?? planner.context.confidentialMode,
@@ -4818,6 +5533,7 @@ export async function runLegalAgent(
       reused: true,
       verification: existing.verification,
       trustPanel,
+      compliance: existing.compliance,
       agent: {
         key: planner.agentProfile.key,
         code: planner.agentProfile.manifestCode,
@@ -4862,6 +5578,7 @@ export async function runLegalAgent(
         why: planner.franceAnalyticsGuard.rationale,
         hitl_required: true,
       },
+      provenance: createEmptyProvenance(),
     };
 
     const verification: VerificationResult = {
@@ -4895,7 +5612,14 @@ export async function runLegalAgent(
     });
 
     const baseLearningJobs = buildLearningJobs(payload, planner.initialRouting, input);
-    const complianceOutcome = applyComplianceGates(payload, planner.initialRouting, input, baseLearningJobs);
+    const complianceContext = deriveComplianceContext(accessContext ?? null);
+    const complianceOutcome = applyComplianceGates(
+      payload,
+      planner.initialRouting,
+      input,
+      baseLearningJobs,
+      complianceContext,
+    );
     complianceOutcome.learningJobs.unshift({
       type: 'guardrail_fr_judge_analytics',
       payload: {
@@ -4941,7 +5665,20 @@ export async function runLegalAgent(
       planner.agentProfile,
       runKey,
       planner.context.confidentialMode,
+      [],
     );
+
+    await recordGoNoGoEvidenceForRun({
+      orgId: input.orgId,
+      actorId: input.userId,
+      runId,
+      compliance: complianceOutcome.assessment,
+      bindingInfo: null,
+      notices,
+      confidentialMode: planner.context.confidentialMode,
+      jurisdiction: payload.jurisdiction,
+      franceAnalyticsBlocked: true,
+    });
 
     return {
       runId,
@@ -4952,12 +5689,15 @@ export async function runLegalAgent(
       notices,
       verification,
       trustPanel: trust,
+      compliance: complianceOutcome.assessment,
     };
   }
 
   if (useStub) {
     const payload = buildStubPayload(input.question, planner.initialRouting, planner.hybridSnippets);
     toolLogs.push({ name: 'stubGenerator', args: { question: input.question }, output: payload });
+
+    applyDisclosureProvenance(payload, accessContext ?? null);
 
     const stubTime = new Date();
     planner.planTrace.push({
@@ -4972,7 +5712,26 @@ export async function runLegalAgent(
     });
 
     const baseLearningJobs = buildLearningJobs(payload, planner.initialRouting, input);
-    const complianceOutcome = applyComplianceGates(payload, planner.initialRouting, input, baseLearningJobs);
+    const complianceContext = deriveComplianceContext(accessContext ?? null);
+    const bindingInfo = applyBindingLanguageNotices(payload, planner.initialRouting);
+    const complianceOutcome = applyComplianceGates(
+      payload,
+      planner.initialRouting,
+      input,
+      baseLearningJobs,
+      complianceContext,
+    );
+    if (bindingInfo?.requiresBanner) {
+      complianceOutcome.learningJobs.push({
+        type: 'binding_language_banner',
+        payload: {
+          jurisdiction: bindingInfo.jurisdiction,
+          notice: bindingInfo.translationNotice,
+          source: bindingInfo.source,
+          question: input.question,
+        },
+      });
+    }
     const notices = buildRunNotices(payload, {
       accessContext: accessContext ?? null,
       confidentialMode: planner.context.confidentialMode,
@@ -5008,16 +5767,33 @@ export async function runLegalAgent(
         planner.agentProfile,
         runKey,
         planner.context.confidentialMode,
+        [],
       );
       runId = result.runId;
       trustPanel = result.trust;
+      await recordGoNoGoEvidenceForRun({
+        orgId: input.orgId,
+        actorId: input.userId,
+        runId,
+        compliance: complianceOutcome.assessment,
+        bindingInfo,
+        notices,
+        confidentialMode: planner.context.confidentialMode,
+        jurisdiction: payload.jurisdiction,
+      });
     } catch (error) {
       console.warn('persistRun_failed_stub_mode', error);
       runId = `stub-${Date.now()}`;
       trustPanel = buildTrustPanel(
         payload,
         planner.hybridSnippets,
-        { summaries: [], forceHitl: payload.risk.hitl_required },
+        {
+          summaries: [],
+          forceHitl: payload.risk.hitl_required,
+          statuteAlignments: [],
+          treatmentGraph: [],
+          riskFlags: [],
+        },
         verification,
       );
     }
@@ -5031,6 +5807,7 @@ export async function runLegalAgent(
       notices,
       verification,
       trustPanel,
+      compliance: complianceOutcome.assessment,
       agent: {
         key: planner.agentProfile.key,
         code: planner.agentProfile.manifestCode,
@@ -5062,6 +5839,8 @@ export async function runLegalAgent(
   }
   const payload = execution.payload;
 
+  applyDisclosureProvenance(payload, accessContext ?? null);
+
   const verificationTask = async () =>
     verifyAgentPayload(payload, {
       allowlistViolations: execution.allowlistViolations,
@@ -5085,7 +5864,14 @@ export async function runLegalAgent(
 
   const bindingInfo = applyBindingLanguageNotices(payload, planner.initialRouting);
   const baseLearningJobs = buildLearningJobs(payload, planner.initialRouting, input);
-  const complianceOutcome = applyComplianceGates(payload, planner.initialRouting, input, baseLearningJobs);
+  const complianceContext = deriveComplianceContext(accessContext ?? null);
+  const complianceOutcome = applyComplianceGates(
+    payload,
+    planner.initialRouting,
+    input,
+    baseLearningJobs,
+    complianceContext,
+  );
 
   if (verification.notes.length > 0) {
     const verificationSummary = verification.notes.map((note) => note.message).join(' | ');
@@ -5132,7 +5918,19 @@ export async function runLegalAgent(
     planner.agentProfile,
     runKey,
     planner.context.confidentialMode,
+    execution.allowlistViolations,
   );
+
+  await recordGoNoGoEvidenceForRun({
+    orgId: input.orgId,
+    actorId: input.userId,
+    runId,
+    compliance: complianceOutcome.assessment,
+    bindingInfo,
+    notices,
+    confidentialMode: planner.context.confidentialMode,
+    jurisdiction: payload.jurisdiction,
+  });
 
   return {
     runId,
@@ -5143,6 +5941,7 @@ export async function runLegalAgent(
     notices,
     verification,
     trustPanel,
+    compliance: complianceOutcome.assessment,
     agent: {
       key: planner.agentProfile.key,
       code: planner.agentProfile.manifestCode,

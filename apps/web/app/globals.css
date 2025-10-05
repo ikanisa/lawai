@@ -82,3 +82,9 @@ body {
 .confidential-blur:focus-within {
   filter: blur(0);
 }
+
+[data-anchor-highlight='1'] {
+  outline: 2px solid rgba(45, 212, 191, 0.55);
+  outline-offset: 4px;
+  transition: outline 0.3s ease-in-out;
+}

@@ -2,7 +2,7 @@
 
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
+import { SUPPORTED_JURISDICTIONS, type LaunchOfflineOutboxItem, type LaunchReadinessSnapshot } from '@avocat-ai/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '../../components/ui/button';
@@ -38,6 +38,12 @@ import {
   fetchDeletionRequests,
   requestExport,
   createDeletionRequest,
+  fetchLaunchCollateral,
+  fetchRegulatorDigests,
+  fetchLaunchReadiness,
+  fetchOfflineOutbox,
+  createRegulatorDigest,
+  fetchWebVitals,
   type ScimTokenResponse,
   fetchOperationsOverview,
   type OperationsOverviewResponse,
@@ -47,10 +53,16 @@ import {
   fetchLearningMetrics,
   fetchLearningSignals,
   fetchAutonomousUserTypes,
+  type LaunchCollateral,
+  type RegulatorDigestEntry,
+  type CreateRegulatorDigestInput,
+  type WebVitalMetric,
+  createOfflineOutboxItem,
 } from '../../lib/api';
 import type { Locale, Messages } from '../../lib/i18n';
 import { OperationsOverviewCard } from '../governance/operations-overview-card';
 import { JurisdictionCoverageCard } from '../governance/jurisdiction-coverage-card';
+import { LaunchReadinessCard } from './launch-readiness-card';
 
 interface AdminViewProps {
   messages: Messages;
@@ -82,9 +94,60 @@ export function AdminView({ messages, locale }: AdminViewProps) {
   const alertsQuery = useQuery({ queryKey: ['alerts', DEMO_ORG_ID], queryFn: () => fetchAlerts(DEMO_ORG_ID), refetchInterval: 60000 });
   const exportsQuery = useQuery({ queryKey: ['exports', DEMO_ORG_ID], queryFn: () => fetchExports(DEMO_ORG_ID) });
   const deletionQuery = useQuery({ queryKey: ['deletion-requests', DEMO_ORG_ID], queryFn: () => fetchDeletionRequests(DEMO_ORG_ID) });
+  const collateralQuery = useQuery<LaunchCollateral>({ queryKey: ['launch-collateral'], queryFn: fetchLaunchCollateral, staleTime: 300_000 });
+  const digestsQuery = useQuery<{ digests: RegulatorDigestEntry[] }>({ queryKey: ['launch-digests'], queryFn: fetchRegulatorDigests, staleTime: 60_000 });
+  const readinessQuery = useQuery<LaunchReadinessSnapshot>({
+    queryKey: ['launch-readiness', DEMO_ORG_ID],
+    queryFn: () => fetchLaunchReadiness(DEMO_ORG_ID),
+    refetchInterval: 60_000,
+  });
+  const offlineOutboxQuery = useQuery<{ items: LaunchOfflineOutboxItem[] }>({
+    queryKey: ['launch-offline-outbox', DEMO_ORG_ID],
+    queryFn: () => fetchOfflineOutbox(DEMO_ORG_ID),
+    refetchInterval: 60_000,
+  });
+  const webVitalsQuery = useQuery<{ metrics: WebVitalMetric[] }>({
+    queryKey: ['web-vitals', DEMO_ORG_ID],
+    queryFn: () => fetchWebVitals(DEMO_ORG_ID, 25),
+    refetchInterval: 60_000,
+  });
   const userTypesQuery = useQuery({ queryKey: ['autonomous-user-types'], queryFn: fetchAutonomousUserTypes, staleTime: 300_000 });
   const exportMutation = useMutation({ mutationFn: (fmt: 'csv' | 'json') => requestExport(DEMO_ORG_ID, fmt), onSuccess: () => { toast.success('Export demandé'); queryClient.invalidateQueries({ queryKey: ['exports', DEMO_ORG_ID] }); } });
   const deletionMutation = useMutation({ mutationFn: (payload: { id: string; reason?: string }) => createDeletionRequest(DEMO_ORG_ID, 'document', payload.id, payload.reason), onSuccess: () => { toast.success('Suppression demandée'); queryClient.invalidateQueries({ queryKey: ['deletion-requests', DEMO_ORG_ID] }); } });
+  const digestMutation = useMutation({
+    mutationFn: (input: CreateRegulatorDigestInput) => createRegulatorDigest(input),
+    onSuccess: () => {
+      toast.success(messages.admin.launchDigestSuccess);
+      queryClient.invalidateQueries({ queryKey: ['launch-digests'] });
+      setDigestRecipients('');
+      setDigestTopics('');
+    },
+    onError: () => {
+      toast.error(messages.admin.launchDigestError);
+    },
+  });
+  const offlineMutation = useMutation({
+    mutationFn: () =>
+      createOfflineOutboxItem({
+        orgId: DEMO_ORG_ID,
+        channel: 'message',
+        label: messages.admin.launchReadinessOfflineSampleLabel,
+        locale,
+      }),
+    onSuccess: () => {
+      toast.success(messages.admin.launchReadinessAddOfflineToast);
+      queryClient.invalidateQueries({ queryKey: ['launch-offline-outbox', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['launch-readiness', DEMO_ORG_ID] });
+    },
+    onError: () => {
+      toast.error(messages.admin.launchReadinessAddOfflineError);
+    },
+  });
+  const webVitals = webVitalsQuery.data?.metrics ?? [];
+  const collateral = collateralQuery.data ?? null;
+  const digests = digestsQuery.data?.digests ?? [];
+  const readiness = readinessQuery.data ?? null;
+  const offlineOutbox = offlineOutboxQuery.data?.items ?? [];
   const overview = metricsQuery.data?.overview ?? null;
   const toolRows = metricsQuery.data?.tools ?? [];
   const jurisdictionLabels = useMemo<Map<string, string>>(
@@ -122,6 +185,11 @@ export function AdminView({ messages, locale }: AdminViewProps) {
       .sort((a, b) => b.citationCount - a.citationCount)
       .slice(0, 8);
   }, [retrievalQuery.data]);
+  const retrievalJurisdictions = useMemo(() => {
+    const jurisdictions = retrievalQuery.data?.jurisdictions ?? [];
+    return [...jurisdictions].sort((a, b) => a.jurisdiction.localeCompare(b.jurisdiction));
+  }, [retrievalQuery.data]);
+  const retrievalFairness = retrievalQuery.data?.fairness ?? null;
   const jurisdictionCoverage = metricsQuery.data?.jurisdictions ?? [];
   const intlLocale = locale === 'en' ? 'en-US' : 'fr-FR';
   const numberFormatter = useMemo(() => new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 0 }), [intlLocale]);
@@ -152,6 +220,23 @@ export function AdminView({ messages, locale }: AdminViewProps) {
       return '—';
     }
     return dateTimeFormatter.format(date);
+  };
+
+  const formatWebVitalValue = (metric: WebVitalMetric): string => {
+    const name = metric.name.toUpperCase();
+    if (name === 'CLS') {
+      return metric.value.toFixed(3);
+    }
+    if (name === 'INP' || name === 'FID' || name === 'LCP') {
+      return `${Math.round(metric.value)} ms`;
+    }
+    return metric.value.toFixed(2);
+  };
+
+  const ratingVariantFor = (rating: WebVitalMetric['rating']) => {
+    if (rating === 'good') return 'success' as const;
+    if (rating === 'needs-improvement') return 'warning' as const;
+    return 'danger' as const;
   };
   const evaluationQuery = useQuery<EvaluationMetricsResponse>({
     queryKey: ['evaluation-metrics', DEMO_ORG_ID],
@@ -257,6 +342,11 @@ export function AdminView({ messages, locale }: AdminViewProps) {
   const [residencyZone, setResidencyZone] = useState('eu');
   const [deleteDocId, setDeleteDocId] = useState('');
   const [deleteReason, setDeleteReason] = useState('');
+  const [digestJurisdiction, setDigestJurisdiction] = useState('EU');
+  const [digestChannel, setDigestChannel] = useState<'email' | 'slack' | 'teams'>('email');
+  const [digestFrequency, setDigestFrequency] = useState<'weekly' | 'monthly'>('weekly');
+  const [digestRecipients, setDigestRecipients] = useState('');
+  const [digestTopics, setDigestTopics] = useState('');
   useEffect(() => {
     const p = policiesQuery.data?.policies ?? {};
     const conf = (p['confidential_mode'] as any)?.enabled ?? p['confidential_mode'] ?? false;
@@ -268,6 +358,29 @@ export function AdminView({ messages, locale }: AdminViewProps) {
     setSensitiveTopicHitl(Boolean(sensitive ?? true));
     setResidencyZone(typeof rz === 'string' ? rz : 'eu');
   }, [policiesQuery.data]);
+
+  const handleDigestSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const recipients = digestRecipients
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    if (recipients.length === 0) {
+      toast.error(messages.admin.launchDigestRecipientsError);
+      return;
+    }
+    const topics = digestTopics
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    digestMutation.mutate({
+      jurisdiction: digestJurisdiction,
+      channel: digestChannel,
+      frequency: digestFrequency,
+      recipients,
+      topics: topics.length > 0 ? topics : undefined,
+    });
+  };
   useEffect(() => {
     if (inviteUserType === null && userTypesQuery.data?.userTypes?.length) {
       const first = userTypesQuery.data.userTypes[0];
@@ -640,6 +753,18 @@ export function AdminView({ messages, locale }: AdminViewProps) {
 
   return (
     <div className="space-y-6">
+      <LaunchReadinessCard
+        readiness={readiness}
+        offlineItems={offlineOutbox}
+        isLoading={readinessQuery.isLoading || offlineOutboxQuery.isLoading}
+        isRefreshing={readinessQuery.isFetching || offlineOutboxQuery.isFetching}
+        onRefresh={() => {
+          queryClient.invalidateQueries({ queryKey: ['launch-readiness', DEMO_ORG_ID] });
+          queryClient.invalidateQueries({ queryKey: ['launch-offline-outbox', DEMO_ORG_ID] });
+        }}
+        onQueueOffline={() => offlineMutation.mutate()}
+        messages={messages}
+      />
       <div className="grid gap-6 xl:grid-cols-[2fr_3fr]">
         <div className="space-y-6">
           <Card className="glass-card border border-slate-800/60">
@@ -1136,9 +1261,121 @@ export function AdminView({ messages, locale }: AdminViewProps) {
                     </table>
                   )}
                 </div>
+                <div>
+                  <h4 className="font-semibold text-slate-100">{messages.admin.retrievalJurisdictionsTitle}</h4>
+                  {retrievalQuery.isLoading && retrievalJurisdictions.length === 0 ? (
+                    <p className="mt-2 text-sm text-slate-400">{messages.admin.loadingShort}</p>
+                  ) : retrievalJurisdictions.length === 0 ? (
+                    <p className="mt-2 text-sm text-slate-400">{messages.admin.retrievalJurisdictionsEmpty}</p>
+                  ) : (
+                    <div className="mt-3 overflow-hidden rounded-xl border border-slate-800/60">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-slate-900/60 text-left text-xs uppercase tracking-wide text-slate-400">
+                            <th className="pb-2 pl-4">{messages.admin.retrievalJurisdiction}</th>
+                            <th className="pb-2">{messages.admin.retrievalRuns}</th>
+                            <th className="pb-2">{messages.admin.retrievalAllowlistedRatio}</th>
+                            <th className="pb-2">{messages.admin.retrievalTranslationWarnings}</th>
+                            <th className="pb-2">{messages.admin.retrievalSnippetCount}</th>
+                            <th className="pb-2">{messages.admin.retrievalHitlRate}</th>
+                            <th className="pb-2 pr-4">{messages.admin.retrievalHighRiskRate}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {retrievalJurisdictions.map((row) => (
+                            <tr key={row.jurisdiction} className="border-t border-slate-800/60">
+                              <td className="py-2 pl-4 text-slate-300">{row.jurisdiction}</td>
+                              <td className="py-2 text-slate-300">{numberFormatter.format(row.runCount)}</td>
+                              <td className="py-2 text-slate-300">
+                                {row.allowlistedRatio !== null ? `${Math.round(row.allowlistedRatio * 100)}%` : '—'}
+                              </td>
+                              <td className="py-2 text-amber-200">{row.translationWarnings}</td>
+                              <td className="py-2 text-slate-300">{row.snippetCount}</td>
+                              <td className="py-2 text-slate-300">
+                                {row.hitlRate !== null ? `${Math.round(row.hitlRate * 100)}%` : '—'}
+                              </td>
+                              <td className="py-2 pr-4 text-slate-300">
+                                {row.highRiskRate !== null ? `${Math.round(row.highRiskRate * 100)}%` : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h4 className="font-semibold text-slate-100">{messages.admin.retrievalFairnessTitle}</h4>
+                  {retrievalFairness ? (
+                    <div className="mt-3 space-y-3 rounded-xl border border-slate-800/60 bg-slate-900/40 p-4 text-sm">
+                      <div className="flex items-center justify-between text-slate-300">
+                        <span>{messages.admin.retrievalFairnessCaptured}</span>
+                        <span>{retrievalFairness.capturedAt ? formatDateTime(retrievalFairness.capturedAt) : '—'}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-300">
+                        <span>{messages.admin.retrievalFairnessHitl}</span>
+                        <span>
+                          {retrievalFairness.overallHitlRate !== null
+                            ? `${Math.round(Math.max(Math.min(retrievalFairness.overallHitlRate, 1), 0) * 100)}%`
+                            : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          {messages.admin.retrievalFairnessFlaggedJurisdictions}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {retrievalFairness.flagged.jurisdictions.length > 0 ? (
+                            retrievalFairness.flagged.jurisdictions.map((code) => (
+                              <Badge key={code} variant="outline">
+                                {code}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-slate-400">{messages.admin.retrievalFairnessNone}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          {messages.admin.retrievalFairnessFlaggedBenchmarks}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {retrievalFairness.flagged.benchmarks.length > 0 ? (
+                            retrievalFairness.flagged.benchmarks.map((name) => (
+                              <Badge key={name} variant="outline">
+                                {name}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-slate-400">{messages.admin.retrievalFairnessNone}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          {messages.admin.retrievalFairnessFlaggedSynonyms}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {retrievalFairness.flagged.synonyms.length > 0 ? (
+                            retrievalFairness.flagged.synonyms.map((code) => (
+                              <Badge key={code} variant="outline">
+                                {code}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-slate-400">{messages.admin.retrievalSynonymsCovered}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-400">{messages.admin.retrievalFairnessEmpty}</p>
+                  )}
+                </div>
               </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
         <Card className="glass-card border border-slate-800/60">
           <CardHeader>
@@ -1272,8 +1509,51 @@ export function AdminView({ messages, locale }: AdminViewProps) {
                   </table>
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
+            <CardTitle className="text-slate-100">{messages.admin.webVitalsTitle}</CardTitle>
+            <p className="text-sm text-slate-400">{messages.admin.webVitalsDescription}</p>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-slate-200">
+            {webVitalsQuery.isLoading && webVitals.length === 0 ? (
+              <p className="text-slate-400">{messages.admin.loading}</p>
+            ) : webVitals.length === 0 ? (
+              <p className="text-slate-400">{messages.admin.webVitalsEmpty}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-xs uppercase tracking-wide text-slate-400">
+                  <thead>
+                    <tr>
+                      <th className="py-2 pr-4">{messages.admin.webVitalsMetric}</th>
+                      <th className="py-2 pr-4 text-right">{messages.admin.webVitalsValue}</th>
+                      <th className="py-2 pr-4">{messages.admin.webVitalsRatingHeading}</th>
+                      <th className="py-2 pr-4">{messages.admin.webVitalsTimestamp}</th>
+                      <th className="py-2">{messages.admin.webVitalsPage}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-[11px] normal-case text-slate-200">
+                    {webVitals.map((metric) => (
+                      <tr key={metric.id}>
+                        <td className="py-2 pr-4 font-semibold text-slate-100">{metric.name.toUpperCase()}</td>
+                        <td className="py-2 pr-4 text-right text-slate-100">{formatWebVitalValue(metric)}</td>
+                        <td className="py-2 pr-4">
+                          <Badge variant={ratingVariantFor(metric.rating)}>
+                            {messages.admin.webVitalsRating[metric.rating]}
+                          </Badge>
+                        </td>
+                        <td className="py-2 pr-4 text-slate-300">{formatDateTime(metric.createdAt)}</td>
+                        <td className="py-2 text-slate-300">{metric.page}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card className="glass-card border border-slate-800/60">
           <CardHeader>
@@ -1284,15 +1564,67 @@ export function AdminView({ messages, locale }: AdminViewProps) {
               <Button size="sm" variant="outline" onClick={() => exportMutation.mutate('csv')}>Export CSV</Button>
               <Button size="sm" variant="outline" onClick={() => exportMutation.mutate('json')}>Export JSON</Button>
             </div>
-            <div className="space-y-2 text-xs">
-              {(exportsQuery.data?.exports ?? []).map((ex) => (
-                <div key={ex.id} className="flex items-center justify-between gap-3">
-                  <span>{ex.format} · {ex.status} · {new Date(ex.created_at).toLocaleString()}</span>
-                  {ex.signedUrl ? (
-                    <a className="text-teal-200" href={ex.signedUrl} target="_blank" rel="noreferrer">Télécharger</a>
-                  ) : null}
-                </div>
-              ))}
+            <div className="space-y-3 text-xs">
+              {(exportsQuery.data?.exports ?? []).length === 0 ? (
+                <p className="text-slate-400">{messages.admin.exportEmpty}</p>
+              ) : (
+                (exportsQuery.data?.exports ?? []).map((ex) => {
+                  const signature = (ex.signature_manifest ?? null) as
+                    | { algorithm?: string; keyId?: string; signedAt?: string; statementId?: string }
+                    | null;
+                  const signatureLabel = signature
+                    ? messages.admin.exportSignatureLabel
+                        .replace('{alg}', signature.algorithm ?? 'C2PA')
+                        .replace('{key}', signature.keyId ?? '—')
+                    : messages.admin.exportSignatureMissing;
+                  return (
+                    <div key={ex.id} className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="font-semibold text-slate-100">
+                            {ex.format} · {ex.status} · {formatDateTime(ex.created_at)}
+                          </p>
+                          <p className="text-[11px] text-slate-400">{signatureLabel}</p>
+                          {signature?.signedAt ? (
+                            <p className="text-[11px] text-slate-500">
+                              {messages.admin.exportSignatureTimestamp.replace(
+                                '{timestamp}',
+                                formatDateTime(signature.signedAt),
+                              )}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          {ex.signedUrl ? (
+                            <a className="text-teal-200" href={ex.signedUrl} target="_blank" rel="noreferrer">
+                              {messages.admin.exportDownload}
+                            </a>
+                          ) : null}
+                          {ex.content_sha256 ? (
+                            <button
+                              type="button"
+                              className="text-[11px] uppercase tracking-wide text-slate-400 transition hover:text-teal-200"
+                              onClick={() => {
+                                if (ex.content_sha256 && navigator.clipboard && navigator.clipboard.writeText) {
+                                  void navigator.clipboard.writeText(ex.content_sha256);
+                                  toast.success(messages.admin.exportHashCopied);
+                                }
+                              }}
+                            >
+                              {messages.admin.exportCopyHash}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      {ex.content_sha256 ? (
+                        <code className="mt-2 block truncate rounded-xl bg-slate-950/60 px-3 py-2 text-[11px] text-teal-200">
+                          {messages.admin.exportShaLabel}: {ex.content_sha256}
+                        </code>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
               <p className="text-slate-400">{messages.admin.exportResidencyHint}</p>
             </div>
             <div className="mt-4 grid gap-2 md:grid-cols-3">
@@ -1320,6 +1652,118 @@ export function AdminView({ messages, locale }: AdminViewProps) {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
+            <CardTitle className="text-slate-100">{messages.admin.launchTitle}</CardTitle>
+            <p className="text-sm text-slate-400">{messages.admin.launchDescription}</p>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-slate-200">
+            <section className="space-y-3">
+              <h4 className="font-semibold text-slate-100">{messages.admin.launchCollateralHeading}</h4>
+              {collateralQuery.isLoading && !collateral ? (
+                <p className="text-slate-400">{messages.admin.loading}</p>
+              ) : !collateral ? (
+                <p className="text-slate-400">{messages.admin.launchCollateralEmpty}</p>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {collateral.pilotOnboarding.map((item) => (
+                    <div key={item.title} className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
+                      <p className="font-semibold text-slate-100">{item.title}</p>
+                      <p className="mt-1 text-xs text-slate-400">{item.summary}</p>
+                      <a className="mt-2 inline-flex text-xs text-teal-200" href={item.url} target="_blank" rel="noreferrer">
+                        {messages.admin.launchDownload}
+                      </a>
+                    </div>
+                  ))}
+                  {collateral.pricingPacks.map((pack) => (
+                    <div key={pack.name} className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
+                      <p className="font-semibold text-slate-100">{pack.name}</p>
+                      <p className="mt-1 text-xs text-slate-400">{pack.tiers.join(' · ')}</p>
+                      <a className="mt-2 inline-flex text-xs text-teal-200" href={pack.url} target="_blank" rel="noreferrer">
+                        {messages.admin.launchDownload}
+                      </a>
+                    </div>
+                  ))}
+                  {collateral.transparency.map((entry) => (
+                    <div key={entry.url} className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
+                      <p className="font-semibold text-slate-100">{entry.label}</p>
+                      <p className="mt-1 text-xs text-slate-400">{entry.jurisdiction}</p>
+                      <a className="mt-2 inline-flex text-xs text-teal-200" href={entry.url} target="_blank" rel="noreferrer">
+                        {messages.admin.launchDownload}
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <h4 className="font-semibold text-slate-100">{messages.admin.launchDigestFormTitle}</h4>
+              <form className="space-y-3" onSubmit={handleDigestSubmit}>
+                <div className="grid gap-2 md:grid-cols-3">
+                  <select value={digestJurisdiction} onChange={(event) => setDigestJurisdiction(event.target.value)} className={selectClassName}>
+                    {[...jurisdictionLabels.entries()].map(([code, label]) => (
+                      <option key={code} value={code}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <select value={digestChannel} onChange={(event) => setDigestChannel(event.target.value as 'email' | 'slack' | 'teams')} className={selectClassName}>
+                    <option value="email">{messages.admin.launchDigestChannelEmail}</option>
+                    <option value="slack">{messages.admin.launchDigestChannelSlack}</option>
+                    <option value="teams">{messages.admin.launchDigestChannelTeams}</option>
+                  </select>
+                  <select value={digestFrequency} onChange={(event) => setDigestFrequency(event.target.value as 'weekly' | 'monthly')} className={selectClassName}>
+                    <option value="weekly">{messages.admin.launchDigestFrequencyWeekly}</option>
+                    <option value="monthly">{messages.admin.launchDigestFrequencyMonthly}</option>
+                  </select>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <Input
+                    placeholder={messages.admin.launchDigestRecipientsPlaceholder}
+                    value={digestRecipients}
+                    onChange={(event) => setDigestRecipients(event.target.value)}
+                  />
+                  <Input
+                    placeholder={messages.admin.launchDigestTopicsPlaceholder}
+                    value={digestTopics}
+                    onChange={(event) => setDigestTopics(event.target.value)}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" size="sm" variant="outline" disabled={digestMutation.isPending}>
+                    {messages.admin.launchDigestSubmit}
+                  </Button>
+                </div>
+              </form>
+              <div className="space-y-2 text-xs">
+                {digests.length === 0 ? (
+                  <p className="text-slate-400">{messages.admin.launchDigestsEmpty}</p>
+                ) : (
+                  digests.map((digest) => (
+                    <div key={digest.id} className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
+                      <p className="font-semibold text-slate-100">
+                        {digest.jurisdiction} · {digest.frequency} · {formatDateTime(digest.createdAt)}
+                      </p>
+                      <p className="mt-1 text-slate-400">
+                        {messages.admin.launchDigestChannelLabel.replace('{channel}', messages.admin.launchDigestChannels[digest.channel])}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        {messages.admin.launchDigestRecipientsLabel.replace('{recipients}', digest.recipients.join(', '))}
+                      </p>
+                      {digest.topics && digest.topics.length > 0 ? (
+                        <p className="text-[11px] text-slate-400">
+                          {messages.admin.launchDigestTopicsLabel.replace('{topics}', digest.topics.join(', '))}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
           </CardContent>
         </Card>
 

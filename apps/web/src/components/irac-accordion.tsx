@@ -30,6 +30,8 @@ interface IRACAccordionProps {
   copyLabel: string;
   exportPdfLabel: string;
   exportDocxLabel: string;
+  anchorPrefix?: string;
+  enableAnchors?: boolean;
 }
 
 export function IRACAccordion({
@@ -41,6 +43,8 @@ export function IRACAccordion({
   copyLabel,
   exportPdfLabel,
   exportDocxLabel,
+  anchorPrefix = 'irac',
+  enableAnchors = false,
 }: IRACAccordionProps) {
   const [pendingExport, setPendingExport] = useState<'pdf' | 'docx' | null>(null);
 
@@ -89,33 +93,40 @@ export function IRACAccordion({
         </Button>
       </div>
       <div className="space-y-3">
-        {sections.map((section) => (
-          <details
-            key={section.key as string}
-            className="group rounded-2xl border border-slate-700/50 bg-slate-900/60 p-4 transition hover:border-slate-500/60"
-            open
-          >
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
-              <span className="text-sm font-semibold uppercase tracking-wide text-slate-200">{section.label}</span>
-              <span className="text-xs text-slate-400 transition group-open:rotate-180">▼</span>
-            </summary>
-            <div className="mt-3 space-y-3 text-sm text-slate-200/90">
-              {section.key === 'rules' && Array.isArray(section.content) ? (
-                <ol className="list-decimal space-y-2 pl-5">
-                  {section.content.map((rule, index) => (
-                    <li key={`${rule.citation}-${index}`} className="leading-relaxed">
-                      <p className="font-semibold text-slate-100">{rule.citation}</p>
-                      <p className="text-slate-300/90">{rule.source_url}</p>
-                      <p className="text-xs text-slate-400">{rule.effective_date}</p>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="leading-relaxed whitespace-pre-line">{String(section.content)}</p>
-              )}
-            </div>
-          </details>
-        ))}
+        {sections.map((section) => {
+          const sectionId = enableAnchors ? `${anchorPrefix}-${section.key as string}` : undefined;
+          return (
+            <details
+              key={section.key as string}
+              id={sectionId}
+              className="group scroll-mt-32 rounded-2xl border border-slate-700/50 bg-slate-900/60 p-4 transition hover:border-slate-500/60"
+              open
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
+                <span className="text-sm font-semibold uppercase tracking-wide text-slate-200">{section.label}</span>
+                <span className="text-xs text-slate-400 transition group-open:rotate-180">▼</span>
+              </summary>
+              <div className="mt-3 space-y-3 text-sm text-slate-200/90">
+                {section.key === 'rules' && Array.isArray(section.content) ? (
+                  <ol className="list-decimal space-y-2 pl-5">
+                    {section.content.map((rule, index) => {
+                      const ruleId = enableAnchors ? `${anchorPrefix}-rule-${index + 1}` : undefined;
+                      return (
+                        <li key={`${rule.citation}-${index}`} id={ruleId} className="leading-relaxed scroll-mt-28">
+                          <p className="font-semibold text-slate-100">{rule.citation}</p>
+                          <p className="text-slate-300/90">{rule.source_url}</p>
+                          <p className="text-xs text-slate-400">{rule.effective_date}</p>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : (
+                  <p className="leading-relaxed whitespace-pre-line">{String(section.content)}</p>
+                )}
+              </div>
+            </details>
+          );
+        })}
       </div>
     </div>
   );

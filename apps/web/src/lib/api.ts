@@ -1,4 +1,17 @@
-import { AgentPlanNotice, AgentPlanStep, IRACPayload } from '@avocat-ai/shared';
+import {
+  AgentPlanNotice,
+  AgentPlanStep,
+  IRACPayload,
+  type LaunchOfflineOutboxItem,
+  type LaunchReadinessSnapshot,
+  type WorkspaceDesk,
+  type WorkspaceDeskMode,
+  type WorkspaceDeskPlaybook,
+  type WorkspaceDeskPlaybookStep,
+  type WorkspaceDeskQuickAction,
+  type WorkspaceDeskPersona,
+  type WorkspaceDeskToolChip,
+} from '@avocat-ai/shared';
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3333';
 
@@ -42,6 +55,24 @@ export interface TrustPanelCaseQualitySummary {
   minScore: number | null;
   maxScore: number | null;
   forceHitl: boolean;
+  treatmentGraph: Array<{
+    caseUrl: string;
+    treatment: string;
+    decidedAt?: string | null;
+    weight?: number | null;
+  }>;
+  statuteAlignments: Array<{
+    caseUrl: string;
+    statuteUrl: string;
+    article: string | null;
+    alignmentScore: number | null;
+    rationale?: string | null;
+  }>;
+  politicalFlags: Array<{
+    caseUrl: string;
+    flag: string;
+    note?: string | null;
+  }>;
 }
 
 export interface TrustPanelRetrievalSummary {
@@ -98,6 +129,30 @@ export interface RetrievalMetricsResponse {
     translationWarnings: number;
     lastCitedAt: string | null;
   }>;
+  jurisdictions: Array<{
+    jurisdiction: string;
+    runCount: number;
+    allowlistedRatio: number | null;
+    translationWarnings: number;
+    snippetCount: number;
+    avgWeight: number | null;
+    hitlRate: number | null;
+    highRiskRate: number | null;
+  }>;
+  fairness: {
+    capturedAt: string | null;
+    overallHitlRate: number | null;
+    jurisdictions: Array<{
+      jurisdiction: string;
+      totalRuns: number;
+      hitlRate: number | null;
+      highRiskShare: number | null;
+      benchmarkRate: number | null;
+      synonyms?: { terms: number; expansions: number } | null;
+      flagged: boolean;
+    }>;
+    flagged: { jurisdictions: string[]; benchmarks: string[]; synonyms: string[] };
+  } | null;
 }
 
 export interface AgentRunResponse {
@@ -109,12 +164,33 @@ export interface AgentRunResponse {
   reused?: boolean;
   verification?: VerificationResult | null;
   trustPanel?: TrustPanelPayload | null;
+  compliance?: ComplianceAssessment | null;
   agent: {
     key: string;
     code: string;
     label: string;
     settings: Record<string, unknown>;
     tools: string[];
+  };
+}
+
+export interface ComplianceAssessment {
+  fria: {
+    required: boolean;
+    reasons: string[];
+  };
+  cepej: {
+    passed: boolean;
+    violations: string[];
+  };
+  statute: {
+    passed: boolean;
+    violations: string[];
+  };
+  disclosures: {
+    consentSatisfied: boolean;
+    councilSatisfied: boolean;
+    missing: string[];
   };
 }
 
@@ -141,7 +217,7 @@ export interface HitlMetricsResponse {
       capturedAt: string | null;
       jurisdictions: Array<Record<string, unknown>>;
       benchmarks: Array<Record<string, unknown>>;
-      flagged: { jurisdictions: string[]; benchmarks: string[] };
+      flagged: { jurisdictions: string[]; benchmarks: string[]; synonyms: string[] };
     } | null;
   };
 }
@@ -816,7 +892,20 @@ export async function fetchExports(orgId: string) {
     headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) throw new Error('Unable to fetch exports');
-  return (await response.json()) as { exports: Array<{ id: string; format: string; status: string; file_path?: string | null; signedUrl?: string | null; error?: string | null; created_at: string; completed_at?: string | null }> };
+  return (await response.json()) as {
+    exports: Array<{
+      id: string;
+      format: string;
+      status: string;
+      file_path?: string | null;
+      signedUrl?: string | null;
+      error?: string | null;
+      created_at: string;
+      completed_at?: string | null;
+      signature_manifest?: Record<string, unknown> | null;
+      content_sha256?: string | null;
+    }>;
+  };
 }
 
 export async function requestExport(orgId: string, format: 'csv' | 'json' = 'csv') {
@@ -845,6 +934,142 @@ export async function createDeletionRequest(orgId: string, target: 'document' | 
   });
   if (!response.ok) throw new Error('Unable to create deletion request');
   return (await response.json()) as { id: string; status: string };
+}
+
+export interface LaunchCollateral {
+  pilotOnboarding: Array<{ title: string; summary: string; url: string }>;
+  pricingPacks: Array<{ name: string; tiers: string[]; url: string }>;
+  transparency: Array<{ label: string; jurisdiction: string; url: string }>;
+}
+
+export async function fetchLaunchCollateral(): Promise<LaunchCollateral> {
+  const response = await fetch(`${API_BASE}/launch/collateral`);
+  if (!response.ok) throw new Error('Unable to fetch launch collateral');
+  return (await response.json()) as LaunchCollateral;
+}
+
+export interface RegulatorDigestEntry {
+  id: string;
+  jurisdiction: string;
+  channel: 'email' | 'slack' | 'teams';
+  frequency: 'weekly' | 'monthly';
+  recipients: string[];
+  topics?: string[];
+  createdAt: string;
+  sloSummary: Record<string, unknown>;
+}
+
+export async function fetchRegulatorDigests() {
+  const response = await fetch(`${API_BASE}/launch/digests`);
+  if (!response.ok) throw new Error('Unable to fetch regulator digests');
+  return (await response.json()) as { digests: RegulatorDigestEntry[] };
+}
+
+export async function fetchLaunchReadiness(orgId: string): Promise<LaunchReadinessSnapshot> {
+  const response = await fetch(`${API_BASE}/launch/readiness?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
+  });
+  if (!response.ok) throw new Error('Unable to fetch launch readiness');
+  return (await response.json()) as LaunchReadinessSnapshot;
+}
+
+export async function fetchOfflineOutbox(orgId: string): Promise<{ items: LaunchOfflineOutboxItem[] }> {
+  const response = await fetch(`${API_BASE}/launch/offline-outbox?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
+  });
+  if (!response.ok) throw new Error('Unable to fetch offline outbox');
+  return (await response.json()) as { items: LaunchOfflineOutboxItem[] };
+}
+
+export interface CreateOfflineOutboxInput {
+  orgId: string;
+  channel: LaunchOfflineOutboxItem['channel'];
+  label: string;
+  locale?: string | null;
+}
+
+export async function createOfflineOutboxItem(input: CreateOfflineOutboxInput) {
+  const response = await fetch(`${API_BASE}/launch/offline-outbox`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    body: JSON.stringify({
+      orgId: input.orgId,
+      channel: input.channel,
+      label: input.label,
+      locale: input.locale,
+    }),
+  });
+  if (!response.ok) throw new Error('Unable to create offline outbox item');
+  return (await response.json()) as { item: LaunchOfflineOutboxItem };
+}
+
+export async function updateOfflineOutboxItem(
+  itemId: string,
+  input: { orgId: string; status: LaunchOfflineOutboxItem['status']; lastAttemptAt?: string },
+) {
+  const response = await fetch(`${API_BASE}/launch/offline-outbox/${encodeURIComponent(itemId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    body: JSON.stringify({
+      orgId: input.orgId,
+      status: input.status,
+      lastAttemptAt: input.lastAttemptAt,
+    }),
+  });
+  if (!response.ok) throw new Error('Unable to update offline outbox item');
+  return (await response.json()) as { item: LaunchOfflineOutboxItem };
+}
+
+export interface SloSnapshotInput {
+  captured_at: string;
+  api_uptime_percent?: number;
+  hitl_response_p95_seconds?: number;
+  retrieval_latency_p95_seconds?: number;
+  citation_precision_p95?: number | null;
+  notes?: string | null;
+}
+
+export interface CreateRegulatorDigestInput {
+  jurisdiction: string;
+  channel: 'email' | 'slack' | 'teams';
+  frequency: 'weekly' | 'monthly';
+  recipients: string[];
+  topics?: string[];
+  sloSnapshots?: SloSnapshotInput[];
+}
+
+export async function createRegulatorDigest(input: CreateRegulatorDigestInput) {
+  const response = await fetch(`${API_BASE}/launch/digests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error('Unable to create regulator digest');
+  }
+  return (await response.json()) as { digest: RegulatorDigestEntry };
+}
+
+export interface WebVitalMetric {
+  id: string;
+  name: string;
+  value: number;
+  delta: number;
+  label: string;
+  rating: 'good' | 'needs-improvement' | 'poor';
+  page: string;
+  locale?: string | null;
+  navigationType?: string | null;
+  userAgent?: string | null;
+  createdAt: string;
+}
+
+export async function fetchWebVitals(orgId: string, limit = 20) {
+  const response = await fetch(`${API_BASE}/metrics/web-vitals?limit=${encodeURIComponent(String(limit))}`, {
+    headers: { 'x-user-id': DEMO_USER_ID, 'x-org-id': orgId },
+  });
+  if (!response.ok) throw new Error('Unable to fetch web vitals');
+  return (await response.json()) as { metrics: WebVitalMetric[] };
 }
 
 export async function fetchGovernancePublications(orgId?: string): Promise<GovernancePublication[]> {
@@ -1488,6 +1713,7 @@ export interface WorkspaceOverviewResponse {
     items: Array<{ id: string; runId: string; reason: string; status: string; createdAt: string | null }>;
     pendingCount: number;
   };
+  desk?: WorkspaceDesk | null;
 }
 
 export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOverviewResponse> {

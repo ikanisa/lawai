@@ -105,6 +105,7 @@ function buildFairnessReport(
   }>,
   windowStart: string,
   windowEnd: string,
+  synonyms: Array<{ jurisdiction?: string | null; term?: string | null; expansions?: unknown; created_at?: string | null }>,
 ): Record<string, unknown> | null {
   if (runs.length === 0 && evaluations.length === 0) {
     return null;
@@ -135,15 +136,32 @@ function buildFairnessReport(
     jurisdictionMap.set(code, bucket);
   }
 
+  const synonymStats = new Map<string, { terms: number; expansions: number }>();
+  for (const record of synonyms) {
+    const jurisdiction =
+      typeof record.jurisdiction === 'string' && record.jurisdiction.trim().length > 0
+        ? record.jurisdiction.toUpperCase()
+        : 'GLOBAL';
+    const stats = synonymStats.get(jurisdiction) ?? { terms: 0, expansions: 0 };
+    stats.terms += 1;
+    const expansions = Array.isArray(record.expansions)
+      ? (record.expansions as unknown[]).filter((value) => typeof value === 'string').length
+      : 0;
+    stats.expansions += expansions;
+    synonymStats.set(jurisdiction, stats);
+  }
+
   const jurisdictions = Array.from(jurisdictionMap.entries()).map(([code, value]) => {
     const hitlRate = value.total > 0 ? value.hitl / value.total : null;
     const highRiskShare = value.total > 0 ? value.highRisk / value.total : null;
+    const synonymInfo = synonymStats.get(code) ?? { terms: 0, expansions: 0 };
     return {
       code,
       totalRuns: value.total,
       hitlEscalations: value.hitl,
       hitlRate,
       highRiskShare,
+      synonyms: synonymInfo,
     };
   });
 
@@ -165,6 +183,10 @@ function buildFairnessReport(
         highRiskDeviation >= FAIRNESS_HIGH_RISK_THRESHOLD
       );
     })
+    .map((entry) => entry.code);
+
+  const flaggedSynonyms = jurisdictions
+    .filter((entry) => entry.totalRuns > 0 && (entry.synonyms?.terms ?? 0) === 0)
     .map((entry) => entry.code);
 
   const benchmarkMap = new Map<string, { total: number; pass: number }>();
@@ -219,6 +241,7 @@ function buildFairnessReport(
     flagged: {
       jurisdictions: flaggedJurisdictions,
       benchmarks: flaggedBenchmarks,
+      synonyms: flaggedSynonyms,
     },
   };
 }
@@ -726,7 +749,22 @@ async function generateNightlyReports(
         };
       }
 
-      const fairnessPayload = buildFairnessReport(runs, evaluationRecords, sinceIso, nowIso);
+      const synonymsResult = await client
+        .from('agent_synonyms')
+        .select('jurisdiction, term, expansions, created_at');
+
+      if (synonymsResult.error) {
+        console.warn('Impossible de récupérer les synonymes:', synonymsResult.error.message);
+      }
+
+      const synonymsEntries = (synonymsResult.data ?? []) as Array<{
+        jurisdiction?: string | null;
+        term?: string | null;
+        expansions?: unknown;
+        created_at?: string | null;
+      }>;
+
+      const fairnessPayload = buildFairnessReport(runs, evaluationRecords, sinceIso, nowIso, synonymsEntries);
 
       if (fairnessPayload) {
         entry.fairness = {

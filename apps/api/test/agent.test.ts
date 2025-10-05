@@ -9,6 +9,7 @@ const validPayload = {
       source_url: 'https://legifrance.gouv.fr/codes/article_lc/LEGIARTI000006417902/',
       binding: true,
       effective_date: '2016-10-01',
+      kind: 'statute' as const,
     },
   ],
   application: 'Analyse structurée',
@@ -26,6 +27,19 @@ const validPayload = {
     level: 'LOW',
     why: 'Analyse standard',
     hitl_required: false,
+  },
+  provenance: {
+    eli: [],
+    ecli: [],
+    akoma_articles: 0,
+    feeds: [],
+    statute_alignments: [],
+    disclosures: {
+      consent: { required: null, acknowledged: null },
+      council_of_europe: { required: null, acknowledged: null },
+      satisfied: false,
+    },
+    quarantine: { flagged: false, reason: null },
   },
 };
 
@@ -52,6 +66,7 @@ const learningInsertMock = vi.fn(async () => ({ error: null }));
 const auditInsertMock = vi.fn(async () => ({ error: null }));
 const caseScoresInsertMock = vi.fn(async () => ({ error: null }));
 const supabaseRpcMock = vi.fn(async () => ({ data: [], error: null }));
+const goNoGoUpsertMock = vi.fn(async () => ({ error: null }));
 
 function createAsyncQuery(initialData: unknown[] = [], initialError: unknown = null) {
   const builder: any = {
@@ -224,6 +239,7 @@ beforeEach(() => {
   learningInsertMock.mockClear();
   auditInsertMock.mockClear();
   caseScoresInsertMock.mockClear();
+  goNoGoUpsertMock.mockClear();
   supabaseRpcMock.mockReset();
   supabaseRpcMock.mockResolvedValue({ data: [], error: null });
   templateQuery.select.mockClear();
@@ -383,6 +399,9 @@ beforeEach(() => {
         if (table === 'pleading_templates') {
           return templateQuery;
         }
+        if (table === 'go_no_go_evidence') {
+          return { upsert: goNoGoUpsertMock };
+        }
         throw new Error(`unexpected table ${table}`);
       },
     })),
@@ -433,6 +452,11 @@ describe('runLegalAgent', () => {
     expect(result.trustPanel?.provenance.akomaArticles).toBeGreaterThanOrEqual(1);
     expect(result.agent.code).toBe('conseil_recherche');
     expect(result.agent.tools.length).toBeGreaterThan(0);
+    expect(goNoGoUpsertMock).toHaveBeenCalled();
+    const cepejCall = goNoGoUpsertMock.mock.calls.find(
+      ([payload]) => payload?.criterion === 'CEPEJ 5 principles automated checks',
+    );
+    expect(cepejCall?.[0]).toMatchObject({ status: 'satisfied', section: 'A' });
   }, 15000);
 
   it('forces a trust-panel HITL when case quality is blocked', async () => {

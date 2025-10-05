@@ -15,6 +15,7 @@ import {
   Lock,
   Wand2,
   Sparkle,
+  Shield,
 } from 'lucide-react';
 import type { Route } from 'next';
 import type { Locale, Messages } from '../lib/i18n';
@@ -135,6 +136,15 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
         keywords: ['corpus', 'sources'],
         icon: Database,
         perform: () => router.push(localizedHref('/corpus')),
+      },
+      {
+        id: 'nav-trust',
+        label: messages.commands.trust,
+        description: messages.commands.trustDescription,
+        group: 'navigation',
+        keywords: ['trust', 'fairness', 'telemetry'],
+        icon: Shield,
+        perform: () => router.push(localizedHref('/trust')),
       },
       {
         id: 'action-plan',
