@@ -37,6 +37,10 @@ interface ComplianceAssessment {
     consentSatisfied: boolean;
     councilSatisfied: boolean;
     missing: string[];
+    requiredConsentVersion: string | null;
+    acknowledgedConsentVersion: string | null;
+    requiredCoeVersion: string | null;
+    acknowledgedCoeVersion: string | null;
   };
 }
 
@@ -202,6 +206,10 @@ export function evaluateCompliance(input: ComplianceInput): ComplianceAssessment
       consentSatisfied,
       councilSatisfied,
       missing: disclosuresMissing,
+      requiredConsentVersion: requiredConsent,
+      acknowledgedConsentVersion: acknowledgedConsent,
+      requiredCoeVersion: requiredCoe,
+      acknowledgedCoeVersion: acknowledgedCoe,
     },
   };
 }

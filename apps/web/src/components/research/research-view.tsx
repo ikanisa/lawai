@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { JurisdictionChip } from '../jurisdiction-chip';
 import type { JurisdictionChipProps } from '../jurisdiction-chip';
 import { RiskBanner } from '../risk-banner';
+import { ComplianceBanner } from '../compliance-banner';
 import { LanguageBanner } from '../language-banner';
 import { BilingualToggle } from '../bilingual-toggle';
 import { IRACAccordion } from '../irac-accordion';
@@ -340,6 +341,36 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const trustRisk = trustPanel?.risk ?? null;
   const verification = latestRun?.verification ?? trustRisk?.verification ?? null;
   const trustCaseQuality = trustPanel?.caseQuality ?? null;
+  const trustCompliance = trustPanel?.compliance ?? null;
+  const complianceMessages = messages.research.compliance;
+  const complianceExportCopy = useMemo(
+    () => ({
+      heading: trustMessages.complianceHeading,
+      fria: trustMessages.complianceFria,
+      friaFallback: trustMessages.complianceFriaFallback,
+      cepej: trustMessages.complianceCepej,
+      cepejFallback: trustMessages.complianceCepejFallback,
+      statute: trustMessages.complianceStatute,
+      statuteFallback: trustMessages.complianceStatuteFallback,
+      disclosures: trustMessages.complianceDisclosures,
+      disclosuresFallback: trustMessages.complianceDisclosuresFallback,
+      resolved: trustMessages.complianceResolved,
+      consentAcknowledged: trustMessages.complianceConsentAcknowledged,
+      consentPending: trustMessages.complianceConsentPending,
+      coeAcknowledged: trustMessages.complianceCoeAcknowledged,
+      coePending: trustMessages.complianceCoePending,
+      unavailable: trustMessages.complianceUnavailable,
+    }),
+    [trustMessages],
+  );
+  const complianceExportOptions = useMemo(
+    () => ({
+      summary: trustCompliance,
+      messages: complianceMessages,
+      copy: complianceExportCopy,
+    }),
+    [trustCompliance, complianceMessages, complianceExportCopy],
+  );
   const treatmentGraph = trustCaseQuality?.treatmentGraph ?? [];
   const statuteAlignments = trustCaseQuality?.statuteAlignments ?? [];
   const politicalFlags = trustCaseQuality?.politicalFlags ?? [];
@@ -357,6 +388,85 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const allowlistViolations = useMemo(
     () => verification?.allowlistViolations ?? [],
     [verification?.allowlistViolations],
+  );
+
+  const trustComplianceIssues = useMemo(() => {
+    if (!trustCompliance) {
+      return [] as string[];
+    }
+    const issues: string[] = [];
+    if (trustCompliance.fria.required) {
+      const reason = trustCompliance.fria.reasons[0] ?? trustMessages.complianceFriaFallback;
+      issues.push(trustMessages.complianceFria.replace('{reason}', reason));
+    }
+    if (!trustCompliance.cepej.passed) {
+      const violationTexts = trustCompliance.cepej.violations.length > 0
+        ? trustCompliance.cepej.violations
+            .map(
+              (code) => complianceMessages?.cepejViolations?.[code as keyof typeof complianceMessages.cepejViolations] ?? code,
+            )
+            .join(', ')
+        : trustMessages.complianceCepejFallback;
+      issues.push(trustMessages.complianceCepej.replace('{detail}', violationTexts));
+    }
+    if (!trustCompliance.statute.passed) {
+      const statuteTexts = trustCompliance.statute.violations.length > 0
+        ? trustCompliance.statute.violations
+            .map(
+              (code) => complianceMessages?.statuteViolations?.[code as keyof typeof complianceMessages.statuteViolations] ?? code,
+            )
+            .join(', ')
+        : trustMessages.complianceStatuteFallback;
+      issues.push(trustMessages.complianceStatute.replace('{detail}', statuteTexts));
+    }
+    if (
+      trustCompliance.disclosures.missing.length > 0 ||
+      !trustCompliance.disclosures.consentSatisfied ||
+      !trustCompliance.disclosures.councilSatisfied
+    ) {
+      const disclosureTexts = trustCompliance.disclosures.missing.length > 0
+        ? trustCompliance.disclosures.missing
+            .map(
+              (code) =>
+                complianceMessages?.disclosuresMissing?.[code as keyof typeof complianceMessages.disclosuresMissing] ?? code,
+            )
+            .join(', ')
+        : null;
+      if (disclosureTexts) {
+        issues.push(trustMessages.complianceDisclosures.replace('{detail}', disclosureTexts));
+      } else {
+        issues.push(trustMessages.complianceDisclosuresFallback);
+      }
+    }
+    return issues;
+  }, [trustCompliance, complianceMessages, trustMessages]);
+
+  const consentAcknowledgementLine = useMemo(() => {
+    const version = trustCompliance?.disclosures.requiredConsentVersion ?? null;
+    if (!version) {
+      return null;
+    }
+    return trustCompliance.disclosures.consentSatisfied
+      ? trustMessages.complianceConsentAcknowledged.replace('{version}', version)
+      : trustMessages.complianceConsentPending.replace('{version}', version);
+  }, [trustCompliance, trustMessages]);
+
+  const councilAcknowledgementLine = useMemo(() => {
+    const version = trustCompliance?.disclosures.requiredCoeVersion ?? null;
+    if (!version) {
+      return null;
+    }
+    return trustCompliance.disclosures.councilSatisfied
+      ? trustMessages.complianceCoeAcknowledged.replace('{version}', version)
+      : trustMessages.complianceCoePending.replace('{version}', version);
+  }, [trustCompliance, trustMessages]);
+
+  const complianceAcknowledgementLines = useMemo(
+    () =>
+      [consentAcknowledgementLine, councilAcknowledgementLine].filter(
+        (line): line is string => typeof line === 'string' && line.length > 0,
+      ),
+    [consentAcknowledgementLine, councilAcknowledgementLine],
   );
   const verificationNotes = verification?.notes ?? [];
   const verificationStatus = verification?.status ?? null;
@@ -618,7 +728,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     const toastId = 'export-pdf-brief';
     toast.loading(exportPdfMessage, { id: toastId });
     try {
-      await exportIracToPdf(payload, locale);
+      await exportIracToPdf(payload, locale, { compliance: complianceExportOptions });
       toast.success(exportPdfSuccessMessage, { id: toastId });
       if (telemetryEnabled) {
         void sendTelemetryEvent('user_control_export', { format: 'pdf' });
@@ -627,7 +737,15 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
       console.error('export_pdf_failed', error);
       toast.error(exportErrorMessage, { id: toastId });
     }
-  }, [payload, exportPdfMessage, exportPdfSuccessMessage, exportErrorMessage, locale, telemetryEnabled]);
+  }, [
+    payload,
+    exportPdfMessage,
+    exportPdfSuccessMessage,
+    exportErrorMessage,
+    locale,
+    telemetryEnabled,
+    complianceExportOptions,
+  ]);
 
   const processOutboxItem = useCallback(
     async (item: OutboxItem, source: 'manual' | 'auto') => {
@@ -848,10 +966,16 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                 <LanguageBanner key={message} message={message} />
               ))}
               {messages.research.compliance ? (
-                <ComplianceAlerts
-                  compliance={latestRun?.compliance ?? null}
-                  messages={messages.research.compliance}
-                />
+                <>
+                  <ComplianceBanner
+                    compliance={trustCompliance}
+                    messages={messages.research.compliance}
+                  />
+                  <ComplianceAlerts
+                    compliance={latestRun?.compliance ?? null}
+                    messages={messages.research.compliance}
+                  />
+                </>
               ) : null}
               {isCanadian && (
                 <BilingualToggle messages={messages.research.bilingual} onSelect={handleBilingualSelect} />
@@ -867,7 +991,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                   const toastId = 'export-pdf';
                   toast.loading(exportPdfMessage, { id: toastId });
                   try {
-                    await exportIracToPdf(payload, locale);
+                    await exportIracToPdf(payload, locale, { compliance: complianceExportOptions });
                     toast.success(exportPdfSuccessMessage, { id: toastId });
                   } catch (error) {
                     console.error('export_pdf_failed', error);
@@ -878,7 +1002,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                   const toastId = 'export-docx';
                   toast.loading(exportDocxMessage, { id: toastId });
                   try {
-                    await exportIracToDocx(payload, locale);
+                    await exportIracToDocx(payload, locale, { compliance: complianceExportOptions });
                     toast.success(exportDocxSuccessMessage, { id: toastId });
                   } catch (error) {
                     console.error('export_docx_failed', error);
@@ -941,6 +1065,32 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                           <li key={`${warning}-${index}`}>{warning}</li>
                         ))}
                       </ul>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-slate-100">{trustMessages.complianceHeading}</h4>
+                    {trustCompliance ? (
+                      <>
+                        {trustComplianceIssues.length > 0 ? (
+                          <ul className="mt-2 space-y-1 list-inside list-disc text-amber-200">
+                            {trustComplianceIssues.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-2 text-slate-300">{trustMessages.complianceResolved}</p>
+                        )}
+                        {complianceAcknowledgementLines.length > 0 ? (
+                          <div className="mt-2 space-y-1 text-xs text-slate-400">
+                            {complianceAcknowledgementLines.map((line) => (
+                              <p key={line}>{line}</p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="mt-2 text-slate-400">{trustMessages.complianceUnavailable}</p>
                     )}
                   </div>
 

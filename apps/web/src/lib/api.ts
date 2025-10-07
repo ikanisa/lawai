@@ -98,12 +98,15 @@ export interface TrustPanelRiskSummary {
   verification: VerificationResult;
 }
 
+export type TrustPanelComplianceSummary = ComplianceAssessment;
+
 export interface TrustPanelPayload {
   citationSummary: TrustPanelCitationSummary;
   retrievalSummary: TrustPanelRetrievalSummary;
   caseQuality: TrustPanelCaseQualitySummary;
   risk: TrustPanelRiskSummary;
   provenance: TrustPanelProvenanceSummary;
+  compliance: TrustPanelComplianceSummary | null;
 }
 
 export interface RetrievalMetricsResponse {
@@ -191,6 +194,10 @@ export interface ComplianceAssessment {
     consentSatisfied: boolean;
     councilSatisfied: boolean;
     missing: string[];
+    requiredConsentVersion: string | null;
+    acknowledgedConsentVersion: string | null;
+    requiredCoeVersion: string | null;
+    acknowledgedCoeVersion: string | null;
   };
 }
 

@@ -10,7 +10,15 @@ describe('ComplianceAlerts', () => {
       fria: { required: true, reasons: ['High-risk workflow detected'] },
       cepej: { passed: false, violations: ['transparency'] },
       statute: { passed: false, violations: ['first_rule_not_statute'] },
-      disclosures: { consentSatisfied: false, councilSatisfied: true, missing: ['consent'] },
+      disclosures: {
+        consentSatisfied: false,
+        councilSatisfied: true,
+        missing: ['consent'],
+        requiredConsentVersion: '2024-01',
+        acknowledgedConsentVersion: null,
+        requiredCoeVersion: '2024-01',
+        acknowledgedCoeVersion: '2024-01',
+      },
     };
 
     render(
@@ -37,7 +45,15 @@ describe('ComplianceAlerts', () => {
       fria: { required: false, reasons: [] },
       cepej: { passed: true, violations: [] },
       statute: { passed: true, violations: [] },
-      disclosures: { consentSatisfied: true, councilSatisfied: true, missing: [] },
+      disclosures: {
+        consentSatisfied: true,
+        councilSatisfied: true,
+        missing: [],
+        requiredConsentVersion: null,
+        acknowledgedConsentVersion: null,
+        requiredCoeVersion: null,
+        acknowledgedCoeVersion: null,
+      },
     };
 
     render(

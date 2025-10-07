@@ -233,12 +233,17 @@ interface ComplianceContext {
   acknowledgedCoeVersion?: string | null;
 }
 
+type TrustPanelComplianceSummary = ComplianceAssessment & {
+  disclosures: ComplianceAssessment['disclosures'];
+};
+
 export interface TrustPanelPayload {
   citationSummary: TrustPanelCitationSummary;
   retrievalSummary: TrustPanelRetrievalSummary;
   caseQuality: TrustPanelCaseQualitySummary;
   risk: TrustPanelRiskSummary;
   provenance: TrustPanelProvenanceSummary;
+  compliance: TrustPanelComplianceSummary | null;
 }
 
 export interface HybridSnippet {
@@ -264,6 +269,71 @@ const supabase = createServiceClient({
   SUPABASE_URL: env.SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
 });
+
+const toStringArray = (input: unknown): string[] =>
+  Array.isArray(input) ? input.filter((value): value is string => typeof value === 'string') : [];
+
+async function fetchComplianceAssessmentForRun(
+  runId: string,
+  context: 'existing_run' | 'trust_panel',
+): Promise<ComplianceAssessment | null> {
+  const complianceQuery = await supabase
+    .from('compliance_assessments')
+    .select(
+      'fria_required, fria_reasons, cepej_passed, cepej_violations, statute_passed, statute_violations, disclosures_missing',
+    )
+    .eq('run_id', runId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (complianceQuery.error) {
+    console.warn(`${context}_compliance_lookup_failed`, complianceQuery.error.message);
+    return null;
+  }
+
+  const row = complianceQuery.data as
+    | {
+        fria_required?: boolean | null;
+        fria_reasons?: unknown;
+        cepej_passed?: boolean | null;
+        cepej_violations?: unknown;
+        statute_passed?: boolean | null;
+        statute_violations?: unknown;
+        disclosures_missing?: unknown;
+      }
+    | null;
+
+  if (!row) {
+    return null;
+  }
+
+  const missing = toStringArray(row.disclosures_missing);
+
+  return {
+    fria: {
+      required: Boolean(row.fria_required),
+      reasons: toStringArray(row.fria_reasons),
+    },
+    cepej: {
+      passed: row.cepej_passed ?? true,
+      violations: toStringArray(row.cepej_violations),
+    },
+    statute: {
+      passed: row.statute_passed ?? true,
+      violations: toStringArray(row.statute_violations),
+    },
+    disclosures: {
+      consentSatisfied: !missing.includes('consent'),
+      councilSatisfied: !missing.includes('council_of_europe'),
+      missing,
+      requiredConsentVersion: null,
+      acknowledgedConsentVersion: null,
+      requiredCoeVersion: null,
+      acknowledgedCoeVersion: null,
+    },
+  } satisfies ComplianceAssessment;
+}
 
 const DOMAIN_ALLOWLIST = loadAllowlistOverride() ?? [...OFFICIAL_DOMAIN_ALLOWLIST];
 
@@ -934,59 +1004,7 @@ async function findExistingRun(
     allowlistViolations: [],
   };
 
-  const complianceQuery = await supabase
-    .from('compliance_assessments')
-    .select(
-      'fria_required, fria_reasons, cepej_passed, cepej_violations, statute_passed, statute_violations, disclosures_missing',
-    )
-    .eq('run_id', row.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (complianceQuery.error) {
-    console.warn('existing_run_compliance_lookup_failed', complianceQuery.error.message);
-  }
-
-  const toStringArray = (input: unknown): string[] =>
-    Array.isArray(input) ? input.filter((value): value is string => typeof value === 'string') : [];
-
-  const complianceRow = complianceQuery.data as
-    | {
-        fria_required?: boolean | null;
-        fria_reasons?: unknown;
-        cepej_passed?: boolean | null;
-        cepej_violations?: unknown;
-        statute_passed?: boolean | null;
-        statute_violations?: unknown;
-        disclosures_missing?: unknown;
-      }
-    | null;
-
-  const compliance: ComplianceAssessment | null = complianceRow
-    ? {
-        fria: {
-          required: Boolean(complianceRow.fria_required),
-          reasons: toStringArray(complianceRow.fria_reasons),
-        },
-        cepej: {
-          passed: complianceRow.cepej_passed ?? true,
-          violations: toStringArray(complianceRow.cepej_violations),
-        },
-        statute: {
-          passed: complianceRow.statute_passed ?? true,
-          violations: toStringArray(complianceRow.statute_violations),
-        },
-        disclosures: (() => {
-          const missing = toStringArray(complianceRow.disclosures_missing);
-          return {
-            consentSatisfied: !missing.includes('consent'),
-            councilSatisfied: !missing.includes('council_of_europe'),
-            missing,
-          } satisfies ComplianceAssessment['disclosures'];
-        })(),
-      }
-    : null;
+  const compliance = await fetchComplianceAssessmentForRun(row.id as string, 'existing_run');
 
   return {
     id: row.id,
@@ -3690,10 +3708,84 @@ function buildTrustPanel(
     riskFlags?: CaseRiskFlag[];
   },
   verification: VerificationResult,
+  compliance?: ComplianceAssessment | null,
 ): TrustPanelPayload {
   if (Array.isArray(caseQuality.statuteAlignments) && caseQuality.statuteAlignments.length > 0) {
     augmentProvenanceWithCaseAlignments(payload, caseQuality.statuteAlignments);
   }
+
+  const toNullableString = (value: unknown): string | null =>
+    typeof value === 'string' && value.length > 0 ? value : null;
+
+  const provenanceDisclosures = payload.provenance?.disclosures ?? {
+    consent: { required: null, acknowledged: null },
+    council_of_europe: { required: null, acknowledged: null },
+  };
+
+  const requiredConsent =
+    toNullableString(provenanceDisclosures?.consent?.required) ??
+    (compliance?.disclosures.requiredConsentVersion ?? null);
+  const acknowledgedConsent =
+    toNullableString(provenanceDisclosures?.consent?.acknowledged) ??
+    (compliance?.disclosures.acknowledgedConsentVersion ?? null);
+  const requiredCoe =
+    toNullableString(provenanceDisclosures?.council_of_europe?.required) ??
+    (compliance?.disclosures.requiredCoeVersion ?? null);
+  const acknowledgedCoe =
+    toNullableString(provenanceDisclosures?.council_of_europe?.acknowledged) ??
+    (compliance?.disclosures.acknowledgedCoeVersion ?? null);
+
+  const consentSatisfied = !requiredConsent || acknowledgedConsent === requiredConsent;
+  const councilSatisfied = !requiredCoe || acknowledgedCoe === requiredCoe;
+
+  const baseCompliance: ComplianceAssessment = compliance
+    ? {
+        ...compliance,
+        disclosures: {
+          ...compliance.disclosures,
+          requiredConsentVersion: compliance.disclosures.requiredConsentVersion ?? requiredConsent,
+          acknowledgedConsentVersion:
+            compliance.disclosures.acknowledgedConsentVersion ?? acknowledgedConsent,
+          requiredCoeVersion: compliance.disclosures.requiredCoeVersion ?? requiredCoe,
+          acknowledgedCoeVersion: compliance.disclosures.acknowledgedCoeVersion ?? acknowledgedCoe,
+        },
+      }
+    : {
+        fria: { required: false, reasons: [] },
+        cepej: { passed: true, violations: [] },
+        statute: { passed: true, violations: [] },
+        disclosures: {
+          consentSatisfied,
+          councilSatisfied,
+          missing: [],
+          requiredConsentVersion: requiredConsent,
+          acknowledgedConsentVersion: acknowledgedConsent,
+          requiredCoeVersion: requiredCoe,
+          acknowledgedCoeVersion: acknowledgedCoe,
+        },
+      } satisfies ComplianceAssessment;
+
+  const disclosureMissing = new Set(baseCompliance.disclosures.missing);
+  if (!consentSatisfied) {
+    disclosureMissing.add('consent');
+  }
+  if (!councilSatisfied) {
+    disclosureMissing.add('council_of_europe');
+  }
+
+  const complianceSummary: TrustPanelComplianceSummary = {
+    ...baseCompliance,
+    disclosures: {
+      ...baseCompliance.disclosures,
+      consentSatisfied,
+      councilSatisfied,
+      missing: Array.from(disclosureMissing),
+      requiredConsentVersion: requiredConsent,
+      acknowledgedConsentVersion: acknowledgedConsent,
+      requiredCoeVersion: requiredCoe,
+      acknowledgedCoeVersion: acknowledgedCoe,
+    },
+  };
 
   const citations = Array.isArray(payload.citations) ? payload.citations : [];
   let allowlistedCount = 0;
@@ -3922,6 +4014,7 @@ function buildTrustPanel(
       bindingLanguages,
       akomaArticles,
     },
+    compliance: complianceSummary,
   };
 }
 
@@ -4069,12 +4162,14 @@ async function fetchTrustPanelForRun(
 
     const caseSummaries = await loadCaseQualitySummaries(orgId, payload.citations);
     const forceHitl = caseSummaries.some((item) => item.hardBlock || item.score < 55);
+    const compliance = await fetchComplianceAssessmentForRun(runId, 'trust_panel');
 
     return buildTrustPanel(
       payload,
       retrievalSnippets,
       { summaries: caseSummaries, forceHitl, statuteAlignments: [], treatmentGraph: [], riskFlags: [] },
       verification,
+      compliance,
     );
   } catch (error) {
     console.warn('trust_panel_fetch_failed', error);
@@ -4157,6 +4252,7 @@ async function persistRun(
             retrievalSnippets,
             { summaries: [], forceHitl: payload.risk.hitl_required },
             verification,
+            complianceAssessment ?? null,
           );
         return {
           runId: existing.data.id as string,
@@ -4355,7 +4451,13 @@ async function persistRun(
     console.warn('agent_run_irac_update_failed', iracUpdateError.message);
   }
 
-  const trustPanel = buildTrustPanel(payload, retrievalSnippets, caseQuality, verification);
+  const trustPanel = buildTrustPanel(
+    payload,
+    retrievalSnippets,
+    caseQuality,
+    verification,
+    complianceAssessment ?? null,
+  );
 
   return { runId: runData.id as string, trust: trustPanel, compliance: complianceAssessment ?? null };
 }
@@ -5521,6 +5623,7 @@ export async function runLegalAgent(
         planner.hybridSnippets,
         { summaries: [], forceHitl: payload.risk.hitl_required },
         existing.verification,
+        existing.compliance ?? null,
       );
 
     return {
@@ -5795,6 +5898,7 @@ export async function runLegalAgent(
           riskFlags: [],
         },
         verification,
+        complianceOutcome.assessment,
       );
     }
 

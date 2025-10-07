@@ -127,6 +127,14 @@ const ipRateLimiter = new InMemoryRateLimiter({ limit: 10, windowMs: 60_000 });
 
 const ALLOWLIST_HOSTS = new Set<string>(OFFICIAL_DOMAIN_ALLOWLIST.map((host) => host.toLowerCase()));
 
+const COMPLIANCE_ACK_TYPES = {
+  consent: 'ai_assist_terms',
+  councilOfEurope: 'council_of_europe_disclosure',
+} as const;
+
+const toStringArray = (input: unknown): string[] =>
+  Array.isArray(input) ? input.filter((value): value is string => typeof value === 'string') : [];
+
 function isAllowlistedUrl(url: string | null | undefined): boolean {
   if (!url) {
     return false;
@@ -138,6 +146,99 @@ function isAllowlistedUrl(url: string | null | undefined): boolean {
   } catch (_error) {
     return false;
   }
+}
+
+type AcknowledgementEvent = {
+  type: string;
+  version: string;
+  created_at: string | null;
+};
+
+async function fetchAcknowledgementEvents(orgId: string, userId: string): Promise<AcknowledgementEvent[]> {
+  const { data, error } = await supabase
+    .from('consent_events')
+    .select('type, version, created_at, org_id')
+    .eq('user_id', userId)
+    .or(`org_id.eq.${orgId},org_id.is.null`)
+    .in('type', [COMPLIANCE_ACK_TYPES.consent, COMPLIANCE_ACK_TYPES.councilOfEurope])
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = (data ?? []) as Array<{ type?: unknown; version?: unknown; created_at?: string | null }>;
+
+  const events: AcknowledgementEvent[] = [];
+  for (const row of rows) {
+    if (typeof row.type !== 'string' || typeof row.version !== 'string') {
+      continue;
+    }
+    events.push({ type: row.type, version: row.version, created_at: row.created_at ?? null });
+  }
+  return events;
+}
+
+function summariseAcknowledgements(
+  access: OrgAccessContext,
+  events: AcknowledgementEvent[],
+): {
+  consent: { requiredVersion: string | null; acknowledgedVersion: string | null; acknowledgedAt: string | null; satisfied: boolean };
+  councilOfEurope: { requiredVersion: string | null; acknowledgedVersion: string | null; acknowledgedAt: string | null; satisfied: boolean };
+} {
+  const latestByType = new Map<string, { version: string; created_at: string | null }>();
+  for (const event of events) {
+    if (!latestByType.has(event.type)) {
+      latestByType.set(event.type, { version: event.version, created_at: event.created_at });
+    }
+  }
+
+  const consentRequired = access.policies.consentVersion ?? null;
+  const coeRequired = access.policies.councilOfEuropeDisclosureVersion ?? null;
+  const consentAck = latestByType.get(COMPLIANCE_ACK_TYPES.consent);
+  const coeAck = latestByType.get(COMPLIANCE_ACK_TYPES.councilOfEurope);
+
+  const consentSatisfied = !consentRequired || consentAck?.version === consentRequired;
+  const councilSatisfied = !coeRequired || coeAck?.version === coeRequired;
+
+  return {
+    consent: {
+      requiredVersion: consentRequired,
+      acknowledgedVersion: consentAck?.version ?? access.consent.latestAcceptedVersion ?? null,
+      acknowledgedAt: consentAck?.created_at ?? null,
+      satisfied: consentSatisfied,
+    },
+    councilOfEurope: {
+      requiredVersion: coeRequired,
+      acknowledgedVersion: coeAck?.version ?? null,
+      acknowledgedAt: coeAck?.created_at ?? null,
+      satisfied: councilSatisfied,
+    },
+  };
+}
+
+function mergeDisclosuresWithAcknowledgements(
+  assessment: ComplianceAssessment,
+  acknowledgements: ReturnType<typeof summariseAcknowledgements>,
+): ComplianceAssessment['disclosures'] {
+  const missing = new Set(assessment.disclosures.missing);
+  if (!acknowledgements.consent.satisfied) {
+    missing.add('consent');
+  }
+  if (!acknowledgements.councilOfEurope.satisfied) {
+    missing.add('council_of_europe');
+  }
+
+  return {
+    ...assessment.disclosures,
+    consentSatisfied: acknowledgements.consent.satisfied,
+    councilSatisfied: acknowledgements.councilOfEurope.satisfied,
+    missing: Array.from(missing),
+    requiredConsentVersion: acknowledgements.consent.requiredVersion,
+    acknowledgedConsentVersion: acknowledgements.consent.acknowledgedVersion,
+    requiredCoeVersion: acknowledgements.councilOfEurope.requiredVersion,
+    acknowledgedCoeVersion: acknowledgements.councilOfEurope.acknowledgedVersion,
+  };
 }
 
 app.get('/manifest/autonomous-suite', async (_request, reply) => {
@@ -2729,6 +2830,147 @@ const consentSchema = z.object({
   org_id: z.string().uuid().optional(),
   type: z.string().min(1),
   version: z.string().min(1),
+});
+
+app.get('/compliance/acknowledgements', async (request, reply) => {
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+  const orgHeader = request.headers['x-org-id'];
+  if (!orgHeader || typeof orgHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+
+  let access: OrgAccessContext;
+  try {
+    access = await authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request);
+  } catch (error) {
+    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
+    return reply.code(status).send({ error: 'forbidden' });
+  }
+
+  try {
+    const events = await fetchAcknowledgementEvents(orgHeader, userHeader);
+    const acknowledgements = summariseAcknowledgements(access, events);
+    return reply.send({
+      orgId: orgHeader,
+      userId: userHeader,
+      acknowledgements,
+    });
+  } catch (error) {
+    request.log.error({ err: error }, 'compliance_ack_fetch_failed');
+    return reply.code(500).send({ error: 'compliance_ack_fetch_failed' });
+  }
+});
+
+app.get<{
+  Querystring: { limit?: string };
+}>('/compliance/status', async (request, reply) => {
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+  const orgHeader = request.headers['x-org-id'];
+  if (!orgHeader || typeof orgHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+
+  let access: OrgAccessContext;
+  try {
+    access = await authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request);
+  } catch (error) {
+    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
+    return reply.code(status).send({ error: 'forbidden' });
+  }
+
+  const rawLimit = (request.query?.limit ?? '5') as string;
+  const parsedLimit = Number(rawLimit);
+  const limit = Number.isFinite(parsedLimit) ? Math.min(25, Math.max(1, Math.floor(parsedLimit))) : 5;
+
+  try {
+    const [assessmentsResult, events] = await Promise.all([
+      supabase
+        .from('compliance_assessments')
+        .select(
+          'run_id, created_at, fria_required, fria_reasons, cepej_passed, cepej_violations, statute_passed, statute_violations, disclosures_missing',
+        )
+        .eq('org_id', orgHeader)
+        .order('created_at', { ascending: false })
+        .limit(limit),
+      fetchAcknowledgementEvents(orgHeader, userHeader),
+    ]);
+
+    if (assessmentsResult.error) {
+      request.log.error({ err: assessmentsResult.error }, 'compliance_status_query_failed');
+      return reply.code(500).send({ error: 'compliance_status_query_failed' });
+    }
+
+    const acknowledgements = summariseAcknowledgements(access, events);
+
+    const history = (assessmentsResult.data ?? []).map((row) => {
+      const missing = toStringArray((row as { disclosures_missing?: unknown }).disclosures_missing);
+      const assessment: ComplianceAssessment = {
+        fria: {
+          required: Boolean((row as { fria_required?: boolean | null }).fria_required),
+          reasons: toStringArray((row as { fria_reasons?: unknown }).fria_reasons),
+        },
+        cepej: {
+          passed: (row as { cepej_passed?: boolean | null }).cepej_passed ?? true,
+          violations: toStringArray((row as { cepej_violations?: unknown }).cepej_violations),
+        },
+        statute: {
+          passed: (row as { statute_passed?: boolean | null }).statute_passed ?? true,
+          violations: toStringArray((row as { statute_violations?: unknown }).statute_violations),
+        },
+        disclosures: {
+          consentSatisfied: !missing.includes('consent'),
+          councilSatisfied: !missing.includes('council_of_europe'),
+          missing,
+          requiredConsentVersion: null,
+          acknowledgedConsentVersion: null,
+          requiredCoeVersion: null,
+          acknowledgedCoeVersion: null,
+        },
+      };
+
+      return {
+        runId: (row as { run_id?: string | null }).run_id ?? null,
+        createdAt: (row as { created_at?: string | null }).created_at ?? null,
+        assessment,
+      };
+    });
+
+    if (history.length > 0) {
+      history[0].assessment = {
+        ...history[0].assessment,
+        disclosures: mergeDisclosuresWithAcknowledgements(history[0].assessment, acknowledgements),
+      };
+    }
+
+    const totals = history.reduce(
+      (acc, entry) => {
+        if (entry.assessment.fria.required) acc.friaRequired += 1;
+        if (!entry.assessment.cepej.passed) acc.cepejViolations += 1;
+        if (!entry.assessment.statute.passed) acc.statuteViolations += 1;
+        if (entry.assessment.disclosures.missing.length > 0) acc.disclosureGaps += 1;
+        return acc;
+      },
+      { total: history.length, friaRequired: 0, cepejViolations: 0, statuteViolations: 0, disclosureGaps: 0 },
+    );
+
+    return reply.send({
+      orgId: orgHeader,
+      userId: userHeader,
+      acknowledgements,
+      latest: history[0] ?? null,
+      history,
+      totals,
+    });
+  } catch (error) {
+    request.log.error({ err: error }, 'compliance_status_fetch_failed');
+    return reply.code(500).send({ error: 'compliance_status_fetch_failed' });
+  }
 });
 
 const learningFeedbackSchema = z.object({

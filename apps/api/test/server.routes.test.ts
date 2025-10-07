@@ -89,6 +89,7 @@ function createQueryBuilder(result: { data: unknown; error: unknown }) {
     order: vi.fn(() => builder),
     limit: vi.fn(() => builder),
     in: vi.fn(() => builder),
+    or: vi.fn(() => builder),
     gte: vi.fn(() => builder),
     lte: vi.fn(() => builder),
     update: vi.fn(() => builder),
@@ -255,6 +256,127 @@ describe('API routes', () => {
   it('requires authentication headers for web vitals ingestion', async () => {
     const response = await app.inject({ method: 'POST', url: '/metrics/web-vitals', payload: {} });
     expect(response.statusCode).toBe(400);
+  });
+
+  it('returns compliance acknowledgements for the current user', async () => {
+    authorizeActionMock.mockResolvedValue(
+      makeAccessContext({
+        policies: {
+          confidentialMode: false,
+          franceJudgeAnalyticsBlocked: true,
+          mfaRequired: false,
+          ipAllowlistEnforced: false,
+          consentVersion: '2024.09',
+          councilOfEuropeDisclosureVersion: '2024.05',
+          sensitiveTopicHitl: true,
+          residencyZone: null,
+        },
+        consent: { requiredVersion: '2024.09', latestAcceptedVersion: '2024.08' },
+      }),
+    );
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'consent_events') {
+        const builder = createQueryBuilder({
+          data: [
+            { type: 'ai_assist_terms', version: '2024.09', created_at: '2024-09-10T00:00:00Z' },
+            { type: 'council_of_europe_disclosure', version: '2024.05', created_at: '2024-09-11T00:00:00Z' },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.or.mockReturnValue(builder);
+        builder.in.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        return builder;
+      }
+      return createQueryBuilder({ data: [], error: null });
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/compliance/acknowledgements',
+      headers: { 'x-user-id': 'user-1', 'x-org-id': 'org-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.orgId).toBe('org-1');
+    expect(body.acknowledgements.consent.requiredVersion).toBe('2024.09');
+    expect(body.acknowledgements.councilOfEurope.acknowledgedVersion).toBe('2024.05');
+  });
+
+  it('returns compliance status summary with acknowledgement data', async () => {
+    authorizeActionMock.mockResolvedValue(
+      makeAccessContext({
+        policies: {
+          confidentialMode: false,
+          franceJudgeAnalyticsBlocked: true,
+          mfaRequired: false,
+          ipAllowlistEnforced: false,
+          consentVersion: '2024.09',
+          councilOfEuropeDisclosureVersion: '2024.05',
+          sensitiveTopicHitl: true,
+          residencyZone: null,
+        },
+        consent: { requiredVersion: '2024.09', latestAcceptedVersion: '2024.08' },
+      }),
+    );
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'compliance_assessments') {
+        const builder = createQueryBuilder({
+          data: [
+            {
+              run_id: 'run-123',
+              created_at: '2024-09-15T10:00:00Z',
+              fria_required: true,
+              fria_reasons: ['High-risk dossier'],
+              cepej_passed: false,
+              cepej_violations: ['transparency'],
+              statute_passed: true,
+              statute_violations: [],
+              disclosures_missing: ['consent'],
+            },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        builder.limit.mockReturnValue(builder);
+        return builder;
+      }
+      if (table === 'consent_events') {
+        const builder = createQueryBuilder({
+          data: [
+            { type: 'ai_assist_terms', version: '2024.09', created_at: '2024-09-10T00:00:00Z' },
+            { type: 'council_of_europe_disclosure', version: '2024.05', created_at: '2024-09-11T00:00:00Z' },
+          ],
+          error: null,
+        });
+        builder.select.mockReturnValue(builder);
+        builder.eq.mockReturnValue(builder);
+        builder.or.mockReturnValue(builder);
+        builder.in.mockReturnValue(builder);
+        builder.order.mockReturnValue(builder);
+        return builder;
+      }
+      return createQueryBuilder({ data: [], error: null });
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/compliance/status',
+      headers: { 'x-user-id': 'user-1', 'x-org-id': 'org-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.latest.runId).toBe('run-123');
+    expect(body.latest.assessment.disclosures.requiredConsentVersion).toBe('2024.09');
+    expect(body.acknowledgements.councilOfEurope.acknowledgedVersion).toBe('2024.05');
   });
 
   it('returns learning reports including fairness metrics', async () => {
