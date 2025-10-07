@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Code civil du Québec (C.c.Q.)",
+    "jurisdiction": "CA-QC",
+    "sourceType": "statute",
+    "publisher": "LégisQuébec",
+    "canonicalUrl": "https://legisquebec.gouv.qc.ca/fr/ShowDoc/cs/CCQ-1991",
+    "downloadUrl": "https://legisquebec.gouv.qc.ca/fr/ShowDoc/cs/CCQ-1991",
+    "bindingLanguage": "fr",
+    "consolidated": true,
+    "effectiveDate": "2024-01-01",
+    "versionLabel": "Consolidation officielle",
+    "mimeType": "text/html",
+    "eli": "legisquebec/cs/CCQ-1991",
+    "residency": "ca"
+  },
+  {
+    "title": "Code de procédure civile du Québec",
+    "jurisdiction": "CA-QC",
+    "sourceType": "statute",
+    "publisher": "LégisQuébec",
+    "canonicalUrl": "https://legisquebec.gouv.qc.ca/fr/document/cs/C-25.01",
+    "downloadUrl": "https://legisquebec.gouv.qc.ca/fr/document/cs/C-25.01",
+    "bindingLanguage": "fr",
+    "consolidated": true,
+    "effectiveDate": "2024-01-01",
+    "versionLabel": "C.p.c. consolidé",
+    "mimeType": "text/html",
+    "eli": "legisquebec/cs/C-25.01",
+    "residency": "ca"
+  }
+]
