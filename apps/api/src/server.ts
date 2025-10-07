@@ -80,6 +80,7 @@ import {
   updateOfflineOutboxStatus,
 } from './post-launch.js';
 import { buildPhaseCWorkspaceDesk } from './workspace.js';
+import { registerAvocatPwaRoutes } from './avocat-pwa.js';
 
 async function embedQuery(text: string): Promise<number[]> {
   const response = await fetch('https://api.openai.com/v1/embeddings', {
@@ -118,6 +119,8 @@ const supabase = createServiceClient({
 });
 
 const whatsappAdapter = createWhatsAppAdapter(app.log);
+
+registerAvocatPwaRoutes(app);
 
 const phoneRateLimiter = new InMemoryRateLimiter({ limit: 3, windowMs: 60_000 });
 const ipRateLimiter = new InMemoryRateLimiter({ limit: 10, windowMs: 60_000 });

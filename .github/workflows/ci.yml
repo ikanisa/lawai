@@ -81,6 +81,18 @@ jobs:
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: service
 
+      - name: Build PWA bundle
+        run: pnpm --filter @apps/pwa build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:3333
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      - name: Enforce bundle budgets
+        run: pnpm --filter @apps/pwa bundle:check
+        env:
+          BUNDLE_BUDGET_BYTES: '1900000'
+          BUNDLE_ENTRY_BUDGET_BYTES: '420000'
+
       - name: Enforce Go / No-Go checklist
         if: env.GO_NO_GO_ENFORCE == '1'
         run: |

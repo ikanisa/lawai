@@ -7,3 +7,4 @@ export * from './config/autonomous-suite';
 export * from './config/permissions';
 export * from './workspace';
 export * from './launch-readiness';
+export * from './pwa';

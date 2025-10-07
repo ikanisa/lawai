@@ -6,6 +6,7 @@
     "build": "vite build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
+    "ci:foundations": "pnpm --filter @apps/pwa lint && pnpm --filter @apps/pwa test && pnpm --filter @apps/api lint && pnpm --filter @apps/api test && pnpm --filter @avocat-ai/shared lint && pnpm --filter @avocat-ai/shared test",
     "dev:api": "pnpm --filter @apps/api dev",
     "dev:ops": "pnpm --filter @apps/ops dev",
     "dev:web": "pnpm --filter @avocat-ai/web dev",
