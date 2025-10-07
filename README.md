@@ -113,6 +113,16 @@ pnpm --filter @apps/ops vectorstore
 
 Le script crée automatiquement le vector store `authorities-francophone` si `OPENAI_VECTOR_STORE_AUTHORITIES_ID` est vide.
 
+### Gouvernance, conformité et Trust Center
+
+Consolidez vos preuves opérationnelles et réglementaires à l'aide des codex et runbooks suivants :
+
+- `docs/governance/cepej_eu_ai_act_codex.md` : synthèse des contrôles CEPEJ et EU AI Act, escalades et artefacts attendus.
+- `docs/operations/operations_readiness_overview.md` : checklist de préparation opérationnelle, activités Day-0/Day-1 et boucle d'amélioration continue.
+- `docs/governance/trust_center_codex.md` : organisation du Trust Center, cadence de publication et obligations de transparence.
+
+Ces documents complètent les runbooks existants (red-team, disaster recovery, FRIA) et servent de référence lors des audits, briefings régulateurs et revues clients.
+
 ### Lancer la campagne d'évaluation
 
 Un CLI dédié exécute les cas d'évaluation stockés dans la table `eval_cases`, appelle l'API `/runs` et journalise les résultats dans `eval_results` :
