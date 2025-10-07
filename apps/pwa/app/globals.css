@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-base text-text-primary font-sans antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-source-serif), ui-serif, Georgia, serif;
+    @apply text-text-primary;
+  }
+
+  .skip-link {
+    position: absolute;
+    left: 1rem;
+    top: 1rem;
+    z-index: 100;
+    padding: 0.75rem 1.5rem;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.95);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transform: translateY(-120%);
+    transition: transform 0.2s ease, opacity 0.2s ease;
+    opacity: 0;
+  }
+
+  .skip-link:focus {
+    transform: translateY(0);
+    opacity: 1;
+    outline: 2px solid #22D3EE;
+    outline-offset: 4px;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    backdrop-filter: blur(var(--glass-blur));
+    background: var(--glass-bg);
+    border: var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .glass-surface {
+    @apply glass-panel;
+  }
+
+  .bg-gradient-primary {
+    background-image: var(--gradient-primary);
+  }
+
+  .bg-gradient-accent {
+    background-image: var(--gradient-accent);
+  }
+
+  .bg-gradient-info {
+    background-image: var(--gradient-info);
+  }
+}
+
+[data-prefers-reduced-motion="true"] *,
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
