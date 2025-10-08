@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Loi canadienne sur les sociétés par actions (LCSA)",
+    "jurisdiction": "CA",
+    "sourceType": "statute",
+    "publisher": "Justice Canada",
+    "canonicalUrl": "https://laws-lois.justice.gc.ca/fra/lois/C-44/",
+    "downloadUrl": "https://laws-lois.justice.gc.ca/fra/lois/C-44/page-1.html",
+    "bindingLanguage": "fr",
+    "consolidated": true,
+    "effectiveDate": "2023-12-18",
+    "versionLabel": "Consolidation officielle",
+    "mimeType": "text/html",
+    "eli": "C-44",
+    "residency": "ca"
+  },
+  {
+    "title": "Règlement général sur la radiodiffusion (CRTC)",
+    "jurisdiction": "CA",
+    "sourceType": "regulation",
+    "publisher": "Justice Canada",
+    "canonicalUrl": "https://laws-lois.justice.gc.ca/fra/reglements/C.R.C.,_ch._784/",
+    "downloadUrl": "https://laws-lois.justice.gc.ca/fra/reglements/C.R.C.,_ch._784/page-1.html",
+    "bindingLanguage": "fr",
+    "consolidated": true,
+    "effectiveDate": "2024-01-01",
+    "versionLabel": "Texte consolidé",
+    "mimeType": "text/html",
+    "eli": "C.R.C.,_ch._784",
+    "residency": "ca"
+  }
+]
