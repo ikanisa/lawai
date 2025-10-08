@@ -93,3 +93,4 @@
 20250927115613_app_schema.sql -> 20250927115613.sql
 20250927121004_onboarding.sql -> 20250927121004.sql
 20250927125301_case_collaboration.sql -> 20250927125301.sql
+20250927140000_profile_sync_default_privileges_fix.sql -> 20250927140000.sql

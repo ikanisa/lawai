@@ -81,6 +81,33 @@ const supabase = createServiceClient({
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
 });
 
+interface IncidentRow {
+  id: string;
+  occurred_at: string;
+  detected_at: string | null;
+  resolved_at: string | null;
+  severity: string | null;
+  status: string | null;
+  title: string | null;
+  summary: string | null;
+  impact: string | null;
+  resolution: string | null;
+  follow_up: string | null;
+  evidence_url: string | null;
+  recorded_at: string;
+}
+
+interface ChangeLogRow {
+  id: string;
+  entry_date: string;
+  recorded_at: string;
+  title: string | null;
+  category: string | null;
+  summary: string | null;
+  release_tag: string | null;
+  links: unknown;
+}
+
 function withRequestContext<T extends OrgAccessContext>(access: T, request: FastifyRequest): T {
   ensureOrgAccessCompliance(access, {
     ip: request.ip,
@@ -2364,31 +2391,33 @@ app.get<{ Params: { orgId: string } }>('/admin/org/:orgId/operations/overview', 
     const sloSummary = summariseSlo(sloRows);
     const sloSnapshots = sloRows.slice(0, 5);
 
-    const incidents = (incidentResult.data ?? []).map((row: any) => ({
-      id: row.id as string,
-      occurredAt: row.occurred_at as string,
+    const incidentRows = (incidentResult.data ?? []) as IncidentRow[];
+    const incidents = incidentRows.map((row) => ({
+      id: row.id,
+      occurredAt: row.occurred_at,
       detectedAt: row.detected_at ?? null,
       resolvedAt: row.resolved_at ?? null,
-      severity: row.severity as string,
-      status: row.status as string,
-      title: row.title as string,
-      summary: (row.summary as string | null) ?? '',
-      impact: (row.impact as string | null) ?? '',
-      resolution: (row.resolution as string | null) ?? '',
-      followUp: (row.follow_up as string | null) ?? '',
-      evidenceUrl: (row.evidence_url as string | null) ?? null,
-      recordedAt: row.recorded_at as string,
+      severity: row.severity ?? null,
+      status: row.status ?? null,
+      title: row.title ?? '',
+      summary: row.summary ?? '',
+      impact: row.impact ?? '',
+      resolution: row.resolution ?? '',
+      followUp: row.follow_up ?? '',
+      evidenceUrl: row.evidence_url ?? null,
+      recordedAt: row.recorded_at,
     }));
 
-    const changeLog = (changeResult.data ?? []).map((row: any) => ({
-      id: row.id as string,
-      entryDate: row.entry_date as string,
-      title: row.title as string,
-      category: row.category as string,
-      summary: (row.summary as string | null) ?? '',
-      releaseTag: (row.release_tag as string | null) ?? null,
+    const changeRows = (changeResult.data ?? []) as ChangeLogRow[];
+    const changeLog = changeRows.map((row) => ({
+      id: row.id,
+      entryDate: row.entry_date,
+      title: row.title ?? '',
+      category: row.category ?? '',
+      summary: row.summary ?? '',
+      releaseTag: row.release_tag ?? null,
       links: row.links ?? null,
-      recordedAt: row.recorded_at as string,
+      recordedAt: row.recorded_at,
     }));
 
     const evidenceRows = (evidenceResult.data ?? []) as Array<{
