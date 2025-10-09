@@ -6,10 +6,18 @@ interface JurisdictionFlag {
   ohada: boolean;
 }
 
+interface DisclosureContext {
+  requiredConsentVersion?: string | null;
+  acknowledgedConsentVersion?: string | null;
+  requiredCoeVersion?: string | null;
+  acknowledgedCoeVersion?: string | null;
+}
+
 interface ComplianceInput {
   question: string;
   payload: IRACPayload;
   primaryJurisdiction: JurisdictionFlag | null;
+  disclosures?: DisclosureContext | null;
 }
 
 interface ComplianceAssessment {
@@ -20,6 +28,19 @@ interface ComplianceAssessment {
   cepej: {
     passed: boolean;
     violations: string[];
+  };
+  statute: {
+    passed: boolean;
+    violations: string[];
+  };
+  disclosures: {
+    consentSatisfied: boolean;
+    councilSatisfied: boolean;
+    missing: string[];
+    requiredConsentVersion: string | null;
+    acknowledgedConsentVersion: string | null;
+    requiredCoeVersion: string | null;
+    acknowledgedCoeVersion: string | null;
   };
 }
 
@@ -58,6 +79,17 @@ const USER_CONTROL_KEYWORDS: RegExp[] = [
   /audience/i,
   /plaidoirie/i,
 ];
+
+function normaliseRuleKind(kind: unknown): 'statute' | 'case' | 'regulation' | 'treaty' | 'doctrine' {
+  if (typeof kind !== 'string') {
+    return 'statute';
+  }
+  const lowered = kind.toLowerCase();
+  if (lowered === 'case' || lowered === 'regulation' || lowered === 'treaty' || lowered === 'doctrine') {
+    return lowered;
+  }
+  return 'statute';
+}
 
 function detectHighRiskReasons(input: ComplianceInput): string[] {
   const reasons: string[] = [];
@@ -111,6 +143,52 @@ export function evaluateCompliance(input: ComplianceInput): ComplianceAssessment
     cepejViolations.push('user_control');
   }
 
+  const statuteViolations: string[] = [];
+  const rules = Array.isArray(input.payload.rules) ? input.payload.rules : [];
+
+  const firstRule = rules[0];
+  if (!firstRule || firstRule.binding !== true) {
+    statuteViolations.push('first_rule_not_binding');
+  }
+  if (!firstRule || normaliseRuleKind((firstRule as { kind?: unknown }).kind) !== 'statute') {
+    statuteViolations.push('first_rule_not_statute');
+  }
+
+  const bindingStatutes = rules.filter((rule) => rule.binding && normaliseRuleKind((rule as { kind?: unknown }).kind) === 'statute');
+  if (bindingStatutes.length === 0) {
+    statuteViolations.push('no_binding_statute_rule');
+  }
+
+  const caseRules = rules.filter((rule) => normaliseRuleKind((rule as { kind?: unknown }).kind) === 'case');
+const statuteAlignments = Array.isArray(input.payload.provenance?.statute_alignments)
+    ? (input.payload.provenance?.statute_alignments as unknown[])
+    : [];
+  if (caseRules.length > 0 && statuteAlignments.length === 0) {
+    statuteViolations.push('missing_case_statute_alignment');
+  }
+
+  const requiredConsent = input.disclosures?.requiredConsentVersion ?? null;
+  const acknowledgedConsent =
+    input.payload.provenance?.disclosures?.consent?.acknowledged ??
+    input.disclosures?.acknowledgedConsentVersion ??
+    null;
+  const consentSatisfied = !requiredConsent || acknowledgedConsent === requiredConsent;
+
+  const requiredCoe = input.disclosures?.requiredCoeVersion ?? null;
+  const acknowledgedCoe =
+    input.payload.provenance?.disclosures?.council_of_europe?.acknowledged ??
+    input.disclosures?.acknowledgedCoeVersion ??
+    null;
+  const councilSatisfied = !requiredCoe || acknowledgedCoe === requiredCoe;
+
+  const disclosuresMissing: string[] = [];
+  if (!consentSatisfied && requiredConsent) {
+    disclosuresMissing.push('consent');
+  }
+  if (!councilSatisfied && requiredCoe) {
+    disclosuresMissing.push('council_of_europe');
+  }
+
   return {
     fria: {
       required: friaReasons.length > 0,
@@ -120,7 +198,20 @@ export function evaluateCompliance(input: ComplianceInput): ComplianceAssessment
       passed: cepejViolations.length === 0,
       violations: cepejViolations,
     },
+    statute: {
+      passed: statuteViolations.length === 0,
+      violations: statuteViolations,
+    },
+    disclosures: {
+      consentSatisfied,
+      councilSatisfied,
+      missing: disclosuresMissing,
+      requiredConsentVersion: requiredConsent,
+      acknowledgedConsentVersion: acknowledgedConsent,
+      requiredCoeVersion: requiredCoe,
+      acknowledgedCoeVersion: acknowledgedCoe,
+    },
   };
 }
 
-export type { ComplianceAssessment };
+export type { ComplianceAssessment, ComplianceInput, DisclosureContext };

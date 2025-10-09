@@ -29,7 +29,7 @@ import { env, loadAllowlistOverride } from './config.js';
 import { CASE_TRUST_WEIGHTS, evaluateCaseQuality, type CaseScoreAxis } from './case-quality.js';
 import { OrgAccessContext, isJurisdictionAllowed } from './access-control.js';
 import { evaluateCompliance } from './compliance.js';
-import type { ComplianceAssessment } from './compliance.js';
+import type { ComplianceAssessment, DisclosureContext } from './compliance.js';
 
 type ToolInvocationLog = {
   name: string;
@@ -85,6 +85,7 @@ export interface AgentRunResult {
   notices?: AgentPlanNotice[];
   verification?: VerificationResult;
   trustPanel?: TrustPanelPayload;
+  compliance?: ComplianceAssessment | null;
   agent: {
     key: AutonomousAgentCode;
     code: string;
@@ -350,6 +351,13 @@ interface SelectedAgentProfile {
   allowOverrideApplied: boolean;
 }
 
+interface ComplianceContext {
+  requiredConsentVersion?: string | null;
+  acknowledgedConsentVersion?: string | null;
+  requiredCoeVersion?: string | null;
+  acknowledgedCoeVersion?: string | null;
+}
+
 const DEFAULT_AGENT_KEY: AutonomousAgentCode = 'counsel_research';
 
 const SUITE_MANIFEST = getAutonomousSuiteManifest();
@@ -459,6 +467,171 @@ function deriveAllowedToolKeys(
     allowedKeys: Array.from(baseSet),
     overrideApplied,
   };
+}
+
+function createEmptyProvenance(): IRACPayload['provenance'] {
+  return {
+    eli: [],
+    ecli: [],
+    akoma_articles: 0,
+    feeds: [],
+    statute_alignments: [],
+    disclosures: {
+      consent: { required: null, acknowledged: null },
+      council_of_europe: { required: null, acknowledged: null },
+      satisfied: false,
+    },
+    quarantine: { flagged: false, reason: null },
+  };
+}
+
+function ensureProvenance(payload: IRACPayload): IRACPayload['provenance'] {
+  if (!payload.provenance) {
+    payload.provenance = createEmptyProvenance();
+    return payload.provenance;
+  }
+  const provenance = payload.provenance;
+  provenance.eli = Array.isArray(provenance.eli) ? provenance.eli : [];
+  provenance.ecli = Array.isArray(provenance.ecli) ? provenance.ecli : [];
+  provenance.akoma_articles = Number.isFinite(provenance.akoma_articles)
+    ? provenance.akoma_articles
+    : 0;
+  provenance.feeds = Array.isArray(provenance.feeds) ? provenance.feeds : [];
+  provenance.statute_alignments = Array.isArray(provenance.statute_alignments)
+    ? provenance.statute_alignments
+    : [];
+  provenance.disclosures = provenance.disclosures ?? {
+    consent: { required: null, acknowledged: null },
+    council_of_europe: { required: null, acknowledged: null },
+    satisfied: false,
+  };
+  provenance.disclosures.consent = provenance.disclosures.consent ?? {
+    required: null,
+    acknowledged: null,
+  };
+  provenance.disclosures.council_of_europe = provenance.disclosures.council_of_europe ?? {
+    required: null,
+    acknowledged: null,
+  };
+  if (typeof provenance.disclosures.satisfied !== 'boolean') {
+    provenance.disclosures.satisfied = false;
+  }
+  provenance.quarantine = provenance.quarantine ?? { flagged: false, reason: null };
+  if (typeof provenance.quarantine.flagged !== 'boolean') {
+    provenance.quarantine.flagged = false;
+  }
+  provenance.quarantine.reason = provenance.quarantine.reason ?? null;
+  return provenance;
+}
+
+function applyDisclosureProvenance(
+  payload: IRACPayload,
+  accessContext: OrgAccessContext | null | undefined,
+): void {
+  const provenance = ensureProvenance(payload);
+  const requiredConsent = accessContext?.consent.requiredVersion ?? null;
+  const acknowledgedConsent = accessContext?.consent.latestAcceptedVersion ?? null;
+  provenance.disclosures.consent.required = requiredConsent ?? null;
+  provenance.disclosures.consent.acknowledged = acknowledgedConsent ?? null;
+
+  const requiredCoe = accessContext?.policies.councilOfEuropeDisclosureVersion ?? null;
+  const acknowledgedCoe = requiredCoe ?? null;
+  provenance.disclosures.council_of_europe.required = requiredCoe ?? null;
+  provenance.disclosures.council_of_europe.acknowledged = acknowledgedCoe;
+
+  provenance.disclosures.satisfied = Boolean(
+    (!requiredConsent || acknowledgedConsent === requiredConsent) &&
+      (!requiredCoe || acknowledgedCoe === requiredCoe),
+  );
+}
+
+function deriveComplianceContext(accessContext: OrgAccessContext | null | undefined): ComplianceContext {
+  return {
+    requiredConsentVersion: accessContext?.consent.requiredVersion ?? null,
+    acknowledgedConsentVersion: accessContext?.consent.latestAcceptedVersion ?? null,
+    requiredCoeVersion: accessContext?.policies.councilOfEuropeDisclosureVersion ?? null,
+    acknowledgedCoeVersion: accessContext?.policies.councilOfEuropeDisclosureVersion ?? null,
+  };
+}
+
+function augmentProvenanceFromSnippets(payload: IRACPayload, snippets: HybridSnippet[]): void {
+  const provenance = ensureProvenance(payload);
+  const eliSet = new Set(provenance.eli ?? []);
+  const ecliSet = new Set(provenance.ecli ?? []);
+  const feedCounter = new Map<string, number>();
+  let akomaArticles = provenance.akoma_articles ?? 0;
+
+  for (const snippet of snippets) {
+    if (snippet.eli) {
+      eliSet.add(snippet.eli);
+    }
+    if (snippet.ecli) {
+      ecliSet.add(snippet.ecli);
+    }
+    if (typeof snippet.akomaArticleCount === 'number' && snippet.akomaArticleCount > 0) {
+      akomaArticles += snippet.akomaArticleCount;
+    }
+    const zone = typeof snippet.residencyZone === 'string' ? snippet.residencyZone.toLowerCase() : '';
+    if (zone && (zone.includes('maghreb') || zone.includes('rwanda'))) {
+      feedCounter.set(zone, (feedCounter.get(zone) ?? 0) + 1);
+    }
+  }
+
+  provenance.eli = Array.from(eliSet);
+  provenance.ecli = Array.from(ecliSet);
+  provenance.akoma_articles = akomaArticles;
+  provenance.feeds = Array.from(feedCounter.entries()).map(([region, count]) => ({ region, count }));
+}
+
+interface StatuteAlignmentDetail {
+  caseUrl: string;
+  statuteUrl: string;
+  article: string | null;
+  alignmentScore: number | null;
+}
+
+function augmentProvenanceWithCaseAlignments(
+  payload: IRACPayload,
+  alignments: StatuteAlignmentDetail[],
+): void {
+  if (!Array.isArray(alignments) || alignments.length === 0) {
+    return;
+  }
+  const provenance = ensureProvenance(payload);
+  const existing = Array.isArray(provenance.statute_alignments) ? [...provenance.statute_alignments] : [];
+  for (const alignment of alignments) {
+    if (!alignment.caseUrl || !alignment.statuteUrl) {
+      continue;
+    }
+    existing.push({
+      case_url: alignment.caseUrl,
+      statute_url: alignment.statuteUrl,
+      article: alignment.article,
+      alignment_score: alignment.alignmentScore,
+    });
+  }
+  provenance.statute_alignments = existing;
+}
+
+function flagQuarantine(payload: IRACPayload, reason: string): void {
+  const provenance = ensureProvenance(payload);
+  provenance.quarantine.flagged = true;
+  if (!provenance.quarantine.reason) {
+    provenance.quarantine.reason = reason;
+  }
+}
+
+function normaliseRuleKinds(payload: IRACPayload): void {
+  if (!Array.isArray(payload.rules)) {
+    return;
+  }
+  payload.rules = payload.rules.map((rule) => ({
+    ...rule,
+    kind:
+      typeof (rule as { kind?: unknown }).kind === 'string' && (rule as { kind?: string }).kind
+        ? ((rule as { kind?: string }).kind as IRACPayload['rules'][number]['kind'])
+        : 'statute',
+  }));
 }
 
 function deriveToolBudgets(allowedKeys: string[]): Record<string, number> {
@@ -2342,6 +2515,7 @@ function applyComplianceGates(
   initialRouting: RoutingResult,
   input: AgentRunInput,
   baseJobs: Array<{ type: string; payload: unknown }>,
+  complianceContext?: ComplianceContext | null,
 ): {
   learningJobs: Array<{ type: string; payload: unknown }>;
   events: ComplianceEventRecord[];
@@ -2351,6 +2525,7 @@ function applyComplianceGates(
     question: input.question,
     payload,
     primaryJurisdiction: initialRouting.primary ?? null,
+    disclosures: complianceContext ?? null,
   });
 
   const jobs = [...baseJobs];
@@ -2399,6 +2574,73 @@ function applyComplianceGates(
         violations: compliance.cepej.violations,
       },
     });
+  }
+
+  if (!compliance.statute.passed) {
+    if (!payload.risk.hitl_required) {
+      payload.risk.hitl_required = true;
+    }
+    if (payload.risk.level === 'LOW') {
+      payload.risk.level = 'MEDIUM';
+    }
+    const reasons = compliance.statute.violations;
+    if (reasons.length > 0) {
+      const detail = reasons.join(', ');
+      if (!payload.risk.why.toLowerCase().includes(detail.toLowerCase())) {
+        payload.risk.why = payload.risk.why.length > 0 ? `${payload.risk.why} | ${detail}` : detail;
+      }
+    }
+    jobs.push({
+      type: 'statute_alignment_ticket',
+      payload: {
+        question: input.question,
+        jurisdiction: payload.jurisdiction.country,
+        violations: reasons,
+      },
+    });
+    events.push({
+      kind: 'compliance.statute_alignment.failed',
+      metadata: {
+        jurisdiction: payload.jurisdiction.country,
+        violations: reasons,
+      },
+    });
+  }
+
+  if (!compliance.disclosures.consentSatisfied || !compliance.disclosures.councilSatisfied) {
+    if (!payload.risk.hitl_required) {
+      payload.risk.hitl_required = true;
+    }
+    if (payload.risk.level === 'LOW') {
+      payload.risk.level = 'MEDIUM';
+    }
+    const missing = compliance.disclosures.missing;
+    if (missing.length > 0) {
+      const detail = `disclosures:${missing.join(',')}`;
+      if (!payload.risk.why.toLowerCase().includes(detail.toLowerCase())) {
+        payload.risk.why = payload.risk.why.length > 0 ? `${payload.risk.why} | ${detail}` : detail;
+      }
+    }
+
+    jobs.push({
+      type: 'disclosure_followup_ticket',
+      payload: {
+        question: input.question,
+        jurisdiction: payload.jurisdiction.country,
+        missing,
+      },
+    });
+
+    events.push({
+      kind: 'compliance.disclosure.missing',
+      metadata: {
+        jurisdiction: payload.jurisdiction.country,
+        missing,
+      },
+    });
+
+    const provenance = ensureProvenance(payload);
+    provenance.disclosures.satisfied = false;
   }
 
   return { learningJobs: jobs, events, assessment: compliance };
@@ -2518,6 +2760,7 @@ function buildStubPayload(
         why: 'Traduction non contraignante – validation HITL requise pour confirmer la version arabe.',
         hitl_required: true,
       },
+      provenance: createEmptyProvenance(),
     } satisfies IRACPayload;
   }
 
@@ -2565,6 +2808,7 @@ function buildStubPayload(
         why: 'Acte uniforme et jurisprudence CCJA directement applicables.',
         hitl_required: false,
       },
+      provenance: createEmptyProvenance(),
     } satisfies IRACPayload;
   }
 
@@ -2598,28 +2842,29 @@ function buildStubPayload(
       contextSection,
     conclusion:
       'Les critères de l’article 1240 du Code civil sont réunis lorsque la faute personnelle du salarié est caractérisée; une revue HITL est recommandée si une faute pénale est alléguée.',
-    citations: [
-      {
-        title: 'Code civil – article 1240',
-        court_or_publisher: 'Légifrance',
-        date: '2016-10-01',
-        url: 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000006417902',
-        note: 'Texte consolidé',
+      citations: [
+        {
+          title: 'Code civil – article 1240',
+          court_or_publisher: 'Légifrance',
+          date: '2016-10-01',
+          url: 'https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000006417902',
+          note: 'Texte consolidé',
+        },
+        {
+          title: 'Cass. soc., 25 novembre 2015, n° 14-21.125',
+          court_or_publisher: 'Cour de cassation',
+          date: '2015-11-25',
+          url: 'https://www.courdecassation.fr/decision/58fc23dd302bf94d3f8b45c6',
+          note: 'Arrêt intégral',
+        },
+      ],
+      risk: {
+        level: 'LOW',
+        why: 'Analyse jurisprudentielle classique en droit français.',
+        hitl_required: false,
       },
-      {
-        title: 'Cass. soc., 25 novembre 2015, n° 14-21.125',
-        court_or_publisher: 'Cour de cassation',
-        date: '2015-11-25',
-        url: 'https://www.courdecassation.fr/decision/58fc23dd302bf94d3f8b45c6',
-        note: 'Arrêt intégral',
-      },
-    ],
-    risk: {
-      level: 'LOW',
-      why: 'Analyse jurisprudentielle classique en droit français.',
-      hitl_required: false,
-    },
-  } satisfies IRACPayload;
+      provenance: createEmptyProvenance(),
+    } satisfies IRACPayload;
 }
 
 async function computeCaseQuality(
@@ -3578,8 +3823,14 @@ async function persistRun(
   agentProfile: SelectedAgentProfile,
   runKey: string | null = null,
   confidentialMode = false,
+  allowlistViolations: string[] = [],
 ): Promise<{ runId: string; trust: TrustPanelPayload; compliance: ComplianceAssessment | null }> {
   const startedAt = new Date().toISOString();
+  normaliseRuleKinds(payload);
+  augmentProvenanceFromSnippets(payload, retrievalSnippets);
+  if (allowlistViolations.length > 0) {
+    flagQuarantine(payload, 'allowlist_violation');
+  }
   const insertPayload = {
     org_id: input.orgId,
     user_id: input.userId,
@@ -4936,6 +5187,7 @@ export async function runLegalAgent(
   const useStub = shouldUseStubAgent();
   const agentProfile = resolveAgentProfile(input.agentCode ?? null, input.agentSettings ?? null);
   const planner = await planRun(input, accessContext ?? null, useStub, toolLogs, agentProfile);
+  const complianceContext = deriveComplianceContext(accessContext ?? null);
 
   const runKey = createRunKey(
     input,
@@ -4949,6 +5201,7 @@ export async function runLegalAgent(
       ...existing.payload,
       risk: { ...existing.payload.risk },
     };
+    applyDisclosureProvenance(payload, accessContext ?? null);
     const notices = buildRunNotices(payload, {
       accessContext: accessContext ?? null,
       confidentialMode: existing.confidentialMode ?? planner.context.confidentialMode,
@@ -4988,6 +5241,7 @@ export async function runLegalAgent(
       reused: true,
       verification: existing.verification,
       trustPanel,
+      compliance: existing.compliance ?? null,
       agent: {
         key: planner.agentProfile.key,
         code: planner.agentProfile.manifestCode,
@@ -5033,6 +5287,7 @@ export async function runLegalAgent(
         hitl_required: true,
       },
     };
+    applyDisclosureProvenance(payload, accessContext ?? null);
 
     const verification: VerificationResult = {
       status: 'hitl_escalated',
@@ -5065,7 +5320,13 @@ export async function runLegalAgent(
     });
 
     const baseLearningJobs = buildLearningJobs(payload, planner.initialRouting, input);
-    const complianceOutcome = applyComplianceGates(payload, planner.initialRouting, input, baseLearningJobs);
+    const complianceOutcome = applyComplianceGates(
+      payload,
+      planner.initialRouting,
+      input,
+      baseLearningJobs,
+      complianceContext,
+    );
     complianceOutcome.learningJobs.unshift({
       type: 'guardrail_fr_judge_analytics',
       payload: {
@@ -5097,7 +5358,7 @@ export async function runLegalAgent(
       }
     }
 
-    const { runId, trust } = await persistRun(
+    const { runId, trust, compliance } = await persistRun(
       input,
       payload,
       toolLogs,
@@ -5111,6 +5372,7 @@ export async function runLegalAgent(
       planner.agentProfile,
       runKey,
       planner.context.confidentialMode,
+      [],
     );
 
     return {
@@ -5122,11 +5384,13 @@ export async function runLegalAgent(
       notices,
       verification,
       trustPanel: trust,
+      compliance,
     };
   }
 
   if (useStub) {
     const payload = buildStubPayload(input.question, planner.initialRouting, planner.hybridSnippets);
+    applyDisclosureProvenance(payload, accessContext ?? null);
     toolLogs.push({ name: 'stubGenerator', args: { question: input.question }, output: payload });
 
     const stubTime = new Date();
@@ -5142,7 +5406,13 @@ export async function runLegalAgent(
     });
 
     const baseLearningJobs = buildLearningJobs(payload, planner.initialRouting, input);
-    const complianceOutcome = applyComplianceGates(payload, planner.initialRouting, input, baseLearningJobs);
+    const complianceOutcome = applyComplianceGates(
+      payload,
+      planner.initialRouting,
+      input,
+      baseLearningJobs,
+      complianceContext,
+    );
     const notices = buildRunNotices(payload, {
       accessContext: accessContext ?? null,
       confidentialMode: planner.context.confidentialMode,
@@ -5163,6 +5433,7 @@ export async function runLegalAgent(
 
     let runId: string;
     let trustPanel: TrustPanelPayload;
+    let persistedCompliance: ComplianceAssessment | null = complianceOutcome.assessment;
     try {
       const result = await persistRun(
         input,
@@ -5178,9 +5449,11 @@ export async function runLegalAgent(
         planner.agentProfile,
         runKey,
         planner.context.confidentialMode,
+        [],
       );
       runId = result.runId;
       trustPanel = result.trust;
+      persistedCompliance = result.compliance;
     } catch (error) {
       console.warn('persistRun_failed_stub_mode', error);
       runId = `stub-${Date.now()}`;
@@ -5202,6 +5475,7 @@ export async function runLegalAgent(
       notices,
       verification,
       trustPanel,
+      compliance: persistedCompliance,
       agent: {
         key: planner.agentProfile.key,
         code: planner.agentProfile.manifestCode,
@@ -5232,6 +5506,7 @@ export async function runLegalAgent(
     throw error;
   }
   const payload = execution.payload;
+  applyDisclosureProvenance(payload, accessContext ?? null);
 
   const verificationTask = async () =>
     verifyAgentPayload(payload, {
@@ -5256,7 +5531,13 @@ export async function runLegalAgent(
 
   const bindingInfo = applyBindingLanguageNotices(payload, planner.initialRouting);
   const baseLearningJobs = buildLearningJobs(payload, planner.initialRouting, input);
-  const complianceOutcome = applyComplianceGates(payload, planner.initialRouting, input, baseLearningJobs);
+  const complianceOutcome = applyComplianceGates(
+    payload,
+    planner.initialRouting,
+    input,
+    baseLearningJobs,
+    complianceContext,
+  );
 
   if (verification.notes.length > 0) {
     const verificationSummary = verification.notes.map((note) => note.message).join(' | ');
@@ -5289,7 +5570,7 @@ export async function runLegalAgent(
     }
   }
 
-  const { runId, trust: trustPanel } = await persistRun(
+  const { runId, trust: trustPanel, compliance } = await persistRun(
     input,
     payload,
     toolLogs,
@@ -5303,6 +5584,7 @@ export async function runLegalAgent(
     planner.agentProfile,
     runKey,
     planner.context.confidentialMode,
+    execution.allowlistViolations,
   );
 
   return {
@@ -5314,6 +5596,7 @@ export async function runLegalAgent(
     notices,
     verification,
     trustPanel,
+    compliance,
     agent: {
       key: planner.agentProfile.key,
       code: planner.agentProfile.manifestCode,
