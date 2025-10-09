@@ -32,6 +32,7 @@ import { useOutbox } from '../hooks/use-outbox';
 import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import { useDigest } from '../hooks/use-digest';
+import { ComplianceBanner } from './compliance-banner';
 
 interface AppShellProps {
   children: ReactNode;
@@ -234,7 +235,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
               className="hidden items-center gap-3 rounded-full border-slate-800/60 bg-slate-900/60 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-teal-400/60 hover:text-teal-100 lg:inline-flex"
             >
               <Command className="h-4 w-4" aria-hidden />
-              <span>{messages.commands.open}</span>
+              <span>{messages.app.commandButton}</span>
               <span className="hidden items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 xl:flex">
                 <kbd className="rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1">⌘</kbd>
                 <kbd className="rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1">K</kbd>
@@ -246,7 +247,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
               size="icon"
               className="lg:hidden"
               onClick={() => setCommandOpen(true)}
-              aria-label={messages.commands.open}
+              aria-label={messages.app.commandButton}
             >
               <Command className="h-5 w-5" aria-hidden />
             </Button>
@@ -315,6 +316,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
           </div>
         </header>
         <main id="main" className="flex-1 px-6 pb-24 pt-10">
+          <ComplianceBanner messages={messages.app.compliance} />
           {children}
         </main>
       </div>
@@ -369,8 +371,8 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
     </div>
       {showInstallPrompt ? (
         <div className="fixed bottom-6 right-6 z-50 max-w-sm rounded-3xl border border-slate-800/60 bg-slate-900/90 p-5 text-slate-100 shadow-2xl">
-          <h2 className="text-sm font-semibold">{messages.app.installPromptTitle}</h2>
-          <p className="mt-2 text-sm text-slate-300">{messages.app.installPromptBody}</p>
+          <h2 className="text-sm font-semibold">{messages.app.install.title}</h2>
+          <p className="mt-2 text-sm text-slate-300">{messages.app.install.body}</p>
           <div className="mt-4 flex items-center gap-3">
             <Button
               onClick={async () => {
@@ -391,7 +393,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
                 window.localStorage.setItem('avocat-ai-install-dismissed', '1');
               }}
             >
-              {messages.app.installPromptCta}
+              {messages.app.install.cta}
             </Button>
             <Button
               variant="ghost"
@@ -401,7 +403,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
                 window.localStorage.setItem('avocat-ai-install-dismissed', '1');
               }}
             >
-              {messages.app.installPromptDismiss}
+              {messages.app.install.dismiss}
             </Button>
           </div>
         </div>

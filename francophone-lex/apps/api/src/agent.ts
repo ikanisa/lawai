@@ -27,7 +27,12 @@ import { performance } from 'node:perf_hooks';
 import { z } from 'zod';
 import { env, loadAllowlistOverride } from './config.js';
 import { CASE_TRUST_WEIGHTS, evaluateCaseQuality, type CaseScoreAxis } from './case-quality.js';
-import { OrgAccessContext, isJurisdictionAllowed } from './access-control.js';
+import {
+  OrgAccessContext,
+  isJurisdictionAllowed,
+  type ConsentRequirement,
+  type CouncilOfEuropeRequirement,
+} from './access-control.js';
 import { evaluateCompliance } from './compliance.js';
 import type { ComplianceAssessment, DisclosureContext } from './compliance.js';
 
@@ -205,9 +210,33 @@ interface TrustPanelProvenanceSummary {
   akomaArticles: number;
 }
 
-type TrustPanelComplianceSummary = ComplianceAssessment & {
-  disclosures: ComplianceAssessment['disclosures'];
-};
+interface TrustPanelFriaArtifact {
+  id: string;
+  title: string;
+  evidenceUrl: string | null;
+  releaseTag: string | null;
+  validated: boolean;
+  submittedAt: string | null;
+}
+
+interface TrustPanelComplianceSummary {
+  friaRequired: boolean;
+  friaValidated: boolean;
+  friaReasons: string[];
+  friaArtifacts: TrustPanelFriaArtifact[];
+  cepejPassed: boolean;
+  cepejViolations: string[];
+  consent: {
+    requirement: ConsentRequirement | null;
+    accepted: boolean;
+    latestVersion: string | null;
+  };
+  councilOfEurope: {
+    requirement: CouncilOfEuropeRequirement | null;
+    acknowledged: boolean;
+    acknowledgedVersion: string | null;
+  };
+}
 
 export interface TrustPanelPayload {
   citationSummary: TrustPanelCitationSummary;
@@ -305,6 +334,80 @@ async function fetchComplianceAssessmentForRun(
       acknowledgedCoeVersion: null,
     },
   } satisfies ComplianceAssessment;
+}
+
+async function buildComplianceSummary(
+  orgId: string,
+  assessment: ComplianceAssessment | null,
+  accessContext: OrgAccessContext | null,
+): Promise<TrustPanelComplianceSummary | null> {
+  const consentRequirement = accessContext?.policies.consentRequirement ?? null;
+  const latestConsent = accessContext?.consent.latest ?? null;
+  const consentAccepted = consentRequirement
+    ? Boolean(latestConsent && latestConsent.version === consentRequirement.version)
+    : true;
+
+  const councilRequirement = accessContext?.councilOfEurope.requirement ?? null;
+  const acknowledgedCoeVersion = accessContext?.councilOfEurope.acknowledgedVersion ?? null;
+  const councilAcknowledged = councilRequirement
+    ? acknowledgedCoeVersion === councilRequirement.version
+    : true;
+
+  const needsFriaArtifacts = Boolean(
+    assessment?.fria.required || consentRequirement || councilRequirement,
+  );
+
+  let friaArtifacts: TrustPanelFriaArtifact[] = [];
+  let friaValidated = false;
+
+  if (needsFriaArtifacts) {
+    const { data: friaRows, error: friaError } = await supabase
+      .from('fria_artifacts')
+      .select('id, title, evidence_url, release_tag, validated, submitted_at')
+      .eq('org_id', orgId)
+      .order('submitted_at', { ascending: false })
+      .limit(10);
+
+    if (friaError) {
+      console.warn('fria_artifacts_lookup_failed', friaError.message);
+    }
+
+    friaArtifacts = (friaRows ?? []).map((row) => ({
+      id:
+        typeof row.id === 'string' && row.id.length > 0
+          ? row.id
+          : `fria:${Math.random().toString(36).slice(2, 10)}`,
+      title: typeof row.title === 'string' && row.title.length > 0 ? row.title : 'FRIA',
+      evidenceUrl: typeof row.evidence_url === 'string' ? row.evidence_url : null,
+      releaseTag: typeof row.release_tag === 'string' ? row.release_tag : null,
+      validated: Boolean(row.validated),
+      submittedAt: row.submitted_at ? String(row.submitted_at) : null,
+    }));
+    friaValidated = friaArtifacts.some((artifact) => artifact.validated);
+  }
+
+  if (!assessment && !needsFriaArtifacts) {
+    return null;
+  }
+
+  return {
+    friaRequired: assessment?.fria.required ?? false,
+    friaValidated,
+    friaReasons: assessment?.fria.reasons ?? [],
+    friaArtifacts,
+    cepejPassed: assessment?.cepej.passed ?? true,
+    cepejViolations: assessment?.cepej.violations ?? [],
+    consent: {
+      requirement: consentRequirement,
+      accepted: consentAccepted,
+      latestVersion: latestConsent?.version ?? null,
+    },
+    councilOfEurope: {
+      requirement: councilRequirement,
+      acknowledged: councilAcknowledged,
+      acknowledgedVersion: councilRequirement ? acknowledgedCoeVersion : null,
+    },
+  } satisfies TrustPanelComplianceSummary;
 }
 
 const DOMAIN_ALLOWLIST = loadAllowlistOverride() ?? [...OFFICIAL_DOMAIN_ALLOWLIST];
@@ -529,13 +632,13 @@ function applyDisclosureProvenance(
   accessContext: OrgAccessContext | null | undefined,
 ): void {
   const provenance = ensureProvenance(payload);
-  const requiredConsent = accessContext?.consent.requiredVersion ?? null;
-  const acknowledgedConsent = accessContext?.consent.latestAcceptedVersion ?? null;
+  const requiredConsent = accessContext?.consent.requirement?.version ?? null;
+  const acknowledgedConsent = accessContext?.consent.latest?.version ?? null;
   provenance.disclosures.consent.required = requiredConsent ?? null;
   provenance.disclosures.consent.acknowledged = acknowledgedConsent ?? null;
 
-  const requiredCoe = accessContext?.policies.councilOfEuropeDisclosureVersion ?? null;
-  const acknowledgedCoe = requiredCoe ?? null;
+  const requiredCoe = accessContext?.councilOfEurope.requirement?.version ?? null;
+  const acknowledgedCoe = accessContext?.councilOfEurope.acknowledgedVersion ?? null;
   provenance.disclosures.council_of_europe.required = requiredCoe ?? null;
   provenance.disclosures.council_of_europe.acknowledged = acknowledgedCoe;
 
@@ -547,10 +650,10 @@ function applyDisclosureProvenance(
 
 function deriveComplianceContext(accessContext: OrgAccessContext | null | undefined): ComplianceContext {
   return {
-    requiredConsentVersion: accessContext?.consent.requiredVersion ?? null,
-    acknowledgedConsentVersion: accessContext?.consent.latestAcceptedVersion ?? null,
-    requiredCoeVersion: accessContext?.policies.councilOfEuropeDisclosureVersion ?? null,
-    acknowledgedCoeVersion: accessContext?.policies.councilOfEuropeDisclosureVersion ?? null,
+    requiredConsentVersion: accessContext?.consent.requirement?.version ?? null,
+    acknowledgedConsentVersion: accessContext?.consent.latest?.version ?? null,
+    requiredCoeVersion: accessContext?.councilOfEurope.requirement?.version ?? null,
+    acknowledgedCoeVersion: accessContext?.councilOfEurope.acknowledgedVersion ?? null,
   };
 }
 
@@ -3178,6 +3281,7 @@ async function handleGuardrailFailure(
   telemetryRecords: ToolTelemetry[],
   runKey: string,
   accessContext: OrgAccessContext | null,
+  complianceContext: ComplianceContext | null,
 ): Promise<AgentRunResult | null> {
   const guardType = identifyGuardrail(error);
   if (!guardType) {
@@ -3318,7 +3422,13 @@ async function handleGuardrailFailure(
   });
 
   const baseLearningJobs = buildLearningJobs(payload, planner.initialRouting, input);
-  const complianceOutcome = applyComplianceGates(payload, planner.initialRouting, input, baseLearningJobs);
+  const complianceOutcome = applyComplianceGates(
+    payload,
+    planner.initialRouting,
+    input,
+    baseLearningJobs,
+    complianceContext,
+  );
   const bindingBannerInfo = applyBindingLanguageNotices(payload, planner.initialRouting);
   if (bindingBannerInfo?.requiresBanner) {
     complianceOutcome.learningJobs.push({
@@ -3352,6 +3462,8 @@ async function handleGuardrailFailure(
     planner.agentProfile,
     runKey,
     planner.context.confidentialMode,
+    [],
+    accessContext ?? null,
   );
 
     return {
@@ -3378,86 +3490,8 @@ function buildTrustPanel(
   retrievalSnippets: HybridSnippet[],
   caseQuality: { summaries: CaseQualitySummary[]; forceHitl: boolean },
   verification: VerificationResult,
-  compliance: ComplianceAssessment | null = null,
+  compliance: TrustPanelComplianceSummary | null = null,
 ): TrustPanelPayload {
-  const toNullableString = (value: unknown): string | null =>
-    typeof value === 'string' && value.length > 0 ? value : null;
-
-  const provenanceDisclosures =
-    ((payload as unknown as { provenance?: Record<string, unknown> }).provenance?.disclosures as
-      | {
-          consent?: { required?: unknown; acknowledged?: unknown };
-          council_of_europe?: { required?: unknown; acknowledged?: unknown };
-        }
-      | undefined) ?? {
-      consent: { required: null, acknowledged: null },
-      council_of_europe: { required: null, acknowledged: null },
-    };
-
-  const requiredConsent =
-    toNullableString(provenanceDisclosures?.consent?.required) ??
-    (compliance?.disclosures.requiredConsentVersion ?? null);
-  const acknowledgedConsent =
-    toNullableString(provenanceDisclosures?.consent?.acknowledged) ??
-    (compliance?.disclosures.acknowledgedConsentVersion ?? null);
-  const requiredCoe =
-    toNullableString(provenanceDisclosures?.council_of_europe?.required) ??
-    (compliance?.disclosures.requiredCoeVersion ?? null);
-  const acknowledgedCoe =
-    toNullableString(provenanceDisclosures?.council_of_europe?.acknowledged) ??
-    (compliance?.disclosures.acknowledgedCoeVersion ?? null);
-
-  const consentSatisfied = !requiredConsent || acknowledgedConsent === requiredConsent;
-  const councilSatisfied = !requiredCoe || acknowledgedCoe === requiredCoe;
-
-  const baseCompliance: ComplianceAssessment = compliance
-    ? {
-        ...compliance,
-        disclosures: {
-          ...compliance.disclosures,
-          requiredConsentVersion: compliance.disclosures.requiredConsentVersion ?? requiredConsent,
-          acknowledgedConsentVersion:
-            compliance.disclosures.acknowledgedConsentVersion ?? acknowledgedConsent,
-          requiredCoeVersion: compliance.disclosures.requiredCoeVersion ?? requiredCoe,
-          acknowledgedCoeVersion: compliance.disclosures.acknowledgedCoeVersion ?? acknowledgedCoe,
-        },
-      }
-    : {
-        fria: { required: false, reasons: [] },
-        cepej: { passed: true, violations: [] },
-        statute: { passed: true, violations: [] },
-        disclosures: {
-          consentSatisfied,
-          councilSatisfied,
-          missing: [],
-          requiredConsentVersion: requiredConsent,
-          acknowledgedConsentVersion: acknowledgedConsent,
-          requiredCoeVersion: requiredCoe,
-          acknowledgedCoeVersion: acknowledgedCoe,
-        },
-      } satisfies ComplianceAssessment;
-
-  const disclosureMissing = new Set(baseCompliance.disclosures.missing);
-  if (!consentSatisfied) {
-    disclosureMissing.add('consent');
-  }
-  if (!councilSatisfied) {
-    disclosureMissing.add('council_of_europe');
-  }
-
-  const complianceSummary: TrustPanelComplianceSummary = {
-    ...baseCompliance,
-    disclosures: {
-      ...baseCompliance.disclosures,
-      consentSatisfied,
-      councilSatisfied,
-      missing: Array.from(disclosureMissing),
-      requiredConsentVersion: requiredConsent,
-      acknowledgedConsentVersion: acknowledgedConsent,
-      requiredCoeVersion: requiredCoe,
-      acknowledgedCoeVersion: acknowledgedCoe,
-    },
-  };
 
   const citations = Array.isArray(payload.citations) ? payload.citations : [];
   let allowlistedCount = 0;
@@ -3649,7 +3683,7 @@ function buildTrustPanel(
       bindingLanguages,
       akomaArticles,
     },
-    compliance: complianceSummary,
+    compliance,
   };
 }
 
@@ -3752,6 +3786,7 @@ async function fetchTrustPanelForRun(
   orgId: string,
   payload: IRACPayload,
   verification: VerificationResult,
+  accessContext: OrgAccessContext | null = null,
 ): Promise<TrustPanelPayload | null> {
   try {
     const retrievalQuery = await supabase
@@ -3794,14 +3829,15 @@ async function fetchTrustPanelForRun(
 
     const caseSummaries = await loadCaseQualitySummaries(orgId, payload.citations);
     const forceHitl = caseSummaries.some((item) => item.hardBlock || item.score < 55);
-    const compliance = await fetchComplianceAssessmentForRun(runId, 'trust_panel');
+    const complianceAssessment = await fetchComplianceAssessmentForRun(runId, 'trust_panel');
+    const complianceSummary = await buildComplianceSummary(orgId, complianceAssessment, accessContext);
 
     return buildTrustPanel(
       payload,
       retrievalSnippets,
       { summaries: caseSummaries, forceHitl },
       verification,
-      compliance,
+      complianceSummary,
     );
   } catch (error) {
     console.warn('trust_panel_fetch_failed', error);
@@ -3824,6 +3860,7 @@ async function persistRun(
   runKey: string | null = null,
   confidentialMode = false,
   allowlistViolations: string[] = [],
+  accessContext: OrgAccessContext | null = null,
 ): Promise<{ runId: string; trust: TrustPanelPayload; compliance: ComplianceAssessment | null }> {
   const startedAt = new Date().toISOString();
   normaliseRuleKinds(payload);
@@ -3831,6 +3868,12 @@ async function persistRun(
   if (allowlistViolations.length > 0) {
     flagQuarantine(payload, 'allowlist_violation');
   }
+
+  const complianceSummary = await buildComplianceSummary(
+    input.orgId,
+    complianceAssessment,
+    accessContext,
+  );
   const insertPayload = {
     org_id: input.orgId,
     user_id: input.userId,
@@ -3877,13 +3920,19 @@ async function persistRun(
 
       if (existing.data?.id) {
         const restoredTrust =
-          (await fetchTrustPanelForRun(existing.data.id as string, input.orgId, payload, verification)) ??
+          (await fetchTrustPanelForRun(
+            existing.data.id as string,
+            input.orgId,
+            payload,
+            verification,
+            accessContext ?? null,
+          )) ??
           buildTrustPanel(
             payload,
             retrievalSnippets,
             { summaries: [], forceHitl: payload.risk.hitl_required },
             verification,
-            complianceAssessment ?? null,
+            complianceSummary,
           );
         return { runId: existing.data.id as string, trust: restoredTrust, compliance: complianceAssessment ?? null };
       }
@@ -4060,7 +4109,7 @@ async function persistRun(
     retrievalSnippets,
     caseQuality,
     verification,
-    complianceAssessment ?? null,
+    complianceSummary,
   );
 
   return { runId: runData.id as string, trust: trustPanel, compliance: complianceAssessment ?? null };
@@ -5221,14 +5270,26 @@ export async function runLegalAgent(
         : verificationSummary;
     }
 
+    const existingComplianceSummary = await buildComplianceSummary(
+      input.orgId,
+      existing.compliance,
+      accessContext ?? null,
+    );
+
     const trustPanel =
-      (await fetchTrustPanelForRun(existing.id, input.orgId, payload, existing.verification)) ??
+      (await fetchTrustPanelForRun(
+        existing.id,
+        input.orgId,
+        payload,
+        existing.verification,
+        accessContext ?? null,
+      )) ??
       buildTrustPanel(
         payload,
         planner.hybridSnippets,
         { summaries: [], forceHitl: payload.risk.hitl_required },
         existing.verification,
-        existing.compliance ?? null,
+        existingComplianceSummary,
       );
 
     return {
@@ -5373,6 +5434,7 @@ export async function runLegalAgent(
       runKey,
       planner.context.confidentialMode,
       [],
+      accessContext ?? null,
     );
 
     return {
@@ -5450,6 +5512,7 @@ export async function runLegalAgent(
         runKey,
         planner.context.confidentialMode,
         [],
+        accessContext ?? null,
       );
       runId = result.runId;
       trustPanel = result.trust;
@@ -5462,7 +5525,7 @@ export async function runLegalAgent(
         planner.hybridSnippets,
         { summaries: [], forceHitl: payload.risk.hitl_required },
         verification,
-        complianceOutcome.assessment,
+        complianceSummary,
       );
     }
 
@@ -5499,6 +5562,7 @@ export async function runLegalAgent(
       telemetryRecords,
       runKey,
       accessContext ?? null,
+      complianceContext,
     );
     if (guardResult) {
       return guardResult;
@@ -5583,8 +5647,9 @@ export async function runLegalAgent(
     verification,
     planner.agentProfile,
     runKey,
-    planner.context.confidentialMode,
-    execution.allowlistViolations,
+   planner.context.confidentialMode,
+   execution.allowlistViolations,
+    accessContext ?? null,
   );
 
   return {

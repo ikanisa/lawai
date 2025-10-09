@@ -67,12 +67,101 @@ export interface TrustPanelRiskSummary {
   verification: VerificationResult;
 }
 
+export interface TrustPanelFriaArtifact {
+  id: string;
+  title: string;
+  evidenceUrl: string | null;
+  releaseTag: string | null;
+  validated: boolean;
+  submittedAt: string | null;
+}
+
+export interface TrustPanelComplianceSummary {
+  friaRequired: boolean;
+  friaValidated: boolean;
+  friaReasons: string[];
+  friaArtifacts: TrustPanelFriaArtifact[];
+  cepejPassed: boolean;
+  cepejViolations: string[];
+  consent: {
+    requirement: { type: string; version: string } | null;
+    accepted: boolean;
+    latestVersion: string | null;
+  };
+  councilOfEurope: {
+    requirement: { version: string; documentUrl?: string | null } | null;
+    acknowledged: boolean;
+    acknowledgedVersion: string | null;
+  };
+}
+
+export interface ComplianceAcknowledgements {
+  consent: {
+    requiredVersion: string | null;
+    acknowledgedVersion: string | null;
+    acknowledgedAt: string | null;
+    satisfied: boolean;
+  };
+  councilOfEurope: {
+    requiredVersion: string | null;
+    acknowledgedVersion: string | null;
+    acknowledgedAt: string | null;
+    satisfied: boolean;
+  };
+}
+
+export interface ComplianceAssessmentSummary {
+  fria: {
+    required: boolean;
+    reasons: string[];
+  };
+  cepej: {
+    passed: boolean;
+    violations: string[];
+  };
+  statute: {
+    passed: boolean;
+    violations: string[];
+  };
+  disclosures: {
+    consentSatisfied: boolean;
+    councilSatisfied: boolean;
+    missing: string[];
+    requiredConsentVersion: string | null;
+    acknowledgedConsentVersion: string | null;
+    requiredCoeVersion: string | null;
+    acknowledgedCoeVersion: string | null;
+  };
+}
+
+export interface ComplianceStatusEntry {
+  runId: string | null;
+  createdAt: string | null;
+  assessment: ComplianceAssessmentSummary;
+}
+
+export interface ComplianceStatusResponse {
+  orgId: string;
+  userId: string;
+  acknowledgements: ComplianceAcknowledgements;
+  latest: ComplianceStatusEntry | null;
+  history: ComplianceStatusEntry[];
+  totals: {
+    total: number;
+    friaRequired: number;
+    cepejViolations: number;
+    statuteViolations: number;
+    disclosureGaps: number;
+  };
+}
+
 export interface TrustPanelPayload {
   citationSummary: TrustPanelCitationSummary;
   retrievalSummary: TrustPanelRetrievalSummary;
   caseQuality: TrustPanelCaseQualitySummary;
   risk: TrustPanelRiskSummary;
   provenance: TrustPanelProvenanceSummary;
+  compliance: TrustPanelComplianceSummary;
 }
 
 export interface RetrievalMetricsResponse {
@@ -1302,6 +1391,42 @@ export async function toggleAllowlistDomain(host: string, active: boolean, juris
   });
   if (!response.ok) {
     throw new Error('Unable to toggle domain');
+  }
+  return response.json();
+}
+
+export async function fetchComplianceStatus(orgId: string): Promise<ComplianceStatusResponse> {
+  const response = await fetch(`${API_BASE}/compliance/status`, {
+    headers: {
+      'x-user-id': DEMO_USER_ID,
+      'x-org-id': orgId,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('compliance_status_failed');
+  }
+  return response.json();
+}
+
+export async function acknowledgeCompliance(
+  orgId: string,
+  input: {
+    consent?: { type: string; version: string } | null;
+    councilOfEurope?: { version: string } | null;
+  },
+): Promise<ComplianceStatusResponse> {
+  const payload = input ?? {};
+  const response = await fetch(`${API_BASE}/compliance/acknowledgements`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': DEMO_USER_ID,
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error('compliance_ack_failed');
   }
   return response.json();
 }

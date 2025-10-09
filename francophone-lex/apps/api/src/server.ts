@@ -180,8 +180,8 @@ function summariseAcknowledgements(
     }
   }
 
-  const consentRequired = access.policies.consentVersion ?? null;
-  const coeRequired = access.policies.councilOfEuropeDisclosureVersion ?? null;
+  const consentRequired = access.policies.consentRequirement?.version ?? null;
+  const coeRequired = access.policies.councilOfEuropeRequirement?.version ?? null;
   const consentAck = latestByType.get(COMPLIANCE_ACK_TYPES.consent);
   const coeAck = latestByType.get(COMPLIANCE_ACK_TYPES.councilOfEurope);
 
@@ -191,13 +191,13 @@ function summariseAcknowledgements(
   return {
     consent: {
       requiredVersion: consentRequired,
-      acknowledgedVersion: consentAck?.version ?? access.consent.latestAcceptedVersion ?? null,
+      acknowledgedVersion: consentAck?.version ?? access.consent.latest?.version ?? null,
       acknowledgedAt: consentAck?.created_at ?? null,
       satisfied: consentSatisfied,
     },
     councilOfEurope: {
       requiredVersion: coeRequired,
-      acknowledgedVersion: coeAck?.version ?? null,
+      acknowledgedVersion: coeAck?.version ?? access.councilOfEurope.acknowledgedVersion ?? null,
       acknowledgedAt: coeAck?.created_at ?? null,
       satisfied: councilSatisfied,
     },

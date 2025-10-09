@@ -4,10 +4,114 @@
     "tagline": "Autonomous lawyer for francophone jurisdictions",
     "skipToContent": "Skip to main content",
     "commandPlaceholder": "Press / to open the command palette",
-    "installPromptTitle": "Install Avocat-AI on your device",
-    "installPromptBody": "Keep the agent one tap away, even offline. We surface install once a successful run completes.",
-    "installPromptCta": "Install app",
-    "installPromptDismiss": "Later",
+    "commandButton": "Command palette",
+    "commandPalette": {
+      "title": "Command palette",
+      "subtitle": "Navigate quickly or trigger an action.",
+      "placeholder": "Search commands…",
+      "empty": "No commands match your search.",
+      "close": "Close",
+      "sections": {
+        "actions": "Quick actions",
+        "navigate": "Navigation"
+      },
+      "navigateTo": "Go to {destination}",
+      "actions": {
+        "newResearch": {
+          "label": "New research",
+          "description": "Open the Research view and ask a new question."
+        },
+        "upload": {
+          "label": "Upload document",
+          "description": "Open the corpus manager to add an authoritative source."
+        },
+        "openWorkspace": {
+          "label": "Workspace",
+          "description": "Return to the dashboard and launch quick actions."
+        },
+        "openDrafting": {
+          "label": "Drafting",
+          "description": "Open templates and the clause comparison tools."
+        },
+        "openMatters": {
+          "label": "Matters",
+          "description": "Review deadlines and matter timelines."
+        },
+        "openCitations": {
+          "label": "Browse sources",
+          "description": "Use the authority browser and version diff viewer."
+        },
+        "openHitl": {
+          "label": "Human review",
+          "description": "Manage the HITL queue and approve high-risk answers."
+        },
+        "openCorpus": {
+          "label": "Corpus & Sources",
+          "description": "Manage allowlists and monitor ingestion health."
+        },
+        "openAdmin": {
+          "label": "Administration",
+          "description": "Configure users, security, and policies."
+        },
+        "openTrust": {
+          "label": "Trust Center",
+          "description": "Review transparency metrics, SLO snapshots, and published evidence."
+        },
+        "openPlan": {
+          "label": "Show agent plan",
+          "description": "Peek at tool usage, provenance, and guardrails."
+        },
+        "security": {
+          "label": "Security & MFA settings",
+          "description": "Link WhatsApp OTP, manage sessions, and lockdown policies."
+        },
+        "newDraft": {
+          "label": "Generate a new draft",
+          "description": "Start drafting with templates and clause comparisons."
+        }
+      }
+    },
+    "install": {
+      "title": "Install Avocat-AI",
+      "body": "Add the app to your home screen for faster access and offline-friendly workflows.",
+      "cta": "Install app",
+      "dismiss": "Maybe later",
+      "success": "Avocat-AI is ready on your device.",
+      "snoozed": "We’ll remind you again soon.",
+      "unavailable": "Installation is unavailable on this device."
+    },
+    "confidential": {
+      "title": "Confidential mode enabled",
+      "body": "Web search is disabled, local caches are cleared, and a privacy veil blurs previews to limit exposure.",
+      "cta": "Exit confidential mode",
+      "actions": {
+        "enable": {
+          "label": "Enable confidential mode",
+          "description": "Mask sensitive previews and restrict online tools.",
+          "shortcut": "Ctrl⌘+K"
+        },
+        "disable": {
+          "label": "Disable confidential mode",
+          "description": "Restore web search and secure local caching.",
+          "shortcut": "Ctrl⌘+K"
+        }
+      },
+      "status": {
+        "enabled": "Confidential mode on — web search is suspended.",
+        "disabled": "Confidential mode off — online tools are available again."
+      }
+    },
+    "compliance": {
+      "title": "Compliance acknowledgement required",
+      "description": "Confirm the mandatory governance policies before using the autonomous legal assistant.",
+      "consentRequired": "Acknowledge the AI-assist consent (version {version}).",
+      "councilRequired": "Acknowledge the Council of Europe AI framework (version {version}).",
+      "acknowledge": "I acknowledge",
+      "acknowledged": "Compliance acknowledgement recorded.",
+      "error": "Unable to record the acknowledgement. Please retry.",
+      "loading": "Checking compliance requirements…",
+      "footer": "Your acknowledgement is logged for CEPEJ/EU AI Act compliance."
+    },
     "mobileActionsTitle": "Quick actions",
     "mobileActionsDescription": "Start research, upload evidence, or draft from your phone.",
     "offlineLabel": "Offline",
@@ -33,43 +137,10 @@
     "newDraft": "New draft",
     "submit": "Submit",
     "copy": "Copy",
-    "exportPdf": "Export PDF",
-    "exportDocx": "Export DOCX",
+    "exportPdf": "Export signed PDF (C2PA)",
+    "exportDocx": "Export signed DOCX (C2PA)",
     "hitl": "Submit for review",
     "ask": "Ask"
-  },
-  "commands": {
-    "title": "Command palette",
-    "subtitle": "Navigate quickly or trigger workspace actions.",
-    "searchPlaceholder": "Search a command…",
-    "empty": "No commands match your search.",
-    "groupNavigation": "Navigation",
-    "groupActions": "Quick actions",
-    "workspace": "Go to workspace",
-    "workspaceDescription": "Overview, compliance feed, HITL inbox.",
-    "research": "Open research",
-    "researchDescription": "Jump to the research canvas for a new query.",
-    "drafting": "Open drafting studio",
-    "draftingDescription": "Work on briefs, clauses, and exports.",
-    "matters": "Browse matters",
-    "mattersDescription": "Review active matters and timelines.",
-    "citations": "Open citations browser",
-    "citationsDescription": "Inspect sources, statute alignment, and treatments.",
-    "hitl": "Open HITL review",
-    "hitlDescription": "Manage human-in-the-loop queues and decisions.",
-    "admin": "Open admin console",
-    "adminDescription": "Review policies, alerts, and org settings.",
-    "corpus": "Open corpus & sources",
-    "corpusDescription": "Monitor ingestion, bindings, and provenance.",
-    "openPlan": "Show agent plan drawer",
-    "openPlanDescription": "Peek at tool usage, provenance, and guardrails.",
-    "security": "Security & MFA settings",
-    "securityDescription": "Link WhatsApp OTP, manage sessions, and lockdown policies.",
-    "newDraft": "Generate a new draft",
-    "newDraftDescription": "Start drafting with templates and clause comparisons.",
-    "pressEsc": "Press Esc to close",
-    "close": "Dismiss",
-    "open": "Command palette"
   },
   "research": {
     "heroPlaceholder": "Ask your legal question…",
@@ -89,8 +160,37 @@
     "languageWarning": "The French version is a translation. Arabic is legally binding.",
     "canadaLanguageNotice": "In Québec and Canada, French and English versions carry equal legal force.",
     "switzerlandLanguageNotice": "In Switzerland, review the French and German versions whenever available.",
-    "rwandaLanguageNotice": "In Rwanda, verify both the Kinyarwanda and English Gazette versions before relying on translations.",
-    "jurisdictionNote": "Adjust the jurisdiction when needed. Badges surface EU, OHADA, bilingual, or Maghreb layers.",
+    "rwandaLanguageNotice": "In Rwanda, French, English, and Kinyarwanda editions of the Official Gazette all carry equal legal force.",
+    "confidential": {
+      "banner": "Confidential mode: only trusted internal and allowlisted sources are consulted and sensitive features are limited.",
+      "voiceDisabled": "Voice dictation is unavailable in confidential mode.",
+      "ocrDisabled": "Camera capture is unavailable in confidential mode."
+    },
+    "jurisdictionNote": "Adjust the jurisdiction when needed. Badges surface EU, OHADA, bilingual, tri-lingual, or Maghreb layers.",
+    "readingModes": {
+      "label": "Reading modes",
+      "research": "Research",
+      "brief": "Brief",
+      "evidence": "Evidence",
+      "descriptions": {
+        "research": "Full IRAC analysis with trust details.",
+        "brief": "Condensed summary for memos and briefings.",
+        "evidence": "Focus on authoritative sources and verification."
+      },
+      "briefTitle": "Briefing summary",
+      "briefLead": "Shareable overview for clients or team members.",
+      "briefIssue": "Key question",
+      "briefConclusion": "Quick conclusion",
+      "briefRules": "Authorities to cite",
+      "briefRulesEmpty": "No primary rules have been identified yet.",
+      "briefApplication": "Points to watch",
+      "evidenceModeTitle": "Evidence focus",
+      "evidenceModeSubtitle": "Review each authoritative source and refresh snapshots when necessary.",
+      "evidencePrimary": "Primary source",
+      "evidenceSecondary": "Additional citations",
+      "evidenceOpen": "Open source",
+      "evidenceEmpty": "No authoritative citations are available yet."
+    },
     "agentSelector": {
       "label": "Agent profile",
       "helper": "Choose which Autonomous Suite agent should run this question.",
@@ -102,6 +202,7 @@
       "bilingual": "Bilingual",
       "maghreb": "Maghreb",
       "swiss": "Multilingual",
+      "trilingual": "Tri-lingual",
       "rwanda": "Rwanda"
     },
     "plan": "Agent plan",
@@ -123,10 +224,41 @@
       "translationHeading": "Language & consolidation",
       "translationNone": "No language or translation warnings.",
       "translationWarnings": "Warnings detected:",
+      "complianceHeading": "Compliance & disclosures",
+      "complianceFria": "FRIA checkpoint required — {reason}",
+      "complianceFriaFallback": "Reason unavailable.",
+      "complianceFriaValidated": "FRIA evidence validated.",
+      "complianceFriaPending": "FRIA evidence pending validation.",
+      "complianceFriaNotRequired": "FRIA not required.",
+      "complianceFriaEvidence": "Evidence submitted:",
+      "complianceFriaEvidenceValidated": "validated",
+      "complianceFriaEvidencePending": "submitted",
+      "complianceCepej": "CEPEJ charter issues — {detail}",
+      "complianceCepejFallback": "Review CEPEJ charter obligations.",
+      "complianceStatute": "Statute-first enforcement — {detail}",
+      "complianceStatuteFallback": "Confirm a binding statute anchors the analysis.",
+      "complianceDisclosures": "Disclosures pending — {detail}",
+      "complianceDisclosuresFallback": "Confirm consent and Council of Europe disclosures are acknowledged.",
+      "complianceResolved": "All compliance checkpoints satisfied.",
+      "complianceConsentAcknowledged": "Consent banner acknowledged (v{version}).",
+      "complianceConsentPending": "Consent banner pending (v{version}).",
+      "complianceCoeAcknowledged": "Council of Europe notice acknowledged (v{version}).",
+      "complianceCoePending": "Council of Europe notice pending (v{version}).",
+      "complianceUnavailable": "Compliance summary unavailable for this run.",
       "bindingHeading": "Binding force",
       "bindingAll": "All referenced rules are marked as binding.",
       "bindingWarnings": "References to confirm:",
       "bindingCounts": "{binding}/{total} rules marked as binding.",
+      "treatmentHeading": "Treatment history",
+      "treatmentEmpty": "No subsequent treatment recorded.",
+      "treatmentUnknownDate": "Date unknown",
+      "statuteHeading": "Statute alignment",
+      "statuteEmpty": "No statute alignment evidence recorded yet.",
+      "statuteArticleFallback": "Statute reference",
+      "statuteScoreLabel": "Alignment score {score}",
+      "statuteRationaleLabel": "Rationale:",
+      "riskHeading": "Political & risk flags",
+      "riskEmpty": "No political or risk flags recorded.",
       "provenanceHeading": "Provenance & identifiers",
       "provenanceSummary": "{count} authoritative sources analysed.",
       "provenanceEli": "{count} with ELI identifiers",
@@ -156,11 +288,54 @@
       "hitlRequired": "Human review required.",
       "hitlNotRequired": "Human review not required."
     },
+    "compliance": {
+      "title": "Compliance checkpoints",
+      "description": "Automated CEPEJ, EU AI Act, and disclosure checks for this run.",
+      "friaRequired": "FRIA checkpoint required before release.",
+      "friaReasonFallback": "Run classified as high-risk under the EU AI Act safeguards.",
+      "cepejFailed": "CEPEJ charter issues detected.",
+      "cepejDefaultDetail": "Review transparency and user-control obligations.",
+      "statuteFailed": "Statute-first enforcement triggered.",
+      "statuteDefaultDetail": "Ensure a binding statute anchors the analysis.",
+      "disclosuresRequired": "Disclosures require acknowledgement.",
+      "resolved": "All compliance gates satisfied.",
+      "resolvedDetail": "FRIA, CEPEJ, statute-first, and disclosure checks are complete.",
+      "consentAcknowledged": "Consent banner acknowledged (v{version}).",
+      "consentPending": "Consent banner pending (v{version}).",
+      "councilAcknowledged": "Council of Europe notice acknowledged (v{version}).",
+      "councilPending": "Council of Europe notice pending (v{version}).",
+      "cepejViolations": {
+        "transparency": "Provide at least one authoritative citation.",
+        "quality_security": "Populate the rules section and rerun guardrails.",
+        "fundamental_rights_screening": "Escalate fundamental-rights matters and increase risk level.",
+        "user_control": "Enable human-in-the-loop review for this scenario."
+      },
+      "statuteViolations": {
+        "first_rule_not_binding": "Ensure the first rule is binding in the cited jurisdiction.",
+        "first_rule_not_statute": "Lead with a statute before citing cases or commentary.",
+        "no_binding_statute_rule": "Add at least one binding statute to anchor the analysis.",
+        "missing_case_statute_alignment": "Link jurisprudence back to the governing statute."
+      },
+      "disclosuresMissing": {
+        "consent": "Display the consent banner and capture the required acceptance.",
+        "council_of_europe": "Record the Council of Europe disclosure acknowledgement."
+      }
+    },
     "bilingual": {
       "label": "Official bilingual versions",
       "fr": "French",
       "en": "English",
       "note": "In Québec and Canada the French and English versions carry equal legal authority. Use the citations list to open each official text."
+    },
+    "rwanda": {
+      "label": "Rwanda official versions",
+      "description": "Choose which language to review when cross-checking provisions.",
+      "note": "French, English, and Kinyarwanda editions of the Official Gazette are equally binding. Flag any material mismatch for human review.",
+      "languages": {
+        "fr": "French",
+        "en": "English",
+        "rw": "Kinyarwanda"
+      }
     },
     "irac": {
       "issue": "Issue",
@@ -730,13 +905,20 @@
   },
   "trust": {
     "title": "Trust Center",
-    "description": "Transparency reports, readiness metrics, and published evidence for regulators and clients.",
+    "description": "Operational transparency, service commitments, and governance documentation for clients and regulators.",
     "operationsTitle": "Operations & readiness",
-    "publicationsTitle": "Published collateral",
-    "publicationsEmpty": "No publications available yet.",
+    "publicationsTitle": "Governance publications",
+    "publicationsDescription": "Access published policies, runbooks, and official notices from the Avocat-AI team.",
+    "publicationsEmpty": "No publications are available yet.",
     "loading": "Loading…",
     "viewDocument": "View document",
-    "publishedOn": "Published on {date}"
+    "publishedOn": "Published {date}",
+    "categories": {
+      "general": "Documentation",
+      "policy": "Policies & compliance",
+      "support": "Support & SLO",
+      "regulator": "Regulator outreach"
+    }
   },
   "auth": {
     "title": "Sign in with WhatsApp",

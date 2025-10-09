@@ -264,11 +264,13 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   }, [payload, locale]);
 
   const trustMessages = messages.research.trust;
+  const complianceMessages = messages.research.compliance;
   const trustPanel = latestRun?.trustPanel ?? null;
   const trustCitationSummary = trustPanel?.citationSummary ?? null;
   const trustProvenance = trustPanel?.provenance ?? null;
   const residencyBreakdown = trustProvenance?.residencyBreakdown ?? [];
   const trustRisk = trustPanel?.risk ?? null;
+  const trustCompliance = trustPanel?.compliance ?? null;
   const verification = latestRun?.verification ?? trustRisk?.verification ?? null;
   const allowlistViolations = useMemo(
     () => verification?.allowlistViolations ?? [],
@@ -360,6 +362,114 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
       ? trustMessages.hitlRequired
       : trustMessages.hitlNotRequired
     : null;
+
+  const complianceIssues = useMemo(() => {
+    if (!trustCompliance) return [] as string[];
+
+    const issues: string[] = [];
+
+    if (trustCompliance.friaRequired && !trustCompliance.friaValidated) {
+      const reason = trustCompliance.friaReasons[0] ?? trustMessages.complianceFriaFallback;
+      issues.push(trustMessages.complianceFria.replace('{reason}', reason));
+    }
+
+    if (!trustCompliance.cepejPassed) {
+      const detail = trustCompliance.cepejViolations.length
+        ? trustCompliance.cepejViolations
+            .map(
+              (code) =>
+                complianceMessages.cepejViolations[
+                  code as keyof typeof complianceMessages.cepejViolations
+                ] ?? trustMessages.complianceCepejFallback,
+            )
+            .join(' • ')
+        : trustMessages.complianceCepejFallback;
+      issues.push(trustMessages.complianceCepej.replace('{detail}', detail));
+    }
+
+    if (trustCompliance.consent.requirement && !trustCompliance.consent.accepted) {
+      issues.push(
+        trustMessages.complianceConsentPending.replace(
+          '{version}',
+          trustCompliance.consent.requirement.version,
+        ),
+      );
+    }
+
+    if (
+      trustCompliance.councilOfEurope.requirement?.version &&
+      !trustCompliance.councilOfEurope.acknowledged
+    ) {
+      issues.push(
+        trustMessages.complianceCoePending.replace(
+          '{version}',
+          trustCompliance.councilOfEurope.requirement.version,
+        ),
+      );
+    }
+
+    return issues;
+  }, [trustCompliance, complianceMessages, trustMessages]);
+
+  const complianceStatusMessages = useMemo(() => {
+    if (!trustCompliance) return [] as string[];
+
+    const statuses: string[] = [];
+
+    if (trustCompliance.friaRequired) {
+      statuses.push(
+        trustCompliance.friaValidated
+          ? trustMessages.complianceFriaValidated
+          : trustMessages.complianceFriaPending,
+      );
+    } else {
+      statuses.push(trustMessages.complianceFriaNotRequired);
+    }
+
+    if (trustCompliance.consent.requirement) {
+      statuses.push(
+        trustCompliance.consent.accepted
+          ? trustMessages.complianceConsentAcknowledged.replace(
+              '{version}',
+              trustCompliance.consent.requirement.version,
+            )
+          : trustMessages.complianceConsentPending.replace(
+              '{version}',
+              trustCompliance.consent.requirement.version,
+            ),
+      );
+    } else if (trustCompliance.consent.latestVersion) {
+      statuses.push(
+        trustMessages.complianceConsentAcknowledged.replace(
+          '{version}',
+          trustCompliance.consent.latestVersion,
+        ),
+      );
+    }
+
+    if (trustCompliance.councilOfEurope.requirement?.version) {
+      statuses.push(
+        trustCompliance.councilOfEurope.acknowledged
+          ? trustMessages.complianceCoeAcknowledged.replace(
+              '{version}',
+              trustCompliance.councilOfEurope.requirement.version,
+            )
+          : trustMessages.complianceCoePending.replace(
+              '{version}',
+              trustCompliance.councilOfEurope.requirement.version,
+            ),
+      );
+    } else if (trustCompliance.councilOfEurope.acknowledgedVersion) {
+      statuses.push(
+        trustMessages.complianceCoeAcknowledged.replace(
+          '{version}',
+          trustCompliance.councilOfEurope.acknowledgedVersion,
+        ),
+      );
+    }
+
+    return statuses;
+  }, [trustCompliance, trustMessages]);
   const verificationMessage =
     verificationStatus === 'hitl_escalated' ? trustMessages.verificationHitl : trustMessages.verificationPassed;
   const allowlistSummary = allowlistClean ? trustMessages.allowlistClean : trustMessages.allowlistIssues;
@@ -764,6 +874,73 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                           <li key={`${warning}-${index}`}>{warning}</li>
                         ))}
                       </ul>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold text-slate-100">{trustMessages.complianceHeading}</h4>
+                    {trustCompliance ? (
+                      <>
+                        {complianceIssues.length === 0 ? (
+                          <>
+                            <p className="mt-1 text-slate-200">{trustMessages.complianceResolved}</p>
+                            <p className="mt-1 text-slate-300">{trustMessages.complianceResolvedDetail}</p>
+                          </>
+                        ) : (
+                          <ul className="mt-2 space-y-1 list-inside list-disc text-amber-200">
+                            {complianceIssues.map((issue) => (
+                              <li key={issue}>{issue}</li>
+                            ))}
+                          </ul>
+                        )}
+                        {complianceStatusMessages.length > 0 && (
+                          <ul className="mt-3 space-y-1 list-inside list-disc text-slate-300">
+                            {complianceStatusMessages.map((status) => (
+                              <li key={status}>{status}</li>
+                            ))}
+                          </ul>
+                        )}
+                        {trustCompliance.friaArtifacts.length > 0 ? (
+                          <div className="mt-3 space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              {trustMessages.complianceFriaEvidence}
+                            </p>
+                            <ul className="space-y-1 text-sm text-slate-300">
+                              {trustCompliance.friaArtifacts.map((artifact) => (
+                                <li key={artifact.id}>
+                                  {artifact.evidenceUrl ? (
+                                    <a
+                                      href={artifact.evidenceUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="underline decoration-slate-500/70 hover:decoration-slate-200"
+                                    >
+                                      {artifact.title}
+                                    </a>
+                                  ) : (
+                                    artifact.title
+                                  )}
+                                  {artifact.releaseTag ? ` — ${artifact.releaseTag}` : ''}
+                                  <span
+                                    className={cn(
+                                      'ml-2 rounded-full px-2 py-0.5 text-xs uppercase tracking-wide',
+                                      artifact.validated
+                                        ? 'bg-teal-500/20 text-teal-100'
+                                        : 'bg-amber-500/20 text-amber-100',
+                                    )}
+                                  >
+                                    {artifact.validated
+                                      ? trustMessages.complianceFriaEvidenceValidated
+                                      : trustMessages.complianceFriaEvidencePending}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="mt-1 text-slate-400">{trustMessages.complianceUnavailable}</p>
                     )}
                   </div>
 

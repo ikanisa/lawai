@@ -15,6 +15,8 @@ import {
   Lock,
   Wand2,
   Sparkle,
+  Upload,
+  Globe2,
 } from 'lucide-react';
 import type { Route } from 'next';
 import type { Locale, Messages } from '../lib/i18n';
@@ -42,8 +44,8 @@ interface CommandItem {
 }
 
 function groupLabel(group: CommandGroup, messages: Messages): string {
-  if (group === 'actions') return messages.commands.groupActions;
-  return messages.commands.groupNavigation;
+  const sections = messages.app.commandPalette.sections;
+  return group === 'actions' ? sections.actions : sections.navigate;
 }
 
 export function CommandPalette({ messages, locale }: CommandPaletteProps) {
@@ -61,12 +63,19 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
 
   const localizedHref = useCallback((href: string) => `/${locale}${href}` as Route, [locale]);
 
-  const commands = useMemo<CommandItem[]>(
-    () => [
+  const paletteMessages = messages.app.commandPalette;
+
+  const formatNavigateDescription = useCallback(
+    (destination: string) => paletteMessages.navigateTo.replace('{destination}', destination),
+    [paletteMessages.navigateTo],
+  );
+
+  const commands = useMemo<CommandItem[]>(() => {
+    const navCommands: CommandItem[] = [
       {
         id: 'nav-workspace',
-        label: messages.commands.workspace,
-        description: messages.commands.workspaceDescription,
+        label: messages.nav.workspace,
+        description: formatNavigateDescription(messages.nav.workspace),
         group: 'navigation',
         keywords: ['workspace', 'accueil'],
         icon: LayoutGrid,
@@ -74,8 +83,8 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
       },
       {
         id: 'nav-research',
-        label: messages.commands.research,
-        description: messages.commands.researchDescription,
+        label: messages.nav.research,
+        description: formatNavigateDescription(messages.nav.research),
         group: 'navigation',
         keywords: ['recherche', 'search'],
         icon: Search,
@@ -84,8 +93,8 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
       },
       {
         id: 'nav-drafting',
-        label: messages.commands.drafting,
-        description: messages.commands.draftingDescription,
+        label: messages.nav.drafting,
+        description: formatNavigateDescription(messages.nav.drafting),
         group: 'navigation',
         keywords: ['brouillon', 'draft'],
         icon: FileText,
@@ -93,8 +102,8 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
       },
       {
         id: 'nav-matters',
-        label: messages.commands.matters,
-        description: messages.commands.mattersDescription,
+        label: messages.nav.matters,
+        description: formatNavigateDescription(messages.nav.matters),
         group: 'navigation',
         keywords: ['dossier', 'case'],
         icon: Briefcase,
@@ -102,8 +111,8 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
       },
       {
         id: 'nav-citations',
-        label: messages.commands.citations,
-        description: messages.commands.citationsDescription,
+        label: messages.nav.citations,
+        description: formatNavigateDescription(messages.nav.citations),
         group: 'navigation',
         keywords: ['sources', 'citations'],
         icon: BookMarked,
@@ -111,8 +120,8 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
       },
       {
         id: 'nav-hitl',
-        label: messages.commands.hitl,
-        description: messages.commands.hitlDescription,
+        label: messages.nav.hitl,
+        description: formatNavigateDescription(messages.nav.hitl),
         group: 'navigation',
         keywords: ['hitl', 'review'],
         icon: ShieldCheck,
@@ -120,8 +129,8 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
       },
       {
         id: 'nav-admin',
-        label: messages.commands.admin,
-        description: messages.commands.adminDescription,
+        label: messages.nav.admin,
+        description: formatNavigateDescription(messages.nav.admin),
         group: 'navigation',
         keywords: ['admin', 'conformité'],
         icon: Settings,
@@ -129,44 +138,156 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
       },
       {
         id: 'nav-corpus',
-        label: messages.commands.corpus,
-        description: messages.commands.corpusDescription,
+        label: messages.nav.corpus,
+        description: formatNavigateDescription(messages.nav.corpus),
         group: 'navigation',
         keywords: ['corpus', 'sources'],
         icon: Database,
         perform: () => router.push(localizedHref('/corpus')),
       },
       {
+        id: 'nav-trust',
+        label: messages.nav.trust,
+        description: formatNavigateDescription(messages.nav.trust),
+        group: 'navigation',
+        keywords: ['trust', 'governance'],
+        icon: Globe2,
+        perform: () => router.push(localizedHref('/trust')),
+      },
+    ];
+
+    const actionDefinitions: Array<{
+      id: string;
+      key: keyof typeof paletteMessages.actions;
+      icon: React.ComponentType<{ className?: string }>;
+      perform: () => void;
+      keywords: string[];
+      shortcut?: string;
+    }> = [
+      {
+        id: 'action-new-research',
+        key: 'newResearch',
+        icon: Search,
+        keywords: ['nouvelle', 'question'],
+        perform: () => router.push(localizedHref('/research')),
+        shortcut: '⌘K',
+      },
+      {
+        id: 'action-upload',
+        key: 'upload',
+        icon: Upload,
+        keywords: ['upload', 'ingest'],
+        perform: () => router.push(localizedHref('/corpus')),
+      },
+      {
+        id: 'action-open-workspace',
+        key: 'openWorkspace',
+        icon: LayoutGrid,
+        keywords: ['workspace', 'home'],
+        perform: () => router.push(localizedHref('/workspace')),
+      },
+      {
+        id: 'action-open-drafting',
+        key: 'openDrafting',
+        icon: FileText,
+        keywords: ['drafting', 'clauses'],
+        perform: () => router.push(localizedHref('/drafting')),
+      },
+      {
+        id: 'action-open-matters',
+        key: 'openMatters',
+        icon: Briefcase,
+        keywords: ['matters', 'cases'],
+        perform: () => router.push(localizedHref('/matters')),
+      },
+      {
+        id: 'action-open-citations',
+        key: 'openCitations',
+        icon: BookMarked,
+        keywords: ['sources', 'citations'],
+        perform: () => router.push(localizedHref('/citations')),
+      },
+      {
+        id: 'action-open-hitl',
+        key: 'openHitl',
+        icon: ShieldCheck,
+        keywords: ['hitl', 'review'],
+        perform: () => router.push(localizedHref('/hitl')),
+      },
+      {
+        id: 'action-open-corpus',
+        key: 'openCorpus',
+        icon: Database,
+        keywords: ['corpus', 'sources'],
+        perform: () => router.push(localizedHref('/corpus')),
+      },
+      {
+        id: 'action-open-admin',
+        key: 'openAdmin',
+        icon: Settings,
+        keywords: ['admin', 'policies'],
+        perform: () => router.push(localizedHref('/admin')),
+      },
+      {
+        id: 'action-open-trust',
+        key: 'openTrust',
+        icon: Globe2,
+        keywords: ['trust', 'transparency'],
+        perform: () => router.push(localizedHref('/trust')),
+      },
+      {
         id: 'action-plan',
-        label: messages.commands.openPlan,
-        description: messages.commands.openPlanDescription,
-        group: 'actions',
-        keywords: ['plan', 'provenance'],
+        key: 'openPlan',
         icon: Sparkle,
-        shortcut: 'P',
+        keywords: ['plan', 'provenance'],
         perform: () => togglePlanDrawer(true),
+        shortcut: 'P',
       },
       {
         id: 'action-security',
-        label: messages.commands.security,
-        description: messages.commands.securityDescription,
-        group: 'actions',
-        keywords: ['security', 'confidential'],
+        key: 'security',
         icon: Lock,
+        keywords: ['security', 'confidential'],
         perform: () => router.push(localizedHref('/workspace/security')),
       },
       {
         id: 'action-new-draft',
-        label: messages.commands.newDraft,
-        description: messages.commands.newDraftDescription,
-        group: 'actions',
-        keywords: ['générer', 'draft'],
+        key: 'newDraft',
         icon: Wand2,
+        keywords: ['générer', 'draft'],
         perform: () => router.push(localizedHref('/drafting')),
       },
-    ],
-    [messages, router, togglePlanDrawer, locale, localizedHref],
-  );
+    ];
+
+    const quickActions = actionDefinitions
+      .map((definition) => {
+        const actionMessage = paletteMessages.actions[definition.key];
+        if (!actionMessage) {
+          return null;
+        }
+        return {
+          id: definition.id,
+          label: actionMessage.label,
+          description: actionMessage.description,
+          group: 'actions' as CommandGroup,
+          keywords: definition.keywords,
+          icon: definition.icon,
+          perform: definition.perform,
+          shortcut: definition.shortcut,
+        } satisfies CommandItem;
+      })
+      .filter((item): item is CommandItem => Boolean(item));
+
+    return [...navCommands, ...quickActions];
+  }, [
+    paletteMessages.actions,
+    formatNavigateDescription,
+    messages.nav,
+    router,
+    localizedHref,
+    locale,
+    togglePlanDrawer,
+  ]);
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -194,13 +315,13 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
         <Dialog.Overlay className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur" />
         <Dialog.Content
           className="glass-card fixed left-1/2 top-24 z-50 w-full max-w-xl -translate-x-1/2 rounded-3xl border border-slate-800/60 bg-slate-950/95 p-6 text-slate-100 shadow-2xl focus:outline-none"
-          aria-label={messages.commands.title}
+          aria-label={paletteMessages.title}
         >
           <div className="space-y-4">
             <div>
-              <Dialog.Title className="text-base font-semibold text-slate-100">{messages.commands.title}</Dialog.Title>
+              <Dialog.Title className="text-base font-semibold text-slate-100">{paletteMessages.title}</Dialog.Title>
               <Dialog.Description className="text-sm text-slate-400">
-                {messages.commands.subtitle}
+                {paletteMessages.subtitle}
               </Dialog.Description>
             </div>
             <div className="glass-card flex items-center gap-2 rounded-2xl border border-slate-800/60 bg-slate-900/60 px-3 py-2">
@@ -209,14 +330,14 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
                 autoFocus
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder={messages.commands.searchPlaceholder}
+                placeholder={paletteMessages.placeholder}
                 className="border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
-                aria-label={messages.commands.searchPlaceholder}
+                aria-label={paletteMessages.placeholder}
               />
             </div>
             {filtered.length === 0 ? (
               <p className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4 text-sm text-slate-400">
-                {messages.commands.empty}
+                {paletteMessages.empty}
               </p>
             ) : (
               <div className="space-y-6">
@@ -276,12 +397,9 @@ export function CommandPalette({ messages, locale }: CommandPaletteProps) {
               </div>
             )}
             <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-500">
-              <span className="flex items-center gap-2">
-                <kbd className="rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1">Esc</kbd>
-                {messages.commands.pressEsc}
-              </span>
+              <span>{messages.app.commandPlaceholder}</span>
               <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => setOpen(false)}>
-                {messages.commands.close}
+                {paletteMessages.close}
               </Button>
             </div>
           </div>

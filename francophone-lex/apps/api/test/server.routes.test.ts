@@ -51,15 +51,16 @@ function makeAccessContext(overrides: Record<string, unknown> = {}) {
       franceJudgeAnalyticsBlocked: true,
       mfaRequired: false,
       ipAllowlistEnforced: false,
-      consentVersion: null,
-      councilOfEuropeDisclosureVersion: null,
+      consentRequirement: null,
+      councilOfEuropeRequirement: null,
       sensitiveTopicHitl: true,
       residencyZone: null,
     },
     rawPolicies: {},
     entitlements: new Map<string, { canRead: boolean; canWrite: boolean }>([['FR', { canRead: true, canWrite: true }]]),
     ipAllowlistCidrs: [],
-    consent: { requiredVersion: null, latestAcceptedVersion: null },
+    consent: { requirement: null, latest: null },
+    councilOfEurope: { requirement: null, acknowledgedVersion: null },
     abac: {
       jurisdictionEntitlements: new Map<string, { canRead: boolean; canWrite: boolean }>([['FR', { canRead: true, canWrite: true }]]),
       confidentialMode: false,
@@ -71,6 +72,18 @@ function makeAccessContext(overrides: Record<string, unknown> = {}) {
     ...base,
     ...overrides,
     entitlements: overrides.entitlements ?? base.entitlements,
+    policies: {
+      ...(base.policies as Record<string, unknown>),
+      ...((overrides.policies ?? {}) as Record<string, unknown>),
+    },
+    consent: {
+      ...(base.consent as Record<string, unknown>),
+      ...((overrides.consent ?? {}) as Record<string, unknown>),
+    },
+    councilOfEurope: {
+      ...(base.councilOfEurope as Record<string, unknown>),
+      ...((overrides.councilOfEurope ?? {}) as Record<string, unknown>),
+    },
     abac: {
       ...(base.abac as Record<string, unknown>),
       ...((overrides.abac ?? {}) as Record<string, unknown>),

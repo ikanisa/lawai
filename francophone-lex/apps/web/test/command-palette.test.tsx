@@ -33,28 +33,28 @@ describe('CommandPalette', () => {
   it('shows navigation commands when opened', () => {
     openPalette();
 
-    expect(screen.getByText(messagesEn.commands.title)).toBeInTheDocument();
-    expect(screen.getByText(messagesEn.commands.groupNavigation)).toBeInTheDocument();
-    expect(screen.getByText(messagesEn.commands.workspace)).toBeInTheDocument();
-    expect(screen.getByText(messagesEn.commands.groupActions)).toBeInTheDocument();
+    expect(screen.getByText(messagesEn.app.commandPalette.title)).toBeInTheDocument();
+    expect(screen.getByText(messagesEn.app.commandPalette.sections.navigate)).toBeInTheDocument();
+    expect(screen.getAllByText(messagesEn.nav.workspace).length).toBeGreaterThan(0);
+    expect(screen.getByText(messagesEn.app.commandPalette.sections.actions)).toBeInTheDocument();
   });
 
   it('filters commands based on search input', () => {
     openPalette();
 
-    const search = screen.getByPlaceholderText(messagesEn.commands.searchPlaceholder);
+    const search = screen.getByPlaceholderText(messagesEn.app.commandPalette.placeholder);
     fireEvent.change(search, { target: { value: 'HITL' } });
 
-    expect(screen.getByText(messagesEn.commands.hitl)).toBeInTheDocument();
+    expect(screen.getByText(messagesEn.nav.hitl)).toBeInTheDocument();
     return waitFor(() => {
-      expect(screen.queryByText(messagesEn.commands.drafting)).not.toBeInTheDocument();
+      expect(screen.queryByText(messagesEn.nav.drafting)).not.toBeInTheDocument();
     });
   });
 
   it('executes the selected command and closes the palette', () => {
     openPalette();
 
-    const researchButton = screen.getByText(messagesEn.commands.research);
+    const researchButton = screen.getByText(messagesEn.nav.research);
     fireEvent.click(researchButton);
 
     expect(pushMock).toHaveBeenCalledWith('/en/research');

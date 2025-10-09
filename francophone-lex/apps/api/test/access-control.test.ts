@@ -13,8 +13,8 @@ function buildAccess(overrides: Partial<OrgAccessContext> = {}): OrgAccessContex
       franceJudgeAnalyticsBlocked: true,
       mfaRequired: false,
       ipAllowlistEnforced: false,
-      consentVersion: null,
-      councilOfEuropeDisclosureVersion: null,
+      consentRequirement: null,
+      councilOfEuropeRequirement: null,
       sensitiveTopicHitl: true,
       residencyZone: null,
     },
@@ -22,8 +22,12 @@ function buildAccess(overrides: Partial<OrgAccessContext> = {}): OrgAccessContex
     entitlements: new Map(),
     ipAllowlistCidrs: [],
     consent: {
-      requiredVersion: null,
-      latestAcceptedVersion: null,
+      requirement: null,
+      latest: null,
+    },
+    councilOfEurope: {
+      requirement: null,
+      acknowledgedVersion: null,
     },
     abac: {
       jurisdictionEntitlements: new Map(),
@@ -74,26 +78,47 @@ describe('ensureOrgAccessCompliance', () => {
   });
 
   it('requires consent acknowledgement when mandated by policy', () => {
+    const base = buildAccess();
     const access = buildAccess({
-      policies: { ...buildAccess().policies, consentVersion: 'v2' },
-      consent: { requiredVersion: 'v2', latestAcceptedVersion: null },
+      policies: { ...base.policies, consentRequirement: { type: 'ai_assist', version: 'v2' } },
+      consent: { requirement: { type: 'ai_assist', version: 'v2' }, latest: null },
     });
 
     expect(() => ensureOrgAccessCompliance(access, buildRequest())).toThrowError('consent_required');
 
-    const request = buildRequest({ headers: { 'x-consent-version': 'v2' } });
-    expect(() => ensureOrgAccessCompliance(access, request)).not.toThrow();
+    const satisfied = buildAccess({
+      policies: { ...base.policies, consentRequirement: { type: 'ai_assist', version: 'v2' } },
+      consent: {
+        requirement: { type: 'ai_assist', version: 'v2' },
+        latest: { type: 'ai_assist', version: 'v2' },
+      },
+    });
+    expect(() => ensureOrgAccessCompliance(satisfied, buildRequest())).not.toThrow();
   });
 
   it('requires Council of Europe disclosure acknowledgement when mandated', () => {
+    const base = buildAccess();
     const access = buildAccess({
-      policies: { ...buildAccess().policies, councilOfEuropeDisclosureVersion: '2024-03' },
+      policies: {
+        ...base.policies,
+        councilOfEuropeRequirement: { version: '2024-03', documentUrl: 'https://coe.test' },
+      },
+      councilOfEurope: { requirement: { version: '2024-03', documentUrl: 'https://coe.test' }, acknowledgedVersion: null },
     });
 
     expect(() => ensureOrgAccessCompliance(access, buildRequest())).toThrowError('coe_disclosure_required');
 
-    const request = buildRequest({ headers: { 'x-coe-disclosure-version': '2024-03' } });
-    expect(() => ensureOrgAccessCompliance(access, request)).not.toThrow();
+    const satisfied = buildAccess({
+      policies: {
+        ...base.policies,
+        councilOfEuropeRequirement: { version: '2024-03', documentUrl: 'https://coe.test' },
+      },
+      councilOfEurope: {
+        requirement: { version: '2024-03', documentUrl: 'https://coe.test' },
+        acknowledgedVersion: '2024-03',
+      },
+    });
+    expect(() => ensureOrgAccessCompliance(satisfied, buildRequest())).not.toThrow();
   });
 
   it('fails when IP allowlist is enforced but empty', () => {

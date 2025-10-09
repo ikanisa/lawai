@@ -108,8 +108,10 @@ const defaultAccessContext = {
         franceJudgeAnalyticsBlocked: true,
         mfaRequired: false,
         ipAllowlistEnforced: false,
-        consentVersion: null,
-        councilOfEuropeDisclosureVersion: null,
+        consentRequirement: null,
+        councilOfEuropeRequirement: null,
+        sensitiveTopicHitl: true,
+        residencyZone: null,
     },
     rawPolicies: {},
     entitlements: new Map([
@@ -120,7 +122,17 @@ const defaultAccessContext = {
         ['RW', { canRead: true, canWrite: false }],
     ]),
     ipAllowlistCidrs: [],
-    consent: { requiredVersion: null, latestAcceptedVersion: null },
+    consent: { requirement: null, latest: null },
+    councilOfEurope: { requirement: null, acknowledgedVersion: null },
+    abac: {
+        jurisdictionEntitlements: new Map([
+            ['FR', { canRead: true, canWrite: true }],
+            ['EU', { canRead: true, canWrite: false }],
+        ]),
+        confidentialMode: false,
+        sensitiveTopicHitl: true,
+        residencyZone: null,
+    },
 };
 function makeContext(overrides = {}) {
     return {
@@ -129,6 +141,9 @@ function makeContext(overrides = {}) {
         entitlements: overrides.entitlements
             ? new Map(overrides.entitlements)
             : new Map(defaultAccessContext.entitlements),
+        policies: { ...defaultAccessContext.policies, ...(overrides.policies ?? {}) },
+        consent: { ...defaultAccessContext.consent, ...(overrides.consent ?? {}) },
+        councilOfEurope: { ...defaultAccessContext.councilOfEurope, ...(overrides.councilOfEurope ?? {}) },
     };
 }
 const runMock = vi.fn();
@@ -358,6 +373,9 @@ beforeEach(() => {
                 }
                 if (table === 'pleading_templates') {
                     return templateQuery;
+                }
+                if (table === 'fria_artifacts') {
+                    return createAsyncQuery();
                 }
                 throw new Error(`unexpected table ${table}`);
             },

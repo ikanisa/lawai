@@ -67,7 +67,7 @@ function createAsyncQuery(initialData: unknown[] = [], initialError: unknown = n
     not: vi.fn(() => builder),
     order: vi.fn(() => builder),
     limit: vi.fn(() => builder),
-    maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
+    maybeSingle: vi.fn(() => Promise.resolve(builder.__response)),
     or: vi.fn(() => builder),
     single: vi.fn(() => Promise.resolve(builder.__response)),
   };
@@ -110,6 +110,9 @@ const templateQuery = {
   then: (resolve: (value: unknown) => unknown) => resolve({ data: templateRows, error: null }),
 };
 
+const complianceAssessmentsQuery = createAsyncQuery();
+complianceAssessmentsQuery.setResponse(null, null);
+
 const defaultAccessContext = {
   orgId: '00000000-0000-0000-0000-000000000000',
   userId: '00000000-0000-0000-0000-000000000000',
@@ -119,8 +122,8 @@ const defaultAccessContext = {
     franceJudgeAnalyticsBlocked: true,
     mfaRequired: false,
     ipAllowlistEnforced: false,
-    consentVersion: null,
-    councilOfEuropeDisclosureVersion: null,
+    consentRequirement: null,
+    councilOfEuropeRequirement: null,
   },
   rawPolicies: {},
   entitlements: new Map<string, { canRead: boolean; canWrite: boolean }>([
@@ -131,7 +134,8 @@ const defaultAccessContext = {
     ['RW', { canRead: true, canWrite: false }],
   ]),
   ipAllowlistCidrs: [],
-  consent: { requiredVersion: null, latestAcceptedVersion: null },
+  consent: { requirement: null, latest: null },
+  councilOfEurope: { requirement: null, acknowledgedVersion: null },
 };
 
 function makeContext(
@@ -143,6 +147,18 @@ function makeContext(
     entitlements: overrides.entitlements
       ? new Map(overrides.entitlements)
       : new Map(defaultAccessContext.entitlements),
+    policies: {
+      ...defaultAccessContext.policies,
+      ...(overrides.policies ?? {}),
+    },
+    consent: {
+      ...defaultAccessContext.consent,
+      ...(overrides.consent ?? {}),
+    },
+    councilOfEurope: {
+      ...defaultAccessContext.councilOfEurope,
+      ...(overrides.councilOfEurope ?? {}),
+    },
   };
 }
 
@@ -185,6 +201,12 @@ beforeEach(() => {
   sourcesQuery.in.mockClear();
   sourcesQuery.ilike.mockClear();
   sourcesQuery.order.mockClear();
+  complianceAssessmentsQuery.select.mockClear();
+  complianceAssessmentsQuery.eq.mockClear();
+  complianceAssessmentsQuery.order.mockClear();
+  complianceAssessmentsQuery.limit.mockClear();
+  complianceAssessmentsQuery.maybeSingle.mockClear();
+  complianceAssessmentsQuery.setResponse(null, null);
   agentRunsSelectBuilder.select.mockImplementation(() => agentRunsSelectBuilder);
   agentRunsSelectBuilder.eq.mockImplementation(() => agentRunsSelectBuilder);
   agentRunsSelectBuilder.order.mockImplementation(() => agentRunsSelectBuilder);
@@ -207,6 +229,10 @@ beforeEach(() => {
   sourcesQuery.in.mockImplementation(() => sourcesQuery);
   sourcesQuery.ilike.mockImplementation(() => sourcesQuery);
   sourcesQuery.order.mockImplementation(() => sourcesQuery);
+  complianceAssessmentsQuery.select.mockImplementation(() => complianceAssessmentsQuery);
+  complianceAssessmentsQuery.eq.mockImplementation(() => complianceAssessmentsQuery);
+  complianceAssessmentsQuery.order.mockImplementation(() => complianceAssessmentsQuery);
+  complianceAssessmentsQuery.limit.mockImplementation(() => complianceAssessmentsQuery);
   synonymsQuery.select.mockImplementation(() => synonymsQuery);
   synonymsQuery.in.mockImplementation(() => synonymsQuery);
   synonymsQuery.order.mockImplementation(() => synonymsQuery);
@@ -367,7 +393,10 @@ beforeEach(() => {
           return { ...caseScoresQuery, insert: caseScoresInsertMock };
         }
         if (table === 'compliance_assessments') {
-          return { insert: vi.fn(async () => ({ error: null })) };
+          return {
+            insert: vi.fn(async () => ({ error: null })),
+            select: vi.fn(() => complianceAssessmentsQuery),
+          };
         }
         if (
           table === 'case_treatments' ||
@@ -382,6 +411,9 @@ beforeEach(() => {
         }
         if (table === 'pleading_templates') {
           return templateQuery;
+        }
+        if (table === 'fria_artifacts') {
+          return createAsyncQuery();
         }
         throw new Error(`unexpected table ${table}`);
       },
