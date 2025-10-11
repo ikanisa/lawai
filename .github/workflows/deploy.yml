@@ -55,7 +55,14 @@ jobs:
             echo "Skipping migrations: SUPABASE_DB_URL not set";
             exit 0;
           fi
-          pnpm db:migrate
+          set -euo pipefail
+          pnpm db:migrate 2>&1 | tee migrate.log
+      - name: Upload migration logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrate-logs
+          path: migrate.log
 
   rls-smoke:
     needs: migrate-db
@@ -81,6 +88,10 @@ jobs:
             exit 0;
           fi
           pnpm --filter @apps/ops rls-smoke
+      - name: Summarize RLS smoke
+        if: always()
+        run: |
+          echo "RLS smoke job result: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
   deploy-edge:
     needs: rls-smoke
@@ -102,3 +113,20 @@ jobs:
           supabase functions deploy drive-watcher --project-ref "$SUPABASE_PROJECT_REF" || true
           supabase functions deploy gdrive-watcher --project-ref "$SUPABASE_PROJECT_REF" || true
 
+  summarize:
+    needs: [validate-build, migrate-db, rls-smoke, deploy-edge]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy summary
+        run: |
+          cat <<SUMMARY >> $GITHUB_STEP_SUMMARY
+          ## Deploy Summary
+          - validate-build: ${{ needs.validate-build.result }}
+          - migrate-db: ${{ needs.migrate-db.result }}
+          - rls-smoke: ${{ needs.rls-smoke.result }}
+          - deploy-edge: ${{ needs.deploy-edge.result }}
+          - DB URL present: ${{ secrets.SUPABASE_DB_URL != '' }}
+          - RLS secrets present: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+          - Edge secrets present: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_PROJECT_REF != '' }}
+          SUMMARY
