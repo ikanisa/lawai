@@ -1,6 +1,6 @@
 'use client';
 
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -32,6 +32,9 @@ import {
   type ScimTokenResponse,
   getOperationsOverview,
   type OperationsOverviewResponse,
+  fetchDeviceSessions,
+  revokeDeviceSession,
+  type DeviceSession,
 } from '../../lib/api';
 import type { Messages } from '../../lib/i18n';
 
@@ -93,27 +96,27 @@ export function AdminView({ messages }: AdminViewProps) {
   const metricsQuery = useGovernanceMetrics();
   const overview = metricsQuery.data?.overview ?? null;
   const toolRows = metricsQuery.data?.tools ?? [];
-  const jurisdictionLabels = useMemo(
-    () => new Map(SUPPORTED_JURISDICTIONS.map((entry) => [entry.id, entry.labelFr])),
-    [],
-  );
+  const jurisdictionLabels = useMemo(() => {
+    const arr = SUPPORTED_JURISDICTIONS as Array<{ id: string; labelFr: string }>;
+    return new Map(arr.map((entry) => [entry.id, entry.labelFr]));
+  }, []);
   const identifierRows = useMemo(() => {
     const rows = metricsQuery.data?.identifiers ?? [];
-    return rows
+    type Row = (typeof rows)[number] & { label: string };
+    return (rows
       .map((row) => ({
         ...row,
         label: jurisdictionLabels.get(row.jurisdiction) ?? row.jurisdiction,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+      })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [metricsQuery.data, jurisdictionLabels]);
   const jurisdictionCoverage = useMemo(() => {
     const rows = metricsQuery.data?.jurisdictions ?? [];
-    return rows
+    type Row = (typeof rows)[number] & { label: string };
+    return (rows
       .map((row) => ({
         ...row,
         label: jurisdictionLabels.get(row.jurisdiction) ?? row.jurisdiction,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+      })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [metricsQuery.data, jurisdictionLabels]);
   const retrievalQuery = useQuery<RetrievalMetricsResponse>({
     queryKey: ['retrieval-metrics', DEMO_ORG_ID],
@@ -122,13 +125,13 @@ export function AdminView({ messages }: AdminViewProps) {
   });
   const retrievalSummary = retrievalQuery.data?.summary ?? null;
   const retrievalOrigins = useMemo(() => {
-    const origins = retrievalQuery.data?.origins ?? [];
+    const origins = (retrievalQuery.data?.origins ?? []) as RetrievalMetricsResponse['origins'];
     return origins
       .filter((entry) => entry.snippetCount > 0)
       .sort((a, b) => b.snippetCount - a.snippetCount);
   }, [retrievalQuery.data]);
   const retrievalHosts = useMemo(() => {
-    const hosts = retrievalQuery.data?.hosts ?? [];
+    const hosts = (retrievalQuery.data?.hosts ?? []) as RetrievalMetricsResponse['hosts'];
     return hosts
       .filter((entry) => entry.citationCount > 0)
       .sort((a, b) => b.citationCount - a.citationCount)
@@ -142,7 +145,8 @@ export function AdminView({ messages }: AdminViewProps) {
   const evaluationSummary = evaluationQuery.data?.summary ?? null;
   const evaluationJurisdictions = useMemo(() => {
     const rows = evaluationQuery.data?.jurisdictions ?? [];
-    return rows
+    type Row = (typeof rows)[number] & { label: string };
+    return (rows
       .map((row) => ({
         ...row,
         label:
@@ -150,8 +154,7 @@ export function AdminView({ messages }: AdminViewProps) {
           (row.jurisdiction === 'UNKNOWN'
             ? messages.admin.evaluationJurisdictionUnknown
             : row.jurisdiction),
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+      })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [evaluationQuery.data, jurisdictionLabels, messages.admin.evaluationJurisdictionUnknown]);
   const sloQuery = useQuery<SloMetricsResponse>({
     queryKey: ['slo-metrics', DEMO_ORG_ID],
@@ -182,6 +185,12 @@ export function AdminView({ messages }: AdminViewProps) {
     queryKey: ['admin-ip', DEMO_ORG_ID],
     queryFn: () => fetchIpAllowlist(DEMO_ORG_ID),
   });
+  const deviceSessionsQuery = useQuery({
+    queryKey: ['admin-device-sessions', DEMO_ORG_ID],
+    queryFn: () => fetchDeviceSessions(DEMO_ORG_ID, { includeRevoked: false, limit: 200 }),
+    staleTime: 30_000,
+  });
+  const deviceSessions = (deviceSessionsQuery.data?.sessions ?? []) as DeviceSession[];
 
   const [ssoProvider, setSsoProvider] = useState<'saml' | 'oidc'>('saml');
   const [ssoLabel, setSsoLabel] = useState('');
@@ -379,6 +388,16 @@ export function AdminView({ messages }: AdminViewProps) {
       toast.error(messages.admin.ipError);
     },
   });
+  const revokeDeviceMutation = useMutation({
+    mutationFn: (sessionId: string) => revokeDeviceSession(DEMO_ORG_ID, sessionId),
+    onSuccess: () => {
+      toast.success(messages.admin.devicesRevokeSuccess);
+      queryClient.invalidateQueries({ queryKey: ['admin-device-sessions', DEMO_ORG_ID] });
+    },
+    onError: () => {
+      toast.error(messages.admin.devicesRevokeError);
+    },
+  });
   const ssoConnections = ssoQuery.data?.connections ?? [];
   const scimTokens = (scimQuery.data?.tokens ?? []) as Array<{
     id: string;
@@ -452,14 +471,42 @@ export function AdminView({ messages }: AdminViewProps) {
 
   const summarySecondary = useMemo(() => {
     if (!overview) return messages.admin.summaryCoverageHint;
-    const pending = numberFormatter.format(overview.documentsPending);
-    const failed = numberFormatter.format(overview.documentsFailed);
+    const pendingNum = overview.documentsPending ?? 0;
+    const failedNum = overview.documentsFailed ?? 0;
+    const statusKind = failedNum > 0 ? 'error' : pendingNum > 0 ? 'warning' : 'ok';
+    const statusLabel =
+      statusKind === 'error'
+        ? messages.admin.summaryStatusErrors
+        : statusKind === 'warning'
+          ? messages.admin.summaryStatusPending
+          : messages.admin.summaryStatusOk;
+    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge =
+      statusKind === 'error'
+        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+        : statusKind === 'warning'
+          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
+          : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
+
+    const pending = numberFormatter.format(pendingNum);
+    const failed = numberFormatter.format(failedNum);
     const skipped = numberFormatter.format(overview.documentsSkipped);
     const chunked = numberFormatter.format(overview.documentsChunked);
-    return `${messages.admin.summaryPendingLabel} ${pending} · ${messages.admin.summaryFailedLabel} ${failed} · ${messages.admin.summarySkippedLabel} ${skipped} · ${messages.admin.summaryChunkedLabel} ${chunked}`;
+    return (
+      <span>
+        <span className={`${baseBadge} ${colorBadge}`}>{statusLabel}</span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>
+          {messages.admin.summaryPendingLabel} {pending} · {messages.admin.summaryFailedLabel} {failed} · {messages.admin.summarySkippedLabel} {skipped} · {messages.admin.summaryChunkedLabel} {chunked}
+        </span>
+      </span>
+    );
   }, [
     overview,
     messages.admin.summaryCoverageHint,
+    messages.admin.summaryStatusErrors,
+    messages.admin.summaryStatusPending,
+    messages.admin.summaryStatusOk,
     messages.admin.summaryPendingLabel,
     messages.admin.summaryFailedLabel,
     messages.admin.summarySkippedLabel,
@@ -470,6 +517,186 @@ export function AdminView({ messages }: AdminViewProps) {
     if (!overview) return '—';
     return `${overview.ingestionSuccessLast7Days} ${messages.admin.ingestionSuccessLabel} · ${overview.ingestionFailedLast7Days} ${messages.admin.ingestionFailureLabel}`;
   }, [overview, messages.admin.ingestionSuccessLabel, messages.admin.ingestionFailureLabel]);
+  const ingestionSecondary = useMemo(() => {
+    if (!overview) return messages.admin.ingestionHint;
+    const kind = overview.ingestionFailedLast7Days > 0 ? 'error' : 'ok';
+    const label = kind === 'error' ? messages.admin.ingestionStatusFailures : messages.admin.ingestionStatusOk;
+    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge =
+      kind === 'error'
+        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+        : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
+    return (
+      <span>
+        <span
+          className={`${baseBadge} ${colorBadge}`}
+          title={`Success ${overview.ingestionSuccessLast7Days} · Failures ${overview.ingestionFailedLast7Days}`}
+        >
+          {label}
+        </span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>{messages.admin.ingestionHint}</span>
+      </span>
+    );
+  }, [overview, messages.admin.ingestionHint, messages.admin.ingestionStatusFailures, messages.admin.ingestionStatusOk]);
+
+  const hitlSecondary = useMemo(() => {
+    if (!overview) return `${messages.admin.hitlMedianResponse} ${formatMinutes(null)}`;
+    const hasBacklog = (overview.hitlPending ?? 0) > 0;
+    const label = hasBacklog ? messages.admin.hitlStatusBacklog : messages.admin.hitlStatusOk;
+    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge = hasBacklog
+      ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+      : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
+    return (
+      <span>
+        <span
+          className={`${baseBadge} ${colorBadge}`}
+          title={`Pending ${overview.hitlPending} · Median ${formatMinutes(overview.hitlMedianResponseMinutes)}`}
+        >
+          {label}
+        </span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>
+          {messages.admin.hitlMedianResponse} {formatMinutes(overview.hitlMedianResponseMinutes)}
+        </span>
+      </span>
+    );
+  }, [overview, messages.admin.hitlStatusBacklog, messages.admin.hitlStatusOk, messages.admin.hitlMedianResponse]);
+
+  const highRiskSecondary = useMemo(() => {
+    const count = overview?.highRiskRuns ?? 0;
+    const kind = count > 0 ? 'warning' : 'ok';
+    const label = kind === 'ok' ? messages.admin.highRiskStatusOk : messages.admin.highRiskStatusPresent;
+    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge =
+      kind === 'ok'
+        ? 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50'
+        : 'bg-amber-900/40 text-amber-200 border-amber-700/50';
+
+    // Allowlisted precision badge (green >=95%, amber >=90%, red otherwise)
+    const ratio = overview?.allowlistedCitationRatio ?? null;
+    let allowlistedKind: 'good' | 'ok' | 'low' | null = null;
+    if (typeof ratio === 'number') {
+      allowlistedKind = ratio >= 0.95 ? 'good' : ratio >= 0.9 ? 'ok' : 'low';
+    }
+    const allowlistedLabel =
+      allowlistedKind === 'good'
+        ? messages.admin.allowlistedStatusGood
+        : allowlistedKind === 'ok'
+          ? messages.admin.allowlistedStatusAcceptable
+          : allowlistedKind === 'low'
+            ? messages.admin.allowlistedStatusPoor
+            : null;
+    const allowlistedColor =
+      allowlistedKind === 'good'
+        ? 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50'
+        : allowlistedKind === 'ok'
+          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
+          : allowlistedKind === 'low'
+            ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+            : null;
+    return (
+      <span>
+        {allowlistedLabel && allowlistedColor ? (
+          <>
+            <span
+              className={`${baseBadge} ${allowlistedColor}`}
+              title={`Allowlisted precision ${formatPercent(overview?.allowlistedCitationRatio)} (≥95% good, ≥90% acceptable)`}
+            >
+              {allowlistedLabel}
+            </span>
+            <span className="mx-1 text-slate-600">·</span>
+          </>
+        ) : null}
+        <span
+          className={`${baseBadge} ${colorBadge}`}
+          title={`${messages.admin.highRiskRunsLabel}: ${overview ? numberFormatter.format(count) : '—'}`}
+        >
+          {label}
+        </span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>
+          {messages.admin.highRiskRunsLabel} {overview ? numberFormatter.format(count) : '—'}
+        </span>
+      </span>
+    );
+  }, [overview, messages.admin.allowlistedStatusGood, messages.admin.allowlistedStatusAcceptable, messages.admin.allowlistedStatusPoor, messages.admin.highRiskStatusOk, messages.admin.highRiskStatusPresent, messages.admin.highRiskRunsLabel]);
+
+  const confidentialSecondary = useMemo(() => {
+    const count = overview?.confidentialRuns ?? 0;
+    const active = count > 0;
+    const label = active ? messages.admin.confidentialStatusActive : messages.admin.confidentialStatusNone;
+    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge = active
+      ? 'bg-sky-900/40 text-sky-200 border-sky-700/50'
+      : 'bg-slate-800/40 text-slate-300 border-slate-700/50';
+    return (
+      <span>
+        <span
+          className={`${baseBadge} ${colorBadge}`}
+          title={`Confidential runs: ${numberFormatter.format(count)}`}
+        >
+          {label}
+        </span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>
+          {messages.admin.avgLatency} {overview ? decimalFormatter.format(overview.avgLatencyMs) : '—'} ms
+        </span>
+      </span>
+    );
+  }, [overview, messages.admin.confidentialStatusActive, messages.admin.confidentialStatusNone, messages.admin.avgLatency]);
+
+  const manifest = metricsQuery.data?.manifest ?? null;
+  const manifestStatus = useMemo(() => {
+    if (!manifest) return null;
+    const s = manifest.status ?? null;
+    if (s === 'errors') return messages.admin.manifestStatusErrors;
+    if (s === 'warnings') return messages.admin.manifestStatusWarnings;
+    if (s === 'ok') return messages.admin.manifestStatusOk;
+    if (manifest.errorCount > 0) return messages.admin.manifestStatusErrors;
+    if (manifest.warningCount > 0) return messages.admin.manifestStatusWarnings;
+    return messages.admin.manifestStatusOk;
+  }, [manifest, messages.admin.manifestStatusErrors, messages.admin.manifestStatusWarnings, messages.admin.manifestStatusOk]);
+  const manifestPrimary = useMemo(() => {
+    if (!manifest) return '—';
+    return `${numberFormatter.format(manifest.validCount)} / ${numberFormatter.format(manifest.fileCount)} · ${numberFormatter.format(manifest.warningCount)} ${messages.admin.manifestWarningsLabel} · ${numberFormatter.format(manifest.errorCount)} ${messages.admin.manifestErrorsLabel}`;
+  }, [manifest, messages.admin.manifestWarningsLabel, messages.admin.manifestErrorsLabel]);
+  const manifestSecondary = useMemo(() => {
+    if (!manifest) return messages.admin.manifestHint;
+    const name = manifest.manifestName ?? 'manifest.jsonl';
+    const statusLabel = manifestStatus ?? '';
+    const statusKind = manifest.status === 'errors' ? 'error' : manifest.status === 'warnings' ? 'warning' : 'ok';
+    const baseBadge =
+      'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge =
+      statusKind === 'error'
+        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+        : statusKind === 'warning'
+          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
+          : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
+    const badge = statusLabel ? (
+      <span
+        className={`${baseBadge} ${colorBadge}`}
+        title={`Warnings ${manifest.warningCount} · Errors ${manifest.errorCount}`}
+      >
+        {statusLabel}
+      </span>
+    ) : null;
+    return (
+      <span>
+        {badge ? (
+          <>
+            {badge}
+            <span className="mx-1 text-slate-600">·</span>
+          </>
+        ) : null}
+        <span>{name}</span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>{formatDateTime(manifest.createdAt)}</span>
+      </span>
+    );
+  }, [manifest, manifestStatus, messages.admin.manifestHint]);
 
   return (
     <div className="space-y-6">
@@ -484,25 +711,53 @@ export function AdminView({ messages }: AdminViewProps) {
               <MetricBlock
                 label={messages.admin.runs30d}
                 primary={overview ? numberFormatter.format(overview.runsLast30Days) : '—'}
-                secondary={`${messages.admin.totalRunsLabel} ${overview ? numberFormatter.format(overview.totalRuns) : '—'}`}
+                secondary={(function () {
+                  const high = Number(process.env.NEXT_PUBLIC_DASHBOARD_RUNS_HIGH ?? '1000');
+                  const medium = Number(process.env.NEXT_PUBLIC_DASHBOARD_RUNS_MEDIUM ?? '200');
+                  const count = overview?.runsLast30Days ?? 0;
+                  let kind: 'high' | 'medium' | 'low' = 'low';
+                  if (count >= high) kind = 'high';
+                  else if (count >= medium) kind = 'medium';
+                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                  const { label, color } =
+                    kind === 'high'
+                      ? { label: messages.admin.runsStatusHigh, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                      : kind === 'medium'
+                        ? { label: messages.admin.runsStatusMedium, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                        : { label: messages.admin.runsStatusLow, color: 'bg-slate-800/40 text-slate-300 border-slate-700/50' };
+                  return (
+                    <span>
+                      <span
+                        className={`${baseBadge} ${color}`}
+                        title={`Runs(30d): ${numberFormatter.format(count)} (high ≥ ${high}, medium ≥ ${medium})`}
+                      >
+                        {label}
+                      </span>
+                      <span className="mx-1 text-slate-600">·</span>
+                      <span>
+                        {messages.admin.totalRunsLabel} {overview ? numberFormatter.format(overview.totalRuns) : '—'}
+                      </span>
+                    </span>
+                  );
+                })()}
                 loading={metricsQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.allowlistedPrecision}
                 primary={formatPercent(overview?.allowlistedCitationRatio)}
-                secondary={`${messages.admin.highRiskRunsLabel} ${overview ? numberFormatter.format(overview.highRiskRuns) : '—'}`}
+                secondary={highRiskSecondary}
                 loading={metricsQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.hitlPending}
                 primary={overview ? numberFormatter.format(overview.hitlPending) : '—'}
-                secondary={`${messages.admin.hitlMedianResponse} ${formatMinutes(overview?.hitlMedianResponseMinutes)}`}
+                secondary={hitlSecondary}
                 loading={metricsQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.confidentialUsage}
                 primary={overview ? numberFormatter.format(overview.confidentialRuns) : '—'}
-                secondary={`${messages.admin.avgLatency} ${overview ? decimalFormatter.format(overview.avgLatencyMs) : '—'} ms`}
+                secondary={confidentialSecondary}
                 loading={metricsQuery.isLoading}
               />
               <MetricBlock
@@ -514,7 +769,13 @@ export function AdminView({ messages }: AdminViewProps) {
               <MetricBlock
                 label={messages.admin.ingestionHealth}
                 primary={ingestionSummary}
-                secondary={messages.admin.ingestionHint}
+                secondary={ingestionSecondary}
+                loading={metricsQuery.isLoading}
+              />
+              <MetricBlock
+                label={messages.admin.manifestStatus}
+                primary={manifestPrimary}
+                secondary={manifestSecondary}
                 loading={metricsQuery.isLoading}
               />
             </CardContent>
@@ -570,7 +831,29 @@ export function AdminView({ messages }: AdminViewProps) {
                       ? numberFormatter.format(retrievalSummary.runsWithoutCitations)
                       : '—'
                   }
-                  secondary={messages.admin.retrievalNoCitationsHint}
+                  secondary={(function () {
+                    const count = retrievalSummary?.runsWithoutCitations ?? null;
+                    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                    const isOk = count !== null && count === 0;
+                    const label = isOk
+                      ? messages.admin.retrievalStatusOk
+                      : messages.admin.retrievalStatusAttention;
+                    const color = isOk
+                      ? 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50'
+                      : 'bg-rose-900/40 text-rose-200 border-rose-700/50';
+                    return (
+                      <span>
+                        <span
+                          className={`${baseBadge} ${color}`}
+                          title={`Runs without citations: ${count ?? '—'}`}
+                        >
+                          {label}
+                        </span>
+                        <span className="mx-1 text-slate-600">·</span>
+                        <span>{messages.admin.retrievalNoCitationsHint}</span>
+                      </span>
+                    );
+                  })()}
                   loading={retrievalQuery.isLoading && !retrievalSummary}
                 />
               </div>
@@ -822,35 +1105,163 @@ export function AdminView({ messages }: AdminViewProps) {
               <MetricBlock
                 label={messages.admin.evaluationPassRate}
                 primary={formatPercent(evaluationSummary?.passRate)}
-                secondary={`${messages.admin.evaluationCases} ${
-                  evaluationSummary ? numberFormatter.format(evaluationSummary.totalCases) : '—'
-                } · ${messages.admin.evaluationsExecuted} ${
-                  evaluationSummary ? numberFormatter.format(evaluationSummary.evaluatedResults) : '—'
-                } · ${messages.admin.evaluationLastRun} ${formatDateTime(
-                  evaluationSummary?.lastResultAt ?? null,
-                )}`}
+                secondary={(function () {
+                  const pass = evaluationSummary?.passRate ?? null;
+                  const good = Number(process.env.NEXT_PUBLIC_EVAL_PASS_GOOD ?? '0.9');
+                  const ok = Number(process.env.NEXT_PUBLIC_EVAL_PASS_OK ?? '0.75');
+                  let kind: 'good' | 'ok' | 'poor' | null = null;
+                  if (typeof pass === 'number') {
+                    kind = pass >= good ? 'good' : pass >= ok ? 'ok' : 'poor';
+                  }
+                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                  const { label, color } =
+                    kind === 'good'
+                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                      : kind === 'ok'
+                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                        : kind === 'poor'
+                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                          : { label: null, color: '' } as any;
+                  return (
+                    <span>
+                      {label ? (
+                        <>
+                          <span
+                            className={`${baseBadge} ${color}`}
+                            title={`Pass rate ${formatPercent(evaluationSummary?.passRate)} (good ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_PASS_GOOD ?? '0.9') * 100}%, ok ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_PASS_OK ?? '0.75') * 100}%)`}
+                          >
+                            {label}
+                          </span>
+                          <span className="mx-1 text-slate-600">·</span>
+                        </>
+                      ) : null}
+                      <span>
+                        {messages.admin.evaluationCases} {evaluationSummary ? numberFormatter.format(evaluationSummary.totalCases) : '—'} · {messages.admin.evaluationsExecuted} {evaluationSummary ? numberFormatter.format(evaluationSummary.evaluatedResults) : '—'} · {messages.admin.evaluationLastRun} {formatDateTime(evaluationSummary?.lastResultAt ?? null)}
+                      </span>
+                    </span>
+                  );
+                })()}
                 loading={evaluationQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.evaluationCitationCoverage}
                 primary={formatPercent(evaluationSummary?.citationPrecisionCoverage)}
-                secondary={`${messages.admin.evaluationCitationP95} ${formatPercent(
-                  evaluationSummary?.citationPrecisionP95,
-                )}`}
+                secondary={(function () {
+                  const cov = evaluationSummary?.citationPrecisionCoverage ?? null;
+                  const good = Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_GOOD ?? '0.9');
+                  const ok = Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_OK ?? '0.75');
+                  let kind: 'good' | 'ok' | 'poor' | null = null;
+                  if (typeof cov === 'number') {
+                    kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
+                  }
+                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                  const { label, color } =
+                    kind === 'good'
+                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                      : kind === 'ok'
+                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                        : kind === 'poor'
+                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                          : { label: null, color: '' } as any;
+                  return (
+                    <span>
+                      {label ? (
+                        <>
+                          <span
+                            className={`${baseBadge} ${color}`}
+                            title={`Coverage ${formatPercent(evaluationSummary?.citationPrecisionCoverage)} (good ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_GOOD ?? '0.9') * 100}%, ok ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_OK ?? '0.75') * 100}%)`}
+                          >
+                            {label}
+                          </span>
+                          <span className="mx-1 text-slate-600">·</span>
+                        </>
+                      ) : null}
+                      <span>
+                        {messages.admin.evaluationCitationP95} {formatPercent(evaluationSummary?.citationPrecisionP95)}
+                      </span>
+                    </span>
+                  );
+                })()}
                 loading={evaluationQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.evaluationTemporalCoverage}
                 primary={formatPercent(evaluationSummary?.temporalValidityCoverage)}
-                secondary={`${messages.admin.evaluationTemporalP95} ${formatPercent(
-                  evaluationSummary?.temporalValidityP95,
-                )}`}
+                secondary={(function () {
+                  const cov = evaluationSummary?.temporalValidityCoverage ?? null;
+                  const good = Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_GOOD ?? '0.9');
+                  const ok = Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_OK ?? '0.75');
+                  let kind: 'good' | 'ok' | 'poor' | null = null;
+                  if (typeof cov === 'number') {
+                    kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
+                  }
+                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                  const { label, color } =
+                    kind === 'good'
+                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                      : kind === 'ok'
+                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                        : kind === 'poor'
+                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                          : { label: null, color: '' } as any;
+                  return (
+                    <span>
+                      {label ? (
+                        <>
+                          <span
+                            className={`${baseBadge} ${color}`}
+                            title={`Coverage ${formatPercent(evaluationSummary?.temporalValidityCoverage)} (good ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_GOOD ?? '0.9') * 100}%, ok ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_OK ?? '0.75') * 100}%)`}
+                          >
+                            {label}
+                          </span>
+                          <span className="mx-1 text-slate-600">·</span>
+                        </>
+                      ) : null}
+                      <span>
+                        {messages.admin.evaluationTemporalP95} {formatPercent(evaluationSummary?.temporalValidityP95)}
+                      </span>
+                    </span>
+                  );
+                })()}
                 loading={evaluationQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.evaluationMaghrebCoverage}
                 primary={formatPercent(evaluationSummary?.maghrebBannerCoverage)}
-                secondary={messages.admin.evaluationMaghrebHint}
+                secondary={(function () {
+                  const cov = evaluationSummary?.maghrebBannerCoverage ?? null;
+                  const good = Number(process.env.NEXT_PUBLIC_EVAL_MAGHREB_GOOD ?? '0.95');
+                  const ok = Number(process.env.NEXT_PUBLIC_EVAL_MAGHREB_OK ?? '0.8');
+                  let kind: 'good' | 'ok' | 'poor' | null = null;
+                  if (typeof cov === 'number') {
+                    kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
+                  }
+                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                  const { label, color } =
+                    kind === 'good'
+                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                      : kind === 'ok'
+                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                        : kind === 'poor'
+                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                          : { label: null, color: '' } as any;
+                  return (
+                    <span>
+                      {label ? (
+                        <>
+                          <span
+                            className={`${baseBadge} ${color}`}
+                            title={`Coverage ${formatPercent(evaluationSummary?.maghrebBannerCoverage)} (good ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_MAGHREB_GOOD ?? '0.95') * 100}%, ok ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_MAGHREB_OK ?? '0.8') * 100}%)`}
+                          >
+                            {label}
+                          </span>
+                          <span className="mx-1 text-slate-600">·</span>
+                        </>
+                      ) : null}
+                      <span>{messages.admin.evaluationMaghrebHint}</span>
+                    </span>
+                  );
+                })()}
                 loading={evaluationQuery.isLoading}
               />
             </div>
@@ -988,17 +1399,45 @@ export function AdminView({ messages }: AdminViewProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {toolRows.map((row) => (
-                    <tr key={row.toolName}>
-                      <td className="py-2 pr-4 font-medium text-slate-100">{row.toolName}</td>
-                      <td className="py-2 pr-4">{decimalFormatter.format(row.avgLatencyMs)}</td>
-                      <td className="py-2 pr-4">{decimalFormatter.format(row.p95LatencyMs)}</td>
-                      <td className="py-2 pr-4">
-                        {row.failureCount}/{row.totalInvocations}
-                      </td>
-                      <td className="py-2 text-slate-400">{row.lastInvokedAt ? formatDateTime(row.lastInvokedAt) : '—'}</td>
-                    </tr>
-                  ))}
+                  {toolRows.map((row) => {
+                    const warn = Number(process.env.NEXT_PUBLIC_TOOL_FAILURE_WARN ?? '0.02');
+                    const crit = Number(process.env.NEXT_PUBLIC_TOOL_FAILURE_CRIT ?? '0.05');
+                    const ratio = row.totalInvocations > 0 ? row.failureCount / row.totalInvocations : 0;
+                    const kind = ratio >= crit ? 'crit' : ratio >= warn ? 'warn' : 'ok';
+                    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                    const label =
+                      kind === 'crit'
+                        ? messages.admin.toolHealthCrit
+                        : kind === 'warn'
+                          ? messages.admin.toolHealthWarn
+                          : messages.admin.toolHealthGood;
+                    const color =
+                      kind === 'crit'
+                        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+                        : kind === 'warn'
+                          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
+                          : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
+                    return (
+                      <tr key={row.toolName}>
+                        <td className="py-2 pr-4 font-medium text-slate-100">{row.toolName}</td>
+                        <td className="py-2 pr-4">{decimalFormatter.format(row.avgLatencyMs)}</td>
+                        <td className="py-2 pr-4">{decimalFormatter.format(row.p95LatencyMs)}</td>
+                        <td className="py-2 pr-4">
+                          <span
+                            className={`${baseBadge} ${color}`}
+                            title={`Failure rate ${(ratio * 100).toFixed(1)}% (warn ≥ ${(warn * 100).toFixed(0)}%, crit ≥ ${(crit * 100).toFixed(0)}%)`}
+                          >
+                            {label}
+                          </span>
+                          <span className="mx-1 text-slate-600">·</span>
+                          <span>
+                            {row.failureCount}/{row.totalInvocations}
+                          </span>
+                        </td>
+                        <td className="py-2 text-slate-400">{row.lastInvokedAt ? formatDateTime(row.lastInvokedAt) : '—'}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -1204,6 +1643,105 @@ export function AdminView({ messages }: AdminViewProps) {
 
         <Card className="glass-card border border-slate-800/60">
           <CardHeader>
+            <CardTitle className="text-slate-100">{messages.admin.devicesTitle}</CardTitle>
+            <p className="text-sm text-slate-400">{messages.admin.devicesDescription}</p>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-slate-200">
+            {deviceSessionsQuery.isLoading ? (
+              <p className="text-slate-400">{messages.admin.loadingShort}</p>
+            ) : deviceSessions.length === 0 ? (
+              <p className="text-slate-400">{messages.admin.devicesEmpty}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm text-slate-200">
+                  <thead className="text-xs uppercase tracking-wide text-slate-400">
+                    <tr>
+                      <th className="py-2 pr-4">{messages.admin.devicesTableDevice}</th>
+                      <th className="py-2 pr-4">{messages.admin.devicesTablePlatform}</th>
+                      <th className="py-2 pr-4">{messages.admin.devicesTableIp}</th>
+                      <th className="py-2 pr-4">{messages.admin.devicesTableAuth}</th>
+                      <th className="py-2 pr-4">{messages.admin.devicesTableLastSeen}</th>
+                      <th className="py-2 pr-4">{messages.admin.devicesTableStatus}</th>
+                      <th className="py-2">{messages.admin.devicesTableActions}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {deviceSessions.map((session) => {
+                      const statusActive = !session.revokedAt;
+                      return (
+                        <tr key={session.id}>
+                          <td className="py-3 pr-4 align-top">
+                            <p className="font-semibold text-slate-100">{session.deviceLabel ?? messages.admin.devicesUnknownDevice}</p>
+                            <p className="text-xs text-slate-400 break-all">{session.userAgent ?? messages.admin.devicesUnknownAgent}</p>
+                            <p className="text-xs text-slate-500">{messages.admin.devicesFingerprint}: {session.deviceFingerprint.slice(0, 12)}…</p>
+                          </td>
+                          <td className="py-3 pr-4 align-top text-slate-300">
+                            <div className="space-y-1">
+                              <div>{session.platform ?? '—'}</div>
+                              <div className="text-xs text-slate-500">{session.clientVersion ?? '—'}</div>
+                              {session.attested ? (
+                                <span className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-200">
+                                  {messages.admin.devicesAttested}
+                                </span>
+                              ) : null}
+                              {session.passkey ? (
+                                <span className="ml-1 inline-flex items-center rounded-full border border-sky-400/50 bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-200">
+                                  {messages.admin.devicesPasskey}
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4 align-top">
+                            <p>{session.ipAddress ?? '—'}</p>
+                            <p className="text-xs text-slate-500">
+                              {session.metadata?.role
+                                ? roleDisplay(String(session.metadata.role))
+                                : '—'}
+                            </p>
+                          </td>
+                          <td className="py-3 pr-4 align-top text-slate-300">
+                            <p>{session.authStrength ?? '—'}</p>
+                            <p className="text-xs text-slate-500">
+                              {session.mfaMethod ? `${messages.admin.devicesMfa}: ${session.mfaMethod}` : '—'}
+                            </p>
+                          </td>
+                          <td className="py-3 pr-4 align-top text-slate-300">
+                            <p>{formatDateTime(session.lastSeenAt)}</p>
+                            <p className="text-xs text-slate-500">{messages.admin.devicesCreated}: {formatDateTime(session.createdAt)}</p>
+                          </td>
+                          <td className="py-3 pr-4 align-top">
+                            <span
+                              className={statusActive ? 'text-emerald-200' : 'text-rose-300'}
+                            >
+                              {statusActive ? messages.admin.devicesStatusActive : messages.admin.devicesStatusRevoked}
+                            </span>
+                            {!statusActive && session.revokedAt ? (
+                              <p className="text-xs text-slate-500">{formatDateTime(session.revokedAt)}</p>
+                            ) : null}
+                          </td>
+                          <td className="py-3 align-top">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="text-xs text-rose-300 hover:text-rose-100"
+                              disabled={!statusActive || revokeDeviceMutation.isPending}
+                              onClick={() => revokeDeviceMutation.mutate(session.id)}
+                            >
+                              {messages.admin.devicesRevoke}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
             <CardTitle className="text-slate-100">{messages.admin.ipTitle}</CardTitle>
             <p className="text-sm text-slate-400">{messages.admin.ipDescription}</p>
           </CardHeader>
@@ -1311,7 +1849,7 @@ export function AdminView({ messages }: AdminViewProps) {
 interface MetricBlockProps {
   label: string;
   primary: string;
-  secondary?: string;
+  secondary?: ReactNode;
   loading?: boolean;
 }
 

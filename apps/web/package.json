@@ -10,8 +10,8 @@
     "build": "next build && node ./scripts/inject-sw.mjs",
     "prepare-sw": "node ./scripts/prepare-sw.mjs",
     "start": "next start",
-    "lint": "eslint --max-warnings=0 --ext .ts,.tsx app src",
-    "typecheck": "tsc --noEmit",
+    "lint": "eslint --max-warnings=0 app src",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run",
     "icons:generate": "node ./scripts/generate-icons.mjs"
   },
@@ -42,7 +42,8 @@
     "workbox-window": "^6.5.4",
     "zustand": "^4.5.2",
     "tailwindcss-animate": "^1.0.7",
-    "tailwind-merge": "^2.3.0"
+    "tailwind-merge": "^2.3.0",
+    "web-vitals": "^3.5.2"
   },
   "devDependencies": {
     "@types/node": "20.14.10",

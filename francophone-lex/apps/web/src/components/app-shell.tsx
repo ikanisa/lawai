@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import type { Route } from 'next';
-import { usePathname, useRouter } from 'next/navigation';
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import {
   LayoutGrid,
   Search,
@@ -18,21 +18,25 @@ import {
   Menu,
   Globe2,
   X,
-  Upload,
+  Download,
+  Shield,
+  ShieldOff,
+  Inbox,
   WifiOff,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 import type { Messages, Locale } from '../lib/i18n';
-import { useCommandPalette } from '../state/command-palette';
-import { CommandPalette } from './command-palette';
-import { Sheet, SheetSection } from './ui/sheet';
-import { useOnlineStatus } from '../hooks/use-online-status';
-import { useOutbox } from '../hooks/use-outbox';
-import { Badge } from './ui/badge';
+import { CommandPalette, type CommandPaletteAction } from './command-palette';
+import { sendTelemetryEvent } from '../lib/api';
+import { usePwaInstall } from '../hooks/use-pwa-install';
 import { toast } from 'sonner';
-import { useDigest } from '../hooks/use-digest';
+import { ConfidentialModeBanner } from './confidential-mode-banner';
 import { ComplianceBanner } from './compliance-banner';
+import { useConfidentialMode } from '../state/confidential-mode';
+import { useShallow } from 'zustand/react/shallow';
+import { useOutbox } from '../hooks/use-outbox';
+import { useOnlineStatus } from '../hooks/use-online-status';
 
 interface AppShellProps {
   children: ReactNode;
@@ -40,122 +44,217 @@ interface AppShellProps {
   locale: Locale;
 }
 
+type StatusBarMessages = NonNullable<Messages['app']['statusBar']>;
+
 const NAVIGATION = [
   { key: 'workspace', href: '/workspace', icon: LayoutGrid },
-  { key: 'research', href: '/research', icon: Search, badge: 'beta' },
+  { key: 'research', href: '/research', icon: Search },
   { key: 'drafting', href: '/drafting', icon: FileText },
   { key: 'matters', href: '/matters', icon: Briefcase },
   { key: 'citations', href: '/citations', icon: BookMarked },
   { key: 'hitl', href: '/hitl', icon: ShieldCheck },
   { key: 'corpus', href: '/corpus', icon: Database },
+  { key: 'trust', href: '/trust', icon: Shield },
   { key: 'admin', href: '/admin', icon: Settings },
-  { key: 'trust', href: '/trust', icon: Globe2 },
 ];
 
 const MOBILE_PRIMARY_NAV = ['workspace', 'research', 'drafting', 'hitl'] as const;
 
 export function AppShell({ children, messages, locale }: AppShellProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
-  const installPromptRef = useRef<any>(null);
-  const successRef = useRef(false);
-  const installDismissedRef = useRef(false);
-  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
-  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
-  const setCommandOpen = useCommandPalette((state) => state.setOpen);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const longPressTriggered = useRef(false);
+  const { shouldPrompt, promptInstall, dismissPrompt, isAvailable } = usePwaInstall();
+  const { enabled: confidentialMode, setEnabled: setConfidentialMode } = useConfidentialMode(
+    useShallow((state) => ({ enabled: state.enabled, setEnabled: state.setEnabled })),
+  );
+  const confidentialMessages = messages.app.confidential;
+  const statusMessages = confidentialMessages?.status;
+  const confidentialActions = confidentialMessages?.actions;
+  const { pendingCount: outboxCount, hasItems: hasOutbox, stalenessMs } = useOutbox();
   const online = useOnlineStatus();
-  const { items: outboxItems } = useOutbox();
-  const { enabled: digestEnabled, enable: enableDigest, loading: digestLoading } = useDigest();
+  const statusBarMessages = messages.app.statusBar;
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
+    if (typeof document === 'undefined') return;
+    if (confidentialMode) {
+      document.documentElement.dataset.confidential = 'true';
+    } else {
+      delete document.documentElement.dataset.confidential;
+    }
+  }, [confidentialMode]);
+
+  const handleConfidentialToggle = useCallback(() => {
+    const next = !confidentialMode;
+    setConfidentialMode(next);
+    const toastMessage = next ? statusMessages?.enabled : statusMessages?.disabled;
+    if (toastMessage) {
+      toast.info(toastMessage);
+    }
+    void sendTelemetryEvent('confidential_mode_toggled', { enabled: next });
+  }, [confidentialMode, setConfidentialMode, statusMessages]);
+
+  const confidentialToggleLabel = confidentialMode
+    ? confidentialActions?.disable?.label ?? confidentialMessages?.cta ?? 'Disable confidential mode'
+    : confidentialActions?.enable?.label ?? confidentialMessages?.title ?? 'Enable confidential mode';
+
+  const commandActions = useMemo<CommandPaletteAction[]>(() => {
+    const palette = messages.app.commandPalette;
+    const quickActions: CommandPaletteAction[] = [];
+    if (palette) {
+      const routeMap: Record<keyof typeof palette.actions, string> = {
+        newResearch: '/research',
+        upload: '/corpus',
+        openWorkspace: '/workspace',
+        openDrafting: '/drafting',
+        openMatters: '/matters',
+        openCitations: '/citations',
+        openHitl: '/hitl',
+        openCorpus: '/corpus',
+        openAdmin: '/admin',
+        openTrust: '/trust',
+      };
+
+      (Object.entries(palette.actions) as [keyof typeof palette.actions, { label: string; description: string }][]).forEach(
+        ([key, value]) => {
+          const action: CommandPaletteAction = {
+            id: `action-${key}`,
+            label: value.label,
+            description: value.description,
+            section: 'actions',
+            href: routeMap[key],
+          };
+          if (key === 'newResearch') {
+            action.shortcut = '/';
+          }
+          quickActions.push(action);
+        },
+      );
     }
 
-    installDismissedRef.current = window.localStorage.getItem('avocat-ai-install-dismissed') === '1';
-
-    const handleBeforeInstall = (event: Event) => {
-      event.preventDefault();
-      if (installDismissedRef.current) {
-        return;
+    if (confidentialActions) {
+      const toggleAction = confidentialMode ? confidentialActions.disable : confidentialActions.enable;
+      if (toggleAction) {
+        quickActions.unshift({
+          id: 'action-confidential-mode-toggle',
+          label: toggleAction.label,
+          description: toggleAction.description,
+          section: 'actions',
+          shortcut: toggleAction.shortcut,
+          run: handleConfidentialToggle,
+        });
       }
-      installPromptRef.current = event;
-      if (successRef.current) {
-        setShowInstallPrompt(true);
-      }
-    };
+    }
 
-    const handleRunSuccess = () => {
-      successRef.current = true;
-      if (installPromptRef.current && !installDismissedRef.current) {
-        setShowInstallPrompt(true);
-      }
-    };
+    const navActions = NAVIGATION.map((item) => {
+      const label = messages.nav[item.key as keyof typeof messages.nav];
+      const descriptionTemplate = messages.app.commandPalette?.navigateTo ?? '{destination}';
+      return {
+        id: `nav-${item.key}`,
+        label,
+        description: descriptionTemplate.replace('{destination}', label),
+        href: item.href,
+        section: 'navigate' as const,
+      } satisfies CommandPaletteAction;
+    });
 
-    const handleInstalled = () => {
-      installPromptRef.current = null;
-      setShowInstallPrompt(false);
-      installDismissedRef.current = true;
-      window.localStorage.setItem('avocat-ai-install-dismissed', '1');
-    };
+    return [...quickActions, ...navActions];
+  }, [messages, confidentialActions, confidentialMode, handleConfidentialToggle]);
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-    window.addEventListener('avocat-run-success', handleRunSuccess);
-    window.addEventListener('appinstalled', handleInstalled);
+  const startLongPress = (pointerType: string) => {
+    if (pointerType === 'mouse') return;
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+    longPressTriggered.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      setCommandOpen(true);
+    }, 600);
+  };
 
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-      window.removeEventListener('avocat-run-success', handleRunSuccess);
-      window.removeEventListener('appinstalled', handleInstalled);
-    };
+  const cancelLongPressTimer = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  useEffect(() => () => {
+    cancelLongPressTimer();
   }, []);
 
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const tagName = target?.tagName;
-      const isEditable = target?.isContentEditable;
-      const isInput = tagName === 'INPUT' || tagName === 'TEXTAREA' || (tagName === 'DIV' && isEditable);
-
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setCommandOpen(true);
-        return;
-      }
-
-      if (!event.metaKey && !event.ctrlKey && event.key === '/' && !isInput) {
-        event.preventDefault();
-        setCommandOpen(true);
-      }
-    };
-
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [setCommandOpen]);
-
-  async function handleEnableDigest() {
-    try {
-      const granted = await enableDigest();
-      if (granted) {
-        toast.success(messages.workspace.digestEnabled);
-      } else {
-        toast.error(messages.workspace.digestError);
-      }
-    } catch (error) {
-      console.error('digest_enable_failed', error);
-      toast.error(messages.workspace.digestError);
+    if (!commandOpen) {
+      longPressTriggered.current = false;
     }
-  }
+  }, [commandOpen]);
 
-  const localizedHref = (href: string) => `/${locale}${href}` as Route;
+  const localizedHref = (href: string) => `/${locale}${href}`;
+
+  const handleCommandButton = () => {
+    setCommandOpen(true);
+    void sendTelemetryEvent('command_palette_button');
+  };
+
+  const handleFabPointerDown = (event: ReactPointerEvent<HTMLAnchorElement>) => {
+    startLongPress(event.pointerType);
+  };
+
+  const handleFabPointerUp = () => {
+    cancelLongPressTimer();
+  };
+
+  const handleFabPointerLeave = () => {
+    cancelLongPressTimer();
+  };
+
+  const handleFabClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (longPressTriggered.current) {
+      event.preventDefault();
+      longPressTriggered.current = false;
+    }
+  };
+
+  const handleFabContextMenu = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    setCommandOpen(true);
+  };
+
+  const installMessages = messages.app.install;
+  const outboxAgeLabel = useMemo(() => {
+    if (!statusBarMessages || !hasOutbox) {
+      return null;
+    }
+    return formatOutboxAge(stalenessMs, locale, statusBarMessages);
+  }, [statusBarMessages, hasOutbox, stalenessMs, locale]);
+
+  const handleInstallNow = async () => {
+    const outcome = await promptInstall();
+    if (outcome === 'accepted') {
+      toast.success(installMessages.success);
+    } else if (outcome === 'dismissed') {
+      toast.info(installMessages.snoozed);
+    } else {
+      toast.error(installMessages.unavailable);
+    }
+  };
+
+  const handleInstallLater = () => {
+    dismissPrompt();
+    toast.info(installMessages.snoozed);
+  };
 
   return (
-    <>
-      <div className="relative flex min-h-screen bg-slate-950 text-slate-100">
+    <div className="relative flex min-h-screen bg-slate-950 text-slate-100">
       <a href="#main" className="skip-link">
         {messages.app.skipToContent}
       </a>
+      {confidentialMode ? (
+        <div aria-hidden className="pointer-events-none fixed inset-0 z-20 bg-slate-950/20 backdrop-blur-sm" />
+      ) : null}
       {navOpen && (
         <div
           className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm lg:hidden"
@@ -203,14 +302,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
                   )}
                 >
                   <Icon className="h-4 w-4" aria-hidden />
-                  <span className="flex items-center gap-2">
-                    {messages.nav[item.key as keyof typeof messages.nav]}
-                    {item.badge === 'beta' ? (
-                      <Badge variant="outline" className="rounded-full border-teal-300/60 bg-teal-500/10 text-[10px] uppercase tracking-wide text-teal-200">
-                        Beta
-                      </Badge>
-                    ) : null}
-                  </span>
+                  {messages.nav[item.key as keyof typeof messages.nav]}
                 </span>
               </Link>
             );
@@ -229,81 +321,65 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
         <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-slate-800/60 bg-slate-950/80 px-6 backdrop-blur">
           <div className="flex items-center gap-3">
             <Button
-              type="button"
               variant="outline"
-              onClick={() => setCommandOpen(true)}
-              className="hidden items-center gap-3 rounded-full border-slate-800/60 bg-slate-900/60 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-teal-400/60 hover:text-teal-100 lg:inline-flex"
+              size="sm"
+              onClick={handleCommandButton}
+              className="hidden items-center gap-2 rounded-full bg-slate-900/60 text-xs font-semibold uppercase tracking-wide text-slate-100 hover:bg-slate-800/60 sm:inline-flex"
             >
-              <Command className="h-4 w-4" aria-hidden />
-              <span>{messages.app.commandButton}</span>
-              <span className="hidden items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 xl:flex">
-                <kbd className="rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1">⌘</kbd>
-                <kbd className="rounded border border-slate-700/60 bg-slate-900/80 px-2 py-1">K</kbd>
-              </span>
+              <Command className="h-4 w-4 text-teal-200" aria-hidden />
+              {messages.app.commandButton}
             </Button>
             <Button
-              type="button"
               variant="ghost"
               size="icon"
-              className="lg:hidden"
-              onClick={() => setCommandOpen(true)}
+              onClick={handleCommandButton}
               aria-label={messages.app.commandButton}
+              className="sm:hidden"
             >
               <Command className="h-5 w-5" aria-hidden />
             </Button>
-          </div>
-          <div className="flex items-center gap-3">
-            {!online ? (
-              <span
-                role="status"
-                aria-live="polite"
-                className="hidden rounded-full border border-amber-400/60 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-200 lg:inline-flex"
-              >
-                {messages.app.offlineLabel}
-                {outboxItems.length > 0 ? ` • ${messages.app.offlineQueued.replace('{count}', String(outboxItems.length))}` : ''}
+            <p className="hidden text-xs text-slate-400 md:block">{messages.app.commandPlaceholder}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {statusBarMessages && !online ? (
+            <span className="hidden items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-200 sm:inline-flex">
+              <WifiOff className="h-4 w-4" aria-hidden />
+              {statusBarMessages.offline}
+            </span>
+          ) : null}
+          {statusBarMessages && hasOutbox ? (
+            <Link
+              href={localizedHref('/research#outbox-panel')}
+              className="focus-ring hidden items-center gap-2 rounded-full border border-teal-400/40 bg-teal-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-teal-100 shadow-sm transition hover:bg-teal-500/20 sm:flex"
+              aria-label={`${statusBarMessages.outbox} (${outboxCount})`}
+            >
+              <Inbox className="h-4 w-4" aria-hidden />
+              <span>{statusBarMessages.outbox}</span>
+              <span className="rounded-full bg-teal-400/20 px-2 py-0.5 text-[11px] font-semibold text-teal-50">
+                {outboxCount}
               </span>
-            ) : null}
-            {!online ? (
-              <span
-                role="status"
-                aria-live="polite"
-                className="inline-flex rounded-full border border-amber-400/60 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-200 lg:hidden"
-              >
-                {messages.app.offlineShort}
-              </span>
-            ) : null}
-            {online && outboxItems.length > 0 ? (
-              <span
-                role="status"
-                aria-live="polite"
-                className="hidden rounded-full border border-teal-400/60 bg-teal-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-teal-200 lg:inline-flex"
-              >
-                {messages.app.outboxPending.replace('{count}', String(outboxItems.length))}
-              </span>
-            ) : null}
+              {outboxAgeLabel ? (
+                <span className="text-[10px] font-normal text-teal-100/80">{outboxAgeLabel}</span>
+              ) : null}
+            </Link>
+          ) : null}
+          <Button
+            variant={confidentialMode ? 'outline' : 'ghost'}
+            size="icon"
+            onClick={handleConfidentialToggle}
+            aria-pressed={confidentialMode}
+              aria-label={confidentialToggleLabel}
+              title={confidentialToggleLabel}
+              className={cn(confidentialMode ? 'text-amber-200 hover:text-amber-100' : undefined)}
+            >
+              {confidentialMode ? (
+                <ShieldOff className="h-5 w-5" aria-hidden />
+              ) : (
+                <Shield className="h-5 w-5" aria-hidden />
+              )}
+            </Button>
             <Button variant="ghost" size="icon" aria-label="Notifications">
               <Bell className="h-5 w-5" aria-hidden />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleEnableDigest}
-              aria-label={messages.workspace.enableDigest}
-              disabled={digestEnabled || digestLoading}
-              className={cn(
-                'relative border-slate-700/60 bg-slate-900/60 text-slate-200 transition hover:border-teal-400/60 hover:text-teal-100',
-                digestEnabled && 'border-teal-400/60 text-teal-200',
-              )}
-            >
-              <Bell className="h-5 w-5" aria-hidden />
-              {digestEnabled ? (
-                <Badge
-                  variant="outline"
-                  className="absolute -right-2 -top-2 rounded-full border-teal-300/70 bg-teal-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-100"
-                >
-                  {messages.workspace.digestEnabledBadge}
-                </Badge>
-              ) : null}
             </Button>
             <Button variant="ghost" size="icon" aria-label="Sélecteur d’organisation">
               <Database className="h-5 w-5" aria-hidden />
@@ -316,18 +392,12 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
           </div>
         </header>
         <main id="main" className="flex-1 px-6 pb-24 pt-10">
-          <ComplianceBanner messages={messages.app.compliance} />
+          {messages.app.compliance ? <ComplianceBanner messages={messages.app.compliance} /> : null}
           {children}
         </main>
       </div>
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-lg px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] lg:hidden">
         <div className="relative">
-          {!online ? (
-            <div className="pointer-events-auto mb-3 flex items-center gap-2 rounded-2xl border border-amber-500/40 bg-amber-900/50 px-4 py-2 text-xs text-amber-100">
-              <WifiOff className="h-4 w-4" aria-hidden />
-              <span>{messages.app.mobileOfflineNotice}</span>
-            </div>
-          ) : null}
           <nav
             id="mobile-nav"
             aria-label="Navigation principale mobile"
@@ -349,149 +419,92 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
                   aria-label={messages.nav[item.key as keyof typeof messages.nav]}
                 >
                   <Icon className="h-5 w-5" aria-hidden />
-                  <span className="sr-only sm:not-sr-only">
-                    {messages.nav[item.key as keyof typeof messages.nav]}
-                    {item.badge === 'beta' ? ' (Beta)' : ''}
-                  </span>
+                  <span className="sr-only sm:not-sr-only">{messages.nav[item.key as keyof typeof messages.nav]}</span>
                 </Link>
               );
             })}
           </nav>
-          <button
-            type="button"
-            onClick={() => setMobileActionsOpen(true)}
+          <Link
+            href={localizedHref('/research')}
             className="pointer-events-auto focus-ring absolute -top-9 left-1/2 inline-flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-grad-1 text-slate-950 shadow-2xl"
             aria-label={messages.actions.ask}
+            onPointerDown={handleFabPointerDown}
+            onPointerUp={handleFabPointerUp}
+            onPointerLeave={handleFabPointerLeave}
+            onClick={handleFabClick}
+            onContextMenu={handleFabContextMenu}
           >
             <Search className="h-5 w-5" aria-hidden />
-          </button>
+          </Link>
         </div>
       </div>
-      <CommandPalette messages={messages} locale={locale} />
-    </div>
-      {showInstallPrompt ? (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm rounded-3xl border border-slate-800/60 bg-slate-900/90 p-5 text-slate-100 shadow-2xl">
-          <h2 className="text-sm font-semibold">{messages.app.install.title}</h2>
-          <p className="mt-2 text-sm text-slate-300">{messages.app.install.body}</p>
-          <div className="mt-4 flex items-center gap-3">
-            <Button
-              onClick={async () => {
-                const prompt = installPromptRef.current as any;
-                if (!prompt || typeof prompt.prompt !== 'function') {
-                  setShowInstallPrompt(false);
-                  return;
-                }
-                prompt.prompt();
-                try {
-                  await prompt.userChoice;
-                } catch (error) {
-                  console.warn('install_prompt_cancelled', error);
-                }
-                installPromptRef.current = null;
-                setShowInstallPrompt(false);
-                installDismissedRef.current = true;
-                window.localStorage.setItem('avocat-ai-install-dismissed', '1');
-              }}
-            >
-              {messages.app.install.cta}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setShowInstallPrompt(false);
-                installDismissedRef.current = true;
-                window.localStorage.setItem('avocat-ai-install-dismissed', '1');
-              }}
-            >
-              {messages.app.install.dismiss}
-            </Button>
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        actions={commandActions}
+        messages={messages}
+        locale={locale}
+      />
+      {confidentialMode && confidentialMessages ? (
+        <ConfidentialModeBanner
+          title={confidentialMessages.title}
+          body={confidentialMessages.body}
+          cta={confidentialMessages.cta}
+        />
+      ) : null}
+      {shouldPrompt ? (
+        <div
+          className="fixed bottom-28 right-6 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-200"
+          aria-live="polite"
+        >
+          <div className="glass-card border border-slate-800/60 p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl bg-grad-1/30 p-2">
+                <Download className="h-5 w-5 text-teal-200" aria-hidden />
+              </div>
+              <div className="flex-1 space-y-3 text-sm text-slate-200">
+                <div>
+                  <p className="text-sm font-semibold text-white">{installMessages.title}</p>
+                  <p className="mt-1 text-slate-300">{installMessages.body}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={handleInstallNow} disabled={!isAvailable}>
+                    {installMessages.cta}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={handleInstallLater}>
+                    {installMessages.dismiss}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
-      <Sheet
-        open={mobileActionsOpen}
-        onOpenChange={setMobileActionsOpen}
-        title={messages.app.mobileActionsTitle}
-        description={messages.app.mobileActionsDescription}
-      >
-        <SheetSection>
-          <div className="flex flex-col gap-3">
-            <Button
-              variant="outline"
-              className="flex items-center justify-between gap-3 border-slate-700/60 bg-slate-900/60 text-slate-100"
-              onClick={() => {
-                setMobileActionsOpen(false);
-                router.push(localizedHref('/research'));
-              }}
-              disabled={!online}
-            >
-              <span className="flex items-center gap-3">
-                <Search className="h-4 w-4 text-teal-200" aria-hidden />
-                {messages.actions.newResearch}
-              </span>
-              <span className="text-xs text-slate-500">⌘K</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="flex items-center justify-between gap-3 border-slate-700/60 bg-slate-900/60 text-slate-100"
-              onClick={() => {
-                setMobileActionsOpen(false);
-                router.push(localizedHref('/corpus'));
-              }}
-              disabled={!online}
-            >
-              <span className="flex items-center gap-3">
-                <Upload className="h-4 w-4 text-teal-200" aria-hidden />
-                {messages.actions.upload}
-              </span>
-            </Button>
-            <Button
-              variant="outline"
-              className="flex items-center justify-between gap-3 border-slate-700/60 bg-slate-900/60 text-slate-100"
-              onClick={() => {
-                setMobileActionsOpen(false);
-                router.push(localizedHref('/drafting'));
-              }}
-              disabled={!online}
-            >
-              <span className="flex items-center gap-3">
-                <FileText className="h-4 w-4 text-teal-200" aria-hidden />
-                {messages.actions.newDraft}
-              </span>
-            </Button>
-            <Button
-              variant="outline"
-              className="flex items-center justify-between gap-3 border-slate-700/60 bg-slate-900/60 text-slate-100"
-              onClick={() => {
-                setMobileActionsOpen(false);
-                void handleEnableDigest();
-              }}
-              disabled={digestEnabled || digestLoading}
-            >
-              <span className="flex items-center gap-3">
-                <Bell className="h-4 w-4 text-teal-200" aria-hidden />
-                {messages.workspace.enableDigest}
-              </span>
-              {digestEnabled ? (
-                <Badge variant="outline" className="text-[10px] uppercase tracking-wide text-teal-200">
-                  {messages.workspace.digestEnabledBadge}
-                </Badge>
-              ) : null}
-            </Button>
-          </div>
-          {!online ? (
-            <p className="mt-4 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-200">
-              {messages.app.mobileOfflineNotice}
-              {outboxItems.length > 0 ? ` ${messages.app.offlineQueued.replace('{count}', String(outboxItems.length))}.` : ''}
-            </p>
-          ) : null}
-          {online && outboxItems.length > 0 ? (
-            <p className="mt-4 rounded-2xl border border-slate-700/60 bg-slate-900/50 p-3 text-xs text-slate-300">
-              {messages.app.outboxPending.replace('{count}', String(outboxItems.length))}
-            </p>
-          ) : null}
-        </SheetSection>
-      </Sheet>
-    </>
+    </div>
   );
+}
+
+function formatOutboxAge(stalenessMs: number, locale: Locale, copy: StatusBarMessages): string {
+  if (stalenessMs <= 0) {
+    return copy.staleNow;
+  }
+
+  const minutes = Math.floor(stalenessMs / 60_000);
+  const formatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+
+  if (minutes < 1) {
+    return copy.staleNow;
+  }
+
+  if (minutes < 60) {
+    return copy.staleMinutes.replace('{count}', formatter.format(minutes));
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return copy.staleHours.replace('{count}', formatter.format(hours));
+  }
+
+  const days = Math.floor(hours / 24);
+  return copy.staleDays.replace('{count}', formatter.format(days));
 }

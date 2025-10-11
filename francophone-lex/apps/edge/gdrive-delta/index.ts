@@ -1,6 +1,6 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
+import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
 
 type DeltaRequest = { limit?: number };
 
@@ -11,7 +11,9 @@ Deno.serve(async (req) => {
     if (!supabaseUrl || !supabaseKey) {
       return new Response('missing_supabase_env', { status: 500 });
     }
-    const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const supabase = createEdgeClient(supabaseUrl, supabaseKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
     const apiBase = new URL(req.url).origin; // call same origin API
 
     const body = (await req.json().catch(() => ({}))) as DeltaRequest;
@@ -22,7 +24,10 @@ Deno.serve(async (req) => {
     if (error) {
       return new Response('state_query_failed', { status: 500 });
     }
-    const orgs = (data ?? []).map((row: any) => row.org_id as string);
+    const orgRows = rowsAs<{ org_id: string | null }>(data);
+    const orgs = orgRows
+      .map((row) => row.org_id)
+      .filter((value): value is string => typeof value === 'string' && value.length > 0);
     const results: Array<{ orgId: string; processed?: number; status: number }> = [];
     for (const orgId of orgs) {
       const res = await fetch(`${apiBase}/gdrive/process-changes`, {
@@ -38,4 +43,3 @@ Deno.serve(async (req) => {
     return new Response((error as Error).message ?? 'delta_failed', { status: 500 });
   }
 });
-

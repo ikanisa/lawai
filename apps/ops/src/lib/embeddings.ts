@@ -1,4 +1,15 @@
+import {
+  fetchOpenAIDebugDetails,
+  getOpenAIClient,
+  isOpenAIDebugEnabled,
+} from '@avocat-ai/shared';
+
 const decoder = new TextDecoder('utf-8', { fatal: false, ignoreBOM: true });
+
+const OPS_EMBED_CLIENT_OPTIONS = {
+  cacheKeySuffix: 'ops-embedding',
+  requestTags: process.env.OPENAI_REQUEST_TAGS_OPS ?? process.env.OPENAI_REQUEST_TAGS ?? 'service=ops,component=embeddings',
+} as const;
 
 export interface EmbeddingEnv {
   OPENAI_API_KEY: string;
@@ -61,26 +72,27 @@ export async function embedTexts(inputs: string[], env: EmbeddingEnv): Promise<n
     return [];
   }
 
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  const openai = getOpenAIClient({ apiKey: env.OPENAI_API_KEY, ...OPS_EMBED_CLIENT_OPTIONS });
+  let response;
+  try {
+    response = await openai.embeddings.create({
       model: env.EMBEDDING_MODEL,
       input: inputs,
-    }),
-  });
-
-  const json = await response.json();
-  if (!response.ok) {
-    const message = json?.error?.message ?? 'Échec de génération des embeddings';
+    });
+  } catch (error) {
+    if (isOpenAIDebugEnabled()) {
+      const info = await fetchOpenAIDebugDetails(openai, error);
+      if (info) {
+        console.error('[openai-debug] embedTexts', info);
+      }
+    }
+    const message = error instanceof Error ? error.message : 'Échec de génération des embeddings';
     throw new Error(message);
   }
 
-  const data = Array.isArray(json?.data) ? json.data : [];
-  return data.map((entry: { embedding: number[] }) => entry.embedding);
+  return response.data
+    .map((entry) => ('embedding' in entry && Array.isArray(entry.embedding) ? (entry.embedding as number[]) : null))
+    .filter((vector): vector is number[] => Array.isArray(vector));
 }
 
 export async function decodeBlob(blob: Blob): Promise<string> {

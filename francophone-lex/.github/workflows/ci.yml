@@ -44,11 +44,19 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.43.0
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Run lint
         run: pnpm lint
+
+      - name: Run typecheck
+        run: pnpm typecheck
 
       - name: Run migrations
         run: pnpm db:migrate

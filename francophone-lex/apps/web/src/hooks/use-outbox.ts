@@ -1,22 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AUTONOMOUS_JUSTICE_SUITE } from '../../../../packages/shared/src/config/autonomous-suite';
-import { submitResearchQuestion, DEMO_ORG_ID, DEMO_USER_ID } from '../lib/api';
-
-const SUITE_MANIFEST = AUTONOMOUS_JUSTICE_SUITE;
-const AGENT_LABEL_MAP = new Map<string, string>();
-for (const [key, definition] of Object.entries(SUITE_MANIFEST.agents)) {
-  const externalCode = typeof definition.code === 'string' ? definition.code : key;
-  const label = typeof definition.label === 'string' ? definition.label : externalCode;
-  if (externalCode) {
-    AGENT_LABEL_MAP.set(externalCode, label);
-  }
-}
-
-const DEFAULT_AGENT_CODE =
-  typeof SUITE_MANIFEST.agents.counsel_research?.code === 'string'
-    ? SUITE_MANIFEST.agents.counsel_research.code
-    : 'conseil_recherche';
-const DEFAULT_AGENT_LABEL = AGENT_LABEL_MAP.get(DEFAULT_AGENT_CODE) ?? DEFAULT_AGENT_CODE;
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOnlineStatus } from './use-online-status';
 
 export interface OutboxItem {
@@ -25,10 +7,6 @@ export interface OutboxItem {
   context?: string;
   confidentialMode: boolean;
   createdAt: string;
-  resumedAt?: string;
-  agentCode: string;
-  agentLabel: string;
-  agentSettings?: Record<string, unknown> | null;
 }
 
 const STORAGE_KEY = 'avocat-ai-outbox';
@@ -42,56 +20,50 @@ function loadInitial(): OutboxItem[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-      .filter((item) => typeof item.question === 'string' && typeof item.id === 'string')
-      .map((item) => {
-        const agentCode = typeof item.agentCode === 'string' && item.agentCode.trim().length > 0
-          ? item.agentCode
-          : DEFAULT_AGENT_CODE;
-        const agentLabel = typeof item.agentLabel === 'string' && item.agentLabel.trim().length > 0
-          ? item.agentLabel
-          : AGENT_LABEL_MAP.get(agentCode) ?? DEFAULT_AGENT_LABEL;
-        const agentSettings =
-          item.agentSettings && typeof item.agentSettings === 'object' && !Array.isArray(item.agentSettings)
-            ? (item.agentSettings as Record<string, unknown>)
-            : null;
-
-        return {
-          id: String(item.id),
-          question: String(item.question),
-          context: typeof item.context === 'string' ? item.context : undefined,
-          confidentialMode: Boolean(item.confidentialMode),
-          createdAt:
-            typeof item.createdAt === 'string' && item.createdAt.trim().length > 0
-              ? item.createdAt
-              : new Date().toISOString(),
-          resumedAt: typeof item.resumedAt === 'string' ? item.resumedAt : undefined,
-          agentCode,
-          agentLabel,
-          agentSettings,
-        } satisfies OutboxItem;
-      });
+    return parsed.filter((item): item is OutboxItem =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof (item as OutboxItem).id === 'string' &&
+      typeof (item as OutboxItem).question === 'string',
+    );
   } catch (error) {
     console.warn('outbox_load_failed', error);
     return [];
   }
 }
 
-export function useOutbox() {
-  const [items, setItems] = useState<OutboxItem[]>(() => loadInitial());
+interface UseOutboxOptions {
+  persist?: boolean;
+}
+
+export function useOutbox(options: UseOutboxOptions = {}) {
+  const persist = options.persist ?? true;
+  const [shouldPersist, setShouldPersist] = useState(persist);
+  const [items, setItems] = useState<OutboxItem[]>(() => (persist ? loadInitial() : []));
   const online = useOnlineStatus();
-  const wasOffline = useRef(!online);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const persistable = items.filter((item) => !item.confidentialMode);
-    if (persistable.length === 0) {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
+    if (persist === shouldPersist) {
+      return;
     }
-  }, [items]);
+
+    setShouldPersist(persist);
+
+    if (persist) {
+      setItems(loadInitial());
+    } else {
+      setItems([]);
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+  }, [persist, shouldPersist]);
+
+  useEffect(() => {
+    if (!shouldPersist || typeof window === 'undefined') return;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }, [items, shouldPersist]);
 
   const enqueue = useCallback((item: Omit<OutboxItem, 'id' | 'createdAt'>) => {
     const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `outbox-${Date.now()}`;
@@ -109,72 +81,53 @@ export function useOutbox() {
     setItems([]);
   }, []);
 
-  const flush = useCallback(async (handler?: (item: OutboxItem) => Promise<boolean>) => {
-    if (!online) return;
-    const snapshot = items
-      .slice()
-      .filter((item) => !item.confidentialMode)
-      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  const flush = useCallback(
+    async (handler: (item: OutboxItem) => Promise<boolean> | boolean) => {
+      const snapshot = items
+        .slice()
+        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+      const completed = new Set<string>();
 
-    if (snapshot.length === 0) {
-      return;
-    }
-
-    const completed = new Set<string>();
-    const failed = new Map<string, OutboxItem>();
-    const resumeTime = new Date().toISOString();
-
-    for (const item of snapshot) {
-      try {
-        if (handler) {
-          const handled = await handler(item);
-          if (handled) {
+      for (const item of snapshot) {
+        try {
+          const result = await handler(item);
+          if (result) {
             completed.add(item.id);
-            continue;
           }
-          failed.set(item.id, { ...item, resumedAt: resumeTime });
-          continue;
+        } catch (error) {
+          console.warn('outbox_flush_failed', error);
         }
-        await submitResearchQuestion({
-          question: item.question,
-          context: item.context,
-          orgId: DEMO_ORG_ID,
-          userId: DEMO_USER_ID,
-          confidentialMode: item.confidentialMode,
-          agentCode: item.agentCode,
-          agentSettings: item.agentSettings ?? undefined,
-        });
-        completed.add(item.id);
-      } catch (error) {
-        console.warn('outbox_flush_failed', error);
-        failed.set(item.id, { ...item, resumedAt: resumeTime });
       }
-    }
 
-    if (completed.size > 0 || failed.size > 0) {
-      setItems((current) => {
-        const remaining = current.filter((item) => !completed.has(item.id));
-        if (failed.size === 0) {
-          return remaining;
-        }
-        return remaining.map((item) => failed.get(item.id) ?? item);
-      });
-    }
-  }, [items, online]);
-
-  useEffect(() => {
-    if (!online) {
-      wasOffline.current = true;
-      return;
-    }
-    if (!wasOffline.current) {
-      return;
-    }
-    wasOffline.current = false;
-    flush().catch((error) => console.error('outbox_flush_error', error));
-  }, [online, flush]);
+      if (completed.size > 0) {
+        setItems((current) => current.filter((item) => !completed.has(item.id)));
+      }
+    },
+    [items],
+  );
 
   const sorted = useMemo(() => items.slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)), [items]);
 
-  return { items: sorted, enqueue, remove, clear, flush };
+  useEffect(() => {
+    if (sorted.length === 0) {
+      return;
+    }
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [sorted.length]);
+
+  const newest = sorted[0];
+  const stalenessMs = newest ? Math.max(0, now - new Date(newest.createdAt).getTime()) : 0;
+
+  return {
+    items: sorted,
+    enqueue,
+    remove,
+    clear,
+    flush,
+    pendingCount: sorted.length,
+    hasItems: sorted.length > 0,
+    stalenessMs,
+    isOnline: online,
+  };
 }

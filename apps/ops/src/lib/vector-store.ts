@@ -1,6 +1,14 @@
 import ora from 'ora';
+import {
+  fetchOpenAIDebugDetails,
+  getOpenAIClient,
+  isOpenAIDebugEnabled,
+} from '@avocat-ai/shared';
 
-const VECTOR_STORE_ENDPOINT = 'https://api.openai.com/v1/vector_stores';
+const OPS_VECTOR_CLIENT_OPTIONS = {
+  cacheKeySuffix: 'ops-vector-lib',
+  requestTags: process.env.OPENAI_REQUEST_TAGS_OPS ?? process.env.OPENAI_REQUEST_TAGS ?? 'service=ops,component=vector-store-lib',
+} as const;
 
 export async function validateVectorStore(apiKey: string, id: string | undefined): Promise<boolean> {
   if (!id || id.trim().length === 0) {
@@ -11,27 +19,31 @@ export async function validateVectorStore(apiKey: string, id: string | undefined
     return true;
   }
 
-  const response = await fetch(`${VECTOR_STORE_ENDPOINT}/${id}`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
+  const openai = getOpenAIClient({ apiKey, ...OPS_VECTOR_CLIENT_OPTIONS });
 
-  if (response.ok) {
+  try {
+    await openai.beta.vectorStores.retrieve(id);
     return true;
+  } catch (error) {
+    const status =
+      typeof error === 'object' && error !== null && 'status' in error
+        ? (error as { status?: number }).status
+        : undefined;
+
+    if (status === 404) {
+      return false;
+    }
+
+    if (isOpenAIDebugEnabled()) {
+      const info = await fetchOpenAIDebugDetails(openai, error);
+      if (info) {
+        console.error('[openai-debug] validateVectorStore', info);
+      }
+    }
+
+    const message = error instanceof Error ? error.message : 'OpenAI vector store validation failed';
+    throw new Error(message);
   }
-
-  const payload = await response
-    .json()
-    .catch(() => ({ error: { message: `OpenAI API error ${response.status}` } }));
-
-  if (response.status === 404) {
-    return false;
-  }
-
-  const message = payload?.error?.message ?? `OpenAI API error ${response.status}`;
-  throw new Error(message);
 }
 
 export async function ensureVectorStore(
@@ -49,23 +61,22 @@ export async function ensureVectorStore(
     return existingId;
   }
 
-  const creation = await fetch(VECTOR_STORE_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ name }),
-  });
+  const openai = getOpenAIClient({ apiKey, ...OPS_VECTOR_CLIENT_OPTIONS });
 
-  const json = await creation.json();
-
-  if (!creation.ok) {
-    const message = json?.error?.message ?? 'Erreur inconnue lors de la création du vector store';
+  try {
+    const created = await openai.beta.vectorStores.create({ name });
+    spinner.succeed(`Vector store créé (${created.id}).`);
+    return created.id;
+  } catch (error) {
+    if (isOpenAIDebugEnabled()) {
+      const info = await fetchOpenAIDebugDetails(openai, error);
+      if (info) {
+        spinner.warn('Détails du diagnostic OpenAI disponibles dans les logs.');
+        console.error('[openai-debug] ensureVectorStore:create', info);
+      }
+    }
+    const message = error instanceof Error ? error.message : 'Erreur inconnue lors de la création du vector store';
     spinner.fail(message);
     throw new Error(message);
   }
-
-  spinner.succeed(`Vector store créé (${json.id as string}).`);
-  return json.id as string;
 }

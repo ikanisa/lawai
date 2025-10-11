@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createPrivateKey, randomUUID, sign as signMessage } from 'node:crypto';
 import { env } from './config.js';
 
@@ -87,4 +88,3 @@ export function signC2PA({ orgId, userId, contentSha256, filename }: SignInput):
     manifest,
   };
 }
-

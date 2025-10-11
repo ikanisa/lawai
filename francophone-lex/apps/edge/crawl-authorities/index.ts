@@ -1,7 +1,15 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
-import { OFFICIAL_DOMAIN_ALLOWLIST } from '../../packages/shared/src/constants/allowlist.ts';
+import { OFFICIAL_DOMAIN_ALLOWLIST } from '../lib/allowlist.ts';
+import {
+  buildAkomaBodyFromText,
+  extractCaseTreatmentHints,
+  extractPlainTextFromBuffer,
+  type AkomaBody,
+  type CaseTreatmentHint,
+} from '../lib/akoma.ts';
+import { createOpenAIDenoClient, type OpenAIDenoClient } from '../lib/openai.ts';
+import { EdgeSupabaseClient, createEdgeClient, rowAs } from '../lib/supabase.ts';
 
 type SourceType = 'statute' | 'case' | 'gazette' | 'regulation';
 
@@ -53,6 +61,36 @@ interface IngestionSummary {
   failures: number;
 }
 
+type SourceRecord = {
+  id: string;
+  capture_sha256: string | null;
+  http_etag: string | null;
+  last_modified: string | null;
+};
+
+type SourceLinkHealthRecord = {
+  id: string;
+};
+
+type AuthorityDomainRecord = {
+  id: string;
+  host: string;
+  jurisdiction_code: string;
+  failure_count: number | null;
+  last_ingested_at?: string | null;
+  last_failed_at?: string | null;
+};
+
+type LearningMetricRecord = {
+  value: number | null;
+  computed_at: string;
+};
+
+type CaseSourceRecord = {
+  id: string;
+  court_rank: string | null;
+};
+
 const textEncoder = new TextEncoder();
 
 const DOMAIN_ALLOWLIST = new Set(
@@ -64,6 +102,14 @@ const MIME_EXTENSION: Record<string, string> = {
   'text/plain': 'txt',
   'text/html': 'html',
 };
+
+function normaliseCaseReference(reference: string): string {
+  return reference
+    .replace(/^(aff\.|arr[ée]t|d[ée]cision|n°)/i, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\.+$/g, '')
+    .trim();
+}
 
 const RESIDENCY_ZONE_MAP: Record<string, string> = {
   FR: 'eu',
@@ -106,20 +152,55 @@ function deriveEli(url: string): string | null {
   return null;
 }
 
+const ECLI_URL_REGEX = /ECLI:([A-Z0-9:_.-]+)/i;
+const ECLI_TEXT_REGEX = /ECLI:[A-Z]{2}:[A-Z0-9]+:[A-Z0-9_.:-]+/i;
+
 function deriveEcli(url: string): string | null {
-  if (/ECLI:/i.test(url)) {
-    const match = url.match(/ECLI:([A-Z0-9:\-]+)/i);
-    return match ? `ECLI:${match[1]}` : null;
+  const urlMatch = url.match(ECLI_URL_REGEX);
+  if (urlMatch && urlMatch[1]) {
+    return `ECLI:${urlMatch[1].toUpperCase()}`;
   }
-  if (/courdecassation\.be\/id\//i.test(url)) {
-    const id = url.split('/id/')[1];
-    return id ? `ECLI:BE:CSC:${id.toUpperCase()}` : null;
+
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toUpperCase();
+    const path = parsed.pathname;
+    if (host.includes('COURDECASSATION.BE') && path.includes('/ID/')) {
+      const token = path.split('/ID/')[1];
+      return token ? `ECLI:BE:CSC:${token.toUpperCase()}` : null;
+    }
+    if (host.includes('COURDECASSATION.FR') && path.includes('/DECISION/')) {
+      const segments = path.split('/').filter(Boolean);
+      const slug = segments.pop();
+      if (slug) {
+        return `ECLI:FR:CCASS:${slug.replace(/[^A-Z0-9]/gi, '').toUpperCase()}`;
+      }
+    }
+    if (host.includes('CANLII.CA')) {
+      const canonical = path.replace(/\//g, '').toUpperCase();
+      return canonical ? `ECLI:CA:${canonical}` : null;
+    }
+  } catch (_error) {
+    return null;
   }
   return null;
 }
 
-function buildAkomaNtoso(doc: NormalizedDocument, eli: string | null, ecli: string | null) {
-  return {
+function extractEcliFromText(text: string | null | undefined): string | null {
+  if (!text) {
+    return null;
+  }
+  const match = text.match(ECLI_TEXT_REGEX);
+  return match ? match[0].toUpperCase() : null;
+}
+
+function buildAkomaNtoso(
+  doc: NormalizedDocument,
+  eli: string | null,
+  ecli: string | null,
+  body: AkomaBody | null,
+) {
+  const payload: Record<string, unknown> = {
     meta: {
       identification: {
         source: doc.publisher,
@@ -137,7 +218,16 @@ function buildAkomaNtoso(doc: NormalizedDocument, eli: string | null, ecli: stri
         languageNote: doc.languageNote ?? null,
       },
     },
-  } as Record<string, unknown>;
+  };
+
+  if (body && (body.articles.length > 0 || body.sections.length > 0)) {
+    payload.body = {
+      articles: body.articles,
+      sections: body.sections,
+    };
+  }
+
+  return payload;
 }
 
 function extensionForMime(mimeType: string): string {
@@ -179,8 +269,142 @@ function isHostAllowlisted(host: string | null): boolean {
   return false;
 }
 
+async function resolveCaseReference(
+  supabase: EdgeSupabaseClient,
+  orgId: string,
+  jurisdiction: string,
+  hint: CaseTreatmentHint,
+): Promise<{ sourceId: string; courtRank: string | null } | null> {
+  if (hint.ecli) {
+    const lookup = await supabase
+      .from('sources')
+      .select('id, court_rank')
+      .eq('org_id', orgId)
+      .eq('source_type', 'case')
+      .eq('ecli', hint.ecli)
+      .maybeSingle<CaseSourceRecord>();
+
+    const lookupRow = rowAs<CaseSourceRecord>(lookup.data);
+    if (!lookup.error && lookupRow) {
+      return { sourceId: lookupRow.id, courtRank: lookupRow.court_rank ?? null };
+    }
+  }
+
+  const cleaned = normaliseCaseReference(hint.reference);
+  if (!cleaned) {
+    return null;
+  }
+
+  const titleQuery = await supabase
+    .from('sources')
+    .select('id, court_rank')
+    .eq('org_id', orgId)
+    .eq('source_type', 'case')
+    .eq('jurisdiction_code', jurisdiction)
+    .ilike('title', `%${cleaned}%`)
+    .limit(1)
+    .maybeSingle<CaseSourceRecord>();
+
+  const titleRow = rowAs<CaseSourceRecord>(titleQuery.data);
+  if (!titleQuery.error && titleRow) {
+    return { sourceId: titleRow.id, courtRank: titleRow.court_rank ?? null };
+  }
+
+  const versionLabelQuery = await supabase
+    .from('sources')
+    .select('id, court_rank')
+    .eq('org_id', orgId)
+    .eq('source_type', 'case')
+    .ilike('version_label', `%${cleaned}%`)
+    .limit(1)
+    .maybeSingle<CaseSourceRecord>();
+
+  const versionRow = rowAs<CaseSourceRecord>(versionLabelQuery.data);
+  if (!versionLabelQuery.error && versionRow) {
+    return { sourceId: versionRow.id, courtRank: versionRow.court_rank ?? null };
+  }
+
+  return null;
+}
+
+async function ingestCaseTreatments(
+  supabase: EdgeSupabaseClient,
+  orgId: string,
+  doc: NormalizedDocument,
+  sourceId: string,
+  plainText: string,
+): Promise<void> {
+  if (doc.sourceType !== 'case' || !plainText) {
+    return;
+  }
+
+  const hints = extractCaseTreatmentHints(plainText);
+  if (hints.length === 0) {
+    return;
+  }
+
+  const decidedAt = doc.effectiveDate ?? doc.adoptionDate ?? null;
+
+  for (const hint of hints) {
+    let target: { sourceId: string; courtRank: string | null } | null = null;
+    try {
+      target = await resolveCaseReference(supabase, orgId, doc.jurisdiction, hint);
+    } catch (error) {
+      console.warn('case_reference_lookup_failed', error);
+    }
+
+    if (!target) {
+      continue;
+    }
+
+    const existing = await supabase
+      .from('case_treatments')
+      .select('id')
+      .eq('org_id', orgId)
+      .eq('source_id', target.sourceId)
+      .eq('citing_source_id', sourceId)
+      .maybeSingle<{ id: string }>();
+
+    if (existing.error && existing.error.code !== 'PGRST116') {
+      console.warn('case_treatment_select_failed', existing.error.message);
+      continue;
+    }
+
+    const payload = {
+      treatment: hint.treatment,
+      weight: hint.weight,
+      court_rank: target.courtRank ?? null,
+      decided_at: decidedAt ?? null,
+    };
+
+    const existingRow = rowAs<{ id: string }>(existing.data);
+    if (existingRow) {
+      const update = await supabase
+        .from('case_treatments')
+        .update(payload)
+        .eq('id', existingRow.id);
+
+      if (update.error) {
+        console.warn('case_treatment_update_failed', update.error.message);
+      }
+      continue;
+    }
+
+    const insert = await supabase.from('case_treatments').insert({
+      org_id: orgId,
+      source_id: target.sourceId,
+      citing_source_id: sourceId,
+      ...payload,
+    });
+
+    if (insert.error) {
+      console.warn('case_treatment_insert_failed', insert.error.message);
+    }
+  }
+}
+
 async function recordQuarantine(
-  supabase: ReturnType<typeof createClient>,
+  supabase: EdgeSupabaseClient,
   orgId: string,
   adapterId: string,
   doc: NormalizedDocument,
@@ -230,31 +454,23 @@ type DownloadResult = {
   lastModified?: string | null;
 };
 
-async function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function downloadDocument(doc: NormalizedDocument): Promise<DownloadResult> {
-  const attempts = [0, 500, 1500];
-  for (let i = 0; i < attempts.length; i++) {
-    if (attempts[i] > 0) await delay(attempts[i]);
-    try {
-      const response = await fetch(doc.downloadUrl, { method: 'GET' });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const arrayBuffer = await response.arrayBuffer();
-      const payload = new Uint8Array(arrayBuffer);
-      if (payload.byteLength > 0) {
-        return {
-          payload,
-          etag: response.headers.get('etag'),
-          lastModified: response.headers.get('last-modified'),
-        };
-      }
-    } catch (error) {
-      console.warn(`Attempt ${i + 1} failed to download ${doc.downloadUrl}:`, error);
+  try {
+    const response = await fetch(doc.downloadUrl, { method: 'GET' });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
+    const arrayBuffer = await response.arrayBuffer();
+    const payload = new Uint8Array(arrayBuffer);
+    if (payload.byteLength > 0) {
+      return {
+        payload,
+        etag: response.headers.get('etag'),
+        lastModified: response.headers.get('last-modified'),
+      };
+    }
+  } catch (error) {
+    console.warn(`Unable to download ${doc.downloadUrl}:`, error);
   }
   const fallback = `Document placeholder for ${doc.title} (${doc.canonicalUrl})`;
   return {
@@ -306,16 +522,18 @@ async function fetchRssDocuments(
     }
     const xml = await response.text();
     const items = Array.from(xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)).slice(0, limit);
-    const mapped = items
-      .map((match) => match[1] ?? '')
-      .map((block) => {
-        const title = extractXmlValue(block, 'title');
-        const link = extractXmlValue(block, 'link');
-        const pubDate = extractXmlValue(block, 'pubDate');
-        return mapper({ title, link, pubDate });
-      })
-      .filter((value): value is NormalizedDocument => value !== null);
-    return mapped;
+    const documents: NormalizedDocument[] = [];
+    for (const match of items) {
+      const block = match[1] ?? '';
+      const title = extractXmlValue(block, 'title');
+      const link = extractXmlValue(block, 'link');
+      const pubDate = extractXmlValue(block, 'pubDate');
+      const mapped = mapper({ title, link, pubDate });
+      if (mapped) {
+        documents.push(mapped);
+      }
+    }
+    return documents;
   } catch (error) {
     console.warn(`Unable to parse RSS feed ${url}:`, error);
   }
@@ -330,7 +548,7 @@ async function fetchFirstAvailableRss(
   for (const url of urls) {
     const docs = await fetchRssDocuments(url, mapper, limit);
     if (docs.length > 0) {
-      return docs;
+      return docs as NormalizedDocument[];
     }
   }
   return [];
@@ -355,7 +573,7 @@ function extractXmlValue(block: string, tag: string): string | null {
   if (!match) {
     return null;
   }
-  return decodeHtmlEntities(match[1]);
+  return match[1] ? decodeHtmlEntities(match[1]) : null;
 }
 
 function dedupeDocuments(documents: NormalizedDocument[]): NormalizedDocument[] {
@@ -381,31 +599,31 @@ async function fetchLegifranceRssDocuments(limit = 8): Promise<NormalizedDocumen
     }
     const xml = await response.text();
     const items = Array.from(xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)).slice(0, limit);
-    return items
-      .map((match) => match[1] ?? '')
-      .map((block) => {
-        const title = extractXmlValue(block, 'title');
-        const link = extractXmlValue(block, 'link');
-        const date = extractXmlValue(block, 'pubDate');
-        if (!title || !link) {
-          return null;
-        }
-        return {
-          title,
-          jurisdiction: 'FR',
-          sourceType: 'gazette' as const,
-          publisher: 'Légifrance',
-          canonicalUrl: link,
-          downloadUrl: link,
-          bindingLanguage: 'fr',
-          consolidated: false,
-          effectiveDate: date ? new Date(date).toISOString().slice(0, 10) : undefined,
-          versionLabel: 'Journal officiel (RSS)',
-          mimeType: 'text/html',
-          residency: 'eu',
-        } satisfies NormalizedDocument;
-      })
-      .filter((value): value is NormalizedDocument => Boolean(value));
+    const documents: NormalizedDocument[] = [];
+    for (const match of items) {
+      const block = match[1] ?? '';
+      const title = extractXmlValue(block, 'title');
+      const link = extractXmlValue(block, 'link');
+      const date = extractXmlValue(block, 'pubDate');
+      if (!title || !link) {
+        continue;
+      }
+      documents.push({
+        title,
+        jurisdiction: 'FR',
+        sourceType: 'gazette',
+        publisher: 'Légifrance',
+        canonicalUrl: link,
+        downloadUrl: link,
+        bindingLanguage: 'fr',
+        consolidated: false,
+        effectiveDate: date ? new Date(date).toISOString().slice(0, 10) : undefined,
+        versionLabel: 'Journal officiel (RSS)',
+        mimeType: 'text/html',
+        residency: 'eu',
+      });
+    }
+    return documents;
   } catch (error) {
     console.warn('Legifrance RSS unavailable', error);
     return [];
@@ -754,31 +972,31 @@ async function fetchGazettesAfricaDocuments(
     }
     const json = (await response.json()) as { results?: Array<Record<string, unknown>> };
     const results = json.results ?? [];
-    return results
-      .map((entry) => {
-        const title = typeof entry.title === 'string' ? entry.title : null;
-        const pdfUrl = typeof entry.file_url === 'string' ? entry.file_url : null;
-        const webUrl = typeof entry.source_url === 'string' ? entry.source_url : pdfUrl;
-        const pubDate = typeof entry.publication_date === 'string' ? entry.publication_date : null;
-        if (!title || !webUrl || !pdfUrl) {
-          return null;
-        }
-        return {
-          title,
-          jurisdiction,
-          sourceType: 'gazette',
-          publisher: 'Gazettes.Africa',
-          canonicalUrl: webUrl,
-          downloadUrl: pdfUrl,
-          bindingLanguage,
-          languageNote,
-          consolidated: false,
-          effectiveDate: pubDate ?? undefined,
-          versionLabel: 'Gazettes Africa',
-          mimeType: 'application/pdf',
-        } satisfies NormalizedDocument;
-      })
-      .filter((value): value is NormalizedDocument => value !== null);
+    const documents: NormalizedDocument[] = [];
+    for (const entry of results) {
+      const title = typeof entry.title === 'string' ? entry.title : null;
+      const pdfUrl = typeof entry.file_url === 'string' ? entry.file_url : null;
+      const webUrl = typeof entry.source_url === 'string' ? entry.source_url : pdfUrl;
+      const pubDate = typeof entry.publication_date === 'string' ? entry.publication_date : null;
+      if (!title || !webUrl || !pdfUrl) {
+        continue;
+      }
+      documents.push({
+        title,
+        jurisdiction,
+        sourceType: 'gazette',
+        publisher: 'Gazettes.Africa',
+        canonicalUrl: webUrl,
+        downloadUrl: pdfUrl,
+        bindingLanguage,
+        languageNote,
+        consolidated: false,
+        effectiveDate: pubDate ?? undefined,
+        versionLabel: 'Gazettes Africa',
+        mimeType: 'application/pdf',
+      });
+    }
+    return documents;
   } catch (error) {
     console.warn(`Unable to load Gazettes.Africa dataset for ${jurisdiction}:`, error);
   }
@@ -796,75 +1014,75 @@ async function fetchOhadaUniformActsRemote(): Promise<NormalizedDocument[]> {
       return [];
     }
 
-    return (json as Array<Record<string, unknown>>)
-      .map((entry) => {
-        const title = typeof entry?.title === 'object' && entry.title && 'rendered' in entry.title
+    const documents: NormalizedDocument[] = [];
+    for (const entry of json as Array<Record<string, unknown>>) {
+      const title =
+        typeof entry?.title === 'object' && entry.title && 'rendered' in entry.title
           ? String((entry.title as { rendered?: unknown }).rendered ?? '')
           : typeof entry?.title === 'string'
             ? String(entry.title)
             : '';
-        const link = typeof entry?.link === 'string' ? (entry.link as string) : '';
-        if (!title || !link) {
-          return null;
-        }
-        return {
-          title: decodeHtmlEntities(title),
-          jurisdiction: 'OHADA',
-          sourceType: 'statute' as const,
-          publisher: 'OHADA',
-          canonicalUrl: link,
-          downloadUrl: link,
-          bindingLanguage: 'fr',
-          consolidated: true,
-          mimeType: 'text/html',
-        } satisfies NormalizedDocument;
-      })
-      .filter((value): value is NormalizedDocument => Boolean(value));
+      const link = typeof entry?.link === 'string' ? (entry.link as string) : '';
+      if (!title || !link) {
+        continue;
+      }
+      documents.push({
+        title: decodeHtmlEntities(title),
+        jurisdiction: 'OHADA',
+        sourceType: 'statute',
+        publisher: 'OHADA',
+        canonicalUrl: link,
+        downloadUrl: link,
+        bindingLanguage: 'fr',
+        consolidated: true,
+        mimeType: 'text/html',
+      });
+    }
+    return documents;
   } catch (error) {
     console.warn('OHADA remote dataset unavailable', error);
     return [];
   }
 }
 
+let defaultOpenAIClient: OpenAIDenoClient | null = null;
+
+function getDefaultOpenAIClient(): OpenAIDenoClient | null {
+  if (defaultOpenAIClient) {
+    return defaultOpenAIClient;
+  }
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey || apiKey.trim().length === 0) {
+    console.warn('OPENAI_API_KEY not set – vector store sync requires an explicit key override.');
+    return null;
+  }
+
+  defaultOpenAIClient = createOpenAIDenoClient({
+    apiKey,
+    requestTags: Deno.env.get('OPENAI_REQUEST_TAGS_EDGE') ?? 'service=edge,component=crawl-authorities',
+    organization: Deno.env.get('OPENAI_ORGANIZATION') ?? undefined,
+    project: Deno.env.get('OPENAI_PROJECT') ?? undefined,
+  });
+  return defaultOpenAIClient;
+}
+
 async function uploadToVectorStore(
   vectorStoreId: string,
-  apiKey: string,
   buffer: Uint8Array,
   mimeType: string,
   filename: string,
+  client: OpenAIDenoClient,
 ): Promise<string> {
-  const fileUpload = new FormData();
-  fileUpload.append('purpose', 'assistants');
-  fileUpload.append('file', new Blob([buffer], { type: mimeType }), filename);
-
-  const fileResponse = await fetch('https://api.openai.com/v1/files', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: fileUpload,
+  const uploadedFile = await client.files.create({
+    purpose: 'assistants',
+    data: buffer,
+    filename,
+    mimeType,
   });
 
-  const fileJson = await fileResponse.json();
-  if (!fileResponse.ok) {
-    throw new Error(fileJson.error?.message ?? 'Unable to upload file to OpenAI');
-  }
+  await client.beta.vectorStores.files.create(vectorStoreId, { file_id: uploadedFile.id });
 
-  const attachResponse = await fetch(`https://api.openai.com/v1/vector_stores/${vectorStoreId}/files`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ file_id: fileJson.id }),
-  });
-
-  const attachJson = await attachResponse.json();
-  if (!attachResponse.ok) {
-    throw new Error(attachJson.error?.message ?? 'Unable to attach file to vector store');
-  }
-
-  return fileJson.id as string;
+  return uploadedFile.id as string;
 }
 
 async function loadRwandaDocuments(): Promise<NormalizedDocument[]> {
@@ -1188,8 +1406,8 @@ function buildAdapters(): Adapter[] {
     {
       id: 'eu-eur-lex-core',
       description: 'EUR-Lex overlays for EU member jurisdictions',
-      async fetchDocuments() {
-        return euRegulations;
+      fetchDocuments() {
+        return Promise.resolve(euRegulations);
       },
     },
     {
@@ -1222,8 +1440,8 @@ function buildAdapters(): Adapter[] {
     {
       id: 'mc-legimonaco-core',
       description: 'Monaco civil code extracts',
-      async fetchDocuments() {
-        return monacoCore;
+      fetchDocuments() {
+        return Promise.resolve(monacoCore);
       },
     },
     {
@@ -1282,11 +1500,29 @@ function buildAdapters(): Adapter[] {
 async function ingestDocuments(
   adapter: Adapter,
   docs: NormalizedDocument[],
-  supabase: ReturnType<typeof createClient>,
+  supabase: EdgeSupabaseClient,
   orgId: string,
   openaiApiKey?: string,
   vectorStoreId?: string,
 ): Promise<IngestionSummary> {
+  let activeOpenAIClient: OpenAIDenoClient | null = null;
+  if (vectorStoreId) {
+    if (openaiApiKey && openaiApiKey.trim().length > 0) {
+      activeOpenAIClient = createOpenAIDenoClient({
+        apiKey: openaiApiKey,
+        requestTags: `${Deno.env.get('OPENAI_REQUEST_TAGS_EDGE') ?? 'service=edge,component=crawl-authorities'},override=true`,
+        organization: Deno.env.get('OPENAI_ORGANIZATION') ?? undefined,
+        project: Deno.env.get('OPENAI_PROJECT') ?? undefined,
+      });
+    } else {
+      activeOpenAIClient = getDefaultOpenAIClient();
+    }
+
+    if (!activeOpenAIClient) {
+      throw new Error('OpenAI client unavailable: provide OPENAI_API_KEY or pass openaiApiKey in the payload.');
+    }
+  }
+
   let inserted = 0;
   let skipped = 0;
   let failures = 0;
@@ -1308,6 +1544,8 @@ async function ingestDocuments(
 
       const download = await downloadDocument(doc);
       const payload = download.payload;
+      const plainText = extractPlainTextFromBuffer(payload, doc.mimeType ?? 'text/plain');
+      const derivedBody = plainText ? buildAkomaBodyFromText(plainText) : null;
       const checksum = await toHexSha256(payload);
       const etag = download.etag ?? doc.etag ?? null;
       const lastModifiedHeader = download.lastModified ?? doc.lastModified ?? null;
@@ -1318,27 +1556,38 @@ async function ingestDocuments(
       const residency = (doc.residency ?? resolveResidencyZone(doc.jurisdiction)).toLowerCase();
       const storagePath = `${orgId}/${residency}/${slugify(doc.title)}.${extensionForMime(doc.mimeType)}`;
       const eli = doc.eli ?? deriveEli(doc.canonicalUrl);
-      const ecli = doc.ecli ?? deriveEcli(doc.canonicalUrl);
-      const akomaPayload = doc.akomaNtoso ?? buildAkomaNtoso(doc, eli, ecli);
+      const ecli =
+        doc.ecli ?? deriveEcli(doc.canonicalUrl) ?? extractEcliFromText(plainText ?? doc.title);
+      const akomaPayload = doc.akomaNtoso
+        ? (() => {
+            const existing = doc.akomaNtoso as Record<string, unknown>;
+            if (!('body' in existing) && derivedBody) {
+              return { ...existing, body: derivedBody };
+            }
+            return existing;
+          })()
+        : buildAkomaNtoso(doc, eli, ecli, derivedBody);
 
       const existingSource = await supabase
         .from('sources')
         .select('id, capture_sha256, http_etag, last_modified')
         .eq('org_id', orgId)
         .eq('source_url', doc.canonicalUrl)
-        .maybeSingle();
+        .maybeSingle<SourceRecord>();
 
       if (existingSource.error) {
         throw new Error(existingSource.error.message);
       }
 
-      if (existingSource.data) {
-        const sameHash = existingSource.data.capture_sha256 === checksum;
-        const sameEtag = etag && existingSource.data.http_etag && existingSource.data.http_etag === etag;
+      const existingSourceData = rowAs<SourceRecord>(existingSource.data);
+
+      if (existingSourceData) {
+        const sameHash = existingSourceData.capture_sha256 === checksum;
+        const sameEtag = etag && existingSourceData.http_etag && existingSourceData.http_etag === etag;
         if (sameHash || sameEtag) {
           try {
-            const nextEtag = etag ?? existingSource.data.http_etag ?? null;
-            const nextLastModified = lastModifiedIso ?? existingSource.data.last_modified ?? null;
+            const nextEtag = etag ?? existingSourceData.http_etag ?? null;
+            const nextLastModified = lastModifiedIso ?? existingSourceData.last_modified ?? null;
             await supabase
               .from('sources')
               .update({
@@ -1349,7 +1598,7 @@ async function ingestDocuments(
                 http_etag: nextEtag,
                 last_modified: nextLastModified,
               })
-              .eq('id', existingSource.data.id);
+              .eq('id', existingSourceData.id);
           } catch (updateError) {
             console.warn('Unable to update existing source health status', updateError);
           }
@@ -1419,7 +1668,9 @@ async function ingestDocuments(
         .select('id')
         .single();
 
-      if (sourceInsert.error || !sourceInsert.data) {
+      const sourceRow = rowAs<SourceLinkHealthRecord>(sourceInsert.data);
+
+      if (sourceInsert.error || !sourceRow) {
         throw new Error(sourceInsert.error?.message ?? 'Unable to persist source');
       }
 
@@ -1428,10 +1679,16 @@ async function ingestDocuments(
       let vectorStoreError: string | null = null;
       let syncedAt: string | null = null;
 
-      if (openaiApiKey && vectorStoreId) {
+      if (activeOpenAIClient && vectorStoreId) {
         try {
           const filename = `${slugify(doc.title)}.${extensionForMime(doc.mimeType)}`;
-          openaiFileId = await uploadToVectorStore(vectorStoreId, openaiApiKey, payload, doc.mimeType, filename);
+          openaiFileId = await uploadToVectorStore(
+            vectorStoreId,
+            payload,
+            doc.mimeType ?? 'application/octet-stream',
+            filename,
+            activeOpenAIClient,
+          );
           vectorStoreStatus = 'uploaded';
           syncedAt = new Date().toISOString();
         } catch (error) {
@@ -1476,6 +1733,14 @@ async function ingestDocuments(
           .eq('jurisdiction_code', doc.jurisdiction);
       }
 
+      if (plainText) {
+        try {
+          await ingestCaseTreatments(supabase, orgId, doc, sourceRow.id, plainText);
+        } catch (error) {
+          console.warn('case_treatment_enrichment_failed', error);
+        }
+      }
+
       inserted += 1;
     } catch (error) {
       console.error(`Failed to ingest document for adapter ${adapter.id}:`, error);
@@ -1488,16 +1753,17 @@ async function ingestDocuments(
             .select('id, failure_count')
             .eq('host', host)
             .eq('jurisdiction_code', doc.jurisdiction)
-            .maybeSingle();
+            .maybeSingle<AuthorityDomainRecord>();
 
-          if (!domainLookup.error && domainLookup.data) {
+          const domainRecord = rowAs<AuthorityDomainRecord>(domainLookup.data);
+          if (!domainLookup.error && domainRecord) {
             await supabase
               .from('authority_domains')
               .update({
                 last_failed_at: new Date().toISOString(),
-                failure_count: (domainLookup.data.failure_count ?? 0) + 1,
+                failure_count: (domainRecord.failure_count ?? 0) + 1,
               })
-              .eq('id', domainLookup.data.id);
+              .eq('id', domainRecord.id);
           }
         }
 
@@ -1506,9 +1772,10 @@ async function ingestDocuments(
           .select('id')
           .eq('org_id', orgId)
           .eq('source_url', doc.canonicalUrl)
-          .maybeSingle();
+          .maybeSingle<SourceLinkHealthRecord>();
 
-        if (!failureSource.error && failureSource.data) {
+        const failureSourceRow = rowAs<SourceLinkHealthRecord>(failureSource.data);
+        if (!failureSource.error && failureSourceRow) {
           await supabase
             .from('sources')
             .update({
@@ -1516,7 +1783,7 @@ async function ingestDocuments(
               link_last_status: 'failed',
               link_last_error: failureMessage,
             })
-            .eq('id', failureSource.data.id);
+            .eq('id', failureSourceRow.id);
         }
       } catch (updateError) {
         console.warn('Unable to record link failure telemetry', updateError);
@@ -1539,7 +1806,7 @@ async function ingestDocuments(
 }
 
 async function createIngestionRun(
-  supabase: ReturnType<typeof createClient>,
+  supabase: EdgeSupabaseClient,
   adapterId: string,
   orgId: string,
 ): Promise<IngestionRunRecord | null> {
@@ -1558,7 +1825,7 @@ async function createIngestionRun(
 }
 
 async function finalizeIngestionRun(
-  supabase: ReturnType<typeof createClient>,
+  supabase: EdgeSupabaseClient,
   record: IngestionRunRecord | null,
   summary: IngestionSummary,
   status: 'completed' | 'failed',
@@ -1597,7 +1864,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Missing Supabase credentials or orgId' }), { status: 400 });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceRole);
+  const supabase = createEdgeClient(supabaseUrl, supabaseServiceRole);
   const adapters = buildAdapters();
   const summaries: IngestionSummary[] = [];
 

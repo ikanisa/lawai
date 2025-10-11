@@ -1,0 +1,54 @@
+name: Export Agent Definition
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'apps/api/src/**'
+      - 'packages/shared/src/**'
+      - '.github/workflows/export-agent.yml'
+  workflow_dispatch:
+
+jobs:
+  export-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: |
+          pnpm --filter @avocat-ai/shared build
+          pnpm --filter @avocat-ai/supabase build
+
+      - name: Export agent definition
+        run: pnpm --filter @apps/api export:agent
+
+      - name: Upload agent artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-avocat-francophone
+          path: apps/dist/platform/avocat-francophone.json
+          retention-days: 14
+
+      - name: Upload runbook docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-docs
+          path: |
+            docs/agents/inventory.md
+            docs/agents/platform-migration.md

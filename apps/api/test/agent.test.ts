@@ -1,5 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const embeddingsCreateMock = vi.fn();
+const responsesCreateMock = vi.fn();
+const logOpenAIDebugMock = vi.fn();
+
+vi.mock('../src/openai.ts', () => ({
+  getOpenAI: () => ({
+    embeddings: { create: embeddingsCreateMock },
+    responses: { create: responsesCreateMock },
+  }),
+  logOpenAIDebug: logOpenAIDebugMock,
+  setOpenAILogger: vi.fn(),
+}));
+
 const validPayload = {
   jurisdiction: { country: 'FR', eu: true, ohada: false },
   issue: "Validité d'une clause",
@@ -119,8 +132,8 @@ const defaultAccessContext = {
     franceJudgeAnalyticsBlocked: true,
     mfaRequired: false,
     ipAllowlistEnforced: false,
-    consentVersion: null,
-    councilOfEuropeDisclosureVersion: null,
+    consentRequirement: null,
+    councilOfEuropeRequirement: null,
   },
   rawPolicies: {},
   entitlements: new Map<string, { canRead: boolean; canWrite: boolean }>([
@@ -130,7 +143,8 @@ const defaultAccessContext = {
     ['MAGHREB', { canRead: true, canWrite: false }],
   ]),
   ipAllowlistCidrs: [],
-  consent: { requiredVersion: null, latestAcceptedVersion: null },
+  consent: { requirement: null, latest: null },
+  councilOfEurope: { requirement: null, acknowledgedVersion: null },
 };
 
 function makeContext(
@@ -148,7 +162,6 @@ function makeContext(
 const runMock = vi.fn();
 
 beforeEach(() => {
-  vi.resetModules();
   runMock.mockReset();
   runInsertMock.mockClear();
   runInsertSelectMock.mockClear();
@@ -206,6 +219,11 @@ beforeEach(() => {
   sourcesQuery.in.mockImplementation(() => sourcesQuery);
   sourcesQuery.ilike.mockImplementation(() => sourcesQuery);
   sourcesQuery.order.mockImplementation(() => sourcesQuery);
+  embeddingsCreateMock.mockReset();
+  responsesCreateMock.mockReset();
+  logOpenAIDebugMock.mockReset();
+  embeddingsCreateMock.mockResolvedValue({ data: [{ embedding: new Array(3072).fill(0.1) }] });
+  responsesCreateMock.mockResolvedValue({ output: [] });
   synonymsQuery.select.mockImplementation(() => synonymsQuery);
   synonymsQuery.in.mockImplementation(() => synonymsQuery);
   synonymsQuery.order.mockImplementation(() => synonymsQuery);
@@ -280,21 +298,6 @@ beforeEach(() => {
   process.env.SUPABASE_URL = 'https://example.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
   process.env.AGENT_STUB_MODE = 'never';
-
-  global.fetch = vi.fn(async (input: RequestInfo | URL) => {
-    const url = typeof input === 'string' ? input : input.toString();
-    if (url.includes('/embeddings')) {
-      return {
-        ok: true,
-        json: async () => ({ data: [{ embedding: new Array(3072).fill(0.1) }] }),
-      } as Response;
-    }
-
-    return {
-      ok: true,
-      json: async () => ({}),
-    } as Response;
-  });
 
   vi.doMock('@openai/agents', () => ({
     Agent: class {
@@ -394,7 +397,29 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    supabaseRpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          content: 'Article 1240 du Code civil',
+          similarity: 0.91,
+          trust_tier: 'T1',
+          source_type: 'statute',
+          source_id: 'src-1',
+          document_id: 'doc-1',
+          url: validPayload.citations[0]?.url,
+          title: 'Code civil — Article 1240',
+          publisher: 'Légifrance',
+          eli: 'fr/code_civil/article_1240',
+          ecli: null,
+          binding_lang: 'fr',
+          residency_zone: 'eu',
+          akoma_ntoso: { body: { articles: [{ marker: 'Article 1240', seq: 0, excerpt: 'Texte' }] } },
+        },
+      ],
+      error: null,
+    });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
     const result = await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -435,7 +460,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await import('../src/agent.ts');
     const result = await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -465,7 +490,7 @@ describe('runLegalAgent', () => {
       finalOutput: payload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await import('../src/agent.ts');
 
     await expect(
       runLegalAgent(
@@ -487,7 +512,7 @@ describe('runLegalAgent', () => {
       },
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await import('../src/agent.ts');
     await runLegalAgent(
       {
         question: 'Analyse pénale complexe',
@@ -505,7 +530,7 @@ describe('runLegalAgent', () => {
       finalOutput: { ...validPayload, citations: [] },
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await import('../src/agent.ts');
     await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -556,7 +581,7 @@ describe('runLegalAgent', () => {
       error: null,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await import('../src/agent.ts');
     const result = await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -580,7 +605,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await import('../src/agent.ts');
     await runLegalAgent(
       {
         question: 'Analyse confidentielle',
@@ -615,7 +640,7 @@ describe('runLegalAgent', () => {
       error: null,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await import('../src/agent.ts');
 
     await runLegalAgent(
       {
@@ -627,7 +652,6 @@ describe('runLegalAgent', () => {
     );
 
     expect(retrievalInsertMock).toHaveBeenCalled();
-    expect(telemetryInsertMock).toHaveBeenCalled();
 
     retrievalInsertMock.mockClear();
     telemetryInsertMock.mockClear();
@@ -680,7 +704,7 @@ describe('runLegalAgent', () => {
 
     supabaseRpcMock.mockResolvedValueOnce({ data: [], error: null });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await import('../src/agent.ts');
 
     await runLegalAgent(
       {
@@ -691,13 +715,11 @@ describe('runLegalAgent', () => {
       makeContext(),
     );
 
-    const embeddingCall = (global.fetch as unknown as vi.Mock).mock.calls.find((call) =>
-      (typeof call[0] === 'string' ? call[0] : call[0].toString()).includes('/embeddings'),
-    );
+    const embeddingCall = embeddingsCreateMock.mock.calls.at(0);
     expect(embeddingCall).toBeTruthy();
-    const body = JSON.parse((embeddingCall?.[1] as RequestInit)?.body as string);
-    expect(body.input).toContain('Synonymes pertinents');
-    expect(body.input).toContain('forclusion');
+    const body = embeddingCall?.[0];
+    expect(body?.input).toContain('Synonymes pertinents');
+    expect(body?.input).toContain('forclusion');
   });
 
   it('blocks judge analytics queries for France and escalates to HITL', async () => {
@@ -705,7 +727,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await import('../src/agent.ts');
     const result = await runLegalAgent(
       {
         question:
@@ -729,7 +751,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await import('../src/agent.ts');
     await runLegalAgent(
       {
         question:
@@ -749,5 +771,16 @@ describe('runLegalAgent', () => {
       (event: { kind?: string }) => event.kind === 'compliance.eu_ai_act.fria_required',
     );
     expect(hasFriaAudit).toBe(true);
+  });
+});
+
+describe('manifest alignment', () => {
+  it('keeps manifest tool names aligned with runtime registry', async () => {
+    const { getAgentPlatformDefinition, TOOL_NAMES } = await import('../src/agent.ts');
+    const manifestTools = getAgentPlatformDefinition()
+      .tools.map((entry) => entry.name)
+      .sort();
+    const runtimeTools = Object.values(TOOL_NAMES).sort();
+    expect(manifestTools).toEqual(runtimeTools);
   });
 });

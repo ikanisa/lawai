@@ -1,15 +1,20 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
+import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
 
 const LOOKBACK_RUNS = 200;
 const PRECISION_THRESHOLD = 0.95;
-const TEMPORAL_THRESHOLD = 0.95;
 const DEAD_LINK_THRESHOLD = 0.01;
 
-function asArray<T>(value: T[] | null | undefined): T[] {
-  return Array.isArray(value) ? value : [];
-}
+type AgentRunRow = {
+  id: string;
+  org_id: string | null;
+};
+
+type CitationRow = {
+  run_id: string | null;
+  domain_ok: boolean | null;
+};
 
 Deno.serve(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -18,7 +23,7 @@ Deno.serve(async () => {
     return new Response('missing_supabase_env', { status: 500 });
   }
 
-  const supabase = createClient(supabaseUrl, serviceKey, {
+  const supabase = createEdgeClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -32,7 +37,8 @@ Deno.serve(async () => {
     return new Response(runs.error.message, { status: 500 });
   }
 
-  const runIds = asArray(runs.data).map((row) => row.id as string);
+  const runRows = rowsAs<AgentRunRow>(runs.data);
+  const runIds = runRows.map((row) => row.id);
   if (runIds.length === 0) {
     return new Response(JSON.stringify({ metrics: [] }), { headers: { 'Content-Type': 'application/json' } });
   }
@@ -50,7 +56,11 @@ Deno.serve(async () => {
   let totalCitations = 0;
   let staleLinks = 0;
 
-  for (const row of asArray(citations.data)) {
+  const citationRows = rowsAs<CitationRow>(citations.data);
+  for (const row of citationRows) {
+    if (!row.run_id) {
+      continue;
+    }
     totalCitations += 1;
     if (row.domain_ok) {
       allowlisted += 1;
@@ -78,9 +88,7 @@ Deno.serve(async () => {
     },
   ];
 
-  const { error: metricsError } = await supabase
-    .from('learning_metrics')
-    .insert(metricsPayload, { returning: 'minimal' });
+  const { error: metricsError } = await supabase.from('learning_metrics').insert(metricsPayload);
 
   if (metricsError) {
     return new Response(metricsError.message, { status: 500 });
@@ -105,9 +113,7 @@ Deno.serve(async () => {
   }
 
   if (jobs.length > 0) {
-    const { error: jobsError } = await supabase
-      .from('agent_learning_jobs')
-      .insert(jobs, { returning: 'minimal' });
+    const { error: jobsError } = await supabase.from('agent_learning_jobs').insert(jobs);
     if (jobsError) {
       return new Response(jobsError.message, { status: 500 });
     }
@@ -118,4 +124,3 @@ Deno.serve(async () => {
     { headers: { 'Content-Type': 'application/json' } },
   );
 });
-

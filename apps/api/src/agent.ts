@@ -1,3 +1,4 @@
+// Partial typing cleanup guarded at module boundaries
 import {
   Agent,
   OpenAIProvider,
@@ -27,6 +28,7 @@ import { CASE_TRUST_WEIGHTS, evaluateCaseQuality, type CaseScoreAxis } from './c
 import { OrgAccessContext, isJurisdictionAllowed } from './access-control.js';
 import { evaluateCompliance } from './compliance.js';
 import type { ComplianceAssessment } from './compliance.js';
+import { getOpenAI, logOpenAIDebug } from './openai.js';
 
 type ToolInvocationLog = {
   name: string;
@@ -40,6 +42,23 @@ type ToolTelemetry = {
   success: boolean;
   errorCode?: string | null;
 };
+
+export const TOOL_NAMES = {
+  routeJurisdiction: 'route_jurisdiction',
+  lookupCodeArticle: 'lookup_code_article',
+  deadlineCalculator: 'deadline_calculator',
+  ohadaUniformAct: 'ohada_uniform_act',
+  limitationCheck: 'limitation_check',
+  interestCalculator: 'interest_calculator',
+  checkBindingLanguage: 'check_binding_language',
+  validateCitation: 'validate_citation',
+  redlineContract: 'redline_contract',
+  snapshotAuthority: 'snapshot_authority',
+  generatePleadingTemplate: 'generate_pleading_template',
+  evaluateCaseAlignment: 'evaluate_case_alignment',
+} as const;
+
+export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES];
 
 type ComplianceEventRecord = {
   kind: string;
@@ -116,6 +135,24 @@ interface PolicyVersionContext {
   name: string;
   activatedAt: string;
   notes?: string | null;
+}
+
+export interface AgentPlatformToolDefinition {
+  name: string;
+  description: string;
+  paramsSummary: string;
+  category: 'hosted' | 'custom';
+}
+
+export interface AgentPlatformDefinition {
+  name: string;
+  description: string;
+  instructions: string;
+  tools: AgentPlatformToolDefinition[];
+  hostedTools: string[];
+  resources: {
+    vectorStoreEnv?: string;
+  };
 }
 
 interface FranceAnalyticsGuardResult {
@@ -221,21 +258,23 @@ const DOMAIN_ALLOWLIST = loadAllowlistOverride() ?? [...OFFICIAL_DOMAIN_ALLOWLIS
 
 const stubMode = env.AGENT_STUB_MODE;
 
-const TOOL_BUDGET_DEFAULTS: Record<string, number> = {
+type ToolBudgetName = ToolName | 'web_search' | 'file_search';
+
+const TOOL_BUDGET_DEFAULTS: Record<ToolBudgetName, number> = {
   web_search: 3,
   file_search: 8,
-  route_jurisdiction: 3,
-  lookup_code_article: 5,
-  deadline_calculator: 3,
-  ohada_uniform_act: 3,
-  limitation_check: 3,
-  interest_calculator: 3,
-  check_binding_language: 5,
-  validate_citation: 5,
-  redline_contract: 2,
-  snapshot_authority: 2,
-  generate_pleading_template: 2,
-  evaluate_case_alignment: 3,
+  [TOOL_NAMES.routeJurisdiction]: 3,
+  [TOOL_NAMES.lookupCodeArticle]: 5,
+  [TOOL_NAMES.deadlineCalculator]: 3,
+  [TOOL_NAMES.ohadaUniformAct]: 3,
+  [TOOL_NAMES.limitationCheck]: 3,
+  [TOOL_NAMES.interestCalculator]: 3,
+  [TOOL_NAMES.checkBindingLanguage]: 5,
+  [TOOL_NAMES.validateCitation]: 5,
+  [TOOL_NAMES.redlineContract]: 2,
+  [TOOL_NAMES.snapshotAuthority]: 2,
+  [TOOL_NAMES.generatePleadingTemplate]: 2,
+  [TOOL_NAMES.evaluateCaseAlignment]: 3,
 };
 
 function countAkomaArticles(value: unknown): number {
@@ -269,7 +308,7 @@ type PlanStepOptions<T> = {
   detail?: (result: T) => Record<string, unknown> | null;
 };
 
-function consumeToolBudget(context: AgentExecutionContext, toolName: string): void {
+function consumeToolBudget(context: AgentExecutionContext, toolName: ToolBudgetName): void {
   const remaining = context.toolBudgets[toolName] ?? Infinity;
   const used = context.toolUsage[toolName] ?? 0;
   if (used >= remaining) {
@@ -548,7 +587,7 @@ async function planRun(
   const initialRouting =
     (await recordPlanStep<RoutingResult>(
       planTrace,
-      'route_jurisdiction',
+      TOOL_NAMES.routeJurisdiction,
       'Analyse de juridiction',
       'Détection des juridictions pertinentes et des avertissements.',
       async () => detectJurisdiction(input.question, input.context),
@@ -1345,30 +1384,25 @@ function augmentQuestionWithSynonyms(question: string, map: Map<string, string[]
 }
 
 async function embedQuestionForHybrid(question: string): Promise<number[] | null> {
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  const openai = getOpenAI();
+
+  try {
+    const response = await openai.embeddings.create({
       model: env.EMBEDDING_MODEL,
       input: question,
-    }),
-  });
+    });
 
-  const json = await response.json();
-  if (!response.ok) {
-    const message = json?.error?.message ?? 'embedding_failed';
+    const embedding = response.data?.[0]?.embedding;
+    if (!Array.isArray(embedding)) {
+      return null;
+    }
+
+    return embedding as number[];
+  } catch (error) {
+    await logOpenAIDebug('embed_question_hybrid', error);
+    const message = error instanceof Error ? error.message : 'embedding_failed';
     throw new Error(message);
   }
-
-  const data = Array.isArray(json?.data) ? json.data : [];
-  if (data.length === 0 || !Array.isArray(data[0]?.embedding)) {
-    return null;
-  }
-
-  return data[0].embedding as number[];
 }
 
 async function queryFileSearchResults(
@@ -1380,45 +1414,30 @@ async function queryFileSearchResults(
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: env.AGENT_MODEL,
-        input: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: question,
-              },
-            ],
-          },
-        ],
-        tools: [{ type: 'file_search' }],
-        tool_choice: { type: 'tool', function: { name: 'file_search' } },
-        tool_resources: {
-          file_search: {
-            vector_store_ids: [env.OPENAI_VECTOR_STORE_AUTHORITIES_ID],
-          },
+    const openai = getOpenAI();
+    const payload = await openai.responses.create({
+      model: env.AGENT_MODEL,
+      input: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: question,
+            },
+          ],
         },
-        metadata: { purpose: 'hybrid_retrieval_probe' },
-        max_output_tokens: 1,
-      }),
+      ],
+      tools: [{ type: 'file_search' }],
+      tool_choice: { type: 'tool', function: { name: 'file_search' } },
+      tool_resources: {
+        file_search: {
+          vector_store_ids: [env.OPENAI_VECTOR_STORE_AUTHORITIES_ID],
+        },
+      },
+      metadata: { purpose: 'hybrid_retrieval_probe' },
+      max_output_tokens: 1,
     });
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      const message = errorBody?.error?.message ?? 'file_search_failed';
-      console.warn('file_search_request_failed', message);
-      return [];
-    }
-
-    const payload = await response.json();
     const results: Array<{ content: string; score: number; fileId: string | null }> = [];
 
     const visit = (node: unknown): void => {
@@ -1474,7 +1493,8 @@ async function queryFileSearchResults(
 
     return results.slice(0, maxResults);
   } catch (error) {
-    console.warn('file_search_query_error', error);
+    await logOpenAIDebug('file_search_probe', error);
+    console.warn('file_search_query_error', error instanceof Error ? error.message : error);
     return [];
   }
 }
@@ -3280,7 +3300,7 @@ function buildAgent(
   context: AgentExecutionContext,
 ): Agent<AgentExecutionContext, typeof IRACSchema> {
   const routeJurisdictionTool = tool<AgentExecutionContext>({
-    name: 'route_jurisdiction',
+    name: TOOL_NAMES.routeJurisdiction,
     description:
       'Analyse la question pour identifier la juridiction pertinente et signaler les overlays (UE, OHADA, Maghreb).',
     parameters: z
@@ -3290,7 +3310,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'route_jurisdiction');
+      consumeToolBudget(runContext.context, TOOL_NAMES.routeJurisdiction);
       const started = performance.now();
       try {
         const question = input.question ?? runContext.context.prompt;
@@ -3303,7 +3323,7 @@ function buildAgent(
           output: result,
         });
         recordTelemetry(runContext.context, telemetry, {
-          name: 'route_jurisdiction',
+          name: TOOL_NAMES.routeJurisdiction,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3311,7 +3331,7 @@ function buildAgent(
         return JSON.stringify(result);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'route_jurisdiction',
+          name: TOOL_NAMES.routeJurisdiction,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3322,7 +3342,7 @@ function buildAgent(
   });
 
   const lookupCodeArticleTool = tool<AgentExecutionContext>({
-    name: 'lookup_code_article',
+    name: TOOL_NAMES.lookupCodeArticle,
     description: "Retrouve l'URL officielle d'un article de code dans la juridiction courante.",
     parameters: z
       .object({
@@ -3332,7 +3352,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'lookup_code_article');
+      consumeToolBudget(runContext.context, TOOL_NAMES.lookupCodeArticle);
       const started = performance.now();
       const jurisdiction =
         input.jurisdiction ?? runContext.context.lastJurisdiction?.country ?? runContext.context.initialRouting.primary?.country ?? null;
@@ -3344,7 +3364,7 @@ function buildAgent(
           output: data,
         });
         recordTelemetry(runContext.context, telemetry, {
-          name: 'lookup_code_article',
+          name: TOOL_NAMES.lookupCodeArticle,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3352,7 +3372,7 @@ function buildAgent(
         return JSON.stringify(data);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'lookup_code_article',
+          name: TOOL_NAMES.lookupCodeArticle,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3363,7 +3383,7 @@ function buildAgent(
   });
 
   const deadlineCalculatorTool = tool<AgentExecutionContext>({
-    name: 'deadline_calculator',
+    name: TOOL_NAMES.deadlineCalculator,
     description: 'Fournit un délai procédural estimatif et des notes méthodologiques.',
     parameters: z
       .object({
@@ -3372,7 +3392,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'deadline_calculator');
+      consumeToolBudget(runContext.context, TOOL_NAMES.deadlineCalculator);
       const started = performance.now();
       try {
         const referenceText = `${runContext.context.prompt}\n${runContext.context.supplementalContext ?? ''}`;
@@ -3383,7 +3403,7 @@ function buildAgent(
           output: result,
         });
         recordTelemetry(runContext.context, telemetry, {
-          name: 'deadline_calculator',
+          name: TOOL_NAMES.deadlineCalculator,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3391,7 +3411,7 @@ function buildAgent(
         return JSON.stringify(result);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'deadline_calculator',
+          name: TOOL_NAMES.deadlineCalculator,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3402,7 +3422,7 @@ function buildAgent(
   });
 
   const ohadaUniformActTool = tool<AgentExecutionContext>({
-    name: 'ohada_uniform_act',
+    name: TOOL_NAMES.ohadaUniformAct,
     description: 'Identifie les Actes uniformes OHADA pertinents pour un sujet donné.',
     parameters: z
       .object({
@@ -3410,7 +3430,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'ohada_uniform_act');
+      consumeToolBudget(runContext.context, TOOL_NAMES.ohadaUniformAct);
       const started = performance.now();
       try {
         const mapping = resolveOhadaTopic(input.topic);
@@ -3421,7 +3441,7 @@ function buildAgent(
             : null;
         toolLogs.push({ name: 'ohadaUniformAct', args: input, output });
         recordTelemetry(runContext.context, telemetry, {
-          name: 'ohada_uniform_act',
+          name: TOOL_NAMES.ohadaUniformAct,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3429,7 +3449,7 @@ function buildAgent(
         return JSON.stringify(output);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'ohada_uniform_act',
+          name: TOOL_NAMES.ohadaUniformAct,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3440,7 +3460,7 @@ function buildAgent(
   });
 
   const limitationTool = tool<AgentExecutionContext>({
-    name: 'limitation_check',
+    name: TOOL_NAMES.limitationCheck,
     description: 'Estime un délai de prescription à partir des standards juridiques.',
     parameters: z
       .object({
@@ -3450,7 +3470,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'limitation_check');
+      consumeToolBudget(runContext.context, TOOL_NAMES.limitationCheck);
       const started = performance.now();
       try {
         const jurisdiction =
@@ -3467,7 +3487,7 @@ function buildAgent(
         };
         toolLogs.push({ name: 'limitationCheck', args: input, output });
         recordTelemetry(runContext.context, telemetry, {
-          name: 'limitation_check',
+          name: TOOL_NAMES.limitationCheck,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3475,7 +3495,7 @@ function buildAgent(
         return JSON.stringify(output);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'limitation_check',
+          name: TOOL_NAMES.limitationCheck,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3486,7 +3506,7 @@ function buildAgent(
   });
 
   const interestTool = tool<AgentExecutionContext>({
-    name: 'interest_calculator',
+    name: TOOL_NAMES.interestCalculator,
     description: 'Calcule des intérêts légaux simples pour un principal donné.',
     parameters: z
       .object({
@@ -3498,7 +3518,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'interest_calculator');
+      consumeToolBudget(runContext.context, TOOL_NAMES.interestCalculator);
       const started = performance.now();
       try {
         const jurisdiction = input.jurisdiction ?? runContext.context.lastJurisdiction?.country ?? 'FR';
@@ -3517,7 +3537,7 @@ function buildAgent(
         };
         toolLogs.push({ name: 'interestCalculator', args: input, output });
         recordTelemetry(runContext.context, telemetry, {
-          name: 'interest_calculator',
+          name: TOOL_NAMES.interestCalculator,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3525,7 +3545,7 @@ function buildAgent(
         return JSON.stringify(output);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'interest_calculator',
+          name: TOOL_NAMES.interestCalculator,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3536,7 +3556,7 @@ function buildAgent(
   });
 
   const bindingLanguageTool = tool<AgentExecutionContext>({
-    name: 'check_binding_language',
+    name: TOOL_NAMES.checkBindingLanguage,
     description:
       'Identifie la langue juridiquement contraignante pour une source donnée et précise si une bannière d’avertissement est requise.',
     parameters: z
@@ -3546,7 +3566,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'check_binding_language');
+      consumeToolBudget(runContext.context, TOOL_NAMES.checkBindingLanguage);
       const started = performance.now();
       try {
         const jurisdiction =
@@ -3562,7 +3582,7 @@ function buildAgent(
         };
         toolLogs.push({ name: 'checkBindingLanguage', args: input, output });
         recordTelemetry(runContext.context, telemetry, {
-          name: 'check_binding_language',
+          name: TOOL_NAMES.checkBindingLanguage,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3570,7 +3590,7 @@ function buildAgent(
         return JSON.stringify(output);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'check_binding_language',
+          name: TOOL_NAMES.checkBindingLanguage,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3581,7 +3601,7 @@ function buildAgent(
   });
 
   const validateCitationTool = tool<AgentExecutionContext>({
-    name: 'validate_citation',
+    name: TOOL_NAMES.validateCitation,
     description: 'Vérifie qu’une URL appartient au périmètre autorisé et précise la marche à suivre sinon.',
     parameters: z
       .object({
@@ -3589,7 +3609,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'validate_citation');
+      consumeToolBudget(runContext.context, TOOL_NAMES.validateCitation);
       const started = performance.now();
       try {
         const host = new URL(input.url).hostname;
@@ -3604,7 +3624,7 @@ function buildAgent(
         };
         toolLogs.push({ name: 'validateCitation', args: input, output });
         recordTelemetry(runContext.context, telemetry, {
-          name: 'validate_citation',
+          name: TOOL_NAMES.validateCitation,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3612,7 +3632,7 @@ function buildAgent(
         return JSON.stringify(output);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'validate_citation',
+          name: TOOL_NAMES.validateCitation,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3623,7 +3643,7 @@ function buildAgent(
   });
 
   const redlineTool = tool<AgentExecutionContext>({
-    name: 'redline_contract',
+    name: TOOL_NAMES.redlineContract,
     description:
       'Compare deux versions de clause ou de contrat et retourne un diff structuré avec recommandations.',
     parameters: z
@@ -3635,7 +3655,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'redline_contract');
+      consumeToolBudget(runContext.context, TOOL_NAMES.redlineContract);
       const started = performance.now();
       try {
         const diffParts = diffWordsWithSpace(input.base_text, input.proposed_text);
@@ -3676,7 +3696,7 @@ function buildAgent(
           output,
         });
         recordTelemetry(runContext.context, telemetry, {
-          name: 'redline_contract',
+          name: TOOL_NAMES.redlineContract,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3684,7 +3704,7 @@ function buildAgent(
         return JSON.stringify(output);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'redline_contract',
+          name: TOOL_NAMES.redlineContract,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3695,7 +3715,7 @@ function buildAgent(
   });
 
   const snapshotAuthorityTool = tool<AgentExecutionContext>({
-    name: 'snapshot_authority',
+    name: TOOL_NAMES.snapshotAuthority,
     description:
       'Planifie la capture d’un document officiel (PDF/HTML) pour ingestion dans le corpus autorisé et le vector store.',
     parameters: z
@@ -3708,7 +3728,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'snapshot_authority');
+      consumeToolBudget(runContext.context, TOOL_NAMES.snapshotAuthority);
       const started = performance.now();
       try {
         const { data, error } = await supabase
@@ -3738,7 +3758,7 @@ function buildAgent(
         };
         toolLogs.push({ name: 'snapshotAuthority', args: input, output });
         recordTelemetry(runContext.context, telemetry, {
-          name: 'snapshot_authority',
+          name: TOOL_NAMES.snapshotAuthority,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3746,7 +3766,7 @@ function buildAgent(
         return JSON.stringify(output);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'snapshot_authority',
+          name: TOOL_NAMES.snapshotAuthority,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3757,7 +3777,7 @@ function buildAgent(
   });
 
   const generateTemplateTool = tool<AgentExecutionContext>({
-    name: 'generate_pleading_template',
+    name: TOOL_NAMES.generatePleadingTemplate,
     description:
       'Retourne un modèle de plaidoirie structuré (sections et champs à renseigner) pour la juridiction détectée.',
     parameters: z
@@ -3768,7 +3788,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'generate_pleading_template');
+      consumeToolBudget(runContext.context, TOOL_NAMES.generatePleadingTemplate);
       const started = performance.now();
       try {
         const matterType = normaliseMatterType(input.matter_type);
@@ -3823,7 +3843,7 @@ function buildAgent(
         });
 
         recordTelemetry(runContext.context, telemetry, {
-          name: 'generate_pleading_template',
+          name: TOOL_NAMES.generatePleadingTemplate,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3832,7 +3852,7 @@ function buildAgent(
         return JSON.stringify(payload);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'generate_pleading_template',
+          name: TOOL_NAMES.generatePleadingTemplate,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -3843,7 +3863,7 @@ function buildAgent(
   });
 
   const caseAlignmentTool = tool<AgentExecutionContext>({
-    name: 'evaluate_case_alignment',
+    name: TOOL_NAMES.evaluateCaseAlignment,
     description:
       "Expose les liens entre une décision jurisprudentielle et les textes applicables (articles de codes, règlements, actes uniformes).",
     parameters: z
@@ -3853,7 +3873,7 @@ function buildAgent(
       })
       .strict(),
     execute: async (input, runContext) => {
-      consumeToolBudget(runContext.context, 'evaluate_case_alignment');
+      consumeToolBudget(runContext.context, TOOL_NAMES.evaluateCaseAlignment);
       const started = performance.now();
       try {
         const { data: sourceRow, error: sourceError } = await supabase
@@ -3895,13 +3915,13 @@ function buildAgent(
         };
 
         toolLogs.push({
-          name: 'evaluate_case_alignment',
+          name: TOOL_NAMES.evaluateCaseAlignment,
           args: { case_url: input.case_url, jurisdiction: input.jurisdiction ?? null },
           output: payload,
         });
 
         recordTelemetry(runContext.context, telemetry, {
-          name: 'evaluate_case_alignment',
+          name: TOOL_NAMES.evaluateCaseAlignment,
           latencyMs: performance.now() - started,
           success: true,
           errorCode: null,
@@ -3910,7 +3930,7 @@ function buildAgent(
         return JSON.stringify(payload);
       } catch (error) {
         recordTelemetry(runContext.context, telemetry, {
-          name: 'evaluate_case_alignment',
+          name: TOOL_NAMES.evaluateCaseAlignment,
           latencyMs: performance.now() - started,
           success: false,
           errorCode: error instanceof Error ? error.message : 'unknown',
@@ -4328,6 +4348,97 @@ export async function runLegalAgent(
     notices,
     verification,
     trustPanel,
+  };
+}
+
+export function getAgentPlatformDefinition(): AgentPlatformDefinition {
+  const baseInstructions = buildInstructions({ primary: null, candidates: [], warnings: [] }, false, []);
+
+  const tools: AgentPlatformToolDefinition[] = [
+    {
+      name: TOOL_NAMES.routeJurisdiction,
+      description: 'Analyse la question pour identifier la juridiction pertinente et signaler les avertissements.',
+      paramsSummary: '{ question: string, context?: string }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.lookupCodeArticle,
+      description: "Retrouve l'URL officielle d'un article de code dans la juridiction courante.",
+      paramsSummary: '{ jurisdiction?: string, code?: string, article?: string }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.deadlineCalculator,
+      description: 'Fournit un délai procédural estimatif et des notes méthodologiques.',
+      paramsSummary: '{ start_date?: string, procedure_type?: string }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.ohadaUniformAct,
+      description: 'Identifie les Actes uniformes OHADA pertinents pour un sujet donné.',
+      paramsSummary: '{ topic: string }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.limitationCheck,
+      description: 'Analyse la prescription civile/pénale en fonction du corpus et des pays OHADA.',
+      paramsSummary: '{ question: string }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.interestCalculator,
+      description: 'Calcule des intérêts légaux simples pour un principal donné.',
+      paramsSummary: '{ jurisdiction?: string, principal: number, start_date: string, end_date?: string, rate_type?: string }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.checkBindingLanguage,
+      description: 'Identifie la langue juridiquement contraignante et les besoins de bannière.',
+      paramsSummary: '{ url?: string, jurisdiction?: string }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.validateCitation,
+      description: 'Vérifie qu’une URL appartient au périmètre autorisé et propose la marche à suivre sinon.',
+      paramsSummary: '{ url: string }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.redlineContract,
+      description: 'Compare deux versions de documents et génère un diff juridique.',
+      paramsSummary: '{ original: string, revised: string }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.snapshotAuthority,
+      description: 'Capture un extrait d’autorité pour la constitution de dossiers de preuve.',
+      paramsSummary: '{ url: string }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.generatePleadingTemplate,
+      description: 'Génère un modèle d’acte juridique structuré selon la juridiction.',
+      paramsSummary: '{ template: string, variables: Record<string,string> }',
+      category: 'custom',
+    },
+    {
+      name: TOOL_NAMES.evaluateCaseAlignment,
+      description: 'Évalue l’alignement d’une situation factuelle avec une décision de justice.',
+      paramsSummary: '{ citation: string, facts: string }',
+      category: 'custom',
+    },
+  ];
+
+  return {
+    name: 'avocat-francophone',
+    description:
+      'Agent juridique francophone senior orienté IRAC, couvrant les juridictions OHADA, UE et Canada avec outils de conformité.',
+    instructions: baseInstructions,
+    tools,
+    hostedTools: ['file_search', 'web_search'],
+    resources: {
+      vectorStoreEnv: 'OPENAI_VECTOR_STORE_AUTHORITIES_ID',
+    },
   };
 }
 

@@ -109,8 +109,8 @@ const defaultAccessContext = {
         franceJudgeAnalyticsBlocked: true,
         mfaRequired: false,
         ipAllowlistEnforced: false,
-        consentVersion: null,
-        councilOfEuropeDisclosureVersion: null,
+        consentRequirement: null,
+        councilOfEuropeRequirement: null,
     },
     rawPolicies: {},
     entitlements: new Map([
@@ -121,7 +121,8 @@ const defaultAccessContext = {
         ['RW', { canRead: true, canWrite: false }],
     ]),
     ipAllowlistCidrs: [],
-    consent: { requiredVersion: null, latestAcceptedVersion: null },
+    consent: { requirement: null, latest: null },
+    councilOfEurope: { requirement: null, acknowledgedVersion: null },
 };
 function makeContext(overrides = {}) {
     return {

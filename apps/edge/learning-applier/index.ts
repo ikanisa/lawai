@@ -1,8 +1,20 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
+import { createEdgeClient, rowAs, rowsAs } from '../lib/supabase.ts';
 
 const BATCH_SIZE = 25;
+
+type LearningJobRow = {
+  id: string;
+  org_id: string | null;
+  job_type: string;
+  payload: Record<string, unknown> | null;
+};
+
+type PolicyVersionRow = {
+  id: string;
+  version_number: number | null;
+};
 
 Deno.serve(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -11,7 +23,7 @@ Deno.serve(async () => {
     return new Response('missing_supabase_env', { status: 500 });
   }
 
-  const supabase = createClient(supabaseUrl, serviceKey, {
+  const supabase = createEdgeClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -26,15 +38,18 @@ Deno.serve(async () => {
     return new Response(jobs.error.message, { status: 500 });
   }
 
-  const rows = jobs.data ?? [];
+  const rows = rowsAs<LearningJobRow>(jobs.data);
   if (rows.length === 0) {
     return new Response(JSON.stringify({ created_versions: 0 }), { headers: { 'Content-Type': 'application/json' } });
   }
 
   const grouped = new Map<string, Array<{ id: string; job_type: string; payload: Record<string, unknown> }>>();
   for (const job of rows) {
+    if (!job.org_id) {
+      continue;
+    }
     const list = grouped.get(job.org_id) ?? [];
-    list.push({ id: job.id, job_type: job.job_type, payload: job.payload as Record<string, unknown> });
+    list.push({ id: job.id, job_type: job.job_type, payload: job.payload ?? {} });
     grouped.set(job.org_id, list);
   }
 
@@ -46,14 +61,15 @@ Deno.serve(async () => {
       .from('agent_policy_versions')
       .insert({ org_id: orgId, status: 'draft', change_set: changeSet })
       .select('id, version_number')
-      .maybeSingle();
+      .maybeSingle<PolicyVersionRow>();
 
-    if (insert.error || !insert.data) {
+    const versionRow = rowAs<PolicyVersionRow>(insert.data);
+    if (insert.error || !versionRow) {
       console.error('policy_version_insert_failed', insert.error?.message);
       continue;
     }
 
-    const versionId = insert.data.id as string;
+    const versionId = versionRow.id;
     const jobIds = jobsForOrg.map((job) => job.id);
     const update = await supabase
       .from('agent_learning_jobs')
@@ -71,4 +87,3 @@ Deno.serve(async () => {
     headers: { 'Content-Type': 'application/json' },
   });
 });
-

@@ -1,14 +1,10 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarCheck, ChevronRight, Clock, ExternalLink, ShieldAlert } from 'lucide-react';
-import {
-  DEMO_ORG_ID,
-  fetchWorkspaceOverview,
-  type WorkspaceOverviewResponse,
-} from '../../lib/api';
+import { DEMO_ORG_ID, fetchWorkspaceOverview, type WorkspaceOverviewResponse } from '../../lib/api';
 import type { Locale, Messages } from '../../lib/i18n';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -18,6 +14,15 @@ import { Separator } from '../ui/separator';
 import { JurisdictionChip } from '../jurisdiction-chip';
 import { usePlanDrawer } from '../../state/plan-drawer';
 import { PlanDrawer } from '../plan-drawer';
+import { MultiAgentDesk } from './multi-agent-desk';
+import type {
+  WorkspaceDesk,
+  WorkspaceDeskMode,
+  WorkspaceDeskPersona,
+  WorkspaceDeskPlaybook,
+  WorkspaceDeskQuickAction,
+  WorkspaceDeskToolChip,
+} from '@avocat-ai/shared';
 
 interface WorkspaceViewProps {
   messages: Messages;
@@ -73,6 +78,7 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
   const matters = workspaceQuery.data?.matters ?? [];
   const complianceWatch = workspaceQuery.data?.complianceWatch ?? [];
   const hitlInbox = workspaceQuery.data?.hitlInbox ?? { items: [], pendingCount: 0 };
+  const desk: WorkspaceDesk | undefined = workspaceQuery.data?.desk;
 
   const jurisdictionChips = useMemo(
     () => {
@@ -96,6 +102,91 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
     toggle(true);
     router.push(`/${locale}/research`);
   }
+
+  const navigateTo = useCallback(
+    (href: string) => {
+      router.push(`/${locale}${href.startsWith('/') ? href : `/${href}`}`);
+    },
+    [locale, router],
+  );
+
+  const handleLaunchPlaybook = useCallback(
+    (playbook: WorkspaceDeskPlaybook) => {
+      const modeRoutes: Record<WorkspaceDeskMode, string> = {
+        ask: '/research',
+        do: '/matters',
+        review: '/hitl',
+        generate: '/drafting',
+      };
+
+      const params = new URLSearchParams();
+      params.set('mode', playbook.cta.mode);
+      params.set('playbook', playbook.id);
+      if (playbook.cta.question) {
+        params.set('question', playbook.cta.question);
+      }
+
+      const target = modeRoutes[playbook.cta.mode] ?? '/research';
+      toggle(true);
+      navigateTo(`${target}?${params.toString()}`);
+    },
+    [navigateTo, toggle],
+  );
+
+  const handleQuickAction = useCallback(
+    (action: WorkspaceDeskQuickAction) => {
+      if (action.action === 'plan') {
+        toggle(true);
+        return;
+      }
+
+      if (action.action === 'trust') {
+        navigateTo(action.href ?? '/trust');
+        return;
+      }
+
+      if (action.action === 'hitl') {
+        navigateTo(action.href ?? '/hitl');
+        return;
+      }
+
+      if (action.action === 'navigate' && action.href) {
+        navigateTo(action.href);
+      }
+    },
+    [navigateTo, toggle],
+  );
+
+  const handlePersonaSelect = useCallback(
+    (persona: WorkspaceDeskPersona) => {
+      navigateTo(persona.href);
+    },
+    [navigateTo],
+  );
+
+  const handleToolAction = useCallback(
+    (chip: WorkspaceDeskToolChip) => {
+      if (chip.action === 'plan') {
+        toggle(true);
+        return;
+      }
+
+      if (chip.action === 'trust') {
+        navigateTo(chip.href ?? '/trust');
+        return;
+      }
+
+      if (chip.action === 'hitl') {
+        navigateTo(chip.href ?? '/hitl');
+        return;
+      }
+
+      if (chip.action === 'navigate' && chip.href) {
+        navigateTo(chip.href);
+      }
+    },
+    [navigateTo, toggle],
+  );
 
   return (
     <div className="space-y-10">
@@ -165,6 +256,17 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
           </div>
         </div>
       </section>
+
+      {desk ? (
+        <MultiAgentDesk
+          desk={desk}
+          messages={messages}
+          onLaunchPlaybook={handleLaunchPlaybook}
+          onQuickAction={handleQuickAction}
+          onPersonaSelect={handlePersonaSelect}
+          onToolAction={handleToolAction}
+        />
+      ) : null}
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="glass-card border border-slate-800/60">

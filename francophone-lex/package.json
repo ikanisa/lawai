@@ -5,6 +5,7 @@
   "scripts": {
     "build": "vite build",
     "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "dev:api": "pnpm --filter @apps/api dev",
     "dev:ops": "pnpm --filter @apps/ops dev",

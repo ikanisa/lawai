@@ -2,9 +2,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const encoder = new TextEncoder();
 
+const openAIResponsesCreateMock = vi.fn();
+const openAIEmbeddingsCreateMock = vi.fn();
+const getOpenAIClientMock = vi.fn(() => ({
+  responses: { create: openAIResponsesCreateMock },
+  embeddings: { create: openAIEmbeddingsCreateMock },
+}));
+const fetchOpenAIDebugDetailsMock = vi.fn();
+const isOpenAIDebugEnabledMock = vi.fn(() => false);
+
+vi.mock('@avocat-ai/shared', async () => {
+  const actual = await vi.importActual<typeof import('@avocat-ai/shared')>('@avocat-ai/shared');
+  return {
+    ...actual,
+    getOpenAIClient: getOpenAIClientMock,
+    fetchOpenAIDebugDetails: fetchOpenAIDebugDetailsMock,
+    isOpenAIDebugEnabled: isOpenAIDebugEnabledMock,
+  };
+});
+
 describe('summariseDocumentFromPayload', () => {
   beforeEach(() => {
-    vi.resetModules();
     process.env.OPENAI_API_KEY = 'test-key';
     process.env.AGENT_MODEL = 'gpt-test';
     process.env.EMBEDDING_MODEL = 'text-embedding-test';
@@ -14,6 +32,16 @@ describe('summariseDocumentFromPayload', () => {
     process.env.AGENT_STUB_MODE = 'never';
     process.env.SUMMARISER_MODEL = 'gpt-summary';
     process.env.MAX_SUMMARY_CHARS = '8000';
+    openAIResponsesCreateMock.mockReset();
+    openAIEmbeddingsCreateMock.mockReset();
+    getOpenAIClientMock.mockReturnValue({
+      responses: { create: openAIResponsesCreateMock },
+      embeddings: { create: openAIEmbeddingsCreateMock },
+    });
+    openAIResponsesCreateMock.mockResolvedValue({ output: [] });
+    openAIEmbeddingsCreateMock.mockResolvedValue({ data: [] });
+    fetchOpenAIDebugDetailsMock.mockResolvedValue(null);
+    isOpenAIDebugEnabledMock.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -23,7 +51,7 @@ describe('summariseDocumentFromPayload', () => {
   });
 
   it('skips when the extracted text is too short', async () => {
-    const { summariseDocumentFromPayload } = await import('../src/summarization.js');
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
 
     const payload = encoder.encode('Bref');
     const result = await summariseDocumentFromPayload({
@@ -64,24 +92,10 @@ describe('summariseDocumentFromPayload', () => {
       ],
     };
 
-    const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      if (url.includes('/responses')) {
-        return new Response(JSON.stringify(responsesReply), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.includes('/embeddings')) {
-        return new Response(JSON.stringify(embeddingsReply), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      throw new Error(`Unexpected fetch ${url}`);
-    });
+    openAIResponsesCreateMock.mockResolvedValue(responsesReply);
+    openAIEmbeddingsCreateMock.mockResolvedValue(embeddingsReply);
 
-    const { summariseDocumentFromPayload } = await import('../src/summarization.js');
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
 
     const result = await summariseDocumentFromPayload({
       payload: encoder.encode(text),
@@ -93,7 +107,8 @@ describe('summariseDocumentFromPayload', () => {
       maxSummaryChars: 4000,
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(openAIResponsesCreateMock).toHaveBeenCalledTimes(1);
+    expect(openAIEmbeddingsCreateMock).toHaveBeenCalledTimes(Math.ceil(result.chunks.length / 16));
     expect(result.status).toBe('ready');
     expect(result.summary).toBe('Synthèse');
     expect(result.highlights).toHaveLength(2);
@@ -103,14 +118,10 @@ describe('summariseDocumentFromPayload', () => {
   });
 
   it('returns failed when the summary call errors', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ error: { message: 'quota exceeded' } }), {
-        status: 429,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
+    const quotaError = new Error('quota exceeded');
+    openAIResponsesCreateMock.mockRejectedValue(quotaError);
 
-    const { summariseDocumentFromPayload } = await import('../src/summarization.js');
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
 
     const result = await summariseDocumentFromPayload({
       payload: encoder.encode('Article 1 — Long texte '.repeat(20)),

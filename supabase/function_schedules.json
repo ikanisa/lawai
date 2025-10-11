@@ -1,0 +1,18 @@
+{
+  "crawl-authorities": [
+    { "cron": "0 */6 * * *" }
+  ],
+  "process-learning": [
+    { "cron": "0 * * * *", "args": { "mode": "hourly" } },
+    { "cron": "30 2 * * *", "args": { "mode": "nightly" } }
+  ],
+  "drive-watcher": [
+    { "cron": "*/15 * * * *" }
+  ],
+  "regulator-digest": [
+    { "cron": "0 6 * * *", "args": { "days": 7 } }
+  ],
+  "transparency-digest": [
+    { "cron": "30 6 * * 1", "args": { "days": 30 } }
+  ]
+}

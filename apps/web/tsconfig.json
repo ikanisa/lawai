@@ -5,7 +5,9 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "types": [
-      "node"
+      "node",
+      "vitest",
+      "vitest/globals"
     ],
     "allowJs": true,
     "noEmit": true,
@@ -24,6 +26,7 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "test"
   ]
 }

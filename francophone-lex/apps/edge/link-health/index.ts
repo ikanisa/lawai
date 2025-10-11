@@ -1,6 +1,6 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
+import { createEdgeClient } from '../lib/supabase.ts';
 
 async function head(url: string): Promise<{ ok: boolean; status: number }> {
   try {
@@ -17,7 +17,9 @@ Deno.serve(async () => {
   if (!supabaseUrl || !supabaseKey) {
     return new Response('missing_supabase_env', { status: 500 });
   }
-  const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const supabase = createEdgeClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const { data, error } = await supabase
     .from('sources')
     .select('id, source_url')
@@ -26,16 +28,27 @@ Deno.serve(async () => {
   if (error) return new Response('query_failed', { status: 500 });
 
   let failed = 0;
-  for (const row of data ?? []) {
-    const u = (row as any).source_url as string;
-    const res = await head(u);
+  type SourceRow = {
+    id: string;
+    source_url: string | null;
+  };
+
+  const rows = (data ?? []) as SourceRow[];
+  for (const row of rows) {
+    if (!row.source_url) {
+      continue;
+    }
+    const res = await head(row.source_url);
     const status = res.ok ? 'ok' : 'failed';
     if (!res.ok) failed += 1;
     await supabase
       .from('sources')
-      .update({ link_last_checked_at: new Date().toISOString(), link_last_status: status, link_last_error: res.ok ? null : `HTTP ${res.status}` })
-      .eq('id', (row as any).id as string);
+      .update({
+        link_last_checked_at: new Date().toISOString(),
+        link_last_status: status,
+        link_last_error: res.ok ? null : `HTTP ${res.status}`,
+      })
+      .eq('id', row.id);
   }
   return new Response(JSON.stringify({ checked: data?.length ?? 0, failed }), { headers: { 'Content-Type': 'application/json' } });
 });
-

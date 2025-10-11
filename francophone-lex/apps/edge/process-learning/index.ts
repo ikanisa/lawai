@@ -1,7 +1,6 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
-import { CITATOR_FIXTURES, type CitatorFixture } from './citator-fixtures.ts';
+import { createEdgeClient, EdgeSupabaseClient, rowsAs, rowAs } from '../lib/supabase.ts';
 
 type LearningJob = {
   id: string;
@@ -27,59 +26,26 @@ type ReportResult = {
   error?: string;
 };
 
-type SourceRow = {
+type OrganizationRow = { id: string | null };
+type PendingJobRow = {
   id: string;
-  source_url: string;
-  court_rank?: string | null;
-  effective_date?: string | null;
+  type: string | null;
+  status: string;
+  payload: Record<string, unknown> | null;
+  org_id: string | null;
 };
-
-function normaliseUrl(input: unknown): string | null {
-  if (typeof input !== 'string') {
-    return null;
-  }
-  const trimmed = input.trim();
-  if (!trimmed) {
-    return null;
-  }
-  try {
-    const parsed = new URL(trimmed);
-    parsed.hash = '';
-    parsed.search = '';
-    const normalised = parsed.toString().replace(/\/+$/, '');
-    return normalised.toLowerCase();
-  } catch (_error) {
-    return trimmed.replace(/\/+$/, '').toLowerCase();
-  }
-}
-
-function selectFixturesForOrg(fixtures: CitatorFixture[], urlSet: Set<string>, sinceIso?: string | null) {
-  let since: Date | null = null;
-  if (sinceIso) {
-    const parsed = new Date(sinceIso);
-    if (!Number.isNaN(parsed.getTime())) {
-      since = parsed;
-    }
-  }
-
-  return fixtures.filter((fixture) => {
-    const cited = normaliseUrl(fixture.citedUrl);
-    const citing = normaliseUrl(fixture.citingUrl);
-    if (!cited || !citing) {
-      return false;
-    }
-    if (!urlSet.has(cited) || !urlSet.has(citing)) {
-      return false;
-    }
-    if (since && fixture.decidedAt) {
-      const decided = new Date(fixture.decidedAt);
-      if (!Number.isNaN(decided.getTime()) && decided < since) {
-        return false;
-      }
-    }
-    return true;
-  });
-}
+type NightlyRunRow = {
+  id: string;
+  risk_level: string | null;
+  hitl_required: boolean | null;
+  jurisdiction_json: unknown;
+};
+type CitationSummaryRow = { domain_ok: boolean | null };
+type EvalCaseRow = { id: string | null };
+type EvalResultRow = { pass: boolean | null; metrics: Record<string, unknown> | null };
+type PendingSnapshotRow = { type: string | null; created_at: string | null };
+type LearningReportRow = { id: string };
+type PolicyVersionRow = { id: string; version_number: number | null };
 
 const FAIRNESS_HITL_THRESHOLD = 0.2;
 const FAIRNESS_HIGH_RISK_THRESHOLD = 0.25;
@@ -224,7 +190,7 @@ function buildFairnessReport(
 }
 
 async function listOrganisationIds(
-  client: ReturnType<typeof createClient>,
+  client: EdgeSupabaseClient,
   orgId?: string,
 ): Promise<string[]> {
   if (orgId) {
@@ -235,10 +201,13 @@ async function listOrganisationIds(
     console.warn('Impossible de lister les organisations:', error.message);
     return [];
   }
-  return (data ?? []).map((row) => row.id as string);
+  const rows = rowsAs<OrganizationRow>(data);
+  return rows
+    .map((row) => row.id)
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
 }
 
-async function nextPendingJobs(client: ReturnType<typeof createClient>, limit: number, orgId?: string) {
+async function nextPendingJobs(client: EdgeSupabaseClient, limit: number, orgId?: string) {
   let query = client
     .from('agent_learning_jobs')
     .select('id, type, status, payload, org_id')
@@ -254,11 +223,12 @@ async function nextPendingJobs(client: ReturnType<typeof createClient>, limit: n
   if (error) {
     throw new Error(`Impossible de récupérer les jobs: ${error.message}`);
   }
-  return (data ?? []) as LearningJob[];
+  const rows = rowsAs<LearningJob>(data);
+  return rows.filter((job) => typeof job.id === 'string' && job.id.length > 0);
 }
 
 async function markStatus(
-  client: ReturnType<typeof createClient>,
+  client: EdgeSupabaseClient,
   jobId: string,
   status: string,
   errorMessage?: string | null,
@@ -271,7 +241,7 @@ async function markStatus(
     patch.error = errorMessage;
   }
 
-  const { error } = await client.from('agent_learning_jobs').update(patch).eq('id', jobId);
+  const { error } = await client.from('agent_learning_jobs').update(patch as Record<string, unknown>).eq('id', jobId);
 
   if (error) {
     console.warn(`Impossible de mettre à jour le job ${jobId}:`, error.message);
@@ -325,7 +295,7 @@ function extractSynonymTerms(question: string): string[] {
   return Array.from(unique);
 }
 
-async function handleIndexingTicket(client: ReturnType<typeof createClient>, job: LearningJob) {
+async function handleIndexingTicket(client: EdgeSupabaseClient, job: LearningJob) {
   const payload = job.payload ?? {};
   const orgId = job.org_id;
   const question = typeof payload.question === 'string' ? payload.question : 'Question non renseignée';
@@ -345,7 +315,7 @@ async function handleIndexingTicket(client: ReturnType<typeof createClient>, job
         question,
         note,
       },
-    });
+    } as Record<string, unknown>);
 
   if (insert.error) {
     await markStatus(client, job.id, 'failed', insert.error.message);
@@ -355,7 +325,7 @@ async function handleIndexingTicket(client: ReturnType<typeof createClient>, job
   await markStatus(client, job.id, 'completed');
 }
 
-async function handleQueryRewriteTicket(client: ReturnType<typeof createClient>, job: LearningJob) {
+async function handleQueryRewriteTicket(client: EdgeSupabaseClient, job: LearningJob) {
   if (!validateJob(job)) {
     await markStatus(client, job.id, 'failed', 'payload_invalid');
     return;
@@ -386,7 +356,7 @@ async function handleQueryRewriteTicket(client: ReturnType<typeof createClient>,
           jurisdiction,
           term,
           expansions,
-        },
+        } as Record<string, unknown>,
         { onConflict: 'jurisdiction,term' },
       );
     if (error) {
@@ -398,7 +368,7 @@ async function handleQueryRewriteTicket(client: ReturnType<typeof createClient>,
   await markStatus(client, job.id, 'completed');
 }
 
-async function handleGuardrailTicket(client: ReturnType<typeof createClient>, job: LearningJob) {
+async function handleGuardrailTicket(client: EdgeSupabaseClient, job: LearningJob) {
   const orgId = job.org_id;
   if (!orgId) {
     await markStatus(client, job.id, 'failed', 'missing_org');
@@ -418,7 +388,7 @@ async function handleGuardrailTicket(client: ReturnType<typeof createClient>, jo
         reason,
         question: payload.question ?? null,
       },
-    });
+    } as Record<string, unknown>);
 
   if (insert.error) {
     await markStatus(client, job.id, 'failed', insert.error.message);
@@ -430,7 +400,7 @@ async function handleGuardrailTicket(client: ReturnType<typeof createClient>, jo
     name: policyName,
     notes: reason,
     activated_at: new Date().toISOString(),
-  });
+  } as Record<string, unknown>);
   if (policyInsert.error) {
     console.warn('Impossible de journaliser la version de politique:', policyInsert.error.message);
   }
@@ -438,7 +408,7 @@ async function handleGuardrailTicket(client: ReturnType<typeof createClient>, jo
   await markStatus(client, job.id, 'completed');
 }
 
-async function handleReviewFeedbackTicket(client: ReturnType<typeof createClient>, job: LearningJob) {
+async function handleReviewFeedbackTicket(client: EdgeSupabaseClient, job: LearningJob) {
   const orgId = job.org_id;
   if (!orgId) {
     await markStatus(client, job.id, 'failed', 'missing_org');
@@ -466,7 +436,7 @@ async function handleReviewFeedbackTicket(client: ReturnType<typeof createClient
       comment,
       resolutionMinutes,
     },
-  });
+  } as Record<string, unknown>);
 
   if (insert.error) {
     await markStatus(client, job.id, 'failed', insert.error.message);
@@ -476,146 +446,8 @@ async function handleReviewFeedbackTicket(client: ReturnType<typeof createClient
   await markStatus(client, job.id, 'completed');
 }
 
-async function handleTreatmentGraphJob(client: ReturnType<typeof createClient>, job: LearningJob) {
-  const orgId = job.org_id;
-  if (!orgId) {
-    await markStatus(client, job.id, 'failed', 'missing_org');
-    return;
-  }
-
-  const payload = job.payload ?? {};
-  const since = typeof (payload as { since?: unknown }).since === 'string' ? (payload as { since?: string }).since : null;
-
-  const { data: sources, error } = await client
-    .from('sources')
-    .select('id, source_url, court_rank, effective_date, source_type')
-    .eq('org_id', orgId)
-    .eq('source_type', 'case');
-
-  if (error) {
-    await markStatus(client, job.id, 'failed', error.message);
-    return;
-  }
-
-  const sourceMap = new Map<string, SourceRow>();
-  for (const row of sources ?? []) {
-    const key = normaliseUrl(row.source_url);
-    if (!key) {
-      continue;
-    }
-    sourceMap.set(key, {
-      id: row.id as string,
-      source_url: row.source_url as string,
-      court_rank: typeof row.court_rank === 'string' ? row.court_rank : null,
-      effective_date: typeof row.effective_date === 'string' ? row.effective_date : null,
-    });
-  }
-
-  if (sourceMap.size === 0) {
-    await markStatus(client, job.id, 'completed');
-    return;
-  }
-
-  const fixtures = selectFixturesForOrg(CITATOR_FIXTURES, new Set(sourceMap.keys()), since);
-
-  if (fixtures.length === 0) {
-    await markStatus(client, job.id, 'completed');
-    return;
-  }
-
-  const rows: Array<{
-    org_id: string;
-    source_id: string;
-    citing_source_id: string;
-    treatment: string;
-    weight: number;
-    decided_at: string | null;
-    court_rank: string | null;
-  }> = [];
-  const targetSourceIds = new Set<string>();
-
-  for (const fixture of fixtures) {
-    const cited = sourceMap.get(normaliseUrl(fixture.citedUrl) ?? '');
-    const citing = sourceMap.get(normaliseUrl(fixture.citingUrl) ?? '');
-    if (!cited || !citing) {
-      continue;
-    }
-    const decidedAt = fixture.decidedAt ?? citing.effective_date ?? null;
-    rows.push({
-      org_id: orgId,
-      source_id: cited.id,
-      citing_source_id: citing.id,
-      treatment: fixture.treatment,
-      weight: typeof fixture.weight === 'number' ? fixture.weight : 1,
-      decided_at: decidedAt,
-      court_rank: citing.court_rank ?? null,
-    });
-    targetSourceIds.add(cited.id);
-  }
-
-  if (rows.length === 0) {
-    await markStatus(client, job.id, 'completed');
-    return;
-  }
-
-  try {
-    const ids = Array.from(targetSourceIds);
-    if (ids.length > 0) {
-      await client.from('case_treatments').delete().eq('org_id', orgId).in('source_id', ids);
-    }
-    const { error: insertError } = await client.from('case_treatments').insert(rows);
-    if (insertError) {
-      await markStatus(client, job.id, 'failed', insertError.message);
-      return;
-    }
-    await markStatus(client, job.id, 'completed');
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await markStatus(client, job.id, 'failed', message);
-  }
-}
-
-async function enqueueTreatmentGraphJobs(client: ReturnType<typeof createClient>, orgId?: string) {
-  const organisations = await listOrganisationIds(client, orgId);
-  if (organisations.length === 0) {
-    return;
-  }
-
-  const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-  for (const org of organisations) {
-    const existing = await client
-      .from('agent_learning_jobs')
-      .select('id')
-      .eq('org_id', org)
-      .eq('type', 'treatment_graph_rebuild')
-      .in('status', ['pending', 'processing'])
-      .limit(1);
-
-    if (existing.error) {
-      console.warn(`Unable to inspect treatment jobs for ${org}:`, existing.error.message);
-      continue;
-    }
-
-    if (Array.isArray(existing.data) && existing.data.length > 0) {
-      continue;
-    }
-
-    const insert = await client.from('agent_learning_jobs').insert({
-      org_id: org,
-      type: 'treatment_graph_rebuild',
-      status: 'pending',
-      payload: { since: sinceIso },
-    });
-
-    if (insert.error) {
-      console.warn(`Unable to enqueue treatment graph job for ${org}:`, insert.error.message);
-    }
-  }
-}
-
 async function upsertLearningReport(
-  client: ReturnType<typeof createClient>,
+  client: EdgeSupabaseClient,
   orgId: string,
   kind: 'drift' | 'evaluation' | 'queue' | 'fairness',
   reportDate: string,
@@ -629,7 +461,7 @@ async function upsertLearningReport(
         kind,
         report_date: reportDate,
         payload,
-      },
+      } as Record<string, unknown>,
       { onConflict: 'org_id,kind,report_date' },
     );
 
@@ -641,7 +473,7 @@ async function upsertLearningReport(
 }
 
 async function generateNightlyReports(
-  client: ReturnType<typeof createClient>,
+  client: EdgeSupabaseClient,
   orgId?: string,
 ): Promise<ReportResult[]> {
   const organisations = await listOrganisationIds(client, orgId);
@@ -668,8 +500,8 @@ async function generateNightlyReports(
         throw new Error(runsQuery.error.message);
       }
 
-      const runs = runsQuery.data ?? [];
-      const runIds = runs.map((row) => row.id as string);
+      const runs = rowsAs<NightlyRunRow>(runsQuery.data);
+      const runIds = runs.map((row) => row.id);
       let allowlistedRatio: number | null = null;
 
       if (runIds.length > 0) {
@@ -680,7 +512,7 @@ async function generateNightlyReports(
         if (citations.error) {
           throw new Error(citations.error.message);
         }
-        const entries = citations.data ?? [];
+        const entries = rowsAs<CitationSummaryRow>(citations.data);
         if (entries.length > 0) {
           const okCount = entries.filter((row) => Boolean(row.domain_ok)).length;
           allowlistedRatio = okCount / entries.length;
@@ -699,7 +531,10 @@ async function generateNightlyReports(
       if (evalCases.error) {
         throw new Error(evalCases.error.message);
       }
-      const caseIds = (evalCases.data ?? []).map((row) => row.id as string);
+      const caseRows = rowsAs<EvalCaseRow>(evalCases.data);
+      const caseIds = caseRows
+        .map((row) => row.id)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0);
       let evaluationRecords: Array<{ pass?: boolean | null; metrics?: Record<string, unknown> | null }> = [];
       if (caseIds.length > 0) {
         const evalResults = await client
@@ -710,11 +545,8 @@ async function generateNightlyReports(
         if (evalResults.error) {
           throw new Error(evalResults.error.message);
         }
-        const records = evalResults.data ?? [];
-        evaluationRecords = records as Array<{
-          pass?: boolean | null;
-          metrics?: Record<string, unknown> | null;
-        }>;
+        const records = rowsAs<EvalResultRow>(evalResults.data);
+        evaluationRecords = records;
         const passes = records.filter((row) => row.pass === true).length;
         const evaluationPayload = {
           evaluated: records.length,
@@ -744,7 +576,7 @@ async function generateNightlyReports(
 }
 
 async function generateQueueSnapshots(
-  client: ReturnType<typeof createClient>,
+  client: EdgeSupabaseClient,
   orgId?: string,
 ): Promise<ReportResult[]> {
   const organisations = await listOrganisationIds(client, orgId);
@@ -768,7 +600,7 @@ async function generateQueueSnapshots(
         throw new Error(pending.error.message);
       }
 
-      const records = pending.data ?? [];
+      const records = rowsAs<PendingSnapshotRow>(pending.data);
       const typeCounts: Record<string, number> = {};
       let oldest: string | null = null;
 
@@ -803,7 +635,7 @@ async function generateQueueSnapshots(
   return results;
 }
 
-async function processJob(client: ReturnType<typeof createClient>, job: LearningJob) {
+async function processJob(client: EdgeSupabaseClient, job: LearningJob) {
   if (!validateJob(job)) {
     await markStatus(client, job.id, 'failed', 'payload_invalid');
     return;
@@ -821,9 +653,6 @@ async function processJob(client: ReturnType<typeof createClient>, job: Learning
       break;
     case 'review_feedback_ticket':
       await handleReviewFeedbackTicket(client, job);
-      break;
-    case 'treatment_graph_rebuild':
-      await handleTreatmentGraphJob(client, job);
       break;
     default:
       await markStatus(client, job.id, 'completed');
@@ -858,7 +687,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Missing Supabase credentials' }), { status: 400 });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceRole);
+  const supabase = createEdgeClient(supabaseUrl, supabaseServiceRole);
 
   const resolvedMode =
     payload.mode ??
@@ -872,10 +701,6 @@ Deno.serve(async (req) => {
   const shouldCaptureQueue = lowerMode === 'hourly' || lowerMode === 'nightly';
 
   const orgId = payload.orgId ?? Deno.env.get('LEARNING_ORG_ID') ?? undefined;
-
-  if (lowerMode === 'nightly') {
-    await enqueueTreatmentGraphJobs(supabase, orgId);
-  }
 
   if (shouldProcessJobs) {
     const jobs = await nextPendingJobs(supabase, 25, orgId);

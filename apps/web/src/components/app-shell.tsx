@@ -21,6 +21,8 @@ import {
   Download,
   Shield,
   ShieldOff,
+  Inbox,
+  WifiOff,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
@@ -30,14 +32,19 @@ import { sendTelemetryEvent } from '../lib/api';
 import { usePwaInstall } from '../hooks/use-pwa-install';
 import { toast } from 'sonner';
 import { ConfidentialModeBanner } from './confidential-mode-banner';
+import { ComplianceBanner } from './compliance-banner';
 import { useConfidentialMode } from '../state/confidential-mode';
 import { useShallow } from 'zustand/react/shallow';
+import { useOutbox } from '../hooks/use-outbox';
+import { useOnlineStatus } from '../hooks/use-online-status';
 
 interface AppShellProps {
   children: ReactNode;
   messages: Messages;
   locale: Locale;
 }
+
+type StatusBarMessages = NonNullable<Messages['app']['statusBar']>;
 
 const NAVIGATION = [
   { key: 'workspace', href: '/workspace', icon: LayoutGrid },
@@ -66,6 +73,9 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   const confidentialMessages = messages.app.confidential;
   const statusMessages = confidentialMessages?.status;
   const confidentialActions = confidentialMessages?.actions;
+  const { pendingCount: outboxCount, hasItems: hasOutbox, stalenessMs } = useOutbox();
+  const online = useOnlineStatus();
+  const statusBarMessages = messages.app.statusBar;
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -214,6 +224,12 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   };
 
   const installMessages = messages.app.install;
+  const outboxAgeLabel = useMemo(() => {
+    if (!statusBarMessages || !hasOutbox) {
+      return null;
+    }
+    return formatOutboxAge(stalenessMs, locale, statusBarMessages);
+  }, [statusBarMessages, hasOutbox, stalenessMs, locale]);
 
   const handleInstallNow = async () => {
     const outcome = await promptInstall();
@@ -323,13 +339,35 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
               <Command className="h-5 w-5" aria-hidden />
             </Button>
             <p className="hidden text-xs text-slate-400 md:block">{messages.app.commandPlaceholder}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              variant={confidentialMode ? 'outline' : 'ghost'}
-              size="icon"
-              onClick={handleConfidentialToggle}
-              aria-pressed={confidentialMode}
+        </div>
+        <div className="flex items-center gap-3">
+          {statusBarMessages && !online ? (
+            <span className="hidden items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-200 sm:inline-flex">
+              <WifiOff className="h-4 w-4" aria-hidden />
+              {statusBarMessages.offline}
+            </span>
+          ) : null}
+          {statusBarMessages && hasOutbox ? (
+            <Link
+              href={localizedHref('/research#outbox-panel')}
+              className="focus-ring hidden items-center gap-2 rounded-full border border-teal-400/40 bg-teal-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-teal-100 shadow-sm transition hover:bg-teal-500/20 sm:flex"
+              aria-label={`${statusBarMessages.outbox} (${outboxCount})`}
+            >
+              <Inbox className="h-4 w-4" aria-hidden />
+              <span>{statusBarMessages.outbox}</span>
+              <span className="rounded-full bg-teal-400/20 px-2 py-0.5 text-[11px] font-semibold text-teal-50">
+                {outboxCount}
+              </span>
+              {outboxAgeLabel ? (
+                <span className="text-[10px] font-normal text-teal-100/80">{outboxAgeLabel}</span>
+              ) : null}
+            </Link>
+          ) : null}
+          <Button
+            variant={confidentialMode ? 'outline' : 'ghost'}
+            size="icon"
+            onClick={handleConfidentialToggle}
+            aria-pressed={confidentialMode}
               aria-label={confidentialToggleLabel}
               title={confidentialToggleLabel}
               className={cn(confidentialMode ? 'text-amber-200 hover:text-amber-100' : undefined)}
@@ -354,6 +392,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
           </div>
         </header>
         <main id="main" className="flex-1 px-6 pb-24 pt-10">
+          {messages.app.compliance ? <ComplianceBanner messages={messages.app.compliance} /> : null}
           {children}
         </main>
       </div>
@@ -443,4 +482,29 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
       ) : null}
     </div>
   );
+}
+
+function formatOutboxAge(stalenessMs: number, locale: Locale, copy: StatusBarMessages): string {
+  if (stalenessMs <= 0) {
+    return copy.staleNow;
+  }
+
+  const minutes = Math.floor(stalenessMs / 60_000);
+  const formatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+
+  if (minutes < 1) {
+    return copy.staleNow;
+  }
+
+  if (minutes < 60) {
+    return copy.staleMinutes.replace('{count}', formatter.format(minutes));
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return copy.staleHours.replace('{count}', formatter.format(hours));
+  }
+
+  const days = Math.floor(hours / 24);
+  return copy.staleDays.replace('{count}', formatter.format(days));
 }

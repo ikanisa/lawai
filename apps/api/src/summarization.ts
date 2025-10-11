@@ -1,3 +1,8 @@
+import {
+  fetchOpenAIDebugDetails,
+  getOpenAIClient,
+  isOpenAIDebugEnabled,
+} from '@avocat-ai/shared';
 import { env } from './config.js';
 
 const textDecoder = new TextDecoder('utf-8', { fatal: false });
@@ -6,7 +11,42 @@ const DEFAULT_SUMMARISER_MODEL = 'gpt-4o-mini';
 const DEFAULT_MAX_SUMMARY_CHARS = 12000;
 const MAX_CHUNKS = 40;
 
+const SUMMARISATION_CLIENT_TAGS = {
+  cacheKeySuffix: 'summaries',
+  requestTags:
+    process.env.OPENAI_REQUEST_TAGS_SUMMARIES ?? process.env.OPENAI_REQUEST_TAGS ?? 'service=api,component=summarisation',
+} as const;
+
 export type TextChunk = { seq: number; content: string; marker: string | null };
+
+type SummarisationLogger = {
+  error: (data: Record<string, unknown>, message: string) => void;
+  warn?: (data: Record<string, unknown>, message: string) => void;
+};
+
+async function logOpenAIDebugSummary(
+  client: ReturnType<typeof getOpenAIClient>,
+  operation: string,
+  error: unknown,
+  logger?: SummarisationLogger,
+) {
+  if (!isOpenAIDebugEnabled()) {
+    return;
+  }
+  const info = await fetchOpenAIDebugDetails(client, error);
+  if (!info) {
+    return;
+  }
+  if (logger?.error) {
+    logger.error({
+      openaiRequestId: info.requestId,
+      debug: 'details' in info ? info.details : undefined,
+      debugError: 'debugError' in info ? info.debugError : undefined,
+    }, `${operation}_openai_debug`);
+  } else {
+    console.error(`[openai-debug] ${operation}`, info);
+  }
+}
 
 function stripHtml(html: string): string {
   return html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -99,6 +139,7 @@ async function generateStructuredSummary(
   openaiApiKey: string,
   model: string,
   maxSummaryChars: number,
+  logger?: SummarisationLogger,
 ): Promise<{ summary: string; highlights: Array<{ heading: string; detail: string }> }> {
   const truncated = text.slice(0, maxSummaryChars);
   const schema = {
@@ -131,13 +172,11 @@ async function generateStructuredSummary(
     strict: true,
   } as const;
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${openaiApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
+
+  let json;
+  try {
+    json = await openai.responses.create({
       model,
       input: [
         {
@@ -162,12 +201,10 @@ async function generateStructuredSummary(
       ],
       response_format: { type: 'json_schema', json_schema: schema },
       max_output_tokens: 800,
-    }),
-  });
-
-  const json = await response.json();
-  if (!response.ok) {
-    const message = json?.error?.message ?? 'Synthèse indisponible';
+    });
+  } catch (error) {
+    await logOpenAIDebugSummary(openai, 'structured_summary', error, logger);
+    const message = error instanceof Error ? error.message : 'Synthèse indisponible';
     throw new Error(message);
   }
 
@@ -193,30 +230,29 @@ async function generateStructuredSummary(
   return { summary, highlights };
 }
 
-async function generateEmbeddings(texts: string[], openaiApiKey: string, model: string): Promise<number[][]> {
+async function generateEmbeddings(
+  texts: string[],
+  openaiApiKey: string,
+  model: string,
+  logger?: SummarisationLogger,
+): Promise<number[][]> {
   const embeddings: number[][] = [];
   const batchSize = 16;
+  const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
 
   for (let index = 0; index < texts.length; index += batchSize) {
     const slice = texts.slice(index, index + batchSize);
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ model, input: slice }),
-    });
-
-    const json = await response.json();
-    if (!response.ok) {
-      const message = json?.error?.message ?? 'Échec de génération des embeddings';
+    let response;
+    try {
+      response = await openai.embeddings.create({ model, input: slice });
+    } catch (error) {
+      await logOpenAIDebugSummary(openai, 'document_embedding_batch', error, logger);
+      const message = error instanceof Error ? error.message : 'Échec de génération des embeddings';
       throw new Error(message);
     }
 
-    const data = Array.isArray(json?.data) ? json.data : [];
-    for (const entry of data) {
-      if (Array.isArray(entry?.embedding)) {
+    for (const entry of response.data ?? []) {
+      if (Array.isArray(entry.embedding)) {
         embeddings.push(entry.embedding as number[]);
       }
     }
@@ -248,6 +284,7 @@ export async function summariseDocumentFromPayload(params: {
   summariserModel?: string;
   embeddingModel?: string;
   maxSummaryChars?: number;
+  logger?: SummarisationLogger;
 }): Promise<SummarisationResult> {
   const {
     payload,
@@ -257,6 +294,7 @@ export async function summariseDocumentFromPayload(params: {
     summariserModel,
     embeddingModel,
     maxSummaryChars,
+    logger,
   } = params;
 
   if (!openaiApiKey) {
@@ -280,12 +318,13 @@ export async function summariseDocumentFromPayload(params: {
       openaiApiKey,
       summariserModel ?? env.SUMMARISER_MODEL ?? DEFAULT_SUMMARISER_MODEL,
       Math.min(maxSummaryChars ?? env.MAX_SUMMARY_CHARS ?? DEFAULT_MAX_SUMMARY_CHARS, DEFAULT_MAX_SUMMARY_CHARS),
+      logger,
     );
 
     const chunks = chunkText(plainText);
     const inputs = chunks.map((chunk) => chunk.content);
     const embeddings = inputs.length
-      ? await generateEmbeddings(inputs, openaiApiKey, embeddingModel ?? env.EMBEDDING_MODEL)
+      ? await generateEmbeddings(inputs, openaiApiKey, embeddingModel ?? env.EMBEDDING_MODEL, logger)
       : [];
 
     return {

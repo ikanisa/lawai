@@ -1,0 +1,1 @@
+{"version":3,"file":"allowlist.d.ts","sourceRoot":"","sources":["../../src/constants/allowlist.ts"],"names":[],"mappings":"AAAA,eAAO,MAAM,wBAAwB,EAAE,QAAQ,CAAC,MAAM,CAAC,MAAM,EAAE,SAAS,MAAM,EAAE,CAAC,CAuBhF,CAAC;AAEF,eAAO,MAAM,yBAAyB,EAAE,SAAS,MAAM,EAA0C,CAAC;AAElG,wBAAgB,mBAAmB,CAAC,GAAG,EAAE,MAAM,GAAG,OAAO,CAOxD;AAED,wBAAgB,yBAAyB,CAAC,QAAQ,EAAE,MAAM,GAAG,MAAM,EAAE,CAUpE"}

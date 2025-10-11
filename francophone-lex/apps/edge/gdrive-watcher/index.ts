@@ -1,6 +1,6 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
+import { createEdgeClient } from '../lib/supabase.ts';
 
 interface GDriveWatcherRequest {
   orgId?: string;
@@ -81,11 +81,11 @@ Deno.serve(async (request) => {
     });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey, {
+  const supabase = createEdgeClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { error } = await supabase.from('ingestion_quarantine').insert(entries, {
+  const { error } = await supabase.from('ingestion_quarantine').upsert(entries, {
     onConflict: 'org_id,source_url,reason',
   });
 

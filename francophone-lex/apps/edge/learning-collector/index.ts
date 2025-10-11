@@ -1,6 +1,6 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
+import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
 
 const WINDOW_MINUTES = 10;
 
@@ -8,9 +8,38 @@ function isoMinutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
 }
 
-function asArray<T>(value: T[] | null | undefined): T[] {
-  return Array.isArray(value) ? value : [];
-}
+type AgentRunRow = {
+  id: string;
+  org_id: string | null;
+  status: string | null;
+  refusal_reason: string | null;
+  jurisdiction_json: unknown;
+  risk_level: string | null;
+};
+
+type CitationRow = {
+  run_id: string | null;
+  org_id: string | null;
+  domain_ok: boolean | null;
+  translation_flag: string | null;
+  url: string | null;
+};
+
+type TelemetryRow = {
+  org_id: string | null;
+  tool_name: string | null;
+  latency_ms: number | null;
+  success: boolean | null;
+  error_code: string | null;
+};
+
+type HitlRow = {
+  org_id: string | null;
+  run_id: string | null;
+  status: string | null;
+  reviewer_comment: string | null;
+  updated_at: string | null;
+};
 
 Deno.serve(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -19,7 +48,7 @@ Deno.serve(async () => {
     return new Response('missing_supabase_env', { status: 500 });
   }
 
-  const supabase = createClient(supabaseUrl, serviceKey, {
+  const supabase = createEdgeClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -50,7 +79,8 @@ Deno.serve(async () => {
 
   const signals: Array<Record<string, unknown>> = [];
 
-  for (const row of asArray(runs.data)) {
+  const runRows = rowsAs<AgentRunRow>(runs.data);
+  for (const row of runRows) {
     signals.push({
       org_id: row.org_id,
       run_id: row.id,
@@ -64,7 +94,11 @@ Deno.serve(async () => {
     });
   }
 
-  for (const row of asArray(citations.data)) {
+  const citationRows = rowsAs<CitationRow>(citations.data);
+  for (const row of citationRows) {
+    if (!row.run_id) {
+      continue;
+    }
     signals.push({
       org_id: row.org_id,
       run_id: row.run_id,
@@ -77,7 +111,8 @@ Deno.serve(async () => {
     });
   }
 
-  for (const row of asArray(telemetry.data)) {
+  const telemetryRows = rowsAs<TelemetryRow>(telemetry.data);
+  for (const row of telemetryRows) {
     signals.push({
       org_id: row.org_id,
       run_id: null,
@@ -91,7 +126,8 @@ Deno.serve(async () => {
     });
   }
 
-  for (const row of asArray(hitl.data)) {
+  const hitlRows = rowsAs<HitlRow>(hitl.data);
+  for (const row of hitlRows) {
     signals.push({
       org_id: row.org_id,
       run_id: row.run_id,
@@ -110,7 +146,7 @@ Deno.serve(async () => {
     });
   }
 
-  const { error } = await supabase.from('learning_signals').insert(signals, { returning: 'minimal' });
+  const { error } = await supabase.from('learning_signals').insert(signals);
   if (error) {
     return new Response(error.message, { status: 500 });
   }
@@ -119,4 +155,3 @@ Deno.serve(async () => {
     headers: { 'Content-Type': 'application/json' },
   });
 });
-

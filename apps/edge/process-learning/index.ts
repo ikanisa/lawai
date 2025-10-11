@@ -1,6 +1,6 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
+import { createEdgeClient, EdgeSupabaseClient, rowsAs, rowAs } from '../lib/supabase.ts';
 
 type LearningJob = {
   id: string;
@@ -25,6 +25,27 @@ type ReportResult = {
   queue?: { inserted: boolean };
   error?: string;
 };
+
+type OrganizationRow = { id: string | null };
+type PendingJobRow = {
+  id: string;
+  type: string | null;
+  status: string;
+  payload: Record<string, unknown> | null;
+  org_id: string | null;
+};
+type NightlyRunRow = {
+  id: string;
+  risk_level: string | null;
+  hitl_required: boolean | null;
+  jurisdiction_json: unknown;
+};
+type CitationSummaryRow = { domain_ok: boolean | null };
+type EvalCaseRow = { id: string | null };
+type EvalResultRow = { pass: boolean | null; metrics: Record<string, unknown> | null };
+type PendingSnapshotRow = { type: string | null; created_at: string | null };
+type LearningReportRow = { id: string };
+type PolicyVersionRow = { id: string; version_number: number | null };
 
 const FAIRNESS_HITL_THRESHOLD = 0.2;
 const FAIRNESS_HIGH_RISK_THRESHOLD = 0.25;
@@ -169,7 +190,7 @@ function buildFairnessReport(
 }
 
 async function listOrganisationIds(
-  client: ReturnType<typeof createClient>,
+  client: EdgeSupabaseClient,
   orgId?: string,
 ): Promise<string[]> {
   if (orgId) {
@@ -180,10 +201,13 @@ async function listOrganisationIds(
     console.warn('Impossible de lister les organisations:', error.message);
     return [];
   }
-  return (data ?? []).map((row) => row.id as string);
+  const rows = rowsAs<OrganizationRow>(data);
+  return rows
+    .map((row) => row.id)
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
 }
 
-async function nextPendingJobs(client: ReturnType<typeof createClient>, limit: number, orgId?: string) {
+async function nextPendingJobs(client: EdgeSupabaseClient, limit: number, orgId?: string) {
   let query = client
     .from('agent_learning_jobs')
     .select('id, type, status, payload, org_id')
@@ -199,11 +223,12 @@ async function nextPendingJobs(client: ReturnType<typeof createClient>, limit: n
   if (error) {
     throw new Error(`Impossible de récupérer les jobs: ${error.message}`);
   }
-  return (data ?? []) as LearningJob[];
+  const rows = rowsAs<LearningJob>(data);
+  return rows.filter((job) => typeof job.id === 'string' && job.id.length > 0);
 }
 
 async function markStatus(
-  client: ReturnType<typeof createClient>,
+  client: EdgeSupabaseClient,
   jobId: string,
   status: string,
   errorMessage?: string | null,
@@ -216,7 +241,7 @@ async function markStatus(
     patch.error = errorMessage;
   }
 
-  const { error } = await client.from('agent_learning_jobs').update(patch).eq('id', jobId);
+  const { error } = await client.from('agent_learning_jobs').update(patch as Record<string, unknown>).eq('id', jobId);
 
   if (error) {
     console.warn(`Impossible de mettre à jour le job ${jobId}:`, error.message);
@@ -270,7 +295,7 @@ function extractSynonymTerms(question: string): string[] {
   return Array.from(unique);
 }
 
-async function handleIndexingTicket(client: ReturnType<typeof createClient>, job: LearningJob) {
+async function handleIndexingTicket(client: EdgeSupabaseClient, job: LearningJob) {
   const payload = job.payload ?? {};
   const orgId = job.org_id;
   const question = typeof payload.question === 'string' ? payload.question : 'Question non renseignée';
@@ -290,7 +315,7 @@ async function handleIndexingTicket(client: ReturnType<typeof createClient>, job
         question,
         note,
       },
-    });
+    } as Record<string, unknown>);
 
   if (insert.error) {
     await markStatus(client, job.id, 'failed', insert.error.message);
@@ -300,7 +325,7 @@ async function handleIndexingTicket(client: ReturnType<typeof createClient>, job
   await markStatus(client, job.id, 'completed');
 }
 
-async function handleQueryRewriteTicket(client: ReturnType<typeof createClient>, job: LearningJob) {
+async function handleQueryRewriteTicket(client: EdgeSupabaseClient, job: LearningJob) {
   if (!validateJob(job)) {
     await markStatus(client, job.id, 'failed', 'payload_invalid');
     return;
@@ -331,7 +356,7 @@ async function handleQueryRewriteTicket(client: ReturnType<typeof createClient>,
           jurisdiction,
           term,
           expansions,
-        },
+        } as Record<string, unknown>,
         { onConflict: 'jurisdiction,term' },
       );
     if (error) {
@@ -343,7 +368,7 @@ async function handleQueryRewriteTicket(client: ReturnType<typeof createClient>,
   await markStatus(client, job.id, 'completed');
 }
 
-async function handleGuardrailTicket(client: ReturnType<typeof createClient>, job: LearningJob) {
+async function handleGuardrailTicket(client: EdgeSupabaseClient, job: LearningJob) {
   const orgId = job.org_id;
   if (!orgId) {
     await markStatus(client, job.id, 'failed', 'missing_org');
@@ -363,7 +388,7 @@ async function handleGuardrailTicket(client: ReturnType<typeof createClient>, jo
         reason,
         question: payload.question ?? null,
       },
-    });
+    } as Record<string, unknown>);
 
   if (insert.error) {
     await markStatus(client, job.id, 'failed', insert.error.message);
@@ -375,7 +400,7 @@ async function handleGuardrailTicket(client: ReturnType<typeof createClient>, jo
     name: policyName,
     notes: reason,
     activated_at: new Date().toISOString(),
-  });
+  } as Record<string, unknown>);
   if (policyInsert.error) {
     console.warn('Impossible de journaliser la version de politique:', policyInsert.error.message);
   }
@@ -383,7 +408,7 @@ async function handleGuardrailTicket(client: ReturnType<typeof createClient>, jo
   await markStatus(client, job.id, 'completed');
 }
 
-async function handleReviewFeedbackTicket(client: ReturnType<typeof createClient>, job: LearningJob) {
+async function handleReviewFeedbackTicket(client: EdgeSupabaseClient, job: LearningJob) {
   const orgId = job.org_id;
   if (!orgId) {
     await markStatus(client, job.id, 'failed', 'missing_org');
@@ -411,7 +436,7 @@ async function handleReviewFeedbackTicket(client: ReturnType<typeof createClient
       comment,
       resolutionMinutes,
     },
-  });
+  } as Record<string, unknown>);
 
   if (insert.error) {
     await markStatus(client, job.id, 'failed', insert.error.message);
@@ -422,7 +447,7 @@ async function handleReviewFeedbackTicket(client: ReturnType<typeof createClient
 }
 
 async function upsertLearningReport(
-  client: ReturnType<typeof createClient>,
+  client: EdgeSupabaseClient,
   orgId: string,
   kind: 'drift' | 'evaluation' | 'queue' | 'fairness',
   reportDate: string,
@@ -436,7 +461,7 @@ async function upsertLearningReport(
         kind,
         report_date: reportDate,
         payload,
-      },
+      } as Record<string, unknown>,
       { onConflict: 'org_id,kind,report_date' },
     );
 
@@ -448,7 +473,7 @@ async function upsertLearningReport(
 }
 
 async function generateNightlyReports(
-  client: ReturnType<typeof createClient>,
+  client: EdgeSupabaseClient,
   orgId?: string,
 ): Promise<ReportResult[]> {
   const organisations = await listOrganisationIds(client, orgId);
@@ -475,8 +500,8 @@ async function generateNightlyReports(
         throw new Error(runsQuery.error.message);
       }
 
-      const runs = runsQuery.data ?? [];
-      const runIds = runs.map((row) => row.id as string);
+      const runs = rowsAs<NightlyRunRow>(runsQuery.data);
+      const runIds = runs.map((row) => row.id);
       let allowlistedRatio: number | null = null;
 
       if (runIds.length > 0) {
@@ -487,7 +512,7 @@ async function generateNightlyReports(
         if (citations.error) {
           throw new Error(citations.error.message);
         }
-        const entries = citations.data ?? [];
+        const entries = rowsAs<CitationSummaryRow>(citations.data);
         if (entries.length > 0) {
           const okCount = entries.filter((row) => Boolean(row.domain_ok)).length;
           allowlistedRatio = okCount / entries.length;
@@ -506,7 +531,10 @@ async function generateNightlyReports(
       if (evalCases.error) {
         throw new Error(evalCases.error.message);
       }
-      const caseIds = (evalCases.data ?? []).map((row) => row.id as string);
+      const caseRows = rowsAs<EvalCaseRow>(evalCases.data);
+      const caseIds = caseRows
+        .map((row) => row.id)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0);
       let evaluationRecords: Array<{ pass?: boolean | null; metrics?: Record<string, unknown> | null }> = [];
       if (caseIds.length > 0) {
         const evalResults = await client
@@ -517,11 +545,8 @@ async function generateNightlyReports(
         if (evalResults.error) {
           throw new Error(evalResults.error.message);
         }
-        const records = evalResults.data ?? [];
-        evaluationRecords = records as Array<{
-          pass?: boolean | null;
-          metrics?: Record<string, unknown> | null;
-        }>;
+        const records = rowsAs<EvalResultRow>(evalResults.data);
+        evaluationRecords = records;
         const passes = records.filter((row) => row.pass === true).length;
         const evaluationPayload = {
           evaluated: records.length,
@@ -551,7 +576,7 @@ async function generateNightlyReports(
 }
 
 async function generateQueueSnapshots(
-  client: ReturnType<typeof createClient>,
+  client: EdgeSupabaseClient,
   orgId?: string,
 ): Promise<ReportResult[]> {
   const organisations = await listOrganisationIds(client, orgId);
@@ -575,7 +600,7 @@ async function generateQueueSnapshots(
         throw new Error(pending.error.message);
       }
 
-      const records = pending.data ?? [];
+      const records = rowsAs<PendingSnapshotRow>(pending.data);
       const typeCounts: Record<string, number> = {};
       let oldest: string | null = null;
 
@@ -610,7 +635,7 @@ async function generateQueueSnapshots(
   return results;
 }
 
-async function processJob(client: ReturnType<typeof createClient>, job: LearningJob) {
+async function processJob(client: EdgeSupabaseClient, job: LearningJob) {
   if (!validateJob(job)) {
     await markStatus(client, job.id, 'failed', 'payload_invalid');
     return;
@@ -662,7 +687,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Missing Supabase credentials' }), { status: 400 });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceRole);
+  const supabase = createEdgeClient(supabaseUrl, supabaseServiceRole);
 
   const resolvedMode =
     payload.mode ??

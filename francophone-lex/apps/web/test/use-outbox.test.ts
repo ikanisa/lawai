@@ -1,24 +1,7 @@
 import { webcrypto } from 'node:crypto';
-import { renderHook, act, waitFor } from '@testing-library/react';
-import { describe, beforeAll, beforeEach, afterEach, expect, it, vi } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { vi } from 'vitest';
 import { useOutbox } from '../src/hooks/use-outbox';
-import { submitResearchQuestion } from '../src/lib/api';
-
-vi.mock('../src/lib/api', async () => {
-  const actual = await vi.importActual<typeof import('../src/lib/api')>('../src/lib/api');
-  return {
-    ...actual,
-    submitResearchQuestion: vi.fn(),
-  };
-});
-
-const submitResearchQuestionMock = submitResearchQuestion as unknown as ReturnType<typeof vi.fn>;
-
-let online = true;
-
-vi.mock('../src/hooks/use-online-status', () => ({
-  useOnlineStatus: () => online,
-}));
 
 describe('useOutbox', () => {
   let uuidSpy: ReturnType<typeof vi.spyOn> | undefined;
@@ -32,7 +15,6 @@ describe('useOutbox', () => {
 
   beforeEach(() => {
     localStorage.clear();
-    submitResearchQuestionMock.mockReset();
     counter = 0;
     uuidSpy = vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation(() => `outbox-id-${++counter}`);
   });
@@ -52,13 +34,35 @@ describe('useOutbox', () => {
     expect(localStorage.getItem('avocat-ai-outbox')).not.toBeNull();
   });
 
-  it('flush removes processed items while retaining failures', async () => {
-    submitResearchQuestionMock.mockImplementation(async (payload: { question: string }) => {
-      if (payload.question === 'Send me') {
-        return {};
-      }
-      throw new Error('simulate failure');
+  it('keeps entries in memory when persistence is disabled', () => {
+    const { result } = renderHook(() => useOutbox({ persist: false }));
+
+    act(() => {
+      result.current.enqueue({ question: 'Memory only', context: 'Context', confidentialMode: true });
     });
+
+    expect(result.current.items).toHaveLength(1);
+    expect(localStorage.getItem('avocat-ai-outbox')).toBeNull();
+  });
+
+  it('clears persisted entries when persistence toggles off', () => {
+    const { result, rerender } = renderHook((props: Parameters<typeof useOutbox>[0]) => useOutbox(props), {
+      initialProps: { persist: true },
+    });
+
+    act(() => {
+      result.current.enqueue({ question: 'Persist me', context: 'A', confidentialMode: false });
+    });
+
+    expect(localStorage.getItem('avocat-ai-outbox')).not.toBeNull();
+
+    rerender({ persist: false });
+
+    expect(result.current.items).toHaveLength(0);
+    expect(localStorage.getItem('avocat-ai-outbox')).toBeNull();
+  });
+
+  it('flush removes processed items while retaining failures', async () => {
     const { result } = renderHook(() => useOutbox());
 
     act(() => {
@@ -67,37 +71,34 @@ describe('useOutbox', () => {
     });
 
     await act(async () => {
-      await result.current.flush();
+      await result.current.flush(async (item) => item.question === 'Send me');
     });
 
-    await waitFor(() => {
-      expect(result.current.items).toHaveLength(1);
-    });
+    expect(result.current.items).toHaveLength(1);
     expect(result.current.items[0]?.question).toBe('Keep me');
-    expect(result.current.items[0]?.resumedAt).toBeTruthy();
     const stored = JSON.parse(localStorage.getItem('avocat-ai-outbox') ?? '[]');
     expect(stored).toHaveLength(1);
   });
 
-  it('automatically flushes when coming back online', async () => {
-    submitResearchQuestionMock.mockResolvedValue({});
-    const { result, rerender } = renderHook(() => useOutbox());
+  it('exposes derived status metrics', () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useOutbox());
+
+    expect(result.current.pendingCount).toBe(0);
+    expect(result.current.hasItems).toBe(false);
+    expect(result.current.stalenessMs).toBe(0);
 
     act(() => {
-      result.current.enqueue({ question: 'Offline question', confidentialMode: false });
+      result.current.enqueue({ question: 'Stale item', context: 'ctx', confidentialMode: false });
     });
 
-    expect(result.current.items).toHaveLength(1);
+    expect(result.current.pendingCount).toBe(1);
+    expect(result.current.hasItems).toBe(true);
+    expect(result.current.stalenessMs).toBeGreaterThanOrEqual(0);
 
-    online = false;
-    rerender();
+    vi.advanceTimersByTime(60_000);
+    expect(result.current.stalenessMs).toBeGreaterThanOrEqual(60_000);
 
-    online = true;
-    rerender();
-
-    await waitFor(() => {
-      expect(submitResearchQuestionMock).toHaveBeenCalledTimes(1);
-      expect(result.current.items).toHaveLength(0);
-    });
+    vi.useRealTimers();
   });
 });

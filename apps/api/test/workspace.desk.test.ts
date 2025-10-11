@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPhaseCWorkspaceDesk } from '../src/workspace.js';
+import { buildPhaseCWorkspaceDesk } from '../src/workspace.ts';
 
 describe('buildPhaseCWorkspaceDesk', () => {
   it('returns the phase C multi-agent desk scaffolding', () => {

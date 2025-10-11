@@ -1,0 +1,104 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 8
+          run_install: true
+      - name: Lint
+        run: pnpm -r lint
+      - name: Typecheck
+        run: pnpm -r typecheck
+      - name: Test
+        run: pnpm -r test
+      - name: Build API
+        run: pnpm --filter @apps/api build
+      - name: Build Web
+        run: pnpm --filter @avocat-ai/web build
+      - name: Build PWA
+        run: pnpm --filter @apps/pwa build
+      - name: Enforce PWA bundle budgets
+        run: pnpm --filter @apps/pwa bundle:check
+
+  migrate-db:
+    needs: validate-build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 8
+          run_install: true
+      - name: Apply canonical SQL migrations
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "${SUPABASE_DB_URL}" ]; then
+            echo "Skipping migrations: SUPABASE_DB_URL not set";
+            exit 0;
+          fi
+          pnpm db:migrate
+
+  rls-smoke:
+    needs: migrate-db
+    runs-on: ubuntu-latest
+    if: ${{ vars.RUN_RLS_SMOKE == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 8
+          run_install: true
+      - name: RLS smoke (optional)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "RLS smoke skipped: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set";
+            exit 0;
+          fi
+          pnpm --filter @apps/ops rls-smoke
+
+  deploy-edge:
+    needs: rls-smoke
+    runs-on: ubuntu-latest
+    if: ${{ secrets.SUPABASE_ACCESS_TOKEN && secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Deploy Edge functions (if configured)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          # Deploy known functions; add others as needed
+          supabase functions deploy provenance-alerts --project-ref "$SUPABASE_PROJECT_REF" || true
+          supabase functions deploy drive-watcher --project-ref "$SUPABASE_PROJECT_REF" || true
+          supabase functions deploy gdrive-watcher --project-ref "$SUPABASE_PROJECT_REF" || true
+

@@ -1,6 +1,6 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
+import { createEdgeClient, EdgeSupabaseClient, rowsAs } from '../lib/supabase.ts';
 
 type Env = {
   supabaseUrl?: string;
@@ -27,7 +27,9 @@ type PublicationResult = {
   error?: string;
 };
 
-async function listOrganisationIds(client: ReturnType<typeof createClient>, orgId?: string): Promise<string[]> {
+type OrganizationRow = { id: string | null };
+
+async function listOrganisationIds(client: EdgeSupabaseClient, orgId?: string): Promise<string[]> {
   if (orgId) {
     return [orgId];
   }
@@ -36,7 +38,10 @@ async function listOrganisationIds(client: ReturnType<typeof createClient>, orgI
     console.warn('Impossible de lister les organisations:', error.message);
     return [];
   }
-  return (data ?? []).map((row) => row.id as string);
+  const rows = rowsAs<OrganizationRow>(data);
+  return rows
+    .map((row) => row.id)
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
 }
 
 function normaliseStatus(value: unknown): string {
@@ -119,7 +124,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Missing Supabase credentials' }), { status: 400 });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceRole);
+  const supabase = createEdgeClient(supabaseUrl, supabaseServiceRole);
   const targetDays = resolveNumber(payload.days ?? Deno.env.get('REGULATOR_DIGEST_DAYS'), 7);
   const reference = new Date();
   const periodStart = new Date(reference.getTime() - targetDays * 24 * 60 * 60 * 1000);
@@ -149,7 +154,7 @@ Deno.serve(async (req) => {
         throw new Error(error.message);
       }
 
-      const dispatches = (data ?? []) as DispatchRecord[];
+      const dispatches = rowsAs<DispatchRecord>(data);
       const { markdown, summary } = buildDigest(reference, dispatches);
       const slug = `regulator-digest-${orgId}-${endIso}`;
       const docUrl = `https://docs.avocat-ai.example/regulator-digests/${orgId}/${endIso}`;

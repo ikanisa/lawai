@@ -308,8 +308,25 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
       ? 'Étapes détectées, outils appelés et preuves consultées.'
       : 'Detected steps, invoked tools, and reviewed evidence.';
 
+  const agentUnavailableMessage = locale === 'fr'
+    ? 'Agent indisponible. Veuillez réessayer.'
+    : 'Agent unavailable. Please try again.';
+  const complianceMessages = messages.app.compliance;
+
   const mutation = useMutation({
     mutationFn: submitResearchQuestion,
+    onError: (error: unknown) => {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'consent_required' || code === 'coe_disclosure_required') {
+        if (complianceMessages?.prompt) {
+          toast.warning(complianceMessages.prompt);
+        } else {
+          toast.warning(agentUnavailableMessage);
+        }
+        return;
+      }
+      toast.error(agentUnavailableMessage);
+    },
   });
   const { registerSuccess: registerInstallSuccess } = usePwaInstall();
 
@@ -696,13 +713,15 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
       <section className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
         <div className="space-y-4">
-          <OutboxPanel
-            items={outboxItems}
-            locale={locale}
-            onRetry={handleOutboxRetry}
-            onRemove={remove}
-            messages={outboxMessages}
-          />
+          <div id="outbox-panel">
+            <OutboxPanel
+              items={outboxItems}
+              locale={locale}
+              onRetry={handleOutboxRetry}
+              onRemove={remove}
+              messages={outboxMessages}
+            />
+          </div>
           <Card>
             <CardHeader>
               <CardTitle>{messages.research.jurisdictionLabel}</CardTitle>

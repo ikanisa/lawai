@@ -1,6 +1,6 @@
-import { AgentPlanNotice, AgentPlanStep, IRACPayload } from '@avocat-ai/shared';
+import { AgentPlanNotice, AgentPlanStep, IRACPayload, WorkspaceDesk } from '@avocat-ai/shared';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3333';
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3333';
 
 export const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -298,6 +298,89 @@ export interface OperationsOverviewResponse {
   };
 }
 
+export interface ComplianceAcknowledgements {
+  consent: {
+    requiredVersion: string | null;
+    acknowledgedVersion: string | null;
+    acknowledgedAt: string | null;
+    satisfied: boolean;
+  };
+  councilOfEurope: {
+    requiredVersion: string | null;
+    acknowledgedVersion: string | null;
+    acknowledgedAt: string | null;
+    satisfied: boolean;
+  };
+}
+
+export interface ComplianceAssessmentSummary {
+  fria: {
+    required: boolean;
+    reasons: string[];
+  };
+  cepej: {
+    passed: boolean;
+    violations: string[];
+  };
+  statute: {
+    passed: boolean;
+    violations: string[];
+  };
+  disclosures: {
+    consentSatisfied: boolean;
+    councilSatisfied: boolean;
+    missing: string[];
+    requiredConsentVersion: string | null;
+    acknowledgedConsentVersion: string | null;
+    requiredCoeVersion: string | null;
+    acknowledgedCoeVersion: string | null;
+  };
+}
+
+export interface ComplianceStatusEntry {
+  runId: string | null;
+  createdAt: string | null;
+  assessment: ComplianceAssessmentSummary;
+}
+
+export interface ComplianceStatusResponse {
+  orgId: string;
+  userId: string;
+  acknowledgements: ComplianceAcknowledgements;
+  latest: ComplianceStatusEntry | null;
+  history: ComplianceStatusEntry[];
+  totals: {
+    total: number;
+    friaRequired: number;
+    cepejViolations: number;
+    statuteViolations: number;
+    disclosureGaps: number;
+  };
+}
+
+export interface DeviceSession {
+  id: string;
+  userId: string;
+  sessionToken: string;
+  deviceFingerprint: string;
+  deviceLabel: string | null;
+  userAgent: string | null;
+  platform: string | null;
+  clientVersion: string | null;
+  ipAddress: string | null;
+  authStrength: string | null;
+  mfaMethod: string | null;
+  attested: boolean | null;
+  passkey: boolean | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  revokedReason: string | null;
+}
+
 export interface AuditEvent {
   id: string;
   kind: string;
@@ -324,7 +407,13 @@ export async function submitResearchQuestion(input: {
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody?.message ?? 'Agent unavailable');
+    const message =
+      typeof errorBody?.message === 'string'
+        ? errorBody.message
+        : typeof errorBody?.error === 'string'
+          ? errorBody.error
+          : 'agent_unavailable';
+    throw new Error(message);
   }
 
   return response.json();
@@ -491,6 +580,17 @@ export interface GovernanceMetricsResponse {
     documentsFailed: number;
     documentsSkipped: number;
     documentsChunked: number;
+  } | null;
+  manifest: {
+    manifestName: string | null;
+    manifestUrl: string | null;
+    fileCount: number;
+    validCount: number;
+    warningCount: number;
+    errorCount: number;
+    validated: boolean;
+    createdAt: string | null;
+    status?: 'ok' | 'warnings' | 'errors' | null;
   } | null;
   tools: Array<{
     toolName: string;
@@ -716,6 +816,56 @@ export async function deleteScimAccessToken(orgId: string, tokenId: string) {
   }
 }
 
+export async function fetchComplianceStatus(
+  orgId: string,
+  options?: { userId?: string; limit?: number },
+): Promise<ComplianceStatusResponse> {
+  const params = new URLSearchParams();
+  if (options?.limit) {
+    params.set('limit', String(options.limit));
+  }
+  const response = await fetch(`${API_BASE}/compliance/status?${params.toString()}`, {
+    headers: {
+      'x-user-id': options?.userId ?? DEMO_USER_ID,
+      'x-org-id': orgId,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('compliance_status_failed');
+  }
+  return response.json();
+}
+
+export async function acknowledgeCompliance(
+  orgId: string,
+  input: {
+    consent?: { type: string; version: string } | null;
+    councilOfEurope?: { version: string } | null;
+    userId?: string;
+  },
+): Promise<ComplianceStatusResponse> {
+  const payload: Record<string, unknown> = {};
+  if (input.consent) {
+    payload.consent = input.consent;
+  }
+  if (input.councilOfEurope) {
+    payload.councilOfEurope = input.councilOfEurope;
+  }
+  const response = await fetch(`${API_BASE}/compliance/acknowledgements`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': input.userId ?? DEMO_USER_ID,
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error('compliance_ack_failed');
+  }
+  return response.json();
+}
+
 export async function fetchAuditEvents(orgId: string, limit = 50) {
   const response = await fetch(
     `${API_BASE}/admin/org/${orgId}/audit-events?limit=${encodeURIComponent(String(limit))}`,
@@ -725,6 +875,66 @@ export async function fetchAuditEvents(orgId: string, limit = 50) {
     throw new Error('Unable to fetch audit events');
   }
   return response.json();
+}
+
+export async function fetchDeviceSessions(
+  orgId: string,
+  options?: { includeRevoked?: boolean; limit?: number; userId?: string },
+): Promise<{ sessions: DeviceSession[] }> {
+  const params = new URLSearchParams({ orgId });
+  if (options?.includeRevoked) params.set('includeRevoked', 'true');
+  if (options?.limit) params.set('limit', String(options.limit));
+  if (options?.userId) params.set('userId', options.userId);
+
+  const response = await fetch(`${API_BASE}/security/devices?${params.toString()}`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
+  });
+  if (!response.ok) {
+    throw new Error('Unable to fetch device sessions');
+  }
+
+  const payload = (await response.json()) as { sessions: Array<Record<string, unknown>> };
+  const sessions = (payload.sessions ?? []).map((session) => ({
+    id: String(session.id ?? ''),
+    userId: String(session.userId ?? ''),
+    sessionToken: String(session.sessionToken ?? ''),
+    deviceFingerprint: String(session.deviceFingerprint ?? ''),
+    deviceLabel: (session.deviceLabel as string | null) ?? null,
+    userAgent: (session.userAgent as string | null) ?? null,
+    platform: (session.platform as string | null) ?? null,
+    clientVersion: (session.clientVersion as string | null) ?? null,
+    ipAddress: (session.ipAddress as string | null) ?? null,
+    authStrength: (session.authStrength as string | null) ?? null,
+    mfaMethod: (session.mfaMethod as string | null) ?? null,
+    attested: (session.attested as boolean | null) ?? null,
+    passkey: (session.passkey as boolean | null) ?? null,
+    metadata: (session.metadata as Record<string, unknown> | null) ?? {},
+    createdAt: String(session.createdAt ?? session.created_at ?? ''),
+    lastSeenAt: String(session.lastSeenAt ?? session.last_seen_at ?? ''),
+    expiresAt: (session.expiresAt as string | null) ?? null,
+    revokedAt: (session.revokedAt as string | null) ?? null,
+    revokedBy: (session.revokedBy as string | null) ?? null,
+    revokedReason: (session.revokedReason as string | null) ?? null,
+  })) as DeviceSession[];
+
+  return { sessions };
+}
+
+export async function revokeDeviceSession(orgId: string, sessionId: string, reason?: string) {
+  const response = await fetch(`${API_BASE}/security/devices/revoke`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': DEMO_USER_ID,
+    },
+    body: JSON.stringify({ orgId, sessionId, reason: reason ?? null }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to revoke device session');
+  }
+
+  return response.json() as Promise<{ session: { id: string; revokedAt: string } }>;
 }
 
 export async function fetchIpAllowlist(orgId: string) {
@@ -807,6 +1017,7 @@ export interface WorkspaceOverviewResponse {
     items: Array<{ id: string; runId: string; reason: string; status: string; createdAt: string | null }>;
     pendingCount: number;
   };
+  desk?: WorkspaceDesk;
 }
 
 export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOverviewResponse> {

@@ -33,12 +33,14 @@ interface SnapshotDocument {
   chunkCount?: number | null;
   summary?: string | null;
   highlights?: Array<{ heading: string; detail: string }> | null;
+  residencyZone?: string | null;
 }
 
 interface UploadDocument {
   id: string;
   name: string;
   createdAt?: string;
+  residencyZone?: string | null;
 }
 
 interface IngestionRunRow {
@@ -117,9 +119,45 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
   const snapshots = (corpusQuery.data?.snapshots ?? []) as SnapshotDocument[];
   const uploads = (corpusQuery.data?.uploads ?? []) as UploadDocument[];
   const ingestions = (corpusQuery.data?.ingestionRuns ?? []) as IngestionRunRow[];
+  const residencyInfo = corpusQuery.data?.residency as { activeZone?: string | null; allowedZones?: string[] | null } | undefined;
+  const allowedResidencyZones = Array.isArray(residencyInfo?.allowedZones)
+    ? residencyInfo.allowedZones.filter((zone): zone is string => typeof zone === 'string' && zone.trim().length > 0)
+    : [];
+  const activeResidencyZone = residencyInfo?.activeZone ?? allowedResidencyZones[0] ?? null;
 
   return (
     <div className="space-y-6">
+      <section className="grid gap-4">
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
+            <CardTitle className="text-slate-100">{messages.corpus.residencyTitle}</CardTitle>
+            <p className="text-xs text-slate-400">{messages.corpus.residencyHint}</p>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-4 text-sm text-slate-200">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">{messages.corpus.residencyActive}</p>
+              <p className="mt-1 text-base font-semibold text-slate-100">
+                {activeResidencyZone ? activeResidencyZone.toUpperCase() : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">{messages.corpus.residencyAllowed}</p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {allowedResidencyZones.length > 0 ? (
+                  allowedResidencyZones.map((zone) => (
+                    <Badge key={zone} variant="outline">
+                      {zone.toUpperCase()}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-slate-400">—</span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {allowlist.map((domain) => (
           <Card key={`${domain.jurisdiction}-${domain.host}`} className="glass-card border border-slate-800/60">
@@ -180,6 +218,10 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
                     <p>
                       {messages.corpus.ingestion}: {doc.status ?? '—'}
                     </p>
+                    <p>
+                      {messages.corpus.residencyDocLabel}:{' '}
+                      {doc.residencyZone ? doc.residencyZone.toUpperCase() : '—'}
+                    </p>
                   </div>
                   {doc.summary ? (
                     <div className="space-y-2 text-sm text-slate-100">
@@ -233,6 +275,9 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
               <div key={doc.id} className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
                 <p className="font-semibold text-slate-100">{doc.name}</p>
                 <p className="text-xs text-slate-400">{doc.createdAt}</p>
+                <p className="text-xs text-slate-400">
+                  {messages.corpus.residencyDocLabel}: {doc.residencyZone ? doc.residencyZone.toUpperCase() : '—'}
+                </p>
               </div>
             ))}
             {uploads.length === 0 ? (

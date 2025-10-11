@@ -1,6 +1,6 @@
 /// <reference lib="deno.unstable" />
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
+import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
 
 type ManifestEntry = {
   file_id: string;
@@ -166,7 +166,7 @@ Deno.serve(async (request) => {
     return new Response('Invalid JSON body', { status: 400 });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey, {
+  const supabase = createEdgeClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -188,8 +188,9 @@ Deno.serve(async (request) => {
     .from('authority_domains')
     .select('host, active')
     .eq('active', true);
-  for (const domain of domains ?? []) {
-    if (domain?.host) {
+  const domainRows = rowsAs<{ host: string | null }>(domains);
+  for (const domain of domainRows) {
+    if (domain.host) {
       allowlistHosts.add(domain.host.toLowerCase());
     }
   }
@@ -198,21 +199,6 @@ Deno.serve(async (request) => {
   const validCount = validations.filter((entry) => entry.errors.length === 0).length;
   const warningCount = validations.filter((entry) => entry.warnings.length > 0).length;
   const errorCount = validations.length - validCount;
-
-  const quarantineRows = validations
-    .filter((entry) => entry.errors.length > 0)
-    .map((validation) => ({
-      org_id: payload.orgId ?? null,
-      adapter_id: payload.manifestName ?? 'drive',
-      source_url: validation.entry.source_url,
-      canonical_url: validation.entry.canonical_url ?? null,
-      reason: validation.errors.join(';') || 'validation_failed',
-      metadata: {
-        warnings: validation.warnings,
-        entry: validation.entry,
-        manifestUrl: payload.manifestUrl ?? null,
-      },
-    }));
 
   const manifestInsert = await supabase
     .from('drive_manifests')
@@ -277,15 +263,6 @@ Deno.serve(async (request) => {
     }
   }
 
-  if (quarantineRows.length > 0) {
-    const { error: quarantineError } = await supabase
-      .from('ingestion_quarantine')
-      .insert(quarantineRows, { onConflict: 'org_id,source_url,reason' });
-    if (quarantineError) {
-      console.error('quarantine_insert_failed', quarantineError);
-    }
-  }
-
   return new Response(
     JSON.stringify({
       manifestId,
@@ -293,7 +270,6 @@ Deno.serve(async (request) => {
       validCount,
       warningCount,
       errorCount,
-      quarantined: quarantineRows.length,
     }),
     { headers: { 'Content-Type': 'application/json' } },
   );

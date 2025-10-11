@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useOnlineStatus } from './use-online-status';
 
 export interface OutboxItem {
   id: string;
@@ -39,6 +40,8 @@ export function useOutbox(options: UseOutboxOptions = {}) {
   const persist = options.persist ?? true;
   const [shouldPersist, setShouldPersist] = useState(persist);
   const [items, setItems] = useState<OutboxItem[]>(() => (persist ? loadInitial() : []));
+  const online = useOnlineStatus();
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (persist === shouldPersist) {
@@ -105,5 +108,26 @@ export function useOutbox(options: UseOutboxOptions = {}) {
 
   const sorted = useMemo(() => items.slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)), [items]);
 
-  return { items: sorted, enqueue, remove, clear, flush };
+  useEffect(() => {
+    if (sorted.length === 0) {
+      return;
+    }
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [sorted.length]);
+
+  const newest = sorted[0];
+  const stalenessMs = newest ? Math.max(0, now - new Date(newest.createdAt).getTime()) : 0;
+
+  return {
+    items: sorted,
+    enqueue,
+    remove,
+    clear,
+    flush,
+    pendingCount: sorted.length,
+    hasItems: sorted.length > 0,
+    stalenessMs,
+    isOnline: online,
+  };
 }

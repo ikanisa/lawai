@@ -12,21 +12,45 @@ const supabaseMock = {
 
 const summariseDocumentFromPayloadMock = vi.fn();
 
+const enqueueDirectorCommandMock = vi.fn();
+const getCommandEnvelopeMock = vi.fn();
+const runSafetyAssessmentMock = vi.fn();
+const updateCommandStatusMock = vi.fn();
+const updateJobStatusMock = vi.fn();
+const listPendingJobsMock = vi.fn();
+const registerConnectorMock = vi.fn();
+const listCommandsForSessionMock = vi.fn();
+const listOrgConnectorsMock = vi.fn();
+
+let baseEnvelope: any;
+
 vi.mock('@avocat-ai/supabase', () => ({
   createServiceClient: () => supabaseMock,
 }));
 
-vi.mock('../src/access-control.js', () => ({
+vi.mock('../src/access-control.ts', () => ({
   authorizeAction: vi.fn(async () => ({ orgId: 'org-1', actorId: 'user-1' })),
   ensureOrgAccessCompliance: vi.fn((ctx: unknown) => ctx),
 }));
 
-vi.mock('../src/audit.js', () => ({
+vi.mock('../src/audit.ts', () => ({
   logAuditEvent: vi.fn(async () => undefined),
 }));
 
-vi.mock('../src/summarization.js', () => ({
+vi.mock('../src/summarization.ts', () => ({
   summariseDocumentFromPayload: summariseDocumentFromPayloadMock,
+}));
+
+vi.mock('../src/orchestrator.ts', () => ({
+  enqueueDirectorCommand: enqueueDirectorCommandMock,
+  getCommandEnvelope: getCommandEnvelopeMock,
+  runSafetyAssessment: runSafetyAssessmentMock,
+  updateCommandStatus: updateCommandStatusMock,
+  updateJobStatus: updateJobStatusMock,
+  listPendingJobs: listPendingJobsMock,
+  registerConnector: registerConnectorMock,
+  listCommandsForSession: listCommandsForSessionMock,
+  listOrgConnectors: listOrgConnectorsMock,
 }));
 
 const { app } = await import('../src/server.ts');
@@ -56,6 +80,98 @@ describe('API routes', () => {
     supabaseMock.rpc.mockReset();
     storageFromMock.mockReset();
     summariseDocumentFromPayloadMock.mockReset();
+    enqueueDirectorCommandMock.mockReset();
+    getCommandEnvelopeMock.mockReset();
+    runSafetyAssessmentMock.mockReset();
+    updateCommandStatusMock.mockReset();
+    updateJobStatusMock.mockReset();
+    listPendingJobsMock.mockReset();
+    registerConnectorMock.mockReset();
+    listCommandsForSessionMock.mockReset();
+    listOrgConnectorsMock.mockReset();
+
+    const now = new Date().toISOString();
+    enqueueDirectorCommandMock.mockResolvedValue({
+      commandId: 'cmd-1',
+      jobId: 'job-1',
+      sessionId: 'session-1',
+      status: 'queued',
+      scheduledFor: now,
+    });
+    baseEnvelope = {
+      command: {
+        id: 'cmd-1',
+        orgId: 'org-1',
+        sessionId: 'session-1',
+        commandType: 'sync_connector',
+        payload: {},
+        status: 'queued',
+        priority: 100,
+        scheduledFor: now,
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        result: null,
+        lastError: null,
+        metadata: {},
+        createdAt: now,
+        updatedAt: now,
+      },
+      job: {
+        id: 'job-1',
+        orgId: 'org-1',
+        commandId: 'cmd-1',
+        worker: 'director',
+        domainAgent: null,
+        status: 'pending',
+        attempts: 0,
+        scheduledAt: now,
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        lastError: null,
+        metadata: {},
+        createdAt: now,
+        updatedAt: now,
+      },
+      session: {
+        id: 'session-1',
+        orgId: 'org-1',
+        chatSessionId: null,
+        status: 'active',
+        directorState: {},
+        safetyState: {},
+        metadata: {},
+        currentObjective: null,
+        lastDirectorRunId: null,
+        lastSafetyRunId: null,
+        createdAt: now,
+        updatedAt: now,
+        closedAt: null,
+      },
+    };
+    getCommandEnvelopeMock.mockResolvedValue(baseEnvelope);
+    runSafetyAssessmentMock.mockResolvedValue({ status: 'approved', reasons: [] });
+    updateCommandStatusMock.mockResolvedValue(undefined);
+    updateJobStatusMock.mockResolvedValue(undefined);
+    listPendingJobsMock.mockResolvedValue([]);
+    registerConnectorMock.mockResolvedValue('connector-1');
+    listCommandsForSessionMock.mockResolvedValue([]);
+    listOrgConnectorsMock.mockResolvedValue([
+      {
+        id: 'conn-erp',
+        orgId: 'org-1',
+        connectorType: 'erp',
+        name: 'payables_module',
+        status: 'active',
+        config: {},
+        metadata: {},
+        lastSyncedAt: null,
+        lastError: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
   });
 
   it('returns learning reports including fairness metrics', async () => {
@@ -89,6 +205,314 @@ describe('API routes', () => {
     expect(body.reports).toHaveLength(2);
     const fairness = body.reports.find((entry) => entry.kind === 'fairness');
     expect(fairness?.payload?.flagged).toBeTruthy();
+  });
+
+  it('queues orchestrator commands and returns safety outcome', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/agent/commands',
+      headers: { 'x-user-id': 'user-1' },
+      payload: {
+        orgId: 'org-1',
+        commandType: 'sync_connector',
+        payload: { connector: 'erp' },
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    const body = response.json() as {
+      commandId: string;
+      jobId: string;
+      sessionId: string;
+      safety: { status: string };
+    };
+    expect(body.commandId).toBe('cmd-1');
+    expect(body.jobId).toBe('job-1');
+    expect(body.sessionId).toBe('session-1');
+    expect(body.safety.status).toBe('approved');
+    expect(enqueueDirectorCommandMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org-1',
+        commandType: 'sync_connector',
+        issuedBy: 'user-1',
+      }),
+      expect.anything(),
+    );
+    expect(getCommandEnvelopeMock).toHaveBeenCalledWith(expect.anything(), 'cmd-1');
+    expect(runSafetyAssessmentMock).toHaveBeenCalled();
+  });
+
+  it('rejects orchestrator command when safety blocks it', async () => {
+    runSafetyAssessmentMock.mockResolvedValueOnce({ status: 'rejected', reasons: ['policy_violation'] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/agent/commands',
+      headers: { 'x-user-id': 'user-1' },
+      payload: {
+        orgId: 'org-1',
+        commandType: 'issue_payment',
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(updateCommandStatusMock).toHaveBeenCalledWith(expect.anything(), 'cmd-1', 'cancelled', expect.objectContaining({
+      lastError: 'policy_violation',
+    }));
+    expect(updateJobStatusMock).toHaveBeenCalledWith(expect.anything(), 'job-1', 'cancelled', expect.objectContaining({
+      lastError: 'policy_violation',
+    }));
+  });
+
+  it('rejects finance domain commands with invalid payload', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/agent/commands',
+      headers: { 'x-user-id': 'user-1' },
+      payload: {
+        orgId: 'org-1',
+        commandType: 'finance.domain',
+        payload: { domain: 'tax_compliance' },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(enqueueDirectorCommandMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts finance domain commands with valid payload', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/agent/commands',
+      headers: { 'x-user-id': 'user-1' },
+      payload: {
+        orgId: 'org-1',
+        commandType: 'finance.domain',
+        payload: {
+          intent: 'tax.prepare_filing',
+          domain: 'tax_compliance',
+          objective: 'Préparer le dépôt TVA Q1',
+          inputs: { jurisdiction: 'FR', period: '2025-Q1' },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    const call = enqueueDirectorCommandMock.mock.calls.at(-1);
+    expect(call?.[1]).toMatchObject({
+      payload: {
+        intent: 'tax.prepare_filing',
+        domain: 'tax_compliance',
+        objective: 'Préparer le dépôt TVA Q1',
+        inputs: { jurisdiction: 'FR', period: '2025-Q1' },
+        guardrails: [],
+        telemetry: [],
+      },
+    });
+  });
+
+  it('registers connectors for an organisation', async () => {
+    registerConnectorMock.mockResolvedValueOnce('connector-42');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/agent/connectors',
+      headers: { 'x-user-id': 'user-1' },
+      payload: {
+        orgId: 'org-1',
+        connectorType: 'erp',
+        name: 'netsuite',
+        config: { account: 'suite' },
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toEqual({ connectorId: 'connector-42' });
+    expect(registerConnectorMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      orgId: 'org-1',
+      connectorType: 'erp',
+      name: 'netsuite',
+      createdBy: 'user-1',
+    }));
+  });
+
+  it('returns finance capability manifest with connector coverage', async () => {
+    listOrgConnectorsMock.mockResolvedValueOnce([
+      {
+        id: 'conn-erp',
+        orgId: 'org-1',
+        connectorType: 'erp',
+        name: 'payables_module',
+        status: 'active',
+        config: {},
+        metadata: {},
+        lastSyncedAt: null,
+        lastError: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'conn-tax',
+        orgId: 'org-1',
+        connectorType: 'tax',
+        name: 'tax_authority_gateway',
+        status: 'pending',
+        config: {},
+        metadata: {},
+        lastSyncedAt: null,
+        lastError: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/agent/capabilities?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      manifest: { version: string };
+      connectors: { coverage: Array<{ key: string; missing: string[] }> };
+    };
+    expect(body.manifest.version).toContain('phase');
+    const taxCoverage = body.connectors.coverage.find((entry) => entry.key === 'tax_compliance');
+    expect(taxCoverage).toBeDefined();
+    expect(taxCoverage?.missing).toContain('tax_authority_gateway');
+    const apCoverage = body.connectors.coverage.find((entry) => entry.key === 'accounts_payable');
+    expect(apCoverage?.missing).toHaveLength(0);
+    expect(listOrgConnectorsMock).toHaveBeenCalledWith(expect.anything(), 'org-1');
+  });
+
+  it('claims orchestrator jobs when pending work exists', async () => {
+    listPendingJobsMock.mockResolvedValueOnce([baseEnvelope]);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/agent/jobs/claim',
+      headers: { 'x-user-id': 'user-1' },
+      payload: { orgId: 'org-1', worker: 'director' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { envelope: { job: { status: string } } };
+    expect(body.envelope.job.status).toBe('running');
+    expect(updateJobStatusMock).toHaveBeenCalledWith(expect.anything(), 'job-1', 'running', expect.objectContaining({
+      attempts: 1,
+      metadata: expect.objectContaining({ claimedBy: 'user-1' }),
+    }));
+    expect(updateCommandStatusMock).toHaveBeenCalledWith(expect.anything(), 'cmd-1', 'in_progress', expect.objectContaining({
+      startedAt: expect.any(String),
+    }));
+  });
+
+  it('returns 204 when no orchestrator job is available', async () => {
+    listPendingJobsMock.mockResolvedValueOnce([]);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/agent/jobs/claim',
+      headers: { 'x-user-id': 'user-1' },
+      payload: { orgId: 'org-1', worker: 'director' },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(updateJobStatusMock).not.toHaveBeenCalled();
+  });
+
+  it('completes orchestrator jobs and updates command status', async () => {
+    const jobRow = {
+      id: 'job-42',
+      org_id: 'org-1',
+      command_id: 'cmd-42',
+      metadata: {},
+      status: 'running',
+    };
+    const jobBuilder = createQueryBuilder({ data: jobRow, error: null });
+    jobBuilder.select.mockReturnValue(jobBuilder);
+    jobBuilder.eq.mockReturnValue(jobBuilder);
+    jobBuilder.maybeSingle.mockResolvedValue({ data: jobRow, error: null });
+
+    const commandRow = {
+      command_type: 'finance.domain',
+      payload: {
+        intent: 'tax.prepare_filing',
+        domain: 'tax_compliance',
+        objective: 'Préparer le dépôt TVA Q1',
+        inputs: {},
+        guardrails: [],
+        telemetry: [],
+        connectors: {},
+      },
+    };
+
+    const commandBuilder = createQueryBuilder({ data: commandRow, error: null });
+    commandBuilder.select.mockReturnValue(commandBuilder);
+    commandBuilder.eq.mockReturnValue(commandBuilder);
+    commandBuilder.maybeSingle.mockResolvedValue({ data: commandRow, error: null });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'orchestrator_jobs') {
+        return jobBuilder;
+      }
+      if (table === 'orchestrator_commands') {
+        return commandBuilder;
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/agent/jobs/job-42/complete',
+      headers: { 'x-user-id': 'user-1' },
+      payload: { status: 'completed', result: { output: { ok: true } } },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(updateJobStatusMock).toHaveBeenCalledWith(expect.anything(), 'job-42', 'completed', expect.objectContaining({
+      completedAt: expect.any(String),
+    }));
+    expect(updateCommandStatusMock).toHaveBeenCalledWith(expect.anything(), 'cmd-42', 'completed', expect.objectContaining({
+      completedAt: expect.any(String),
+      result: { output: { ok: true }, notices: [], followUps: [] },
+    }));
+  });
+
+  it('lists orchestrator commands for a session', async () => {
+    listCommandsForSessionMock.mockResolvedValueOnce([
+      {
+        id: 'cmd-1',
+        orgId: 'org-1',
+        sessionId: 'session-1',
+        commandType: 'sync_connector',
+        payload: {},
+        status: 'queued',
+        priority: 100,
+        scheduledFor: new Date().toISOString(),
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        result: null,
+        lastError: null,
+        metadata: {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/agent/sessions/session-1/commands?orgId=org-1',
+      headers: { 'x-user-id': 'user-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { commands: Array<{ id: string }> };
+    expect(body.commands).toHaveLength(1);
+    expect(listCommandsForSessionMock).toHaveBeenCalledWith(expect.anything(), 'session-1', 50);
   });
 
   it('summarises operations readiness and go/no-go criteria', async () => {
@@ -835,9 +1259,11 @@ describe('API routes', () => {
     const documentChunksTable = {
       delete: vi.fn(() => ({ eq: documentChunksDeleteEq })),
       insert: vi.fn(async () => ({ error: null })),
+      select: vi.fn(() => ({ eq: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: null, error: null })) })) })) })),
     };
 
     const documentSummariesTable = {
+      select: vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle: vi.fn(async () => ({ data: { summary: 'Ancien résumé', outline: [] }, error: null })) })) })),
       upsert: vi.fn(async () => ({ error: null })),
       delete: vi.fn(() => ({ eq: vi.fn(() => ({ error: null })) })),
     };
@@ -885,6 +1311,6 @@ describe('API routes', () => {
     expect(akoma.body?.articles?.[0]?.excerpt).toBe('Article 1 - contenu');
     expect(akoma.meta?.publication?.consolidated ?? null).toBeNull();
     expect(updates.eli).toBe('loi/2020/05/12/2020-1234/jo/texte');
-    expect(sourceUpdateEq).toHaveBeenCalledWith('src-1');
+    expect(sourceUpdateEq).toHaveBeenCalledWith('id', 'src-1');
   });
 });

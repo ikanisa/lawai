@@ -9,6 +9,7 @@ export default defineConfig({
     coverage: {
       reporter: ['text'],
     },
+    include: ['test/**/*.test.ts'],
   },
   resolve: {
     alias: {

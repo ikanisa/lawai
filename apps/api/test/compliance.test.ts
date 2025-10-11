@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateCompliance } from '../src/compliance.js';
+import { evaluateCompliance } from '../src/compliance.ts';
 
 const basePayload = {
   jurisdiction: { country: 'FR', eu: true, ohada: false },

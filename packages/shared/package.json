@@ -8,10 +8,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "zod": "^3.22.4"
+    "zod": "^3.25.42",
+    "openai": "6.2.0"
   },
   "devDependencies": {
     "typescript": "^5.4.5",

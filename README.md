@@ -331,3 +331,43 @@ escalating.
 - La console Admin affiche ces métriques dans le tableau de bord « Operations dashboard » et fournit un accès direct au téléchargement des politiques pour audit ou partage client.
 - `pnpm ops:rotate-secrets` tente d'appeler l'API de gestion Supabase (`SUPABASE_ACCESS_TOKEN` + `SUPABASE_PROJECT_REF`) pour faire tourner les clés `anon` et `service_role`, et génère automatiquement des valeurs de secours si l'API n'est pas disponible. Conservez les nouveaux secrets dans votre gestionnaire sécurisé.
 - `pnpm ops:rls-smoke` vérifie que `public.is_org_member` applique bien l'isolation multi-tenant après vos migrations (l'étape est également exécutée en CI).
+## Dashboard Badges Legend
+
+Badges on the Admin dashboard and Trust Center provide at‑a‑glance status. Colors are consistent across cards:
+
+- Green “OK/Good/Healthy” – within target thresholds
+- Amber “Pending/Acceptable/Warning” – noteworthy but not failing
+- Red “Errors/Critical/Attention” – action recommended
+
+Key badges and defaults (configurable via environment variables):
+
+- Runs (30 days): High/Medium/Low volume
+  - High ≥ `NEXT_PUBLIC_DASHBOARD_RUNS_HIGH` (default 1000)
+  - Medium ≥ `NEXT_PUBLIC_DASHBOARD_RUNS_MEDIUM` (default 200)
+- Ingestion: OK/Failures
+  - Based on success vs failures over the last 24h (7‑day window displayed)
+- HITL backlog: OK/Backlog
+  - Backlog when `hitlPending > 0`
+- Allowlisted precision: Good/Acceptable/Low
+  - Good ≥ 95%, Acceptable ≥ 90% (display only)
+- Summary coverage: OK/Pending/Errors
+  - Derived from documents pending/failed
+- Drive manifest: OK/Warnings/Errors
+  - Computed server‑side from last manifest (warnings/errors)
+- Retrieval “No citations”: OK/Attention
+  - Attention if any recent runs returned zero citations
+- Tool health: Healthy/Warning/Critical
+  - Failure rate thresholds: `NEXT_PUBLIC_TOOL_FAILURE_WARN` (default 2%), `NEXT_PUBLIC_TOOL_FAILURE_CRIT` (default 5%)
+- Evaluation pass & coverage: Good/Acceptable/Poor
+  - Pass thresholds: `NEXT_PUBLIC_EVAL_PASS_GOOD` (default 0.9), `NEXT_PUBLIC_EVAL_PASS_OK` (0.75)
+  - Coverage thresholds: `NEXT_PUBLIC_EVAL_COVERAGE_GOOD` (0.9), `NEXT_PUBLIC_EVAL_COVERAGE_OK` (0.75)
+  - Maghreb banner coverage thresholds: `NEXT_PUBLIC_EVAL_MAGHREB_GOOD` (0.95), `NEXT_PUBLIC_EVAL_MAGHREB_OK` (0.8)
+- SLO freshness: Fresh/Stale
+  - Fresh if last capture ≤ 7 days
+
+Alerting (Edge functions)
+
+- Set `ALERTS_SLACK_WEBHOOK_URL` and/or `ALERTS_EMAIL_WEBHOOK_URL` to receive notifications.
+- Drive watcher manifest alerts: configure `ALERTS_MANIFEST_ALWAYS_REASONS`, `ALERTS_MANIFEST_THRESHOLD`.
+- GDrive watcher quarantine alerts: configure `ALERTS_QUARANTINE_THRESHOLD`, `ALERTS_QUARANTINE_ALWAYS_REASONS`.
+- Provenance (link‑health) alerts: Configure `PROVENANCE_STALE_RATIO_THRESHOLD`, `PROVENANCE_FAILED_COUNT_THRESHOLD` and schedule via pg_cron. See `docs/ops/provenance-alerts.md`.
