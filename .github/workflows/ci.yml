@@ -15,10 +15,12 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 8.15.4
           run_install: true
+      - name: pnpm version
+        run: pnpm -v
       - name: Lint (workspace)
         run: pnpm -r lint
 
@@ -30,10 +32,12 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 8.15.4
           run_install: true
+      - name: pnpm version
+        run: pnpm -v
       - name: Typecheck (API)
         run: pnpm --filter @apps/api typecheck
       - name: Typecheck (Web)
@@ -49,10 +53,12 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 8.15.4
           run_install: true
+      - name: pnpm version
+        run: pnpm -v
       - name: Run tests (workspace)
         run: pnpm -r test
 
@@ -64,10 +70,12 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 8.15.4
           run_install: true
+      - name: pnpm version
+        run: pnpm -v
       - name: Build API
         run: pnpm --filter @apps/api build
       - name: Build Web
@@ -86,10 +94,12 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 8.15.4
           run_install: true
+      - name: pnpm version
+        run: pnpm -v
       - name: RLS smoke (skips if env missing)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

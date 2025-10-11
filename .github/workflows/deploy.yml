@@ -14,10 +14,12 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 8.15.4
           run_install: true
+      - name: pnpm version
+        run: pnpm -v
       - name: Lint
         run: pnpm -r lint
       - name: Typecheck
@@ -43,10 +45,12 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 8.15.4
           run_install: true
+      - name: pnpm version
+        run: pnpm -v
       - name: Apply canonical SQL migrations
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -74,10 +78,12 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 8.15.4
           run_install: true
+      - name: pnpm version
+        run: pnpm -v
       - name: RLS smoke (optional)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
