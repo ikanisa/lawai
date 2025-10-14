@@ -12,6 +12,7 @@ interface CliOptions {
   periodStart?: string;
   periodEnd?: string;
   output: 'markdown' | 'json';
+  verifyParity: boolean;
 }
 
 interface DispatchRecord {
@@ -33,6 +34,7 @@ function parseArgs(): CliOptions {
     userId: process.env.DISPATCH_USER_ID ?? '00000000-0000-0000-0000-000000000000',
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',
     output: 'markdown',
+    verifyParity: true,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -61,12 +63,27 @@ function parseArgs(): CliOptions {
       case '--json':
         options.output = 'json';
         break;
+      case '--no-parity':
+        options.verifyParity = false;
+        break;
       default:
         break;
     }
   }
 
   return options;
+}
+
+interface LaunchDigestEntry {
+  id: string;
+  orgId: string;
+  requestedBy: string;
+  jurisdiction: string;
+  channel: string;
+  frequency: string;
+  recipients: string[];
+  topics?: string[];
+  createdAt: string;
 }
 
 export function formatRegulatorDigest(reference: Date, dispatches: DispatchRecord[]): string {
@@ -86,6 +103,40 @@ export function formatRegulatorDigest(reference: Date, dispatches: DispatchRecor
   return `${lines.join('\n')}\n`;
 }
 
+function buildRequestHeaders(options: CliOptions) {
+  return {
+    'x-user-id': options.userId,
+    'x-org-id': options.orgId,
+  };
+}
+
+async function fetchLaunchDigests(options: CliOptions): Promise<LaunchDigestEntry[]> {
+  const params = new URLSearchParams({ orgId: options.orgId, limit: '25' });
+  const response = await fetch(`${options.apiBaseUrl}/launch/digests?${params.toString()}`, {
+    headers: buildRequestHeaders(options),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Impossible de récupérer la file des digests (${response.status}): ${body}`);
+  }
+
+  const json = (await response.json()) as { digests?: LaunchDigestEntry[] };
+  return json.digests ?? [];
+}
+
+export function summariseParity(dispatches: DispatchRecord[], digests: LaunchDigestEntry[]) {
+  const dispatchIds = new Set(dispatches.map((record) => record.id));
+  const unmatched = digests.filter((digest) => !dispatchIds.has(digest.id));
+  return {
+    queued: digests.length,
+    dispatched: dispatches.length,
+    delta: digests.length - dispatches.length,
+    unmatched,
+    inSync: unmatched.length === 0 && dispatches.length === digests.length,
+  };
+}
+
 async function fetchDispatches(options: CliOptions): Promise<DispatchRecord[]> {
   const params = new URLSearchParams({ orgId: options.orgId });
   if (options.periodStart) {
@@ -96,9 +147,7 @@ async function fetchDispatches(options: CliOptions): Promise<DispatchRecord[]> {
   }
 
   const response = await fetch(`${options.apiBaseUrl}/reports/dispatches?${params.toString()}`, {
-    headers: {
-      'x-user-id': options.userId,
-    },
+    headers: { ...buildRequestHeaders(options) },
   });
 
   if (!response.ok) {
@@ -115,13 +164,29 @@ async function run(): Promise<void> {
   requireEnv(['SUPABASE_URL']);
   const spinner = ora('Compilation du digest régulateur...').start();
   try {
-    const dispatches = await fetchDispatches(options);
+    const [dispatches, digests] = await Promise.all([
+      fetchDispatches(options),
+      options.verifyParity ? fetchLaunchDigests(options) : Promise.resolve<LaunchDigestEntry[]>([]),
+    ]);
+    const parity = options.verifyParity ? summariseParity(dispatches, digests) : null;
     spinner.succeed('Digest généré');
     if (options.output === 'json') {
-      console.log(JSON.stringify(dispatches, null, 2));
+      console.log(JSON.stringify({ dispatches, digests, parity }, null, 2));
       return;
     }
     console.log(formatRegulatorDigest(new Date(), dispatches));
+    if (parity) {
+      console.log(
+        `> Parité file d'attente : ${parity.queued} en file / ${parity.dispatched} expédiés (Δ ${parity.delta >= 0 ? '+' : ''}${parity.delta}).`,
+      );
+      if (!parity.inSync) {
+        console.warn(
+          `> ${parity.unmatched.length} digest(s) restent à dispatcher : ${parity.unmatched
+            .map((entry) => `${entry.channel}:${entry.frequency}@${entry.jurisdiction}`)
+            .join(', ') || 'non identifié'}.`,
+        );
+      }
+    }
   } catch (error) {
     spinner.fail(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

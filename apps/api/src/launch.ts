@@ -8,6 +8,8 @@ export interface LaunchCollateral {
 }
 
 export interface RegulatorDigestRequest {
+  orgId: string;
+  requestedBy: string;
   jurisdiction: string;
   channel: 'email' | 'slack' | 'teams';
   frequency: 'weekly' | 'monthly';
@@ -74,6 +76,10 @@ export function getLaunchCollateral(): LaunchCollateral {
 
 export function listRegulatorDigests(): RegulatorDigestEntry[] {
   return [...digestQueue].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+export function listRegulatorDigestsForOrg(orgId: string): RegulatorDigestEntry[] {
+  return listRegulatorDigests().filter((entry) => entry.orgId === orgId);
 }
 
 export function enqueueRegulatorDigest(request: RegulatorDigestRequest): RegulatorDigestEntry {

@@ -11,6 +11,8 @@
       "placeholder": "Rechercher une commande…",
       "empty": "Aucune commande ne correspond à votre recherche.",
       "close": "Fermer",
+      "keyboardHint": "Utilisez ↑ et ↓ pour parcourir les résultats, Entrée pour exécuter une commande.",
+      "resultsCount": "{count} commande(s) disponible(s).",
       "sections": {
         "actions": "Actions rapides",
         "navigate": "Navigation"
@@ -66,7 +68,24 @@
       "dismiss": "Plus tard",
       "success": "Avocat-AI est installé sur votre appareil.",
       "snoozed": "Nous vous le rappellerons ultérieurement.",
-      "unavailable": "L’installation n’est pas disponible sur cet appareil."
+      "unavailable": "L’installation n’est pas disponible sur cet appareil.",
+      "releaseNotes": {
+        "title": "Nouveautés",
+        "items": [
+          "L’installation du service worker attend désormais votre accord avec des notes de version détaillées.",
+          "Les alertes de digest régulateur sont reliées aux notifications de votre profil Avocat-AI.",
+          "La télémétrie de la file hors ligne est limitée à chaque utilisateur pour respecter la conformité."
+        ],
+        "digestTitle": "Canaux de notification",
+        "digestDescription": "Activez les digests régulateurs liés à votre profil authentifié.",
+        "digestCta": "Activer les alertes",
+        "digestEnabled": "Les alertes suivront les préférences de votre profil.",
+        "digestUnavailable": "Notifications indisponibles sur cet appareil.",
+        "releaseToggle": "Voir les notes",
+        "releaseToggleHide": "Masquer les notes",
+        "outboxLabel": "File hors ligne",
+        "outboxEmpty": "Aucun élément en attente"
+      }
     },
     "statusBar": {
       "offline": "Mode hors ligne",
@@ -105,7 +124,12 @@
       "acknowledge": "Consigner l'accusé",
       "acknowledged": "Accusés de conformité enregistrés.",
       "error": "Impossible d'enregistrer l'accusé. Réessayez.",
+      "errorTitle": "Accusés de conformité indisponibles",
+      "retry": "Réessayer",
+      "offline": "Vous semblez hors ligne. Reconnectez-vous pour actualiser le statut de conformité.",
       "loading": "Vérification des accusés de conformité...",
+      "clearTitle": "Accusés de conformité à jour",
+      "clearDescription": "Tous les accusés obligatoires ont été enregistrés pour cet espace de travail.",
       "footer": "Vos réponses sont consignées pour la conformité CEPEJ / Conseil de l'Europe.",
       "prompt": "Accusés de conformité en attente. Utilisez la bannière ci-dessus pour confirmer."
     }
@@ -379,6 +403,33 @@
       "ready": "Opérationnel",
       "requiresHitl": "Attention HITL",
       "monitoring": "Surveillance"
+    }
+  },
+  "navigator": {
+    "title": "Navigateur de procédures guidées",
+    "subtitle": "Suivez les workflows par juridiction, les garde-fous et les passages en revue humaine pour chaque persona.",
+    "empty": "Les exécutions guidées apparaîtront dès qu’un opérateur lance un playbook.",
+    "persona": "Persona {persona}",
+    "estimated": "{minutes} min estimées",
+    "progressSummary": "{complete}/{total} étapes terminées",
+    "progressPercent": "{percent}% complété",
+    "runCount": "{count} exécutions guidées",
+    "hitlEscalations": "{count} escalades HITL",
+    "pendingTasks": "{count} tâches en attente",
+    "stepsTitle": "Étapes du playbook",
+    "guardrailsLabel": "Garde-fous",
+    "outputsLabel": "Sorties",
+    "lastRun": "Dernière exécution",
+    "alertsTitle": "Alertes conformité",
+    "kpis": {
+      "lastRunLabel": "Dernière exécution",
+      "telemetryLabel": "Télémétrie",
+      "progress": "Progression"
+    },
+    "states": {
+      "complete": "Terminé",
+      "inProgress": "En cours",
+      "blocked": "Bloqué"
     }
   },
   "status": {
