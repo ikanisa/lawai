@@ -168,8 +168,9 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions }
       <ul className="mt-1 space-y-1" role="presentation">
         {items.map((action) => {
           optionOffset += 1;
+          const currentIndex = optionOffset;
           const optionId = `command-option-${action.id}`;
-          const isActive = optionOffset === activeIndex;
+          const isActive = currentIndex === activeIndex;
           return (
             <li key={action.id} role="presentation">
               <button
@@ -179,8 +180,8 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions }
                 aria-selected={isActive}
                 tabIndex={-1}
                 data-active={isActive ? 'true' : undefined}
-                onMouseEnter={() => setActiveIndex(optionOffset)}
-                onFocus={() => setActiveIndex(optionOffset)}
+                onMouseEnter={() => setActiveIndex(currentIndex)}
+                onFocus={() => setActiveIndex(currentIndex)}
                 onClick={() => handleSelect(action)}
                 className={cn(
                   'focus-ring flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left text-sm transition',
