@@ -1,0 +1,27 @@
+[
+  {
+    "title": "Code des obligations (Suisse) - Mise à jour 2024",
+    "jurisdiction": "CH",
+    "sourceType": "statute",
+    "publisher": "Fedlex",
+    "canonicalUrl": "https://www.fedlex.admin.ch/eli/cc/27/317_321_377/fr",
+    "downloadUrl": "https://www.fedlex.admin.ch/eli/cc/27/317_321_377/fr",
+    "bindingLanguage": "fr",
+    "consolidated": true,
+    "versionLabel": "Consolidation 2024",
+    "mimeType": "text/html"
+  },
+  {
+    "title": "Tribunal fédéral - 4A_123/2024",
+    "jurisdiction": "CH",
+    "sourceType": "case",
+    "publisher": "Tribunal fédéral",
+    "canonicalUrl": "https://www.bger.ch/ext/eurospider/live/fr/php/aza/http/index.php?highlight_docid=aza://aza://04-06-2024-4A_123-2024",
+    "downloadUrl": "https://www.bger.ch/ext/eurospider/live/fr/php/aza/http/index.php?highlight_docid=aza://aza://04-06-2024-4A_123-2024",
+    "bindingLanguage": "fr",
+    "consolidated": false,
+    "effectiveDate": "2024-06-04",
+    "versionLabel": "Texte intégral",
+    "mimeType": "text/html"
+  }
+]

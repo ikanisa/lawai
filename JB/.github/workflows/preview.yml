@@ -1,0 +1,60 @@
+name: Preview Build
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+jobs:
+  preview:
+    name: Build Preview Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PREVIEW_API_BASE_URL: ${{ secrets.PREVIEW_API_BASE_URL || 'https://staging.api.avocat-ai.test' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Next.js preview
+        run: pnpm --filter @apps/pwa build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ env.PREVIEW_API_BASE_URL }}
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      - name: Enforce bundle budgets
+        run: pnpm --filter @apps/pwa bundle:check
+
+      - name: Package preview artifact
+        run: |
+          tar -czf avocat-ai-preview.tar.gz -C apps/pwa .next public
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avocat-ai-preview
+          path: avocat-ai-preview.tar.gz
+          retention-days: 7
+
+      - name: Summarise preview access
+        run: |
+          cat <<'SUMMARY' >> $GITHUB_STEP_SUMMARY
+          ### Avocat-AI Preview Artifact
+          * API base URL: ${{ env.PREVIEW_API_BASE_URL }}
+          * Download the `avocat-ai-preview` artifact and run `pnpm --filter @apps/pwa start` after extracting `.next` to host locally.
+          SUMMARY

@@ -1,0 +1,6 @@
+-- Write custom schema changes here. Example:
+-- create table public.example (
+--   id uuid primary key default gen_random_uuid(),
+--   created_at timestamptz not null default now(),
+--   content text
+-- );
