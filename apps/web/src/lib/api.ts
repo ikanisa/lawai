@@ -1,4 +1,10 @@
-import { AgentPlanNotice, AgentPlanStep, IRACPayload, WorkspaceDesk } from '@avocat-ai/shared';
+import {
+  AgentPlanNotice,
+  AgentPlanStep,
+  IRACPayload,
+  ProcessNavigatorFlow,
+  WorkspaceDesk,
+} from '@avocat-ai/shared';
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3333';
 
@@ -1018,6 +1024,7 @@ export interface WorkspaceOverviewResponse {
     pendingCount: number;
   };
   desk?: WorkspaceDesk;
+  navigator?: ProcessNavigatorFlow[];
 }
 
 export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOverviewResponse> {

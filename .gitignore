@@ -19,3 +19,4 @@ apps/web/public/sw.js
 
 # Generated PWA icons
 apps/web/public/icons/icon-*.png
+apps/pwa/cache/

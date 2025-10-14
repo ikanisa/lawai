@@ -60,8 +60,11 @@ import { authorizeRequestWithGuards } from './http/authorization.js';
 import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
-import { buildPhaseCWorkspaceDesk } from './workspace.js';
+import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
 import { InMemoryRateLimiter } from './rate-limit.js';
+import { withRequestSpan } from './observability/spans.js';
+import { incrementCounter } from './observability/metrics.js';
+import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
 
 const { app, context } = await createApp();
 
@@ -128,6 +131,56 @@ async function fetchAcknowledgementEvents(orgId: string, userId: string): Promis
     events.push({ type: row.consent_type, version: row.version, created_at: row.created_at ?? null });
   }
   return events;
+}
+
+type ConsentEventInsert = {
+  org_id: string | null;
+  user_id: string;
+  consent_type: string;
+  version: string;
+};
+
+async function recordAcknowledgementEvents(
+  request: FastifyRequest,
+  orgId: string,
+  userId: string,
+  records: ConsentEventInsert[],
+) {
+  if (records.length === 0) {
+    return;
+  }
+
+  await withRequestSpan(
+    request,
+    {
+      name: 'compliance.acknowledgements.persist',
+      attributes: { orgId, userId, recordCount: records.length },
+    },
+    async ({ logger, setAttribute }) => {
+      const payload = records.map((record) => ({
+        org_id: record.org_id,
+        user_id: record.user_id,
+        consent_type: record.consent_type,
+        version: record.version,
+      }));
+
+      const { error } = await supabase.rpc('record_consent_events', { events: payload });
+
+      if (error) {
+        setAttribute('errorCode', error.code ?? 'unknown');
+        logger.error({ err: error }, 'compliance_ack_persist_failed');
+        throw error;
+      }
+
+      setAttribute('persisted', true);
+      incrementCounter('compliance_acknowledgements.recorded', {
+        consent_types: records
+          .map((record) => record.consent_type)
+          .sort()
+          .join(',') || 'none',
+      });
+    },
+  );
 }
 
 function summariseAcknowledgements(
@@ -300,6 +353,23 @@ const complianceAckSchema = z
   .refine((value) => Boolean(value.consent || value.councilOfEurope), {
     message: 'At least one acknowledgement must be provided.',
   });
+
+const regulatorDigestSchema = z
+  .object({
+    jurisdiction: z.string().min(2),
+    channel: z.enum(['email', 'slack', 'teams']),
+    frequency: z.enum(['weekly', 'monthly']),
+    recipients: z.array(z.string().email()).min(1),
+    topics: z.array(z.string().min(2)).max(10).optional(),
+  })
+  .strict();
+
+const regulatorDigestQuerySchema = z
+  .object({
+    orgId: z.string().uuid(),
+    limit: z.coerce.number().int().positive().max(50).optional(),
+  })
+  .strict();
 
 // route schemas moved to dedicated modules (see ./http/schemas)
 
@@ -662,19 +732,40 @@ app.get('/compliance/acknowledgements', async (request, reply) => {
     return reply.code(400).send({ error: 'x-org-id header is required' });
   }
 
+  let access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>;
   try {
-    const access = await authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request);
-    const events = await fetchAcknowledgementEvents(orgHeader, userHeader);
+    access = await withRequestSpan(
+      request,
+      {
+        name: 'compliance.acknowledgements.authorize',
+        attributes: { orgId: orgHeader, userId: userHeader },
+      },
+      async () => authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request),
+    );
+  } catch (error) {
+    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
+    return reply.code(status).send({ error: 'forbidden' });
+  }
+
+  try {
+    const events = await withRequestSpan(
+      request,
+      {
+        name: 'compliance.acknowledgements.fetch',
+        attributes: { orgId: orgHeader, userId: userHeader },
+      },
+      async ({ setAttribute }) => {
+        const result = await fetchAcknowledgementEvents(orgHeader, userHeader);
+        setAttribute('eventCount', result.length);
+        return result;
+      },
+    );
+
     const acknowledgements = summariseAcknowledgements(access, events);
     return reply.send({ orgId: orgHeader, userId: userHeader, acknowledgements });
   } catch (error) {
-    const status = (error as Error & { statusCode?: number }).statusCode ?? 500;
-    if (status === 500) {
-      request.log.error({ err: error }, 'compliance_ack_fetch_failed');
-    }
-    return reply
-      .code(status)
-      .send({ error: status === 403 ? 'forbidden' : 'compliance_ack_fetch_failed' });
+    request.log.error({ err: error }, 'compliance_ack_fetch_failed');
+    return reply.code(500).send({ error: 'compliance_ack_fetch_failed' });
   }
 });
 
@@ -693,15 +784,22 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
   }
 
-  let access;
+  let access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>;
   try {
-    access = await authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request);
+    access = await withRequestSpan(
+      request,
+      {
+        name: 'compliance.acknowledgements.authorize',
+        attributes: { orgId: orgHeader, userId: userHeader },
+      },
+      async () => authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request),
+    );
   } catch (error) {
     const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
     return reply.code(status).send({ error: 'forbidden' });
   }
 
-  const records: Array<{ user_id: string; org_id: string | null; consent_type: string; version: string }> = [];
+  const records: ConsentEventInsert[] = [];
   if (parsed.data.consent) {
     records.push({
       user_id: userHeader,
@@ -719,15 +817,25 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     });
   }
 
-  if (records.length > 0) {
-    const { error } = await supabase.from('consent_events').insert(records);
-    if (error) {
-      request.log.error({ err: error }, 'compliance_ack_insert_failed');
-      return reply.code(500).send({ error: 'compliance_ack_insert_failed' });
-    }
+  try {
+    await recordAcknowledgementEvents(request, orgHeader, userHeader, records);
+  } catch (error) {
+    return reply.code(500).send({ error: 'compliance_ack_insert_failed' });
   }
 
-  const events = await fetchAcknowledgementEvents(orgHeader, userHeader);
+  const events = await withRequestSpan(
+    request,
+    {
+      name: 'compliance.acknowledgements.refresh',
+      attributes: { orgId: orgHeader, userId: userHeader },
+    },
+    async ({ setAttribute }) => {
+      const result = await fetchAcknowledgementEvents(orgHeader, userHeader);
+      setAttribute('eventCount', result.length);
+      return result;
+    },
+  );
+
   const acknowledgements = summariseAcknowledgements(access, events);
   return reply.send({ orgId: orgHeader, userId: userHeader, acknowledgements });
 });
@@ -834,6 +942,109 @@ app.get<{
     history,
     totals,
   });
+});
+
+app.post<{ Body: z.infer<typeof regulatorDigestSchema> }>('/launch/digests', async (request, reply) => {
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+  const orgHeader = request.headers['x-org-id'];
+  if (!orgHeader || typeof orgHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+
+  const parsed = regulatorDigestSchema.safeParse(request.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
+  }
+
+  try {
+    await authorizeRequestWithGuards('governance:dispatch', orgHeader, userHeader, request);
+  } catch (error) {
+    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
+    return reply.code(status).send({ error: 'forbidden' });
+  }
+
+  try {
+    const digest = await withRequestSpan(
+      request,
+      {
+        name: 'launch.regulator_digests.enqueue',
+        attributes: {
+          orgId: orgHeader,
+          userId: userHeader,
+          channel: parsed.data.channel,
+          frequency: parsed.data.frequency,
+        },
+      },
+      async ({ setAttribute }) => {
+        const entry = enqueueRegulatorDigest({
+          ...parsed.data,
+          orgId: orgHeader,
+          requestedBy: userHeader,
+        });
+        setAttribute('digestId', entry.id);
+        setAttribute('recipientCount', entry.recipients.length);
+        return entry;
+      },
+    );
+
+    incrementCounter('launch.regulator_digest.queued', {
+      channel: digest.channel,
+      frequency: digest.frequency,
+    });
+
+    return reply.code(201).send({ digest });
+  } catch (error) {
+    request.log.error({ err: error }, 'regulator_digest_enqueue_failed');
+    return reply.code(500).send({ error: 'regulator_digest_enqueue_failed' });
+  }
+});
+
+app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/digests', async (request, reply) => {
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+  const orgHeader = request.headers['x-org-id'];
+  if (!orgHeader || typeof orgHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+
+  const parsed = regulatorDigestQuerySchema.safeParse(request.query ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid_query', details: parsed.error.flatten() });
+  }
+
+  if (parsed.data.orgId !== orgHeader) {
+    return reply.code(403).send({ error: 'org_mismatch' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('governance:dispatch', orgHeader, userHeader, request);
+  } catch (error) {
+    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
+    return reply.code(status).send({ error: 'forbidden' });
+  }
+
+  const limit = parsed.data.limit ?? 25;
+
+  const digests = await withRequestSpan(
+    request,
+    {
+      name: 'launch.regulator_digests.list',
+      attributes: { orgId: parsed.data.orgId, userId: userHeader, limit },
+    },
+    async ({ setAttribute }) => {
+      const all = listRegulatorDigestsForOrg(parsed.data.orgId);
+      const slice = all.slice(0, limit);
+      setAttribute('digestCount', slice.length);
+      return slice;
+    },
+  );
+
+  return reply.send({ orgId: parsed.data.orgId, digests });
 });
 
 app.get('/healthz', async () => ({ status: 'ok' }));
@@ -3768,6 +3979,7 @@ app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply
         pendingCount,
       },
       desk: buildPhaseCWorkspaceDesk(),
+      navigator: buildPhaseCProcessNavigator(),
     };
   } catch (error) {
     if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {

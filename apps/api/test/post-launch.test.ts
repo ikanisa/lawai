@@ -63,6 +63,8 @@ describe('post-launch readiness', () => {
     });
 
     enqueueRegulatorDigest({
+      orgId: ORG_ID,
+      requestedBy: 'user-1',
       jurisdiction: 'FR',
       channel: 'email',
       frequency: 'weekly',

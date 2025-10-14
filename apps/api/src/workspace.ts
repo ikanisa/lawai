@@ -1,4 +1,4 @@
-import type { WorkspaceDesk } from '@avocat-ai/shared';
+import type { ProcessNavigatorFlow, WorkspaceDesk } from '@avocat-ai/shared';
 
 export function buildPhaseCWorkspaceDesk(): WorkspaceDesk {
   return {
@@ -255,4 +255,318 @@ export function buildPhaseCWorkspaceDesk(): WorkspaceDesk {
       },
     ],
   };
+}
+
+export function buildPhaseCProcessNavigator(): ProcessNavigatorFlow[] {
+  return [
+    {
+      id: 'fr-civil-claim',
+      title: 'Assignation civile – Tribunal judiciaire de Paris',
+      jurisdiction: 'FR',
+      persona: 'procedural_navigator',
+      mode: 'ask',
+      summary:
+        'Prépare l’assignation civile avec ingestion FRIA, attestations CEPEJ et revue OHADA avant dépôt.',
+      estimatedMinutes: 45,
+      lastRunAt: '2025-10-12T09:30:00.000Z',
+      alerts: [
+        'Confirmer le consentement CEPEJ avant la génération du brouillon.',
+        'HITL requis si le dossier FRIA contient des pièces confidentielles non validées.',
+      ],
+      telemetry: {
+        runCount: 18,
+        hitlEscalations: 2,
+        pendingTasks: 1,
+      },
+      steps: [
+        {
+          id: 'fria-intake',
+          label: 'Ingestion FRIA et consentements',
+          description:
+            'Importer le dossier FRIA, enregistrer le consentement CEPEJ et vérifier les engagements Conseil de l’Europe.',
+          state: 'complete',
+          guardrails: ['Consentement CEPEJ journalisé', 'Mode confidentiel activé'],
+          outputs: ['fria_dossier.json', 'consent_log.pdf'],
+        },
+        {
+          id: 'evidence-triage',
+          label: 'Tri des pièces et bilinguisme',
+          description:
+            'Évaluer les pièces jointes, appliquer les bannières langue Maghreb et confirmer la résidence des données.',
+          state: 'complete',
+          guardrails: ['Residency FR/EU respectée', 'Bannières langue Maghreb visibles'],
+          outputs: ['evidence_manifest.csv'],
+        },
+        {
+          id: 'cepej-audit',
+          label: 'Audit CEPEJ et EU AI Act',
+          description:
+            'Exécuter les scénarios CEPEJ et journaliser les attestations EU AI Act pour le Go/No-Go.',
+          state: 'in_progress',
+          guardrails: ['Scénarios CEPEJ verts', 'Attestations EU AI Act stockées'],
+          outputs: ['cepej_audit_report.json'],
+        },
+        {
+          id: 'drafting-brief',
+          label: 'Préparation du projet d’assignation',
+          description:
+            'Assembler le brouillon de l’assignation avec sources statutaires et citations OHADA.',
+          state: 'in_progress',
+          guardrails: ['Statute-first enforcé', 'Signatures C2PA demandées'],
+          outputs: ['assignation_draft.docx'],
+        },
+        {
+          id: 'hitl-review',
+          label: 'Revue HITL et dépôt',
+          description:
+            'Acheminer la version finale vers la file HITL et capturer la validation avant dépôt tribunal.',
+          state: 'blocked',
+          guardrails: ['Validation reviewer requise'],
+          outputs: ['hitl_ticket.json'],
+          escalation: 'HITL en attente pour raisons de confidentialité',
+        },
+      ],
+    },
+    {
+      id: 'ohada-debt-recovery',
+      title: 'Recouvrement de créance – OHADA',
+      jurisdiction: 'OHADA',
+      persona: 'negotiation_mediator',
+      mode: 'do',
+      summary:
+        'Structure la mise en demeure OHADA avec priorisation AUSCGIE, graphes de traitement CCJA et signaux politiques.',
+      estimatedMinutes: 35,
+      lastRunAt: '2025-10-11T16:05:00.000Z',
+      alerts: ['Suivi des risques politiques Maghreb/CEMAC recommandé avant négociation.'],
+      telemetry: {
+        runCount: 12,
+        hitlEscalations: 1,
+        pendingTasks: 0,
+      },
+      steps: [
+        {
+          id: 'statute-analysis',
+          label: 'Analyse AUSCGIE',
+          description: 'Aligner la requête sur les articles AUSCGIE pertinents et rejeter les sources non officielles.',
+          state: 'complete',
+          guardrails: ['Statute-first enforcé'],
+          outputs: ['auscgie_alignment.pdf'],
+        },
+        {
+          id: 'treatment-graph',
+          label: 'Graphes CCJA',
+          description:
+            'Générer le graphe de traitement CCJA avec pondération temporelle et détecter les dérives récentes.',
+          state: 'complete',
+          guardrails: ['Drift monitoring actif'],
+          outputs: ['ccja_treatment.svg'],
+        },
+        {
+          id: 'political-risk',
+          label: 'Surveillance risque politique',
+          description:
+            'Appliquer les alertes politiques Maghreb/CEMAC et journaliser les signaux négociation.',
+          state: 'in_progress',
+          guardrails: ['Aucun transfert hors zone autorisée'],
+          outputs: ['political_risk.json'],
+        },
+        {
+          id: 'draft-demand',
+          label: 'Rédaction mise en demeure',
+          description: 'Assembler la lettre de mise en demeure avec variantes bilingues et références CCJA.',
+          state: 'in_progress',
+          guardrails: ['Mention bilingue Maghreb obligatoire'],
+          outputs: ['mise_en_demeure.docx'],
+        },
+        {
+          id: 'settlement-brief',
+          label: 'Brief de négociation',
+          description: 'Préparer les options de règlement et déclencher la génération du plan de négociation.',
+          state: 'complete',
+          guardrails: ['Fairness telemetry capturée'],
+          outputs: ['settlement_brief.pdf'],
+        },
+      ],
+    },
+    {
+      id: 'employment-dismissal',
+      title: 'Licenciement économique – France',
+      jurisdiction: 'FR',
+      persona: 'bench_memo',
+      mode: 'review',
+      summary:
+        'Crée un mémo de licenciement économique avec analyse IRAC, obligations sociales et suivi HITL.',
+      estimatedMinutes: 50,
+      lastRunAt: '2025-10-10T08:15:00.000Z',
+      alerts: ['Vérifier la couverture convention collective et la consultation CSE.'],
+      telemetry: {
+        runCount: 9,
+        hitlEscalations: 3,
+        pendingTasks: 2,
+      },
+      steps: [
+        {
+          id: 'fact-intake',
+          label: 'Collecte faits & contrats',
+          description: 'Ingestion des contrats de travail et catégorisation des postes impactés.',
+          state: 'complete',
+          guardrails: ['Données personnelles pseudonymisées'],
+          outputs: ['employment_facts.json'],
+        },
+        {
+          id: 'collective-agreements',
+          label: 'Analyse conventions collectives',
+          description: 'Identifier les obligations issues des conventions collectives applicables.',
+          state: 'in_progress',
+          guardrails: ['Interprétations validées HITL'],
+          outputs: ['collective_matrix.xlsx'],
+          escalation: 'Review CSE en cours',
+        },
+        {
+          id: 'social-plan',
+          label: 'Plan social & mesures',
+          description: 'Élaborer un plan social et calculer les indemnités minimales.',
+          state: 'in_progress',
+          guardrails: ['Calculs indemnités >= seuil légal'],
+          outputs: ['social_plan.docx'],
+        },
+        {
+          id: 'irac-brief',
+          label: 'Rédaction mémo IRAC',
+          description: 'Générer le mémo IRAC avec citations officielles et résumés jurisprudentiels.',
+          state: 'blocked',
+          guardrails: ['Validation fairness & drift requise'],
+          outputs: ['memo_irac.docx'],
+          escalation: 'En attente d’un reviewer senior',
+        },
+        {
+          id: 'export-c2pa',
+          label: 'Export & signature C2PA',
+          description: 'Préparer les exports PDF/DOCX avec signature C2PA et log d’audit.',
+          state: 'in_progress',
+          guardrails: ['Manifestes C2PA validés'],
+          outputs: ['memo_irac_signed.pdf'],
+        },
+      ],
+    },
+    {
+      id: 'ohada-company-formation',
+      title: 'Création de société – OHADA',
+      jurisdiction: 'OHADA',
+      persona: 'procedural_navigator',
+      mode: 'do',
+      summary:
+        'Guide la constitution d’une SARL OHADA avec statuts bilingues, registres UEMOA et contrôles de résidence.',
+      estimatedMinutes: 60,
+      lastRunAt: '2025-10-09T14:40:00.000Z',
+      alerts: ['Assurer la domiciliation approuvée avant signature des statuts.'],
+      telemetry: {
+        runCount: 7,
+        hitlEscalations: 1,
+        pendingTasks: 1,
+      },
+      steps: [
+        {
+          id: 'intake',
+          label: 'Collecte fondateurs & apports',
+          description: 'Enregistrer les fondateurs, apports et mandats associés.',
+          state: 'complete',
+          guardrails: ['Vérification KYC réussie'],
+          outputs: ['founders_register.json'],
+        },
+        {
+          id: 'statutes-draft',
+          label: 'Rédaction statuts bilingues',
+          description: 'Générer les statuts en FR/EN avec clauses de gouvernance OHADA.',
+          state: 'in_progress',
+          guardrails: ['Terminologie OHADA validée'],
+          outputs: ['statuts_draft.docx'],
+        },
+        {
+          id: 'registries',
+          label: 'Dépôt registres & RCCM',
+          description: 'Préparer les dépôts RCCM/UEMOA et vérifier les délais légaux.',
+          state: 'in_progress',
+          guardrails: ['Délais RCCM monitorés'],
+          outputs: ['rccm_submission.json'],
+        },
+        {
+          id: 'tax-registration',
+          label: 'Enregistrement fiscal',
+          description: 'Générer les formulaires fiscaux et planifier la télédéclaration.',
+          state: 'blocked',
+          guardrails: ['Validation résidence fiscale requise'],
+          outputs: ['tax_forms.pdf'],
+          escalation: 'Attente attestation résidence',
+        },
+        {
+          id: 'handoff',
+          label: 'Remise dossier opérateur',
+          description: 'Partager le dossier complet avec l’équipe opérations et déclencher l’outbox offline.',
+          state: 'in_progress',
+          guardrails: ['Journalisation Go/No-Go'],
+          outputs: ['formation_package.zip'],
+        },
+      ],
+    },
+    {
+      id: 'rwanda-commercial-lease',
+      title: 'Bail commercial – Rwanda',
+      jurisdiction: 'RW',
+      persona: 'evidence_discovery',
+      mode: 'ask',
+      summary:
+        'Assemble les baux commerciaux avec obligations bilingues, vérification résidence et contrôles C2PA.',
+      estimatedMinutes: 32,
+      lastRunAt: '2025-10-08T11:20:00.000Z',
+      alerts: ['Activer le mode confidentiel avant la diffusion du brouillon au client.'],
+      telemetry: {
+        runCount: 11,
+        hitlEscalations: 0,
+        pendingTasks: 0,
+      },
+      steps: [
+        {
+          id: 'jurisdiction-check',
+          label: 'Vérification juridiction & langue',
+          description: 'Valider la langue obligatoire (RW/EN) et activer les bannières de résidence Rwanda.',
+          state: 'complete',
+          guardrails: ['Mode confidentiel forcé', 'Residency Rwanda confirmée'],
+          outputs: ['jurisdiction_report.json'],
+        },
+        {
+          id: 'template-selection',
+          label: 'Sélection modèle',
+          description: 'Choisir le modèle de bail adapté avec métadonnées Akoma Ntoso.',
+          state: 'complete',
+          guardrails: ['Sources officielles uniquement'],
+          outputs: ['template_metadata.json'],
+        },
+        {
+          id: 'drafting',
+          label: 'Rédaction bilingue',
+          description: 'Rédiger le bail et générer les résumés FR/EN pour revue client.',
+          state: 'in_progress',
+          guardrails: ['Citations alignées', 'Traductions validées'],
+          outputs: ['draft_lease.docx'],
+        },
+        {
+          id: 'evidence-bundle',
+          label: 'Assemblage pièces',
+          description: 'Assembler les pièces justificatives et appliquer signatures C2PA.',
+          state: 'in_progress',
+          guardrails: ['Signatures C2PA requises'],
+          outputs: ['evidence_bundle.zip'],
+        },
+        {
+          id: 'delivery',
+          label: 'Remise client & métriques',
+          description: 'Partager le package avec métriques fairness et journalisation Go/No-Go.',
+          state: 'complete',
+          guardrails: ['Telemetry fairness enregistrée'],
+          outputs: ['delivery_receipt.json'],
+        },
+      ],
+    },
+  ];
 }

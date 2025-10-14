@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from './ui/button';
@@ -17,6 +17,27 @@ interface ComplianceBannerProps {
 }
 
 export function ComplianceBanner({ messages }: ComplianceBannerProps) {
+  const [isOffline, setIsOffline] = useState(false);
+
+  useEffect(() => {
+    function syncStatus() {
+      if (typeof navigator === 'undefined') return;
+      setIsOffline(!navigator.onLine);
+    }
+
+    if (typeof window === 'undefined') {
+      return () => {};
+    }
+
+    syncStatus();
+    window.addEventListener('online', syncStatus);
+    window.addEventListener('offline', syncStatus);
+    return () => {
+      window.removeEventListener('online', syncStatus);
+      window.removeEventListener('offline', syncStatus);
+    };
+  }, []);
+
   const statusQuery = useQuery({
     queryKey: ['compliance-status', DEMO_ORG_ID],
     queryFn: () => fetchComplianceStatus(DEMO_ORG_ID),
@@ -69,16 +90,58 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   });
 
   const hasPending = Boolean(pending.consent || pending.council);
+  const isError = statusQuery.isError;
+  const isSuccess = statusQuery.isSuccess;
 
   if (statusQuery.isLoading) {
     return (
-      <div className="mb-6 rounded-3xl border border-amber-400/60 bg-amber-500/10 p-5 text-sm text-amber-100">
+      <div
+        className="mb-6 rounded-3xl border border-amber-400/60 bg-amber-500/10 p-5 text-sm text-amber-100"
+        role="status"
+        aria-live="polite"
+      >
         {messages.loading}
       </div>
     );
   }
 
-  if (!messages || !hasPending) {
+  if (isError) {
+    return (
+      <div
+        className="mb-6 space-y-4 rounded-3xl border border-amber-400/80 bg-amber-500/10 p-5 text-sm text-amber-100 shadow-lg"
+        role="alert"
+        aria-live="assertive"
+      >
+        <div>
+          <h3 className="text-base font-semibold text-amber-100">{messages.errorTitle}</h3>
+          <p className="mt-1 text-amber-100/80">{isOffline ? messages.offline : messages.error}</p>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => statusQuery.refetch()}
+          disabled={statusQuery.isRefetching}
+          className="bg-amber-400 text-slate-900 hover:bg-amber-300"
+        >
+          {messages.retry}
+        </Button>
+      </div>
+    );
+  }
+
+  if (!hasPending && isSuccess) {
+    return (
+      <div
+        className="mb-6 rounded-3xl border border-emerald-400/70 bg-emerald-500/10 p-5 text-sm text-emerald-50 shadow-lg"
+        role="status"
+        aria-live="polite"
+      >
+        <h3 className="text-base font-semibold text-emerald-100">{messages.clearTitle}</h3>
+        <p className="mt-1 text-emerald-100/80">{messages.clearDescription}</p>
+      </div>
+    );
+  }
+
+  if (!messages) {
     return null;
   }
 
@@ -100,6 +163,7 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
         size="sm"
         onClick={() => ackMutation.mutate()}
         disabled={ackMutation.isLoading}
+        aria-busy={ackMutation.isLoading}
         className="bg-amber-400 text-slate-900 hover:bg-amber-300"
       >
         {messages.acknowledge}

@@ -15,6 +15,7 @@ import { JurisdictionChip } from '../jurisdiction-chip';
 import { usePlanDrawer } from '../../state/plan-drawer';
 import { PlanDrawer } from '../plan-drawer';
 import { MultiAgentDesk } from './multi-agent-desk';
+import { ProcessNavigator } from './process-navigator';
 import type {
   WorkspaceDesk,
   WorkspaceDeskMode,
@@ -79,6 +80,7 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
   const complianceWatch = workspaceQuery.data?.complianceWatch ?? [];
   const hitlInbox = workspaceQuery.data?.hitlInbox ?? { items: [], pendingCount: 0 };
   const desk: WorkspaceDesk | undefined = workspaceQuery.data?.desk;
+  const navigatorFlows = workspaceQuery.data?.navigator ?? [];
 
   const jurisdictionChips = useMemo(
     () => {
@@ -267,6 +269,8 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
           onToolAction={handleToolAction}
         />
       ) : null}
+
+      <ProcessNavigator flows={navigatorFlows} messages={messages} locale={locale} />
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="glass-card border border-slate-800/60">
