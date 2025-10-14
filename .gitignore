@@ -19,3 +19,8 @@ apps/web/public/sw.js
 
 # Generated PWA icons
 apps/web/public/icons/icon-*.png
+
+# Local dev artifacts (mac/pnpm)
+.corepack/
+.pnpm-state/
+Library/
