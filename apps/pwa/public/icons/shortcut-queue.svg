@@ -1,0 +1,13 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="shortcut-queue-bg" x1="14" y1="12" x2="82" y2="80" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#34D399" />
+      <stop offset="1" stop-color="#3B82F6" />
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="84" height="84" rx="26" fill="url(#shortcut-queue-bg)" />
+  <rect x="28" y="30" width="40" height="8" rx="4" fill="white" opacity="0.8" />
+  <rect x="28" y="44" width="32" height="8" rx="4" fill="white" opacity="0.65" />
+  <rect x="28" y="58" width="36" height="8" rx="4" fill="white" opacity="0.5" />
+  <path d="M60.5 62.5 68 70l12-14" stroke="#0B1220" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" />
+</svg>
