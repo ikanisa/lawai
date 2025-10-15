@@ -9,6 +9,7 @@ import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 import type { Messages, Locale } from '../lib/i18n';
 import { sendTelemetryEvent } from '../lib/api';
+import { useCommandPalette } from '../state/command-palette';
 
 export interface CommandPaletteAction {
   id: string;
@@ -21,11 +22,11 @@ export interface CommandPaletteAction {
 }
 
 interface CommandPaletteProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   locale: Locale;
   messages: Messages;
-  actions: CommandPaletteAction[];
+  actions?: CommandPaletteAction[];
 }
 
 const sectionOrder: Array<CommandPaletteAction['section']> = ['actions', 'navigate'];
@@ -36,12 +37,60 @@ function isTypingElement(target: EventTarget | null) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
 }
 
-export function CommandPalette({ open, onOpenChange, locale, messages, actions }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, locale, messages, actions = [] }: CommandPaletteProps) {
   const router = useRouter();
   const pathname = usePathname();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  const storeOpen = useCommandPalette((state) => state.open);
+  const setStoreOpen = useCommandPalette((state) => state.setOpen);
+  const resolvedOpen = typeof open === 'boolean' ? open : storeOpen;
+  const changeOpen = useCallback(
+    (next: boolean) => {
+      const handler = onOpenChange ?? setStoreOpen;
+      handler(next);
+    },
+    [onOpenChange, setStoreOpen],
+  );
+
+  const fallbackActions = useMemo<CommandPaletteAction[]>(() => {
+    const commands = (messages as unknown as { commands?: Record<string, string> }).commands;
+    if (!commands) {
+      return [];
+    }
+    const quick: CommandPaletteAction[] = [
+      {
+        id: 'action-drafting',
+        label: commands.drafting,
+        section: 'actions',
+        href: '/drafting',
+      },
+      {
+        id: 'action-hitl',
+        label: commands.hitl,
+        section: 'actions',
+        href: '/hitl',
+      },
+    ];
+    const navigation: CommandPaletteAction[] = [
+      {
+        id: 'nav-workspace',
+        label: commands.workspace,
+        section: 'navigate',
+        href: '/workspace',
+      },
+      {
+        id: 'nav-research',
+        label: commands.research,
+        section: 'navigate',
+        href: '/research',
+      },
+    ];
+    return [...quick, ...navigation];
+  }, [messages]);
+
+  const resolvedActions = useMemo(() => (actions.length > 0 ? actions : fallbackActions), [actions, fallbackActions]);
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
@@ -54,32 +103,32 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions }
           return;
         }
         event.preventDefault();
-        onOpenChange(true);
+        changeOpen(true);
       }
     }
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
-  }, [onOpenChange]);
+  }, [changeOpen]);
 
   useEffect(() => {
-    if (open) {
+    if (resolvedOpen) {
       setQuery('');
       setActiveIndex(0);
       inputRef.current?.focus();
       void sendTelemetryEvent('command_palette_opened');
     }
-  }, [open]);
+  }, [resolvedOpen]);
 
   const filteredActions = useMemo(() => {
     if (!query.trim()) {
-      return actions;
+      return resolvedActions;
     }
     const searchValue = query.toLowerCase();
-    return actions.filter((action) => {
+    return resolvedActions.filter((action) => {
       const value = `${action.label} ${action.description ?? ''}`.toLowerCase();
       return value.includes(searchValue);
     });
-  }, [actions, query]);
+  }, [query, resolvedActions]);
 
   const groupedActions = useMemo(
     () =>
@@ -106,7 +155,7 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions }
 
   const handleSelect = useCallback(
     (action: CommandPaletteAction) => {
-      onOpenChange(false);
+      changeOpen(false);
       void sendTelemetryEvent('command_palette_action', { actionId: action.id });
       if (action.run) {
         action.run();
@@ -118,7 +167,7 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions }
         }
       }
     },
-    [locale, onOpenChange, pathname, router],
+    [changeOpen, locale, pathname, router],
   );
 
   const handleInputKeyDown = useCallback(
@@ -209,7 +258,7 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions }
   ));
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={resolvedOpen} onOpenChange={changeOpen}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm" />
         <Dialog.Content
@@ -238,7 +287,7 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions }
               onChange={(event) => setQuery(event.target.value)}
               placeholder={labels.placeholder}
               role="combobox"
-              aria-expanded={open}
+              aria-expanded={resolvedOpen}
               aria-haspopup="listbox"
               aria-controls={listboxId}
               aria-describedby={`command-palette-description ${keyboardHintId}`}

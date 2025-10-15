@@ -8,7 +8,9 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "db/*"
+    "db/*",
+    "JB/*",
+    "francophone-lex/*"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
@@ -19,6 +21,7 @@
     "dev:api": "npm run dev --workspace @apps/api",
     "dev:ops": "npm run dev --workspace @apps/ops",
     "dev:web": "npm run dev --workspace @avocat-ai/web",
+    "start": "npm run start --workspace @avocat-ai/web",
     "db:push": "supabase migration up",
     "db:migrate": "npm run migrate --workspace @apps/ops",
     "ops:provision": "npm run provision --workspace @apps/ops",

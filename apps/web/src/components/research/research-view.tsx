@@ -28,6 +28,7 @@ import {
   DEMO_USER_ID,
   submitResearchQuestion,
   sendTelemetryEvent,
+  requestHitlReview,
   type AgentRunResponse,
 } from '../../lib/api';
 import type { Messages, Locale } from '../../lib/i18n';
@@ -215,6 +216,8 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const { open, toggle } = usePlanDrawer();
   const online = useOnlineStatus();
   const { items: outboxItems, enqueue, remove, flush } = useOutbox({ persist: !confidentialMode });
+  const [hitlRequestPending, setHitlRequestPending] = useState(false);
+  const [hitlQueued, setHitlQueued] = useState(false);
 
   const badgeMessages = messages.research.badges;
   const readingModeMessages = messages.research.readingModes;
@@ -348,6 +351,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const voiceMessages = messages.research.voice;
   const ocrMessages = messages.research.ocr;
   const staleMessages = messages.research.stale;
+  const trustMessages = messages.research.trust;
   const verifyLabel = staleMessages.verify;
   const rwandaMessages = messages.research.rwanda;
 
@@ -360,6 +364,55 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     setContext((current) => (current ? `${current}\n${text}` : text));
     void sendTelemetryEvent('camera_ocr_added');
   };
+
+  const handleHitlRequest = useCallback(async () => {
+    if (!latestRun?.runId || hitlRequestPending || hitlQueued || !online) {
+      return;
+    }
+    setHitlRequestPending(true);
+    const reason =
+      trustMessages.manualHitlReason ??
+      (locale === 'fr'
+        ? 'Revue humaine demandée depuis le panneau de confiance.'
+        : 'Manual review requested from the trust panel.');
+    try {
+      await requestHitlReview(latestRun.runId, {
+        reason,
+        manual: true,
+        orgId: DEMO_ORG_ID,
+        userId: DEMO_USER_ID,
+      });
+      setHitlQueued(true);
+      toast.success(hitlMessage);
+      void sendTelemetryEvent('hitl_requested', {
+        runId: latestRun.runId,
+        manual: true,
+        alreadyPending:
+          latestRun.data?.risk.hitl_required ?? latestRun.trustPanel?.risk?.hitlRequired ?? false,
+      });
+    } catch (error) {
+      console.error('hitl_request_failed', error);
+      const failureMessage =
+        trustMessages.hitlRequestFailed ??
+        (locale === 'fr'
+          ? 'Impossible de demander une revue humaine. Réessayez plus tard.'
+          : 'Unable to request human review. Try again shortly.');
+      toast.error(failureMessage);
+    } finally {
+      setHitlRequestPending(false);
+    }
+  }, [
+    latestRun,
+    hitlRequestPending,
+    hitlQueued,
+    trustMessages.manualHitlReason,
+    trustMessages.hitlRequestFailed,
+    locale,
+    hitlMessage,
+    requestHitlReview,
+    sendTelemetryEvent,
+    online,
+  ]);
 
   const handleRwandaLanguageSelect = (language: 'fr' | 'en' | 'rw') => {
     void sendTelemetryEvent('rwanda_language_toggle', { language });
@@ -397,7 +450,6 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     });
   }, [payload, locale]);
 
-  const trustMessages = messages.research.trust;
   const trustPanel = latestRun?.trustPanel ?? null;
   const trustCitationSummary = trustPanel?.citationSummary ?? null;
   const trustProvenance = trustPanel?.provenance ?? null;
@@ -406,6 +458,19 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const allowlistViolations = verification?.allowlistViolations ?? EMPTY_VIOLATIONS;
   const verificationNotes = verification?.notes ?? [];
   const verificationStatus = verification?.status ?? null;
+
+  useEffect(() => {
+    if (!latestRun?.runId) {
+      setHitlQueued(false);
+      setHitlRequestPending(false);
+      return;
+    }
+    const requiresHitl = Boolean(
+      latestRun.data?.risk.hitl_required ?? latestRun.trustPanel?.risk?.hitlRequired ?? false,
+    );
+    setHitlQueued(requiresHitl);
+    setHitlRequestPending(false);
+  }, [latestRun?.runId]);
 
   const fallbackViolationHosts = useMemo(() => {
     if (allowlistViolations.length === 0) return [] as string[];
@@ -480,10 +545,18 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     ? trustMessages.riskLabel.replace('{level}', trustMessages.riskLevels[payload.risk.level])
     : null;
   const hitlSummary = payload
-    ? payload.risk.hitl_required
+    ? payload.risk.hitl_required || hitlQueued
       ? trustMessages.hitlRequired
       : trustMessages.hitlNotRequired
     : null;
+  const hitlQueuedLabel =
+    messages.actions.hitlQueued ?? (locale === 'fr' ? 'Revue en attente' : 'Queued for review');
+  const hitlAlreadyRequired = Boolean(
+    payload?.risk.hitl_required ?? trustRisk?.hitlRequired ?? false,
+  );
+  const hitlButtonLabel = hitlQueued || hitlAlreadyRequired ? hitlQueuedLabel : messages.actions.hitl;
+  const hitlButtonDisabled =
+    !latestRun?.runId || hitlRequestPending || hitlQueued || hitlAlreadyRequired || !online;
   const verificationMessage =
     verificationStatus === 'hitl_escalated' ? trustMessages.verificationHitl : trustMessages.verificationPassed;
   const allowlistSummary = allowlistClean ? trustMessages.allowlistClean : trustMessages.allowlistIssues;
@@ -760,7 +833,12 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         <div className="space-y-5">
           {payload ? (
             <div className="space-y-5">
-              <RiskBanner risk={payload.risk} hitlLabel={messages.actions.hitl} onHitl={() => toast.info(hitlMessage)} />
+              <RiskBanner
+                risk={payload.risk}
+                hitlLabel={hitlButtonLabel}
+                onHitl={handleHitlRequest}
+                hitlDisabled={hitlButtonDisabled}
+              />
               {confidentialMode && confidentialMessages.banner ? (
                 <LanguageBanner message={confidentialMessages.banner} />
               ) : null}
