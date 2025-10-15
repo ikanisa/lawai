@@ -1,0 +1,12 @@
+[phases.install]
+cmds = [
+  "corepack enable",
+  "corepack prepare pnpm@8.15.4 --activate",
+  "npm ci --workspaces --include-workspace-root"
+]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"
