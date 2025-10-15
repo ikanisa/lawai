@@ -344,6 +344,11 @@ describe('ResearchView trust panel', () => {
     await user.type(screen.getByLabelText(messagesEn.research.heroPlaceholder), 'Analyse HITL');
     await user.click(screen.getByRole('button', { name: messagesEn.actions.submit }));
 
+    await user.click(await screen.findByRole('button', { name: 'Close' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+    });
+
     const hitlButton = await screen.findByRole('button', { name: messagesEn.actions.hitl });
     expect(hitlButton).toBeEnabled();
 

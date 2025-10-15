@@ -154,7 +154,18 @@
     "exportPdf": "Export signed PDF (C2PA)",
     "exportDocx": "Export signed DOCX (C2PA)",
     "hitl": "Submit for review",
+    "hitlQueued": "Queued for review",
     "ask": "Ask"
+  },
+  "commands": {
+    "title": "Command palette",
+    "groupNavigation": "Navigation",
+    "groupActions": "Quick actions",
+    "searchPlaceholder": "Search commands…",
+    "workspace": "Workspace",
+    "research": "Research",
+    "drafting": "Drafting",
+    "hitl": "HITL Review"
   },
   "research": {
     "heroPlaceholder": "Ask your legal question…",
@@ -175,6 +186,36 @@
     "canadaLanguageNotice": "In Québec and Canada, French and English versions carry equal legal force.",
     "switzerlandLanguageNotice": "In Switzerland, review the French and German versions whenever available.",
     "rwandaLanguageNotice": "In Rwanda, French, English, and Kinyarwanda editions of the Official Gazette all carry equal legal force.",
+    "bilingual": {
+      "label": "Official versions",
+      "note": "Switch between the official French and English versions when reviewing bilingual statutes.",
+      "languages": [
+        { "code": "fr", "label": "Français" },
+        { "code": "en", "label": "English" }
+      ]
+    },
+    "compliance": {
+      "title": "Compliance issues",
+      "description": "Resolve the following items before exporting or sharing guidance.",
+      "friaRequired": "A formal FRIA assessment is required.",
+      "friaReasonFallback": "Document the FRIA rationale before proceeding.",
+      "cepejFailed": "CEPEJ safeguards are not satisfied.",
+      "cepejDefaultDetail": "Review transparency obligations and risk scoring.",
+      "cepejViolations": {
+        "transparency": "Transparency statement is incomplete."
+      },
+      "statuteFailed": "Statutory compliance blocked launch.",
+      "statuteDefaultDetail": "Identify a controlling statute before continuing.",
+      "statuteViolations": {
+        "first_rule_not_statute": "The first cited rule is not a statute."
+      },
+      "disclosuresRequired": "Required disclosures are still missing.",
+      "disclosuresMissing": {
+        "consent": "CEPEJ consent acknowledgement pending."
+      },
+      "resolved": "Compliance requirements satisfied.",
+      "resolvedDetail": "No outstanding FRIA, CEPEJ, or disclosure tasks remain."
+    },
     "confidential": {
       "banner": "Confidential mode: only trusted internal and allowlisted sources are consulted and sensitive features are limited.",
       "voiceDisabled": "Voice dictation is unavailable in confidential mode.",
@@ -263,7 +304,9 @@
         "HIGH": "High"
       },
       "hitlRequired": "Human review required.",
-      "hitlNotRequired": "Human review not required."
+      "hitlNotRequired": "Human review not required.",
+      "manualHitlReason": "Manual review requested from the trust panel.",
+      "hitlRequestFailed": "Unable to request human review. Try again shortly."
     },
     "bilingual": {
       "label": "Official bilingual versions",
@@ -660,6 +703,27 @@
     "billing": "Billing",
     "security": "Security",
     "policies": "Policies",
+    "launchReadinessTitle": "Launch readiness",
+    "launchReadinessSubtitle": "Track readiness signals before enabling production launches.",
+    "launchReadinessRefresh": "Refresh metrics",
+    "launchReadinessAddOfflineSample": "Queue offline sample",
+    "launchReadinessScoreLabel": "Readiness score",
+    "launchReadinessScoreHint": "Composite score based on vitals, documentation, and reviews.",
+    "launchReadinessVitalsLabel": "Core Web Vitals",
+    "launchReadinessVitalsHint": "{needs} needs improvement • {poor} poor vitals in last 7 days.",
+    "launchReadinessOfflineLabel": "Offline queue",
+    "launchReadinessOfflineHint": "{queued} item(s) waiting • {syncing} syncing.",
+    "launchReadinessDigestsLabel": "Regulator digests",
+    "launchReadinessDigestsHint": "Last digest created {last}.",
+    "launchReadinessActionsTitle": "Critical actions",
+    "launchReadinessActionFallback": "All actions are complete. Monitor telemetry for new tasks.",
+    "launchReadinessNotesTitle": "Notes",
+    "launchReadinessNotesFallback": "No notes have been recorded for this launch yet.",
+    "launchReadinessOfflineSection": "Recent offline captures",
+    "launchReadinessOfflineEmpty": "No offline captures queued.",
+    "launchReadinessCollateralLabel": "{count} pilot onboarding pack(s) available",
+    "launchReadinessCollateralPricing": "{count} pricing pack(s) prepared",
+    "launchReadinessCollateralTransparency": "{count} transparency brief(s) published",
     "slo": "SLOs & support",
     "change": "Change management",
     "marketing": "Commercial collateral",
