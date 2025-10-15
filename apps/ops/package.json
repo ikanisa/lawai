@@ -27,8 +27,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@avocat-ai/shared": "workspace:^",
-    "@avocat-ai/supabase": "workspace:^",
+    "@avocat-ai/shared": "file:../../packages/shared",
+    "@avocat-ai/supabase": "file:../../packages/supabase",
     "date-fns": "^3.6.0",
     "dotenv": "^16.4.5",
     "openai": "^6.2.0",

@@ -11,8 +11,8 @@
     "export:agent": "tsx scripts/export-agent-definition.ts"
   },
   "dependencies": {
-    "@avocat-ai/shared": "workspace:^",
-    "@avocat-ai/supabase": "workspace:^",
+    "@avocat-ai/shared": "file:../../packages/shared",
+    "@avocat-ai/supabase": "file:../../packages/supabase",
     "@openai/agents": "0.1.9",
     "date-fns": "^3.6.0",
     "diff": "5.1.0",
