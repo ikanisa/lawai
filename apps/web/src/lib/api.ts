@@ -425,6 +425,28 @@ export async function submitResearchQuestion(input: {
   return response.json();
 }
 
+export async function requestHitlReview(
+  runId: string,
+  input: { reason: string; manual?: boolean; orgId?: string; userId?: string },
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/runs/${encodeURIComponent(runId)}/hitl`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      orgId: input.orgId ?? DEMO_ORG_ID,
+      userId: input.userId ?? DEMO_USER_ID,
+      reason: input.reason,
+      manual: input.manual ?? true,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to request human review');
+  }
+}
+
 export async function sendTelemetryEvent(
   eventName: string,
   payload?: Record<string, unknown>,

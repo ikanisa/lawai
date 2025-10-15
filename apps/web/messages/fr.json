@@ -154,7 +154,18 @@
     "exportPdf": "Exporter PDF signé (C2PA)",
     "exportDocx": "Exporter DOCX signé (C2PA)",
     "hitl": "Soumettre à revue",
+    "hitlQueued": "Revue en attente",
     "ask": "Poser une question"
+  },
+  "commands": {
+    "title": "Palette de commandes",
+    "groupNavigation": "Navigation",
+    "groupActions": "Actions rapides",
+    "searchPlaceholder": "Rechercher une commande…",
+    "workspace": "Espace de travail",
+    "research": "Recherche",
+    "drafting": "Rédaction",
+    "hitl": "Revue humaine"
   },
   "research": {
     "heroPlaceholder": "Posez votre question juridique…",
@@ -175,6 +186,36 @@
     "canadaLanguageNotice": "Au Québec et au Canada, les versions française et anglaise ont la même valeur juridique.",
     "switzerlandLanguageNotice": "En Suisse, vérifiez systématiquement les versions française et allemande lorsqu’elles existent.",
     "rwandaLanguageNotice": "Au Rwanda, les versions française, anglaise et kinyarwanda publiées au Journal officiel ont toutes la même valeur juridique.",
+    "bilingual": {
+      "label": "Versions officielles",
+      "note": "Basculez entre les versions officielles française et anglaise lors de l’analyse.",
+      "languages": [
+        { "code": "fr", "label": "Français" },
+        { "code": "en", "label": "Anglais" }
+      ]
+    },
+    "compliance": {
+      "title": "Points de conformité",
+      "description": "Résolvez les éléments suivants avant de partager ou d’exporter.",
+      "friaRequired": "Une analyse FRIA formelle est requise.",
+      "friaReasonFallback": "Documentez le motif FRIA avant de poursuivre.",
+      "cepejFailed": "Les garanties CEPEJ ne sont pas satisfaites.",
+      "cepejDefaultDetail": "Vérifiez les obligations de transparence et la notation du risque.",
+      "cepejViolations": {
+        "transparency": "La déclaration de transparence est incomplète."
+      },
+      "statuteFailed": "La conformité statutaire bloque le lancement.",
+      "statuteDefaultDetail": "Identifiez un texte applicable avant de continuer.",
+      "statuteViolations": {
+        "first_rule_not_statute": "La première règle citée n’est pas un texte législatif."
+      },
+      "disclosuresRequired": "Certaines divulgations obligatoires manquent encore.",
+      "disclosuresMissing": {
+        "consent": "Reconnaissance du consentement CEPEJ en attente."
+      },
+      "resolved": "Exigences de conformité satisfaites.",
+      "resolvedDetail": "Aucune tâche FRIA, CEPEJ ou de divulgation en attente."
+    },
     "confidential": {
       "banner": "Mode confidentiel : seules les sources internes et autorisées sont consultées et certaines fonctionnalités sont limitées.",
       "voiceDisabled": "La dictée est désactivée en mode confidentiel.",
@@ -263,7 +304,9 @@
         "HIGH": "Élevé"
       },
       "hitlRequired": "Revue humaine requise.",
-      "hitlNotRequired": "Revue humaine non requise."
+      "hitlNotRequired": "Revue humaine non requise.",
+      "manualHitlReason": "Revue humaine demandée depuis le panneau de confiance.",
+      "hitlRequestFailed": "Impossible de demander une revue humaine. Réessayez plus tard."
     },
     "bilingual": {
       "label": "Versions officielles bilingues",
@@ -660,6 +703,27 @@
     "billing": "Facturation",
     "security": "Sécurité",
     "policies": "Politiques",
+    "launchReadinessTitle": "Préparation au lancement",
+    "launchReadinessSubtitle": "Suivez les signaux clés avant d'autoriser les lancements en production.",
+    "launchReadinessRefresh": "Actualiser les métriques",
+    "launchReadinessAddOfflineSample": "Mettre en file hors ligne",
+    "launchReadinessScoreLabel": "Score de préparation",
+    "launchReadinessScoreHint": "Score composite basé sur les performances, la documentation et les revues.",
+    "launchReadinessVitalsLabel": "Core Web Vitals",
+    "launchReadinessVitalsHint": "{needs} à améliorer • {poor} faibles sur les 7 derniers jours.",
+    "launchReadinessOfflineLabel": "File hors ligne",
+    "launchReadinessOfflineHint": "{queued} en attente • {syncing} en synchronisation.",
+    "launchReadinessDigestsLabel": "Digests régulateurs",
+    "launchReadinessDigestsHint": "Dernier digest créé {last}.",
+    "launchReadinessActionsTitle": "Actions critiques",
+    "launchReadinessActionFallback": "Toutes les actions sont terminées. Surveillez la télémétrie pour de nouvelles tâches.",
+    "launchReadinessNotesTitle": "Notes",
+    "launchReadinessNotesFallback": "Aucune note enregistrée pour ce lancement.",
+    "launchReadinessOfflineSection": "Captures hors ligne récentes",
+    "launchReadinessOfflineEmpty": "Aucune capture hors ligne en file.",
+    "launchReadinessCollateralLabel": "{count} kit(s) d’onboarding pilote disponible(s)",
+    "launchReadinessCollateralPricing": "{count} pack(s) tarifaire(s) préparé(s)",
+    "launchReadinessCollateralTransparency": "{count} note(s) de transparence publiée(s)",
     "slo": "SLOs & support",
     "change": "Gestion des changements",
     "marketing": "Support commercial",

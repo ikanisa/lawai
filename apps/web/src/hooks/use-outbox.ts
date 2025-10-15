@@ -41,7 +41,7 @@ export function useOutbox(options: UseOutboxOptions = {}) {
   const [shouldPersist, setShouldPersist] = useState(persist);
   const [items, setItems] = useState<OutboxItem[]>(() => (persist ? loadInitial() : []));
   const online = useOnlineStatus();
-  const [now, setNow] = useState(() => Date.now());
+  const [, forceUpdate] = useState(0);
 
   useEffect(() => {
     if (persist === shouldPersist) {
@@ -112,12 +112,14 @@ export function useOutbox(options: UseOutboxOptions = {}) {
     if (sorted.length === 0) {
       return;
     }
-    const id = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(id);
+    const interval: ReturnType<typeof setInterval> = setInterval(
+      () => forceUpdate((value) => value + 1),
+      30_000,
+    );
+    return () => clearInterval(interval);
   }, [sorted.length]);
 
   const newest = sorted[0];
-  const stalenessMs = newest ? Math.max(0, now - new Date(newest.createdAt).getTime()) : 0;
 
   return {
     items: sorted,
@@ -127,7 +129,9 @@ export function useOutbox(options: UseOutboxOptions = {}) {
     flush,
     pendingCount: sorted.length,
     hasItems: sorted.length > 0,
-    stalenessMs,
+    get stalenessMs() {
+      return newest ? Math.max(0, Date.now() - new Date(newest.createdAt).getTime()) : 0;
+    },
     isOnline: online,
   };
 }
