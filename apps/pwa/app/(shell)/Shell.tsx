@@ -38,6 +38,7 @@ import { locales, type SupportedLocale } from "@/lib/i18n/config";
 import { useUIState } from "@/lib/state/ui-store";
 import { useOutbox } from "@/lib/offline/outbox";
 import { cn } from "@/lib/utils";
+import { useFeatureFlag } from "@/lib/feature-flags";
 
 const desktopNavigation = [
   { label: "Workspace", href: "/workspace", icon: LayoutDashboard },
@@ -61,6 +62,11 @@ export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const setCommandPaletteOpen = useUIState((state) => state.setCommandPaletteOpen);
   const { items: outboxItems, stalenessMs, isOnline } = useOutbox();
+  const agentShellEnabled = useFeatureFlag("FEAT_AGENT_SHELL");
+
+  if (!agentShellEnabled) {
+    return <LegacyShell>{children}</LegacyShell>;
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[color:var(--color-base-bg)] text-text-primary">
@@ -91,6 +97,27 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
         <MobileNav pathname={pathname} onAsk={() => setCommandPaletteOpen(true)} />
       </div>
+    </div>
+  );
+}
+
+function LegacyShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-base text-text-primary">
+      <a href="#main-content" className="skip-link">
+        Aller au contenu principal
+      </a>
+      <main id="main-content" className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-16">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-z1 backdrop-blur-2xl">
+          <p className="text-sm text-text-muted">
+            L’agent-first AppShell est désactivé par le feature flag <code>FEAT_AGENT_SHELL</code>. Activez-le pour retrouver
+            l’expérience complète.
+          </p>
+        </div>
+        <div className="rounded-3xl border border-white/15 bg-white/5 p-6 shadow-z1 backdrop-blur-2xl">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
