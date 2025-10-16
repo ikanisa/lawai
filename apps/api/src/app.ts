@@ -1,6 +1,16 @@
 // @ts-nocheck
 import Fastify from 'fastify';
 import { registerWorkspaceRoutes } from './domain/workspace/routes';
+import { registerAgentsRoutes } from './routes/agents/index.js';
+import { registerCitationsRoutes } from './routes/citations/index.js';
+import { registerCorpusRoutes } from './routes/corpus/index.js';
+import { registerDeadlineRoutes } from './routes/deadline/index.js';
+import { registerHitlRoutes } from './routes/hitl/index.js';
+import { registerMattersRoutes } from './routes/matters/index.js';
+import { registerRealtimeRoutes } from './routes/realtime/index.js';
+import { registerResearchRoutes } from './routes/research/index.js';
+import { registerUploadRoutes } from './routes/upload/index.js';
+import { registerVoiceRoutes } from './routes/voice/index.js';
 import type { AppContext } from './types/context';
 import { env } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
@@ -39,6 +49,19 @@ export async function createApp() {
       },
     },
   };
+
+  await app.register(async (instance) => {
+    await registerAgentsRoutes(instance, context);
+    await registerResearchRoutes(instance, context);
+    await registerCitationsRoutes(instance, context);
+    await registerCorpusRoutes(instance, context);
+    await registerMattersRoutes(instance, context);
+    await registerHitlRoutes(instance, context);
+    await registerDeadlineRoutes(instance, context);
+    await registerUploadRoutes(instance, context);
+    await registerVoiceRoutes(instance, context);
+    await registerRealtimeRoutes(instance, context);
+  }, { prefix: '/api' });
 
   await registerWorkspaceRoutes(app, context);
 
