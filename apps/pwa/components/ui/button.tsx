@@ -15,6 +15,8 @@ const buttonVariants = cva(
           "bg-white/10 text-text-primary border border-white/20 shadow-[var(--shadow-z1)] focus-visible:outline-white/60",
         outline:
           "border border-white/20 bg-transparent text-text-primary hover:bg-white/10 focus-visible:outline-white/60",
+        destructive:
+          "bg-rose-500/90 text-white shadow-[var(--shadow-z2)] hover:bg-rose-500 focus-visible:outline-rose-300",
         ghost: "text-text-primary hover:bg-white/10 focus-visible:outline-white/60",
         glass:
           "glass-panel text-text-primary backdrop-blur-2xl focus-visible:outline-white/60 border border-white/20"

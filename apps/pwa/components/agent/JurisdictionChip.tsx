@@ -48,6 +48,7 @@ export function JurisdictionChip({ value, onChange }: JurisdictionChipProps) {
   const jurisdictionLabels = useMemo(
     () =>
       new Map<JurisdictionCode, string>([
+        ["Automatique", "Automatique"],
         ["FR", "France"],
         ["BE", "Belgique"],
         ["LU", "Luxembourg"],

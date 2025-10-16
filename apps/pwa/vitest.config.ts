@@ -3,7 +3,8 @@ import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-  plugins: [react(), tsconfigPaths()],
+  // Cast to `any` to avoid workspace duplicate Vite type mismatches at build time.
+  plugins: [react(), tsconfigPaths()] as any,
   test: {
     environment: "jsdom",
     globals: true,

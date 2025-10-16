@@ -173,46 +173,6 @@ export function VoiceConsole() {
     [finalizePlayback, stopSimulation]
   );
 
-  const toggleRecording = useCallback(async () => {
-    if (status === "connecting" || status === "processing") {
-      return;
-    }
-
-    const client = ensureClient();
-    if (status === "recording") {
-      stopSimulation();
-      await client.disconnect();
-      const duration = sessionStartRef.current ? Date.now() - sessionStartRef.current : 0;
-      const transcript = transcriptRef.current.trim();
-      resetSession();
-      if (!transcript) {
-        setStatus("idle");
-        return;
-      }
-      await handleVoiceSubmission(transcript, duration);
-      return;
-    }
-
-    setStatus("connecting");
-    transcriptRef.current = "";
-    setCaptions("");
-    try {
-      await client.connect();
-      telemetry.emit("voice_started", { agentId: "voice_concierge", locale });
-      sessionStartRef.current = Date.now();
-      beginSimulation(client);
-    } catch (error) {
-      console.error("Voice connection failed", error);
-      toast({
-        title: "Connexion vocale indisponible",
-        description: "Impossible d’initier la session Realtime pour le moment.",
-        variant: "destructive"
-      });
-      setStatus("idle");
-      resetSession();
-    }
-  }, [beginSimulation, ensureClient, locale, resetSession, status, stopSimulation, telemetry, toast]);
-
   const handleVoiceSubmission = useCallback(
     async (transcript: string, durationMs: number, existingOutboxId?: string) => {
       const entryId = existingOutboxId ?? `voice_${Date.now()}`;
@@ -292,6 +252,56 @@ export function VoiceConsole() {
     },
     [beginPlayback, enqueue, isOnline, locale, telemetry, toast]
   );
+
+  const toggleRecording = useCallback(async () => {
+    if (status === "connecting" || status === "processing") {
+      return;
+    }
+
+    const client = ensureClient();
+    if (status === "recording") {
+      stopSimulation();
+      await client.disconnect();
+      const duration = sessionStartRef.current ? Date.now() - sessionStartRef.current : 0;
+      const transcript = transcriptRef.current.trim();
+      resetSession();
+      if (!transcript) {
+        setStatus("idle");
+        return;
+      }
+      await handleVoiceSubmission(transcript, duration);
+      return;
+    }
+
+    setStatus("connecting");
+    transcriptRef.current = "";
+    setCaptions("");
+    try {
+      await client.connect();
+      telemetry.emit("voice_started", { agentId: "voice_concierge", locale });
+      sessionStartRef.current = Date.now();
+      beginSimulation(client);
+    } catch (error) {
+      console.error("Voice connection failed", error);
+      toast({
+        title: "Connexion vocale indisponible",
+        description: "Impossible d’initier la session Realtime pour le moment.",
+        variant: "destructive"
+      });
+      setStatus("idle");
+      resetSession();
+    }
+  }, [
+    beginSimulation,
+    ensureClient,
+    handleVoiceSubmission,
+    locale,
+    resetSession,
+    status,
+    stopSimulation,
+    telemetry,
+    toast
+  ]);
 
   const handleOutboxRetry = useCallback(
     async (item: OutboxItem<VoiceRunRequest>) => {

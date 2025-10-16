@@ -89,7 +89,7 @@ export function PlanDrawer({ plan, toolLogs }: PlanDrawerProps) {
                   Étapes du plan
                 </h3>
                 <ol className="mt-3 space-y-3" role="list">
-                  {plan.steps.map((step) => (
+                  {plan.steps.map((step: ResearchPlanStep) => (
                     <li key={step.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
                       <div className="flex items-start gap-3">
                         <StatusIcon status={step.status} />
