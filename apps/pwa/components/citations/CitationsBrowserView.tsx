@@ -37,7 +37,7 @@ function DocumentToc({ items, onSelect, activeAnchor }: {
 }) {
   return (
     <nav className="space-y-2">
-      {items.map((item) => (
+      {items.map((item: CitationDocument["toc"][number]) => (
         <button
           key={item.id}
           onClick={() => onSelect(item.anchor)}
@@ -75,8 +75,8 @@ export function CitationsBrowserView() {
   const [activeAnchor, setActiveAnchor] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const results = data?.results ?? [];
-  const ohadaFeatured = data?.ohadaFeatured ?? [];
+  const results = useMemo<CitationDocument[]>(() => data?.results ?? [], [data]);
+  const ohadaFeatured = useMemo<CitationDocument[]>(() => data?.ohadaFeatured ?? [], [data]);
 
   useEffect(() => {
     if (!results.length) return;
@@ -85,7 +85,7 @@ export function CitationsBrowserView() {
     telemetry.emit("temporal_validity_checked", { total: results.length, upToDate });
   }, [results, telemetry]);
 
-  const filteredResults = useMemo(() => {
+  const filteredResults = useMemo<CitationDocument[]>(() => {
     return results.filter((doc) => {
       const matchesSearch = doc.title.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesJurisdiction = jurisdiction === "all" || doc.jurisdiction === jurisdiction;
@@ -94,7 +94,7 @@ export function CitationsBrowserView() {
     });
   }, [results, searchTerm, jurisdiction, docType]);
 
-  const activeDocument = useMemo(() => {
+  const activeDocument = useMemo<CitationDocument | null>(() => {
     if (!filteredResults.length) return null;
     const fallback = filteredResults[0];
     return filteredResults.find((doc) => doc.id === activeId) ?? fallback;
@@ -144,7 +144,7 @@ export function CitationsBrowserView() {
             <Sparkles className="h-4 w-4" /> OHADA en priorité
           </div>
           <div className="flex gap-2 overflow-x-auto">
-            {ohadaFeatured.map((doc) => (
+            {ohadaFeatured.map((doc: CitationDocument) => (
               <button
                 key={doc.id}
                 onClick={() => selectDocument(doc)}
@@ -201,7 +201,7 @@ export function CitationsBrowserView() {
         <div className="mt-6 grid gap-4 lg:grid-cols-[260px_1fr_300px]">
           <ScrollArea className="h-[520px] rounded-2xl border border-white/10 bg-white/5">
             <div className="space-y-1 p-3">
-              {filteredResults.map((doc) => (
+              {filteredResults.map((doc: CitationDocument) => (
                 <button
                   key={doc.id}
                   onClick={() => selectDocument(doc)}
@@ -250,14 +250,14 @@ export function CitationsBrowserView() {
                 className="h-full"
               >
                 <TabsList className="flex flex-wrap gap-2 rounded-2xl bg-white/10 p-2">
-                  {activeDocument.content.map((section) => (
+                  {activeDocument.content.map((section: CitationDocument["content"][number]) => (
                     <TabsTrigger key={section.anchor} value={section.anchor} className="rounded-xl px-3 py-2 text-sm text-white/80">
                       {section.heading}
                     </TabsTrigger>
                   ))}
                 </TabsList>
                 <ScrollArea className="mt-4 h-[460px] pr-4">
-                  {activeDocument.content.map((section) => (
+                  {activeDocument.content.map((section: CitationDocument["content"][number]) => (
                     <TabsContent key={section.anchor} value={section.anchor} className="space-y-4">
                       <article
                         id={section.anchor}
@@ -307,7 +307,7 @@ export function CitationsBrowserView() {
                     <ArrowLeftRight className="h-4 w-4" /> Versions
                   </header>
                   <ul className="mt-3 space-y-2 text-sm text-white/70">
-                    {activeDocument.versions.map((version) => (
+                    {activeDocument.versions.map((version: CitationDocument["versions"][number]) => (
                       <li key={version.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-white">{version.label}</span>

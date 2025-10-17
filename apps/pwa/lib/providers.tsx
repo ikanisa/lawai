@@ -1,6 +1,6 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, type QueryClientConfig } from "@tanstack/react-query";
 import { ReactNode, useMemo, useState, useEffect } from "react";
 import { ThemeProvider as NextThemeProvider, useTheme } from "next-themes";
 
@@ -13,7 +13,7 @@ import { UIStateProvider, useUIState, type ThemePreference } from "@/lib/state/u
 import { ServiceWorkerBridge } from "@/lib/pwa/service-worker-bridge";
 import { Toaster } from "@/components/ui/toaster";
 
-const queryClientOptions = {
+const queryClientOptions: QueryClientConfig = {
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
@@ -24,7 +24,7 @@ const queryClientOptions = {
       retry: 1
     }
   }
-} satisfies Parameters<typeof QueryClient>[0];
+};
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient(queryClientOptions));

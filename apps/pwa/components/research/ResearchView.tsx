@@ -6,8 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ArrowUpRight,
   Check,
-  CircleHelp,
   Filter,
+  HelpCircle,
   Mic,
   Paperclip,
   ShieldAlert,
@@ -24,6 +24,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   type ResearchCitation,
+  type ResearchDeskContext,
+  type ResearchFilterOption,
   type ResearchPlan,
   type ResearchPlanStep,
   type ResearchStreamEvent,
@@ -31,7 +33,7 @@ import {
 } from "@/lib/data/research";
 import { researchDeskContextQueryOptions } from "@/lib/queries/research";
 import { useTelemetry } from "@/lib/telemetry";
-import { useUIState, type JurisdictionCode } from "@/lib/state/ui-store";
+import { jurisdictionOptions, useUIState, type JurisdictionCode } from "@/lib/state/ui-store";
 import { cn } from "@/lib/utils";
 
 interface ChatMessage {
@@ -41,14 +43,6 @@ interface ChatMessage {
   citations: ResearchCitation[];
   createdAt: number;
 }
-
-const jurisdictionOptions = [
-  "Automatique",
-  "FR",
-  "OHADA",
-  "EU",
-  "RW"
-];
 
 export function ResearchView() {
   const telemetry = useTelemetry();
@@ -86,7 +80,7 @@ export function ResearchView() {
     if (!isLoading && data) {
       setPlan({
         ...data.plan,
-        steps: data.plan.steps.map((step) => ({ ...step }))
+        steps: data.plan.steps.map((step: ResearchPlanStep) => ({ ...step }))
       });
       setCitations(data.defaultCitations);
     }
@@ -107,7 +101,7 @@ export function ResearchView() {
     if (!plan) return;
     const expected = plan.steps.length;
     if (!expected) return;
-    const retrieved = plan.steps.filter((step) => step.status === "done").length;
+    const retrieved = plan.steps.filter((step: ResearchPlanStep) => step.status === "done").length;
     telemetry.emit("retrieval_recall_scored", { expected, retrieved });
   }, [plan, telemetry]);
 
@@ -116,10 +110,10 @@ export function ResearchView() {
   const handleStreamEvent = useCallback((event: ResearchStreamEvent, assistantId: string) => {
     if (event.type === "token" && event.data.token) {
       setMessages((prev) =>
-        prev.map((message) =>
-          message.id === assistantId
-            ? { ...message, content: `${message.content}${event.data.token}` }
-            : message
+        prev.map((message: ChatMessage) =>
+            message.id === assistantId
+              ? { ...message, content: `${message.content}${event.data.token}` }
+              : message
         )
       );
     }
@@ -127,7 +121,7 @@ export function ResearchView() {
     if (event.type === "citation" && event.data.citation) {
       const citation = event.data.citation;
       setMessages((prev) =>
-        prev.map((message) =>
+        prev.map((message: ChatMessage) =>
           message.id === assistantId && !message.citations.some((c) => c.id === citation.id)
             ? { ...message, citations: [...message.citations, citation] }
             : message
@@ -140,12 +134,13 @@ export function ResearchView() {
     }
 
     if (event.type === "risk" && event.data.risk) {
+      const risk = event.data.risk;
       setPlan((prev) =>
         prev
           ? {
               ...prev,
-              riskLevel: event.data.risk.level,
-              riskSummary: event.data.risk.summary
+              riskLevel: risk.level,
+              riskSummary: risk.summary
             }
           : prev
       );
@@ -164,7 +159,7 @@ export function ResearchView() {
       setToolLogs((prev) => {
         const existing = prev.find((item) => item.id === tool.id);
         if (existing) {
-          return prev.map((item) =>
+          return prev.map((item: ToolLogEntry) =>
             item.id === tool.id
               ? { ...item, status: tool.status, detail: tool.detail }
               : item
@@ -186,7 +181,7 @@ export function ResearchView() {
         ];
       });
 
-      setPlan((prev) => updatePlanSteps(prev, tool.planStepId, tool.status, tool.detail));
+      setPlan((prev) => updatePlanSteps(prev, tool.planStepId ?? undefined, tool.status, tool.detail));
     }
 
     if (event.type === "done") {
@@ -237,6 +232,8 @@ export function ResearchView() {
 
       const policyFlags = confidentialMode ? ["confidential_mode"] : [];
 
+      const normalizedJurisdiction = jurisdiction === "Automatique" ? null : jurisdiction;
+
       cleanupRef.current = startResearchRun(
         input,
         (event) => {
@@ -245,7 +242,7 @@ export function ResearchView() {
         {
           agentId: "research",
           toolsEnabled,
-          jurisdiction: jurisdiction === "Automatique" ? null : jurisdiction,
+          jurisdiction: normalizedJurisdiction,
           policyFlags
         }
       );
@@ -270,7 +267,7 @@ export function ResearchView() {
 
   const transcriptDisabled = confidentialMode && !fileSearchEnabled && !webSearchEnabled;
 
-  if (isLoading || !plan) {
+  if (isLoading || !plan || !data) {
     return <ResearchSkeleton />;
   }
 
@@ -358,7 +355,7 @@ function updatePlanSteps(
   if (!plan || !planStepId) return plan;
   const targetIndex = plan.steps.findIndex((step) => step.id === planStepId);
   if (targetIndex === -1) return plan;
-  const steps: ResearchPlanStep[] = plan.steps.map((step, index) => {
+  const steps: ResearchPlanStep[] = plan.steps.map((step: ResearchPlanStep, index) => {
     if (index !== targetIndex) return { ...step };
     return {
       ...step,
@@ -420,7 +417,7 @@ function JurisdictionRouter({
             onChange={(event) => onChange(event.target.value as JurisdictionCode)}
             className="mt-1 rounded-2xl border border-white/10 bg-[#0B1220]/70 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#22D3EE]"
           >
-            {jurisdictionOptions.map((option) => (
+            {jurisdictionOptions.map((option: string) => (
               <option key={option} value={option} className="bg-[#0B1220]">
                 {option}
               </option>
@@ -435,7 +432,7 @@ function JurisdictionRouter({
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-wide text-white/60">Suggestions</p>
           <ul className="space-y-1 text-xs text-white/70">
-            {suggestions.slice(0, 2).map((suggestion) => (
+            {suggestions.slice(0, 2).map((suggestion: string) => (
               <li key={suggestion} className="flex items-start gap-2">
                 <Sparkles className="mt-0.5 h-3.5 w-3.5 text-sky-200" aria-hidden />
                 {suggestion}
@@ -469,7 +466,7 @@ function ToolToggles({
     <section className="glass-surface space-y-4 rounded-3xl border border-white/12 p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-white/80">Outils</h2>
-        <CircleHelp className="h-4 w-4 text-white/50" aria-hidden />
+        <HelpCircle className="h-4 w-4 text-white/50" aria-hidden />
       </div>
       <ToggleRow
         label="Web Search"
@@ -561,7 +558,7 @@ function FiltersPanel({
       <div>
         <p className="text-xs uppercase tracking-wide text-white/60">Publication</p>
         <div className="mt-2 flex flex-wrap gap-2">
-          {publicationDates.map((option) => (
+          {publicationDates.map((option: ResearchFilterOption) => (
             <button
               key={option.id}
               type="button"
@@ -581,7 +578,7 @@ function FiltersPanel({
       <div>
         <p className="text-xs uppercase tracking-wide text-white/60">Version</p>
         <div className="mt-2 flex flex-wrap gap-2">
-          {entryIntoForce.map((option) => (
+          {entryIntoForce.map((option: ResearchFilterOption) => (
             <button
               key={option.id}
               type="button"
@@ -652,7 +649,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       <p className="mt-3 text-sm leading-relaxed text-white/90">{message.content}</p>
       {message.citations.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
-          {message.citations.map((citation) => (
+          {message.citations.map((citation: ResearchCitation) => (
             <Badge key={citation.id} variant="outline" className="rounded-full border-white/30 bg-white/5 text-[11px] text-white/80">
               {citation.label}
             </Badge>
@@ -729,7 +726,7 @@ function ChatComposer({
       </div>
       {suggestions.length > 0 ? (
         <div className="flex flex-wrap gap-2">
-          {suggestions.slice(0, 3).map((suggestion) => (
+          {suggestions.slice(0, 3).map((suggestion: string) => (
             <button
               key={suggestion}
               type="button"

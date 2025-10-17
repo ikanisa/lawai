@@ -131,7 +131,13 @@ function ClauseCard({
   );
 }
 
-function BenchmarksTable({ benchmarks, formatDateTime }: { benchmarks: ClauseBenchmark[]; formatDateTime: (value: string) => string }) {
+function BenchmarksTable({
+  benchmarks,
+  formatDateTime
+}: {
+  benchmarks: ClauseBenchmark[];
+  formatDateTime: (value: Date) => string;
+}) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5">
       <div className="flex items-center justify-between border-b border-white/10 p-4">
@@ -162,7 +168,7 @@ function BenchmarksTable({ benchmarks, formatDateTime }: { benchmarks: ClauseBen
                       {benchmark.delta === "risque" && "Surveillance"}
                     </Badge>
                     <span className="text-xs text-white/40">
-                      MAJ {formatDateTime(benchmark.updatedAt)}
+                      MAJ {formatDateTime(new Date(benchmark.updatedAt))}
                     </span>
                   </div>
                 </td>
@@ -415,7 +421,7 @@ export function DraftingStudio() {
               </span>
               <span className="flex items-center gap-1">
                 <Clock3 className="h-3.5 w-3.5" aria-hidden />
-                Sync {formatDateTime(data.activeDraft.lastSyncedAt)}
+                Sync {formatDateTime(new Date(data.activeDraft.lastSyncedAt))}
               </span>
             </div>
           </div>

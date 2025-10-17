@@ -18,16 +18,20 @@ export function applyFrenchPunctuationSpacing(
   return value.replace(frenchPunctuationRegex, "\u00A0$2");
 }
 
+function normalizeDate(date: Date | string) {
+  return typeof date === "string" ? new Date(date) : date;
+}
+
 export function formatDate(
-  date: Date,
+  date: Date | string,
   locale: SupportedLocale = defaultLocale,
   options: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" }
 ) {
-  return new Intl.DateTimeFormat(locale, options).format(date);
+  return new Intl.DateTimeFormat(locale, options).format(normalizeDate(date));
 }
 
 export function formatDateTime(
-  date: Date,
+  date: Date | string,
   locale: SupportedLocale = defaultLocale,
   options: Intl.DateTimeFormatOptions = {
     year: "numeric",
@@ -37,7 +41,7 @@ export function formatDateTime(
     minute: "2-digit"
   }
 ) {
-  return new Intl.DateTimeFormat(locale, options).format(date);
+  return new Intl.DateTimeFormat(locale, options).format(normalizeDate(date));
 }
 
 export function formatNumber(

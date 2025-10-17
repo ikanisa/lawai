@@ -33,10 +33,10 @@ export function HITLReviewView() {
   const [action, setAction] = useState<HitlOutcome | null>(null);
   const [comment, setComment] = useState("");
 
-  const queue = data?.queue ?? [];
+  const queue = useMemo<HitlReviewItem[]>(() => data?.queue ?? [], [data]);
 
-  const filteredQueue = useMemo(() => {
-    return queue.filter((item) => {
+  const filteredQueue = useMemo<HitlReviewItem[]>(() => {
+    return queue.filter((item: HitlReviewItem) => {
       const matchesRisk = riskFilter === "all" || item.riskLevel === riskFilter;
       const matchesType = typeFilter === "all" || item.litigationType === typeFilter;
       const matchesTranslation = !translationOnly || item.requiresTranslationCheck;
@@ -148,7 +148,7 @@ export function HITLReviewView() {
 
           <ScrollArea className="mt-4 h-[520px] pr-2">
             <div className="space-y-2">
-              {filteredQueue.map((item) => (
+              {filteredQueue.map((item: HitlReviewItem) => (
                 <button
                   key={item.id}
                   onClick={() => setSelectedId(item.id)}
@@ -207,7 +207,7 @@ export function HITLReviewView() {
                     <div>
                       <p className="text-xs uppercase tracking-wide text-white/50">Rules</p>
                       <ul className="mt-1 list-disc space-y-1 pl-5">
-                        {activeReview.irac.rules.map((rule) => (
+                        {activeReview.irac.rules.map((rule: string) => (
                           <li key={rule}>{rule}</li>
                         ))}
                       </ul>
@@ -228,7 +228,7 @@ export function HITLReviewView() {
                     <CheckCircle2 className="h-4 w-4" /> Évidence & citations
                   </header>
                   <ul className="mt-3 space-y-2 text-sm text-white/80">
-                    {activeReview.evidence.map((item) => (
+                    {activeReview.evidence.map((item: HitlReviewItem["evidence"][number]) => (
                       <li key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                         <p className="font-medium text-white">{item.label}</p>
                         <p className="text-xs text-white/60">{item.type.toUpperCase()} · {item.uri}</p>

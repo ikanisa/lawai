@@ -6,6 +6,7 @@ import { createStore, useStore, type StoreApi } from "zustand";
 export type ThemePreference = "dark" | "light" | "contrast";
 
 export const jurisdictionOptions = [
+  "Automatique",
   "FR",
   "BE",
   "LU",
