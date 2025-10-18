@@ -27,3 +27,4 @@ apps/pwa/cache/
 .corepack/
 .pnpm-state/
 Library/
+apps/web/tsconfig.typecheck.tsbuildinfo

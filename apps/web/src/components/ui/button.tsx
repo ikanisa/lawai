@@ -11,11 +11,14 @@ const buttonVariants = cva(
         outline:
           'border border-slate-600/60 bg-slate-900/40 text-slate-100 hover:border-slate-400/80 hover:text-white',
         ghost: 'hover:bg-slate-800/60 hover:text-white',
+        secondary: 'border border-slate-700/70 bg-slate-800/80 text-slate-100 hover:border-slate-500/70 hover:text-white',
+        destructive: 'bg-legal-red/80 text-white hover:bg-legal-red',
         danger: 'bg-legal-red/90 text-white hover:bg-legal-red',
       },
       size: {
         default: 'h-10 px-4 py-2',
         sm: 'h-9 px-3 text-xs',
+        xs: 'h-8 px-3 text-xs',
         lg: 'h-12 px-5 text-base',
         icon: 'h-10 w-10 rounded-full',
       },
