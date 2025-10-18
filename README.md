@@ -158,6 +158,27 @@ Afin de démontrer la robustesse (latence, précision des citations, couverture 
 pnpm ops:perf-snapshot --org 00000000-0000-0000-0000-000000000000 --user 00000000-0000-0000-0000-000000000000 --notes "post-red-team"
 ```
 
+## Panneau d'administration (feature flag FEAT_ADMIN_PANEL)
+
+Un nouveau panneau d'administration Next.js est livré derrière le flag `FEAT_ADMIN_PANEL`. Le flag est activé par défaut en
+développement et en préproduction, et reste désactivé en production tant que `FEAT_ADMIN_PANEL=1` n'est pas fourni.
+
+- **Activer localement** : ajoutez `FEAT_ADMIN_PANEL=1` à votre `.env.local`.
+- **Prévisualisation Vercel** : les environnements `preview` héritent d'un comportement activé par défaut.
+- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans les variables Vercel avant le déploiement.
+
+Les routes `/api/admin/*` valident systématiquement la présence des en-têtes `x-admin-actor` et `x-admin-org` (ou retombent sur
+les valeurs de configuration `ADMIN_PANEL_ACTOR`/`ADMIN_PANEL_ORG`).
+
+## Runbooks condensés (Drive, Ingestion, Evals)
+
+- **Drive watcher & Corpus** : utiliser `/api/admin/jobs` avec `type="drive-watch"` pour relancer la surveillance. Les buckets
+  Supabase sont préfixés par organisation via les politiques RLS créées dans `supabase/migrations/20240710120000_admin_panel.sql`.
+- **Ingestion** : le bouton « Start backfill » du panneau appelle `/api/admin/ingestion` avec `action="backfill"`, ce qui ajoute
+  une entrée dans `admin_jobs`. Suivez la progression dans la vue « Jobs » du tableau de bord.
+- **Evaluations** : la commande « Trigger nightly eval » appelle `/api/admin/evaluations` et `queueJob(..., 'eval-nightly', ...)`.
+  Surveillez les résultats dans la page « Evaluations » (SLO gates) et vérifiez les événements correspondants dans l'audit log.
+
 La commande agrège `/metrics/governance` et `tool_performance_metrics`, calcule un P95 global et insère la ligne correspondante dans `performance_snapshots`.
 
 ### Générer un rapport de transparence
