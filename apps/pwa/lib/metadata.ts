@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 export const francophoneMetadata: Metadata = {
   manifest: "/manifest.json",
@@ -12,9 +12,12 @@ export const francophoneMetadata: Metadata = {
     "juridique",
     "francophone"
   ],
-  themeColor: "#0B1220",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent"
   }
+};
+
+export const francophoneViewport: Viewport = {
+  themeColor: "#0B1220"
 };
