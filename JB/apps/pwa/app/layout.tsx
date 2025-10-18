@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import "@/styles/theme.css";
 import { Providers } from "@/lib/providers";
-import { francophoneMetadata } from "@/lib/metadata";
+import { francophoneMetadata, francophoneViewport } from "@/lib/metadata";
 import { inter, sourceSerif } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,8 @@ export const metadata: Metadata = {
   description: "Agent-first workspace for the Autonomous Justice Suite.",
   ...francophoneMetadata
 };
+
+export const viewport = francophoneViewport;
 
 export default function RootLayout({
   children
