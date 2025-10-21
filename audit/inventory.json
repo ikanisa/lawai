@@ -1,0 +1,79 @@
+{
+  "packageManager": {
+    "name": "npm",
+    "version": "11.4.2",
+    "lockfile": "package-lock.json"
+  },
+  "node": {
+    "engines": ">=20 <21",
+    "nvm": "20.11.0"
+  },
+  "workspaces": [
+    {
+      "name": "@avocat-ai/web",
+      "path": "apps/web",
+      "framework": "Next.js 14.2.5 (App Router)",
+      "scripts": {
+        "dev": "node ./scripts/prepare-sw.mjs && next dev",
+        "build": "next build && node ./scripts/inject-sw.mjs",
+        "start": "next start",
+        "lint": "eslint --max-warnings=0 app src",
+        "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+        "test": "vitest run"
+      }
+    },
+    {
+      "name": "@apps/api",
+      "path": "apps/api",
+      "framework": "Fastify 4 (Node.js API)",
+      "scripts": {
+        "dev": "tsx src/server.ts",
+        "build": "tsc -p tsconfig.json",
+        "lint": "eslint src --ext .ts",
+        "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+        "test": "vitest run"
+      }
+    },
+    {
+      "name": "@apps/ops",
+      "path": "apps/ops",
+      "framework": "Node.js workers & CLI (tsx)",
+      "scripts": {
+        "dev": "tsx src/index.ts",
+        "build": "tsc -p tsconfig.json",
+        "lint": "eslint src --ext .ts",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run"
+      }
+    },
+    {
+      "name": "@apps/pwa",
+      "path": "apps/pwa",
+      "framework": "Next.js 14.x",
+      "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "next lint",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run"
+      }
+    },
+    {
+      "name": "@apps/edge",
+      "path": "apps/edge",
+      "framework": "Deno edge functions",
+      "scripts": {
+        "lint": "deno lint --config deno.jsonc",
+        "typecheck": "deno run --allow-read --allow-run scripts/typecheck.ts",
+        "test": "deno run --allow-read --allow-run scripts/typecheck.ts"
+      }
+    }
+  ],
+  "packages": [
+    "packages/shared",
+    "packages/supabase",
+    "db/seed",
+    "supabase"
+  ]
+}

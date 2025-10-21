@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
+import { serverEnv } from '../../env.server';
+
 export interface PolicyRecord {
   key: string;
   value: string | number | boolean | null;
@@ -150,8 +152,7 @@ let cachedClient: SupabaseClient | null = null;
 
 function createAdminClient(): SupabaseClient | null {
   if (cachedClient) return cachedClient;
-  const url = process.env.SUPABASE_URL;
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const { SUPABASE_URL: url, SUPABASE_SERVICE_ROLE_KEY: serviceRole } = serverEnv;
   if (!url || !serviceRole) {
     return null;
   }

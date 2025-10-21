@@ -36,7 +36,7 @@ const envSchema = z.object({
   POLICY_VERSION: z.string().optional(),
 });
 
-type Env = z.infer<typeof envSchema>;
+export type Env = z.infer<typeof envSchema>;
 
 const parsed = envSchema.parse({
   ...process.env,

@@ -1,7 +1,9 @@
 import type { NextWebVitalsMetric } from 'next/app';
 import { DEMO_ORG_ID, DEMO_USER_ID } from './src/lib/api';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3333';
+import { clientEnv } from './src/env.client';
+
+const API_BASE = clientEnv.NEXT_PUBLIC_API_BASE_URL;
 
 function sendTelemetry(body: Record<string, unknown>) {
   const url = `${API_BASE}/telemetry`;
