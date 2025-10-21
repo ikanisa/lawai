@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "framework": "nextjs",
+  "buildCommand": "npm run build --workspace @avocat-ai/web",
+  "installCommand": "npm install",
+  "outputDirectory": ".next",
+  "routes": [
+    { "src": "/healthz", "dest": "/api/healthz" }
+  ]
+}

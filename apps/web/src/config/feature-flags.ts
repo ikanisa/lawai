@@ -1,11 +1,13 @@
+import { serverEnv } from '../env.server';
+
 export const ADMIN_PANEL_FLAG = 'FEAT_ADMIN_PANEL';
 
 type AdminPanelMode = 'enabled' | 'disabled';
 
 function readFeatureFlag(): AdminPanelMode {
-  const raw = process.env[ADMIN_PANEL_FLAG];
+  const raw = serverEnv.FEAT_ADMIN_PANEL;
   if (!raw) {
-    return process.env.NODE_ENV === 'production' ? 'disabled' : 'enabled';
+    return serverEnv.NODE_ENV === 'production' ? 'disabled' : 'enabled';
   }
   const normalized = raw.trim().toLowerCase();
   if (['1', 'true', 'yes', 'on', 'enabled'].includes(normalized)) {
@@ -14,7 +16,7 @@ function readFeatureFlag(): AdminPanelMode {
   if (['0', 'false', 'no', 'off', 'disabled'].includes(normalized)) {
     return 'disabled';
   }
-  return process.env.NODE_ENV === 'production' ? 'disabled' : 'enabled';
+  return serverEnv.NODE_ENV === 'production' ? 'disabled' : 'enabled';
 }
 
 export function isAdminPanelEnabled(): boolean {
@@ -26,7 +28,7 @@ export function getAdminPanelMode(): AdminPanelMode {
 }
 
 export function getAdminEnvironmentLabel(): 'development' | 'staging' | 'production' {
-  const env = process.env.APP_ENV ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV;
+  const env = serverEnv.APP_ENV ?? serverEnv.VERCEL_ENV ?? serverEnv.NODE_ENV;
   if (!env) return 'development';
   const normalized = env.toLowerCase();
   if (['production', 'prod'].includes(normalized)) return 'production';

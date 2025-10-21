@@ -44,6 +44,7 @@
     "tesseract.js": "^5.0.4",
     "web-vitals": "^3.5.2",
     "workbox-window": "^6.5.4",
+    "zod": "^3.25.76",
     "zustand": "^4.5.2"
   },
   "devDependencies": {

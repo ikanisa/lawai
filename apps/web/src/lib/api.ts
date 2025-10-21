@@ -6,7 +6,9 @@ import {
   WorkspaceDesk,
 } from '@avocat-ai/shared';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3333';
+import { clientEnv } from '../env.client';
+
+export const API_BASE = clientEnv.NEXT_PUBLIC_API_BASE_URL;
 
 export const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000000';

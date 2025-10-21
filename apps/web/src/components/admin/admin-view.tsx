@@ -37,6 +37,7 @@ import {
   type DeviceSession,
 } from '../../lib/api';
 import type { Messages } from '../../lib/i18n';
+import { clientEnv } from '../../env.client';
 
 interface AdminViewProps {
   messages: Messages;
@@ -712,8 +713,8 @@ export function AdminView({ messages }: AdminViewProps) {
                 label={messages.admin.runs30d}
                 primary={overview ? numberFormatter.format(overview.runsLast30Days) : '—'}
                 secondary={(function () {
-                  const high = Number(process.env.NEXT_PUBLIC_DASHBOARD_RUNS_HIGH ?? '1000');
-                  const medium = Number(process.env.NEXT_PUBLIC_DASHBOARD_RUNS_MEDIUM ?? '200');
+                  const high = clientEnv.NEXT_PUBLIC_DASHBOARD_RUNS_HIGH;
+                  const medium = clientEnv.NEXT_PUBLIC_DASHBOARD_RUNS_MEDIUM;
                   const count = overview?.runsLast30Days ?? 0;
                   let kind: 'high' | 'medium' | 'low' = 'low';
                   if (count >= high) kind = 'high';
@@ -1107,8 +1108,8 @@ export function AdminView({ messages }: AdminViewProps) {
                 primary={formatPercent(evaluationSummary?.passRate)}
                 secondary={(function () {
                   const pass = evaluationSummary?.passRate ?? null;
-                  const good = Number(process.env.NEXT_PUBLIC_EVAL_PASS_GOOD ?? '0.9');
-                  const ok = Number(process.env.NEXT_PUBLIC_EVAL_PASS_OK ?? '0.75');
+                  const good = clientEnv.NEXT_PUBLIC_EVAL_PASS_GOOD;
+                  const ok = clientEnv.NEXT_PUBLIC_EVAL_PASS_OK;
                   let kind: 'good' | 'ok' | 'poor' | null = null;
                   if (typeof pass === 'number') {
                     kind = pass >= good ? 'good' : pass >= ok ? 'ok' : 'poor';
@@ -1128,7 +1129,7 @@ export function AdminView({ messages }: AdminViewProps) {
                         <>
                           <span
                             className={`${baseBadge} ${color}`}
-                            title={`Pass rate ${formatPercent(evaluationSummary?.passRate)} (good ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_PASS_GOOD ?? '0.9') * 100}%, ok ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_PASS_OK ?? '0.75') * 100}%)`}
+                            title={`Pass rate ${formatPercent(evaluationSummary?.passRate)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_PASS_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_PASS_OK * 100}%)`}
                           >
                             {label}
                           </span>
@@ -1148,8 +1149,8 @@ export function AdminView({ messages }: AdminViewProps) {
                 primary={formatPercent(evaluationSummary?.citationPrecisionCoverage)}
                 secondary={(function () {
                   const cov = evaluationSummary?.citationPrecisionCoverage ?? null;
-                  const good = Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_GOOD ?? '0.9');
-                  const ok = Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_OK ?? '0.75');
+                  const good = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD;
+                  const ok = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK;
                   let kind: 'good' | 'ok' | 'poor' | null = null;
                   if (typeof cov === 'number') {
                     kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
@@ -1169,7 +1170,7 @@ export function AdminView({ messages }: AdminViewProps) {
                         <>
                           <span
                             className={`${baseBadge} ${color}`}
-                            title={`Coverage ${formatPercent(evaluationSummary?.citationPrecisionCoverage)} (good ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_GOOD ?? '0.9') * 100}%, ok ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_OK ?? '0.75') * 100}%)`}
+                            title={`Coverage ${formatPercent(evaluationSummary?.citationPrecisionCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK * 100}%)`}
                           >
                             {label}
                           </span>
@@ -1189,8 +1190,8 @@ export function AdminView({ messages }: AdminViewProps) {
                 primary={formatPercent(evaluationSummary?.temporalValidityCoverage)}
                 secondary={(function () {
                   const cov = evaluationSummary?.temporalValidityCoverage ?? null;
-                  const good = Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_GOOD ?? '0.9');
-                  const ok = Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_OK ?? '0.75');
+                  const good = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD;
+                  const ok = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK;
                   let kind: 'good' | 'ok' | 'poor' | null = null;
                   if (typeof cov === 'number') {
                     kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
@@ -1210,7 +1211,7 @@ export function AdminView({ messages }: AdminViewProps) {
                         <>
                           <span
                             className={`${baseBadge} ${color}`}
-                            title={`Coverage ${formatPercent(evaluationSummary?.temporalValidityCoverage)} (good ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_GOOD ?? '0.9') * 100}%, ok ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_COVERAGE_OK ?? '0.75') * 100}%)`}
+                            title={`Coverage ${formatPercent(evaluationSummary?.temporalValidityCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK * 100}%)`}
                           >
                             {label}
                           </span>
@@ -1230,8 +1231,8 @@ export function AdminView({ messages }: AdminViewProps) {
                 primary={formatPercent(evaluationSummary?.maghrebBannerCoverage)}
                 secondary={(function () {
                   const cov = evaluationSummary?.maghrebBannerCoverage ?? null;
-                  const good = Number(process.env.NEXT_PUBLIC_EVAL_MAGHREB_GOOD ?? '0.95');
-                  const ok = Number(process.env.NEXT_PUBLIC_EVAL_MAGHREB_OK ?? '0.8');
+                  const good = clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_GOOD;
+                  const ok = clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_OK;
                   let kind: 'good' | 'ok' | 'poor' | null = null;
                   if (typeof cov === 'number') {
                     kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
@@ -1251,7 +1252,7 @@ export function AdminView({ messages }: AdminViewProps) {
                         <>
                           <span
                             className={`${baseBadge} ${color}`}
-                            title={`Coverage ${formatPercent(evaluationSummary?.maghrebBannerCoverage)} (good ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_MAGHREB_GOOD ?? '0.95') * 100}%, ok ≥ ${Number(process.env.NEXT_PUBLIC_EVAL_MAGHREB_OK ?? '0.8') * 100}%)`}
+                            title={`Coverage ${formatPercent(evaluationSummary?.maghrebBannerCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_OK * 100}%)`}
                           >
                             {label}
                           </span>
@@ -1400,8 +1401,8 @@ export function AdminView({ messages }: AdminViewProps) {
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {toolRows.map((row) => {
-                    const warn = Number(process.env.NEXT_PUBLIC_TOOL_FAILURE_WARN ?? '0.02');
-                    const crit = Number(process.env.NEXT_PUBLIC_TOOL_FAILURE_CRIT ?? '0.05');
+                    const warn = clientEnv.NEXT_PUBLIC_TOOL_FAILURE_WARN;
+                    const crit = clientEnv.NEXT_PUBLIC_TOOL_FAILURE_CRIT;
                     const ratio = row.totalInvocations > 0 ? row.failureCount / row.totalInvocations : 0;
                     const kind = ratio >= crit ? 'crit' : ratio >= warn ? 'warn' : 'ok';
                     const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
