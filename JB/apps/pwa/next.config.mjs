@@ -5,7 +5,10 @@ const nextConfig = {
     serverActions: true
   },
   reactStrictMode: true,
-  output: 'standalone'
+  output: 'standalone',
+  images: {
+    unoptimized: true
+  }
 };
 
 export default nextConfig;
