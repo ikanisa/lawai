@@ -1,5 +1,4 @@
-// @ts-nocheck
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
@@ -15,7 +14,12 @@ import type { AppContext } from './types/context';
 import { env } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
 
-export async function createApp() {
+interface AppBootstrap {
+  app: FastifyInstance;
+  context: AppContext;
+}
+
+export async function createApp(): Promise<AppBootstrap> {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
@@ -50,7 +54,7 @@ export async function createApp() {
     },
   };
 
-  await app.register(async (instance) => {
+  await app.register(async (instance: FastifyInstance) => {
     await registerAgentsRoutes(instance, context);
     await registerResearchRoutes(instance, context);
     await registerCitationsRoutes(instance, context);
