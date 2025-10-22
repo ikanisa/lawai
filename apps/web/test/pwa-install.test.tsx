@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { act, useEffect } from 'react';
-import { PwaInstallProvider, usePwaInstall } from '../src/hooks/use-pwa-install';
+import { PwaInstallProvider, usePwaInstall } from '../src/features/platform/hooks/use-pwa-install';
 
 function InstallConsumer() {
   const { shouldPrompt, registerSuccess, promptInstall } = usePwaInstall();

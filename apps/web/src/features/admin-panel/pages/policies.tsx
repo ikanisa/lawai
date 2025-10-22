@@ -3,8 +3,8 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Undo2 } from 'lucide-react';
-import { Button } from '../@/ui/button';
-import { Switch } from '../@/ui/switch';
+import { Button } from '@/ui/button';
+import { Switch } from '@/ui/switch';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';

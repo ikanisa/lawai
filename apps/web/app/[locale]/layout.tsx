@@ -1,8 +1,8 @@
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 
-import { AppShell } from '@/components/app-shell';
-import { AppProviders } from '@/components/providers';
+import { AppShell } from '@/features/shell';
+import { AppProviders } from '@/features/platform/providers/app-providers';
 import { AuthGuard } from '@/features/auth/components/auth-guard';
 import { getMessages, isLocale, locales, type Locale } from '@/lib/i18n';
 

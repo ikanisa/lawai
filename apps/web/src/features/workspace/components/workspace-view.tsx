@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Badge } from '@/ui/badge';
 import { Separator } from '@/ui/separator';
 import { JurisdictionChip } from '@/components/jurisdiction-chip';
-import { usePlanDrawer } from @/state/plan-drawer';
+import { usePlanDrawer } from '@/state/plan-drawer';
 import { PlanDrawer } from '@/components/plan-drawer';
 import { MultiAgentDesk } from './multi-agent-desk';
 import { ProcessNavigator } from './process-navigator';

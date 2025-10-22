@@ -7,6 +7,7 @@ import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Badge } from '@/ui/badge';
 import type { Locale, Messages } from '@/lib/i18n';
+import { queryKeys } from '@/lib/query';
 import { DEMO_ORG_ID, fetchCorpus, toggleAllowlistDomain, sendTelemetryEvent, resummarizeDocument } from '@/lib/api';
 
 interface CorpusViewProps {
@@ -54,7 +55,7 @@ interface IngestionRunRow {
 
 export function CorpusView({ messages, locale }: CorpusViewProps) {
   const queryClient = useQueryClient();
-  const corpusQuery = useQuery({ queryKey: ['corpus'], queryFn: () => fetchCorpus(DEMO_ORG_ID) });
+  const corpusQuery = useQuery({ queryKey: queryKeys.corpus.all(DEMO_ORG_ID), queryFn: () => fetchCorpus(DEMO_ORG_ID) });
 
   const toggleMutation = useMutation({
     mutationFn: ({ host, active, jurisdiction }: { host: string; active: boolean; jurisdiction?: string }) =>
@@ -66,7 +67,7 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
         active: variables.active,
         jurisdiction: variables.jurisdiction ?? null,
       });
-      queryClient.invalidateQueries({ queryKey: ['corpus'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.corpus.all(DEMO_ORG_ID) });
     },
     onError: (_error, variables) => {
       toast.error(locale === 'fr' ? 'Échec de la mise à jour' : 'Update failed');
@@ -85,7 +86,7 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
     onSuccess: (data) => {
       toast.success(messages.corpus.resummarizeSuccess);
       void sendTelemetryEvent('corpus_resummarize', { documentId: data.documentId, status: data.summaryStatus });
-      queryClient.invalidateQueries({ queryKey: ['corpus'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.corpus.all(DEMO_ORG_ID) });
     },
     onError: (_error, variables) => {
       toast.error(messages.corpus.resummarizeError);
@@ -128,20 +129,20 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
   return (
     <div className="space-y-6">
       <section className="grid gap-4">
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.corpus.residencyTitle}</CardTitle>
-            <p className="text-xs text-slate-400">{messages.corpus.residencyHint}</p>
+            <CardTitle className="text-foreground">{messages.corpus.residencyTitle}</CardTitle>
+            <p className="text-xs text-muted-foreground">{messages.corpus.residencyHint}</p>
           </CardHeader>
-          <CardContent className="flex flex-wrap gap-4 text-sm text-slate-200">
+          <CardContent className="flex flex-wrap gap-4 text-sm text-muted-foreground">
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-400">{messages.corpus.residencyActive}</p>
-              <p className="mt-1 text-base font-semibold text-slate-100">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{messages.corpus.residencyActive}</p>
+              <p className="mt-1 text-base font-semibold text-foreground">
                 {activeResidencyZone ? activeResidencyZone.toUpperCase() : '—'}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-400">{messages.corpus.residencyAllowed}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{messages.corpus.residencyAllowed}</p>
               <div className="mt-1 flex flex-wrap gap-2">
                 {allowedResidencyZones.length > 0 ? (
                   allowedResidencyZones.map((zone) => (
@@ -150,7 +151,7 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
                     </Badge>
                   ))
                 ) : (
-                  <span className="text-slate-400">—</span>
+                  <span className="text-muted-foreground">—</span>
                 )}
               </div>
             </div>
@@ -160,17 +161,17 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
 
       <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {allowlist.map((domain) => (
-          <Card key={`${domain.jurisdiction}-${domain.host}`} className="glass-card border border-slate-800/60">
+          <Card key={`${domain.jurisdiction}-${domain.host}`} className="glass-card border border-border/70">
             <CardHeader>
-              <CardTitle className="flex items-center justify-between text-slate-100">
+              <CardTitle className="flex items-center justify-between text-foreground">
                 {domain.host}
                 <Badge variant={domain.active ? 'success' : 'outline'}>
                   {domain.active ? messages.corpus.active : messages.corpus.inactive}
                 </Badge>
               </CardTitle>
-              <p className="text-xs text-slate-400">{domain.jurisdiction}</p>
+              <p className="text-xs text-muted-foreground">{domain.jurisdiction}</p>
             </CardHeader>
-            <CardContent className="space-y-3 text-xs text-slate-400">
+            <CardContent className="space-y-3 text-xs text-muted-foreground">
               <p>
                 {messages.corpus.lastRun}: {domain.lastIngestedAt ?? '—'}
               </p>
@@ -188,26 +189,26 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.corpus.snapshots}</CardTitle>
+            <CardTitle className="text-foreground">{messages.corpus.snapshots}</CardTitle>
             <Badge variant="outline">{messages.corpus.rwandaBadge}</Badge>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-200">
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
             {snapshots.map((doc) => {
               const highlights = Array.isArray(doc.highlights) ? doc.highlights : [];
               const status = doc.summaryStatus ?? 'pending';
               const isRefreshing = resummarizeMutation.isPending && resummarizeMutation.variables === doc.id;
               return (
-                <div key={doc.id} className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4 space-y-3">
+                <div key={doc.id} className="rounded-2xl border border-border/70 bg-muted/50 p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-slate-100">{doc.name}</p>
-                      <p className="text-xs text-slate-500">{doc.path}</p>
+                      <p className="font-semibold text-foreground">{doc.name}</p>
+                      <p className="text-xs text-muted-foreground/80">{doc.path}</p>
                     </div>
                     <Badge variant={statusVariant(status)}>{statusLabel(status)}</Badge>
                   </div>
-                  <div className="space-y-1 text-xs text-slate-400">
+                  <div className="space-y-1 text-xs text-muted-foreground">
                     <p>
                       {messages.corpus.chunkCount}: {doc.chunkCount ?? 0}
                     </p>
@@ -224,17 +225,17 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
                     </p>
                   </div>
                   {doc.summary ? (
-                    <div className="space-y-2 text-sm text-slate-100">
+                    <div className="space-y-2 text-sm text-foreground">
                       <p>{doc.summary}</p>
                       {highlights.length > 0 ? (
-                        <div className="space-y-1 text-xs text-slate-300">
-                          <p className="font-semibold uppercase tracking-wide text-slate-200">
+                        <div className="space-y-1 text-xs text-muted-foreground">
+                          <p className="font-semibold uppercase tracking-wide text-muted-foreground">
                             {messages.corpus.summaryHighlights}
                           </p>
                           <ul className="list-disc space-y-1 pl-5">
                             {highlights.map((item, index) => (
-                              <li key={`${doc.id}-highlight-${index}`} className="text-slate-300">
-                                <span className="font-semibold text-slate-100">{item.heading}: </span>
+                              <li key={`${doc.id}-highlight-${index}`} className="text-muted-foreground">
+                                <span className="font-semibold text-foreground">{item.heading}: </span>
                                 <span>{item.detail}</span>
                               </li>
                             ))}
@@ -243,7 +244,7 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
                       ) : null}
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-500">{messages.corpus.noSummary}</p>
+                    <p className="text-sm text-muted-foreground/80">{messages.corpus.noSummary}</p>
                   )}
                   {doc.summaryError ? (
                     <p className="text-xs text-legal-red">{messages.corpus.summaryErrorPrefix}{doc.summaryError}</p>
@@ -262,41 +263,41 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
               );
             })}
             {snapshots.length === 0 ? (
-              <p className="text-sm text-slate-500">{messages.corpus.noSnapshots}</p>
+              <p className="text-sm text-muted-foreground/80">{messages.corpus.noSnapshots}</p>
             ) : null}
           </CardContent>
         </Card>
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.corpus.uploads}</CardTitle>
+            <CardTitle className="text-foreground">{messages.corpus.uploads}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-200">
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
             {uploads.map((doc) => (
-              <div key={doc.id} className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
-                <p className="font-semibold text-slate-100">{doc.name}</p>
-                <p className="text-xs text-slate-400">{doc.createdAt}</p>
-                <p className="text-xs text-slate-400">
+              <div key={doc.id} className="rounded-2xl border border-border/70 bg-muted/50 p-4">
+                <p className="font-semibold text-foreground">{doc.name}</p>
+                <p className="text-xs text-muted-foreground">{doc.createdAt}</p>
+                <p className="text-xs text-muted-foreground">
                   {messages.corpus.residencyDocLabel}: {doc.residencyZone ? doc.residencyZone.toUpperCase() : '—'}
                 </p>
               </div>
             ))}
             {uploads.length === 0 ? (
-              <p className="text-sm text-slate-500">{messages.corpus.noUploads}</p>
+              <p className="text-sm text-muted-foreground/80">{messages.corpus.noUploads}</p>
             ) : null}
           </CardContent>
         </Card>
       </section>
 
       <section>
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.corpus.telemetry}</CardTitle>
+            <CardTitle className="text-foreground">{messages.corpus.telemetry}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-xs text-slate-400">
+          <CardContent className="space-y-2 text-xs text-muted-foreground">
             {ingestions.map((run) => (
-              <div key={run.id} className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-3">
+              <div key={run.id} className="rounded-2xl border border-border/70 bg-muted/50 p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-200">{run.adapter}</span>
+                  <span className="text-muted-foreground">{run.adapter}</span>
                   <Badge variant={run.status === 'completed' ? 'success' : 'warning'}>{run.status}</Badge>
                 </div>
                 <p>
@@ -305,7 +306,7 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
               </div>
             ))}
             {ingestions.length === 0 ? (
-              <p className="text-sm text-slate-500">{messages.corpus.ingestion}</p>
+              <p className="text-sm text-muted-foreground/80">{messages.corpus.ingestion}</p>
             ) : null}
           </CardContent>
         </Card>

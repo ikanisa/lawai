@@ -2,23 +2,12 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
 
 import type { Locale } from '@/lib/i18n';
-import { clientEnv } from '@/env.client';
 import { Spinner } from '@/ui/spinner';
+import { getSupabaseBrowserClient } from '../lib/client';
 
 const AUTH_ROUTE_SEGMENT = '/auth';
-
-function createBrowserClient() {
-  return createClient(clientEnv.NEXT_PUBLIC_SUPABASE_URL, clientEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
-    auth: {
-      persistSession: true,
-    },
-  });
-}
-
-const cachedClient = createBrowserClient();
 
 export interface AuthGuardProps {
   children: ReactNode;
@@ -31,6 +20,7 @@ export function AuthGuard({ children, locale }: AuthGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [status, setStatus] = useState<GuardState>('checking');
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
 
   const isAuthRoute = useMemo(() => pathname?.includes(`/${locale}${AUTH_ROUTE_SEGMENT}`) ?? false, [locale, pathname]);
 
@@ -42,7 +32,7 @@ export function AuthGuard({ children, locale }: AuthGuardProps) {
 
     let active = true;
 
-    cachedClient.auth
+    supabase.auth
       .getSession()
       .then(({ data }) => {
         if (!active) return;
@@ -65,7 +55,7 @@ export function AuthGuard({ children, locale }: AuthGuardProps) {
         router.replace(`/${locale}${AUTH_ROUTE_SEGMENT}?${search.toString()}`);
       });
 
-    const { data: subscription } = cachedClient.auth.onAuthStateChange((_event, session) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!active || isAuthRoute) return;
       setStatus(session ? 'authenticated' : 'unauthenticated');
       if (!session) {
@@ -77,7 +67,7 @@ export function AuthGuard({ children, locale }: AuthGuardProps) {
       active = false;
       subscription.subscription.unsubscribe();
     };
-  }, [isAuthRoute, locale, pathname, router]);
+  }, [isAuthRoute, locale, pathname, router, supabase]);
 
   if (isAuthRoute) {
     return <>{children}</>;
