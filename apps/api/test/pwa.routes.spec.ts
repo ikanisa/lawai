@@ -18,6 +18,16 @@ import {
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { createApp } from '../src/app.js';
+import {
+  defaultWebSearchMode,
+  researchToolSummaries,
+  webSearchModes,
+} from '../src/avocat-pwa-data.js';
+
+const WebSearchModeSchema = z.enum(webSearchModes);
+const StubStreamRequestSchema = AgentStreamRequestSchema.extend({
+  web_search_mode: WebSearchModeSchema.optional(),
+});
 
 describe('PWA agent-first routes', () => {
   let app: FastifyInstance;
@@ -54,7 +64,7 @@ describe('PWA agent-first routes', () => {
     const runPayload = JSON.parse(runResponse.body);
     const run = AgentRunSchema.parse(runPayload);
 
-    const streamRequest = AgentStreamRequestSchema.parse({
+    const streamRequest = StubStreamRequestSchema.parse({
       input: 'Explique la procédure de résiliation dans un contrat OHADA',
       agent_id: run.agentId,
       run_id: run.id,
@@ -84,6 +94,70 @@ describe('PWA agent-first routes', () => {
         expect(() => ResearchStreamPayloadSchema.parse(event.data)).not.toThrow();
       }
     }
+
+    const webSearchEvents = streamEvents.filter(
+      (event) => event.type === 'tool' && event.data.tool?.name === 'web_search'
+    );
+    expect(webSearchEvents).toHaveLength(2);
+    const [webSearchStart, webSearchSuccess] = webSearchEvents;
+    expect(webSearchStart.data.tool?.status).toBe('running');
+    expect(webSearchStart.data.tool?.detail).toBe(
+      researchToolSummaries.web_search[defaultWebSearchMode].start
+    );
+    expect(webSearchSuccess.data.tool?.status).toBe('success');
+    expect(webSearchSuccess.data.tool?.detail).toBe(
+      researchToolSummaries.web_search[defaultWebSearchMode].success
+    );
+  });
+
+  it('streams broad web search copy when requested', async () => {
+    const runResponse = await app.inject({
+      method: 'POST',
+      url: '/api/agents/run',
+      payload: {
+        input: 'Explique la procédure de résiliation dans un contrat OHADA',
+        agent_id: 'research',
+        tools_enabled: ['web_search', 'file_search'],
+      },
+    });
+
+    expect(runResponse.statusCode).toBe(200);
+    const runPayload = JSON.parse(runResponse.body);
+    const run = AgentRunSchema.parse(runPayload);
+
+    const streamRequest = StubStreamRequestSchema.parse({
+      input: 'Explique la procédure de résiliation dans un contrat OHADA',
+      agent_id: run.agentId,
+      run_id: run.id,
+      thread_id: run.threadId,
+      tools_enabled: ['web_search', 'file_search'],
+      web_search_mode: 'broad',
+    });
+
+    const streamResponse = await app.inject({
+      method: 'POST',
+      url: '/api/agents/stream',
+      payload: streamRequest,
+    });
+
+    expect(streamResponse.statusCode).toBe(200);
+    const lines = streamResponse.body
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+
+    expect(lines.at(-1)?.type).toBe('done');
+    const streamEvents = lines.slice(0, -1);
+
+    const webSearchEvents = streamEvents.filter(
+      (event) => event.type === 'tool' && event.data.tool?.name === 'web_search'
+    );
+    expect(webSearchEvents).toHaveLength(2);
+    const [webSearchStart, webSearchSuccess] = webSearchEvents;
+    expect(webSearchStart.data.tool?.detail).toBe(researchToolSummaries.web_search.broad.start);
+    expect(webSearchSuccess.data.tool?.detail).toBe(
+      researchToolSummaries.web_search.broad.success
+    );
   });
 
   it('exposes voice console context, session token, and run responses', async () => {
