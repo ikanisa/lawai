@@ -1,4 +1,3 @@
-// @ts-nocheck
 import Fastify from 'fastify';
 import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
