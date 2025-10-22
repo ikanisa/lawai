@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import ora from 'ora';
+import { createRestClient, createSloSnapshot, exportSloSnapshots, fetchSloMetrics } from '@avocat-ai/sdk';
 import { requireEnv } from './lib/env.js';
 
 interface CliOptions {
@@ -80,54 +81,31 @@ function parseArgs(): CliOptions {
 }
 
 async function listSnapshots(options: CliOptions): Promise<unknown> {
-  const basePath = options.exportCsv ? '/metrics/slo/export' : '/metrics/slo';
-  const params = new URLSearchParams({ orgId: options.orgId });
   if (options.exportCsv) {
-    params.set('format', 'csv');
+    return exportSloSnapshots(options.orgId, { userId: options.userId, format: 'csv' });
   }
-  const response = await fetch(`${options.apiBaseUrl}${basePath}?${params.toString()}`, {
-    headers: {
-      'x-user-id': options.userId,
-    },
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Impossible de récupérer les SLO (${response.status}): ${body}`);
-  }
-
-  return options.exportCsv ? response.text() : response.json();
+  return fetchSloMetrics(options.orgId);
 }
 
 async function createSnapshot(options: CliOptions): Promise<unknown> {
-  const payload = {
+  return createSloSnapshot({
     orgId: options.orgId,
-    apiUptimePercent: options.apiUptime,
-    hitlResponseP95Seconds: options.hitlP95,
-    retrievalLatencyP95Seconds: options.retrievalP95,
-    citationPrecisionP95: options.citationP95,
-    notes: options.notes,
-  };
-
-  const response = await fetch(`${options.apiBaseUrl}/metrics/slo`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': options.userId,
-    },
-    body: JSON.stringify(payload),
+    userId: options.userId,
+    apiUptimePercent: options.apiUptime!,
+    hitlResponseP95Seconds: options.hitlP95!,
+    retrievalLatencyP95Seconds: options.retrievalP95!,
+    citationPrecisionP95: options.citationP95 ?? null,
+    notes: options.notes ?? null,
   });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Echec enregistrement SLO (${response.status}): ${body}`);
-  }
-
-  return response.json();
 }
 
 async function run(): Promise<void> {
   const options = parseArgs();
+  createRestClient({
+    baseUrl: options.apiBaseUrl,
+    defaultOrgId: options.orgId,
+    defaultUserId: options.userId,
+  });
   requireEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
 
   if (!options.listOnly && (options.apiUptime === null || options.hitlP95 === null || options.retrievalP95 === null)) {

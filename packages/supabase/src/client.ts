@@ -1,5 +1,6 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import type { Database } from './generated/database.types.js';
 
 const envSchema = z.object({
   SUPABASE_URL: z.string().url(),
@@ -8,16 +9,16 @@ const envSchema = z.object({
 
 export type SupabaseEnv = z.infer<typeof envSchema>;
 
-let cachedClient: SupabaseClient | null = null;
+let cachedClient: SupabaseClient<Database> | null = null;
 
-export function createServiceClient(env: SupabaseEnv): SupabaseClient {
+export function createServiceClient(env: SupabaseEnv): SupabaseClient<Database> {
   const parsed = envSchema.parse(env);
 
   if (cachedClient) {
     return cachedClient;
   }
 
-  cachedClient = createClient(parsed.SUPABASE_URL, parsed.SUPABASE_SERVICE_ROLE_KEY, {
+  cachedClient = createClient<Database>(parsed.SUPABASE_URL, parsed.SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

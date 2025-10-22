@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import ora from 'ora';
+import { createRestClient, submitResearchQuestion } from '@avocat-ai/sdk';
 import { createSupabaseService } from './lib/supabase.js';
 import { requireEnv } from './lib/env.js';
 import { assessScenario, summariseAssessment } from './lib/red-team.js';
@@ -69,23 +70,12 @@ async function executeScenario(
   options: CliOptions,
 ): Promise<{ payload: IRACPayload; assessmentSummary: string; passed: boolean; observed: string; notes: string[] }>
 {
-  const response = await fetch(`${options.apiBaseUrl}/runs`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      question: scenario.prompt,
-      orgId: options.orgId,
-      userId: options.userId,
-    }),
+  const result = await submitResearchQuestion({
+    question: scenario.prompt,
+    orgId: options.orgId,
+    userId: options.userId,
   });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Echec appel /runs (${response.status}): ${body}`);
-  }
-
-  const json = (await response.json()) as { data: IRACPayload };
-  const payload = json.data;
+  const payload = result.data;
   const assessment = assessScenario(payload, scenario);
   return {
     payload,
@@ -141,6 +131,11 @@ async function recordFinding(
 
 async function run(): Promise<void> {
   const options = parseArgs();
+  createRestClient({
+    baseUrl: options.apiBaseUrl,
+    defaultOrgId: options.orgId,
+    defaultUserId: options.userId,
+  });
   const spinner = ora('Exécution des scénarios red-team...').start();
 
   const scenarios = selectScenarios(options.scenarioKeys);

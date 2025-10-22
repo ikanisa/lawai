@@ -3,6 +3,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ora from 'ora';
 import { format } from 'date-fns';
+import {
+  createRestClient,
+  fetchDispatchReports,
+  fetchLaunchDigests,
+  type DispatchRecord,
+  type LaunchDigestEntry,
+} from '@avocat-ai/sdk';
 import { requireEnv } from './lib/env.js';
 
 interface CliOptions {
@@ -13,18 +20,6 @@ interface CliOptions {
   periodEnd?: string;
   output: 'markdown' | 'json';
   verifyParity: boolean;
-}
-
-interface DispatchRecord {
-  id: string;
-  report_type: string | null;
-  period_start: string;
-  period_end: string;
-  status: string | null;
-  payload_url: string | null;
-  metadata: Record<string, unknown> | null;
-  created_at: string;
-  dispatched_at: string | null;
 }
 
 function parseArgs(): CliOptions {
@@ -74,18 +69,6 @@ function parseArgs(): CliOptions {
   return options;
 }
 
-interface LaunchDigestEntry {
-  id: string;
-  orgId: string;
-  requestedBy: string;
-  jurisdiction: string;
-  channel: string;
-  frequency: string;
-  recipients: string[];
-  topics?: string[];
-  createdAt: string;
-}
-
 export function formatRegulatorDigest(reference: Date, dispatches: DispatchRecord[]): string {
   const header = `# Bulletin régulateur (${format(reference, 'yyyy-MM-dd')})`;
   if (dispatches.length === 0) {
@@ -103,28 +86,6 @@ export function formatRegulatorDigest(reference: Date, dispatches: DispatchRecor
   return `${lines.join('\n')}\n`;
 }
 
-function buildRequestHeaders(options: CliOptions) {
-  return {
-    'x-user-id': options.userId,
-    'x-org-id': options.orgId,
-  };
-}
-
-async function fetchLaunchDigests(options: CliOptions): Promise<LaunchDigestEntry[]> {
-  const params = new URLSearchParams({ orgId: options.orgId, limit: '25' });
-  const response = await fetch(`${options.apiBaseUrl}/launch/digests?${params.toString()}`, {
-    headers: buildRequestHeaders(options),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Impossible de récupérer la file des digests (${response.status}): ${body}`);
-  }
-
-  const json = (await response.json()) as { digests?: LaunchDigestEntry[] };
-  return json.digests ?? [];
-}
-
 export function summariseParity(dispatches: DispatchRecord[], digests: LaunchDigestEntry[]) {
   const dispatchIds = new Set(dispatches.map((record) => record.id));
   const unmatched = digests.filter((digest) => !dispatchIds.has(digest.id));
@@ -137,36 +98,25 @@ export function summariseParity(dispatches: DispatchRecord[], digests: LaunchDig
   };
 }
 
-async function fetchDispatches(options: CliOptions): Promise<DispatchRecord[]> {
-  const params = new URLSearchParams({ orgId: options.orgId });
-  if (options.periodStart) {
-    params.set('periodStart', options.periodStart);
-  }
-  if (options.periodEnd) {
-    params.set('periodEnd', options.periodEnd);
-  }
-
-  const response = await fetch(`${options.apiBaseUrl}/reports/dispatches?${params.toString()}`, {
-    headers: { ...buildRequestHeaders(options) },
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Impossible de récupérer les notifications (${response.status}): ${body}`);
-  }
-
-  const json = (await response.json()) as { dispatches?: DispatchRecord[] };
-  return json.dispatches ?? [];
-}
-
 async function run(): Promise<void> {
   const options = parseArgs();
   requireEnv(['SUPABASE_URL']);
+  createRestClient({
+    baseUrl: options.apiBaseUrl,
+    defaultOrgId: options.orgId,
+    defaultUserId: options.userId,
+  });
   const spinner = ora('Compilation du digest régulateur...').start();
   try {
     const [dispatches, digests] = await Promise.all([
-      fetchDispatches(options),
-      options.verifyParity ? fetchLaunchDigests(options) : Promise.resolve<LaunchDigestEntry[]>([]),
+      fetchDispatchReports(options.orgId, {
+        userId: options.userId,
+        periodStart: options.periodStart,
+        periodEnd: options.periodEnd,
+      }),
+      options.verifyParity
+        ? fetchLaunchDigests(options.orgId, { userId: options.userId, limit: 25 })
+        : Promise.resolve<LaunchDigestEntry[]>([]),
     ]);
     const parity = options.verifyParity ? summariseParity(dispatches, digests) : null;
     spinner.succeed('Digest généré');

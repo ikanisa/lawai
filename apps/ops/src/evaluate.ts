@@ -3,6 +3,7 @@ import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import ora from 'ora';
+import { createRestClient, submitResearchQuestion } from '@avocat-ai/sdk';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadRequiredEnv } from './lib/env.js';
 import { createSupabaseService } from './lib/supabase.js';
@@ -465,6 +466,12 @@ async function run(): Promise<void> {
     throw new Error('OrgId et userId doivent être renseignés (utilisez --org et --user).');
   }
 
+  createRestClient({
+    baseUrl: options.apiBaseUrl,
+    defaultOrgId: options.orgId,
+    defaultUserId: options.userId,
+  });
+
   const env = loadRequiredEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
   const hasSupabase = env.missing.length === 0;
   const supabase = hasSupabase ? createSupabaseService(env.values) : null;
@@ -510,42 +517,17 @@ async function run(): Promise<void> {
         : options.benchmark ?? null;
 
     try {
-      const response = await fetch(`${options.apiBaseUrl}/runs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: evaluationCase.prompt,
-          orgId: options.orgId,
-          userId: options.userId,
-        }),
+      const result = await submitResearchQuestion({
+        question: evaluationCase.prompt,
+        orgId: options.orgId,
+        userId: options.userId,
       });
-
-      if (!response.ok) {
-        const message = `API ${response.status}`;
-        await recordResult(supabase, evaluationCase.id as string, null, false, message, undefined, caseBenchmark);
-        scoreboard.push({
-          caseId: evaluationCase.id as string,
-          name: evaluationCase.name as string,
-          pass: false,
-          benchmark: caseBenchmark,
-          metrics: null,
-        });
-        if (caseSpinner) {
-          caseSpinner.fail(`${evaluationCase.name}: ${message}`);
-        } else {
-          console.error(`${evaluationCase.name}: ${message}`);
-        }
-        failed += 1;
-        continue;
-      }
-
-      const json = (await response.json()) as { runId?: string; data?: IRACPayload };
-      const payload = json.data;
+      const payload = result.data;
       if (!payload) {
         await recordResult(
           supabase,
           evaluationCase.id as string,
-          json.runId ?? null,
+          result.runId ?? null,
           false,
           'Réponse vide',
           undefined,
@@ -574,7 +556,7 @@ async function run(): Promise<void> {
       await recordResult(
         supabase,
         evaluationCase.id as string,
-        json.runId ?? null,
+        result.runId ?? null,
         evaluation.pass,
         notes,
         metrics,

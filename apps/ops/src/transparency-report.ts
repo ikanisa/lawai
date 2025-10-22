@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import ora from 'ora';
+import { createRestClient, createTransparencyReport } from '@avocat-ai/sdk';
 import { requireEnv } from './lib/env.js';
 
 interface CliOptions {
@@ -63,28 +64,13 @@ function parseArgs(): CliOptions {
 }
 
 async function generateReport(options: CliOptions): Promise<unknown> {
-  const payload = {
+  return createTransparencyReport({
     orgId: options.orgId,
+    userId: options.userId,
     periodStart: options.start,
     periodEnd: options.end,
     dryRun: options.dryRun,
-  };
-
-  const response = await fetch(`${options.apiBaseUrl}/reports/transparency`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': options.userId,
-    },
-    body: JSON.stringify(payload),
   });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Echec génération rapport (${response.status}): ${body}`);
-  }
-
-  return response.json();
 }
 
 function writeOutput(report: unknown, options: CliOptions): void {
@@ -102,6 +88,12 @@ async function run(): Promise<void> {
   if (!options.dryRun) {
     requireEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
   }
+
+  createRestClient({
+    baseUrl: options.apiBaseUrl,
+    defaultOrgId: options.orgId,
+    defaultUserId: options.userId,
+  });
 
   const spinner = ora('Génération du rapport de transparence...').start();
   try {
