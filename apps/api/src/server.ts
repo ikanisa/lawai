@@ -62,7 +62,7 @@ import { authorizeRequestWithGuards } from './http/authorization.js';
 import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
-import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
+import { getWorkspaceOverview } from './domain/workspace/overview.js';
 import { InMemoryRateLimiter } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
@@ -3888,104 +3888,23 @@ app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply
 
   try {
     await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
-    const [jurisdictionsResult, mattersResult, complianceResult, hitlResult] = await Promise.all([
-      supabase.from('jurisdictions').select('code, name, eu, ohada').order('name', { ascending: true }),
-      supabase
-        .from('agent_runs')
-        .select('id, question, risk_level, hitl_required, status, started_at, finished_at, jurisdiction_json')
-        .eq('org_id', orgId)
-        .order('started_at', { ascending: false })
-        .limit(8),
-      supabase
-        .from('sources')
-        .select('id, title, publisher, source_url, jurisdiction_code, consolidated, effective_date, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(8),
-      supabase
-        .from('hitl_queue')
-        .select('id, run_id, reason, status, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(8),
-    ]);
 
-    const jurisdictionRows = jurisdictionsResult.data ?? [];
-    const matterRows = mattersResult.data ?? [];
-    const complianceRows = complianceResult.data ?? [];
-    const hitlRows = hitlResult.data ?? [];
+    const { overview, errors } = await getWorkspaceOverview(supabase, orgId);
 
-    if (jurisdictionsResult.error) {
-      request.log.error({ err: jurisdictionsResult.error }, 'workspace jurisdictions query failed');
+    if (errors.jurisdictions) {
+      request.log.error({ err: errors.jurisdictions }, 'workspace jurisdictions query failed');
     }
-    if (mattersResult.error) {
-      request.log.error({ err: mattersResult.error }, 'workspace matters query failed');
+    if (errors.matters) {
+      request.log.error({ err: errors.matters }, 'workspace matters query failed');
     }
-    if (complianceResult.error) {
-      request.log.error({ err: complianceResult.error }, 'workspace compliance query failed');
+    if (errors.compliance) {
+      request.log.error({ err: errors.compliance }, 'workspace compliance query failed');
     }
-    if (hitlResult.error) {
-      request.log.error({ err: hitlResult.error }, 'workspace hitl query failed');
+    if (errors.hitl) {
+      request.log.error({ err: errors.hitl }, 'workspace hitl query failed');
     }
 
-    const matterCounts = new Map<string, number>();
-    for (const row of matterRows) {
-      const jurisdiction = extractCountry(row.jurisdiction_json);
-      const key = jurisdiction ?? 'UNK';
-      matterCounts.set(key, (matterCounts.get(key) ?? 0) + 1);
-    }
-
-    const jurisdictions = jurisdictionRows.map((row) => ({
-      code: row.code,
-      name: row.name,
-      eu: row.eu,
-      ohada: row.ohada,
-      matterCount: matterCounts.get(row.code) ?? 0,
-    }));
-
-    const matters = matterRows.map((row) => ({
-      id: row.id,
-      question: row.question,
-      status: row.status,
-      riskLevel: row.risk_level,
-      hitlRequired: row.hitl_required,
-      startedAt: row.started_at,
-      finishedAt: row.finished_at,
-      jurisdiction: extractCountry(row.jurisdiction_json),
-    }));
-
-    const complianceWatch = complianceRows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      publisher: row.publisher,
-      url: row.source_url,
-      jurisdiction: row.jurisdiction_code,
-      consolidated: row.consolidated,
-      effectiveDate: row.effective_date,
-      createdAt: row.created_at,
-    }));
-
-    const hitlInbox = hitlRows.map((row) => ({
-      id: row.id,
-      runId: row.run_id,
-      reason: row.reason,
-      status: row.status,
-      createdAt: row.created_at,
-    }));
-
-    const pendingCount = hitlInbox.filter((item) => item.status === 'pending').length;
-
-    return {
-      jurisdictions,
-      matters,
-      complianceWatch,
-      hitlInbox: {
-        items: hitlInbox,
-        pendingCount,
-      },
-      desk: buildPhaseCWorkspaceDesk(),
-      navigator: buildPhaseCProcessNavigator(),
-    };
+    return overview;
   } catch (error) {
     if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
       return reply.code(error.statusCode).send({ error: error.message });
