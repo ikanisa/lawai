@@ -1,4 +1,4 @@
-import type { ProcessNavigatorFlow, WorkspaceDesk } from '@avocat-ai/shared';
+import type { ProcessNavigatorFlow, WorkspaceDesk, WorkspaceSuggestedTask } from '@avocat-ai/shared';
 
 export function buildPhaseCWorkspaceDesk(): WorkspaceDesk {
   return {
@@ -567,6 +567,111 @@ export function buildPhaseCProcessNavigator(): ProcessNavigatorFlow[] {
           outputs: ['delivery_receipt.json'],
         },
       ],
+    },
+  ];
+}
+
+export function buildWorkspaceSuggestedTasks(): WorkspaceSuggestedTask[] {
+  return [
+    {
+      id: 'gpt5-model-variants',
+      title: 'Review GPT-5 model variants',
+      description:
+        'Compare capabilities and trade-offs among gpt-5, gpt-5-mini, and gpt-5-nano to pick the right model for each workload.',
+      mode: 'ask',
+      question:
+        'What are the key capability and latency differences between gpt-5, gpt-5-mini, and gpt-5-nano for legal engineering tasks?',
+      tags: ['Models', 'Strategy'],
+    },
+    {
+      id: 'gpt5-reasoning-controls',
+      title: 'Experiment with reasoning controls',
+      description:
+        'Prototype API calls using the reasoning.effort parameter to balance latency and answer depth for representative prompts.',
+      mode: 'ask',
+      question:
+        'Provide step-by-step guidance for testing gpt-5 reasoning.effort settings (minimal, low, medium, high) on sample coding prompts.',
+      tags: ['Reasoning', 'Latency'],
+    },
+    {
+      id: 'gpt5-verbosity-testing',
+      title: 'Evaluate verbosity settings',
+      description:
+        'Measure how low, medium, and high text verbosity affect response length and clarity in your user experience.',
+      mode: 'ask',
+      question:
+        'How should we design an experiment to compare gpt-5 text verbosity levels and document the impact on developer UX?',
+      tags: ['Verbosity', 'UX'],
+    },
+    {
+      id: 'gpt5-custom-tools',
+      title: 'Prototype custom tool integrations',
+      description:
+        'Implement a custom tool with freeform inputs and optional CFG constraints to validate execution and safety checks.',
+      mode: 'ask',
+      question:
+        'Outline the steps to build and validate a gpt-5 custom tool that executes code with CFG-constrained outputs.',
+      tags: ['Tools', 'Engineering'],
+    },
+    {
+      id: 'gpt5-allowed-tools',
+      title: 'Assess allowed tools strategy',
+      description:
+        'Design scenarios using the allowed_tools parameter to restrict which capabilities the model can invoke in production.',
+      mode: 'ask',
+      question:
+        'How can we structure allowed_tools configurations to safely limit gpt-5 tool usage during staged rollouts?',
+      tags: ['Tools', 'Governance'],
+    },
+    {
+      id: 'gpt5-preamble-prompts',
+      title: 'Explore preamble prompting',
+      description:
+        'Enable preambles before tool calls to improve observability and document how rationales affect operator confidence.',
+      mode: 'ask',
+      question:
+        'Describe best practices for prompting gpt-5 to emit concise preambles before tool calls and how to evaluate their effectiveness.',
+      tags: ['Prompting', 'Transparency'],
+    },
+    {
+      id: 'gpt5-responses-migration',
+      title: 'Plan migration to Responses API',
+      description:
+        'Map existing Chat Completions usage to the Responses API with chain-of-thought persistence and new parameters.',
+      mode: 'ask',
+      question:
+        'What is an actionable migration plan to move workloads from Chat Completions to the Responses API for gpt-5?',
+      tags: ['Migration', 'Responses API'],
+    },
+    {
+      id: 'gpt5-prompt-optimizer',
+      title: 'Update prompt best practices',
+      description:
+        'Use the GPT-5 prompt optimizer and guides to refine prompts for coding, frontend, and agentic workflows.',
+      mode: 'ask',
+      question:
+        'How should we iterate on prompts with the GPT-5 prompt optimizer to improve coding and agentic task performance?',
+      tags: ['Prompting', 'Optimization'],
+    },
+    {
+      id: 'gpt5-parameter-audit',
+      title: 'Validate parameter compatibility',
+      description:
+        'Audit API calls to remove unsupported fields like temperature and replace them with GPT-5-specific controls.',
+      mode: 'ask',
+      question:
+        'Create a checklist for auditing GPT-5 API usage to ensure unsupported parameters are removed and replacements configured.',
+      tags: ['Compatibility', 'API'],
+    },
+    {
+      id: 'gpt5-deployment-guidance',
+      title: 'Prepare deployment guidance',
+      description:
+        'Draft internal documentation covering GPT-5 features, migration steps, latency considerations, and deployment strategy.',
+      mode: 'ask',
+      question:
+        'What topics should internal documentation cover to prepare a GPT-5 launch with guidance on latency, cost, and governance?',
+      tags: ['Operations', 'Documentation'],
     },
   ];
 }

@@ -59,6 +59,15 @@ export interface WorkspaceDesk {
   toolChips: WorkspaceDeskToolChip[];
 }
 
+export interface WorkspaceSuggestedTask {
+  id: string;
+  title: string;
+  description: string;
+  mode: WorkspaceDeskMode;
+  question: string;
+  tags: string[];
+}
+
 export type ProcessNavigatorStepState = 'complete' | 'in_progress' | 'blocked';
 
 export interface ProcessNavigatorStep {

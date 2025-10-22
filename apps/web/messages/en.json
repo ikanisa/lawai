@@ -398,14 +398,20 @@
     "reviewCta": "Open review",
     "complianceWatch": "Compliance watch",
   "viewAll": "View all",
-  "complianceEmpty": "Official updates will display here.",
-  "consolidated": "Consolidated",
-  "openSource": "Open source",
-  "enableDigest": "Enable alerts",
-  "digestEnabled": "Digest notifications are enabled.",
-  "digestError": "We couldn't enable notifications.",
-  "digestEnabledBadge": "Alerts on",
-  "desk": {
+    "complianceEmpty": "Official updates will display here.",
+    "consolidated": "Consolidated",
+    "openSource": "Open source",
+    "enableDigest": "Enable alerts",
+    "digestEnabled": "Digest notifications are enabled.",
+    "digestError": "We couldn't enable notifications.",
+    "digestEnabledBadge": "Alerts on",
+    "suggestedTasks": {
+      "title": "GPT-5 quickstart tasks",
+      "subtitle": "Launch curated prompts to explore GPT-5 capabilities, tooling, and migration work.",
+      "empty": "No suggested tasks are available yet.",
+      "start": "Start task"
+    },
+    "desk": {
     "title": "Process navigator & multi-agent desk",
     "subtitle": "Launch guided playbooks, switch personas, and manage compliance tooling without leaving the workspace.",
     "modeLabels": {

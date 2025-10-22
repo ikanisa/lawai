@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildPhaseCWorkspaceDesk } from '../../workspace.js';
+import {
+  buildPhaseCProcessNavigator,
+  buildPhaseCWorkspaceDesk,
+  buildWorkspaceSuggestedTasks,
+} from '../../workspace.js';
 
 const extractCountry = (value: unknown): string | null => {
   if (!value || typeof value !== 'object') {
@@ -43,6 +47,8 @@ export interface WorkspaceOverview {
     pendingCount: number;
   };
   desk: ReturnType<typeof buildPhaseCWorkspaceDesk>;
+  navigator: ReturnType<typeof buildPhaseCProcessNavigator>;
+  suggestedTasks: ReturnType<typeof buildWorkspaceSuggestedTasks>;
 }
 
 export interface WorkspaceFetchErrors {
@@ -140,6 +146,8 @@ export async function fetchWorkspaceOverview(
         pendingCount,
       },
       desk: buildPhaseCWorkspaceDesk(),
+      navigator: buildPhaseCProcessNavigator(),
+      suggestedTasks: buildWorkspaceSuggestedTasks(),
     },
     errors: {
       jurisdictions: jurisdictionsResult.error ?? undefined,

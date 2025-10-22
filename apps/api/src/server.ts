@@ -60,7 +60,11 @@ import { authorizeRequestWithGuards } from './http/authorization.js';
 import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
-import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
+import {
+  buildPhaseCProcessNavigator,
+  buildPhaseCWorkspaceDesk,
+  buildWorkspaceSuggestedTasks,
+} from './workspace.js';
 import { InMemoryRateLimiter } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
@@ -3980,6 +3984,7 @@ app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply
       },
       desk: buildPhaseCWorkspaceDesk(),
       navigator: buildPhaseCProcessNavigator(),
+      suggestedTasks: buildWorkspaceSuggestedTasks(),
     };
   } catch (error) {
     if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {

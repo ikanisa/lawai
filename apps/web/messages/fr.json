@@ -402,10 +402,16 @@
     "consolidated": "Consolidé",
     "openSource": "Consulter la source",
     "enableDigest": "Activer les alertes",
-  "digestEnabled": "Les notifications de veille sont activées.",
-  "digestError": "Impossible d'activer les notifications.",
-  "digestEnabledBadge": "Alertes actives",
-  "desk": {
+    "digestEnabled": "Les notifications de veille sont activées.",
+    "digestError": "Impossible d'activer les notifications.",
+    "digestEnabledBadge": "Alertes actives",
+    "suggestedTasks": {
+      "title": "Tâches express GPT-5",
+      "subtitle": "Lancez des invites prêtes à l’emploi pour explorer les capacités, outils et migrations GPT-5.",
+      "empty": "Aucune tâche suggérée n’est disponible pour le moment.",
+      "start": "Démarrer la tâche"
+    },
+    "desk": {
     "title": "Process Navigator et bureau multi-agent",
     "subtitle": "Lancez des playbooks guidés, changez de persona et accédez aux outils de conformité sans quitter l’espace de travail.",
     "modeLabels": {

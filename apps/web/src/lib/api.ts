@@ -4,6 +4,7 @@ import {
   IRACPayload,
   ProcessNavigatorFlow,
   WorkspaceDesk,
+  WorkspaceSuggestedTask,
 } from '@avocat-ai/shared';
 
 import { clientEnv } from '../env.client';
@@ -1049,6 +1050,7 @@ export interface WorkspaceOverviewResponse {
   };
   desk?: WorkspaceDesk;
   navigator?: ProcessNavigatorFlow[];
+  suggestedTasks?: WorkspaceSuggestedTask[];
 }
 
 export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOverviewResponse> {

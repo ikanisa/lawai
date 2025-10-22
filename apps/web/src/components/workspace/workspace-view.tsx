@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarCheck, ChevronRight, Clock, ExternalLink, ShieldAlert } from 'lucide-react';
+import { CalendarCheck, ChevronRight, Clock, ExternalLink, Play, ShieldAlert } from 'lucide-react';
 import { DEMO_ORG_ID, fetchWorkspaceOverview, type WorkspaceOverviewResponse } from '../../lib/api';
 import type { Locale, Messages } from '../../lib/i18n';
 import { Button } from '../ui/button';
@@ -23,6 +23,7 @@ import type {
   WorkspaceDeskPlaybook,
   WorkspaceDeskQuickAction,
   WorkspaceDeskToolChip,
+  WorkspaceSuggestedTask,
 } from '@avocat-ai/shared';
 
 interface WorkspaceViewProps {
@@ -81,6 +82,7 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
   const hitlInbox = workspaceQuery.data?.hitlInbox ?? { items: [], pendingCount: 0 };
   const desk: WorkspaceDesk | undefined = workspaceQuery.data?.desk;
   const navigatorFlows = workspaceQuery.data?.navigator ?? [];
+  const suggestedTasks = workspaceQuery.data?.suggestedTasks ?? [];
 
   const jurisdictionChips = useMemo(
     () => {
@@ -190,6 +192,28 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
     [navigateTo, toggle],
   );
 
+  const handleStartTask = useCallback(
+    (task: WorkspaceSuggestedTask) => {
+      const modeRoutes: Record<WorkspaceDeskMode, string> = {
+        ask: '/research',
+        do: '/matters',
+        review: '/hitl',
+        generate: '/drafting',
+      };
+
+      const params = new URLSearchParams();
+      params.set('mode', task.mode);
+      if (task.question) {
+        params.set('question', task.question);
+      }
+      params.set('task', task.id);
+
+      const target = modeRoutes[task.mode] ?? '/research';
+      navigateTo(`${target}?${params.toString()}`);
+    },
+    [navigateTo],
+  );
+
   return (
     <div className="space-y-10">
       <section className="space-y-6">
@@ -257,6 +281,54 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
             )}
           </div>
         </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-white">{messages.workspace.suggestedTasks.title}</h2>
+            <p className="text-sm text-slate-300">{messages.workspace.suggestedTasks.subtitle}</p>
+          </div>
+          <Badge variant="outline">{suggestedTasks.length}</Badge>
+        </div>
+
+        {workspaceQuery.isLoading ? (
+          <SuggestedTaskSkeleton />
+        ) : suggestedTasks.length === 0 ? (
+          <p className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4 text-sm text-slate-300">
+            {messages.workspace.suggestedTasks.empty}
+          </p>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {suggestedTasks.map((task) => (
+              <article
+                key={task.id}
+                className="flex h-full flex-col justify-between rounded-2xl border border-slate-800/60 bg-slate-900/60 p-5"
+              >
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                    <Badge variant="success">{messages.workspace.desk.modeLabels[task.mode]}</Badge>
+                    {task.tags.map((tag) => (
+                      <Badge key={tag} variant="outline">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                  <h3 className="text-base font-semibold text-white">{task.title}</h3>
+                  <p className="text-sm text-slate-300">{task.description}</p>
+                </div>
+                <Button
+                  size="sm"
+                  className="mt-4 inline-flex items-center gap-2"
+                  onClick={() => handleStartTask(task)}
+                >
+                  <Play className="h-4 w-4" aria-hidden />
+                  {messages.workspace.suggestedTasks.start}
+                </Button>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       {desk ? (
@@ -427,6 +499,16 @@ function SkeletonColumn({ rows }: { rows: number }) {
     <div className="space-y-3">
       {Array.from({ length: rows }).map((_, index) => (
         <div key={index} className="h-20 rounded-2xl bg-slate-800/60 animate-pulse" aria-hidden />
+      ))}
+    </div>
+  );
+}
+
+function SuggestedTaskSkeleton() {
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {Array.from({ length: 2 }).map((_, index) => (
+        <div key={index} className="h-36 rounded-2xl bg-slate-800/60 animate-pulse" aria-hidden />
       ))}
     </div>
   );
