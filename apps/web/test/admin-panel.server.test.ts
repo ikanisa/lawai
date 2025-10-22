@@ -45,7 +45,66 @@ vi.mock('../src/server/supabase/admin-client', async () => {
   };
 });
 
+vi.mock('../src/server/supabase/session', () => ({
+  getSupabaseRouteSession: vi.fn(),
+}));
+
 const adminClient = await import('../src/server/supabase/admin-client');
+const sessionModule = await import('../src/server/supabase/session');
+const { requireAdminContext, AdminAccessError } = await import('../src/server/admin/auth');
+const getSupabaseRouteSession = sessionModule.getSupabaseRouteSession as unknown as vi.Mock;
+
+describe('requireAdminContext', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rejects requests without a valid session', async () => {
+    getSupabaseRouteSession.mockResolvedValue(null);
+    const request = new Request('https://example.com/api/admin/overview');
+    await expect(requireAdminContext(request)).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('rejects sessions without admin capabilities', async () => {
+    getSupabaseRouteSession.mockResolvedValue({
+      accessToken: 'token',
+      user: {
+        id: 'user-1',
+        email: 'analyst@example.com',
+        app_metadata: { roles: ['viewer'], org_id: 'org-123' },
+        user_metadata: {},
+      },
+    });
+    const request = new Request('https://example.com/api/admin/overview');
+    expect.assertions(2);
+    await requireAdminContext(request).catch((error) => {
+      expect(error).toBeInstanceOf(AdminAccessError);
+      expect((error as AdminAccessError).status).toBe(403);
+    });
+  });
+
+  it('returns context for authorized admin sessions', async () => {
+    getSupabaseRouteSession.mockResolvedValue({
+      accessToken: 'token',
+      user: {
+        id: 'user-2',
+        email: 'admin@example.com',
+        app_metadata: { roles: ['admin'], org_id: 'org-123' },
+        user_metadata: { capabilities: ['admin'] },
+      },
+    });
+    const request = new Request('https://example.com/api/admin/overview', {
+      headers: {
+        'x-admin-org': 'org-override',
+        'x-admin-actor': 'actor@example.com',
+      },
+    });
+    const context = await requireAdminContext(request);
+    expect(context.orgId).toBe('org-override');
+    expect(context.actorId).toBe('actor@example.com');
+    expect(context.environment).toBeDefined();
+  });
+});
 
 describe('admin panel service layer', () => {
   const orgId = 'org-demo';

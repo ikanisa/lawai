@@ -13,6 +13,21 @@ export const API_BASE = clientEnv.NEXT_PUBLIC_API_BASE_URL;
 export const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000000';
 
+export interface AdminRequestContext {
+  userId?: string;
+  orgId?: string;
+}
+
+function buildAdminHeaders(orgId: string, auth?: AdminRequestContext): Record<string, string> {
+  const userId = auth?.userId ?? DEMO_USER_ID;
+  const resolvedOrgId = auth?.orgId ?? orgId;
+  const headers: Record<string, string> = { 'x-user-id': userId };
+  if (resolvedOrgId) {
+    headers['x-org-id'] = resolvedOrgId;
+  }
+  return headers;
+}
+
 export type VerificationSeverity = 'info' | 'warning' | 'critical';
 
 export interface VerificationNote {
@@ -655,11 +670,12 @@ export interface GovernanceMetricsResponse {
   }>;
 }
 
-export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceMetricsResponse> {
+export async function fetchGovernanceMetrics(
+  orgId: string,
+  auth?: AdminRequestContext,
+): Promise<GovernanceMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/governance?orgId=${encodeURIComponent(orgId)}`, {
-    headers: {
-      'x-user-id': DEMO_USER_ID,
-    },
+    headers: buildAdminHeaders(orgId, auth),
   });
   if (!response.ok) {
     throw new Error('Unable to fetch governance metrics');
@@ -667,11 +683,12 @@ export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceM
   return response.json();
 }
 
-export async function fetchRetrievalMetrics(orgId: string): Promise<RetrievalMetricsResponse> {
+export async function fetchRetrievalMetrics(
+  orgId: string,
+  auth?: AdminRequestContext,
+): Promise<RetrievalMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/retrieval?orgId=${encodeURIComponent(orgId)}`, {
-    headers: {
-      'x-user-id': DEMO_USER_ID,
-    },
+    headers: buildAdminHeaders(orgId, auth),
   });
 
   if (!response.ok) {
@@ -704,11 +721,12 @@ export interface EvaluationMetricsResponse {
   }>;
 }
 
-export async function fetchEvaluationMetrics(orgId: string): Promise<EvaluationMetricsResponse> {
+export async function fetchEvaluationMetrics(
+  orgId: string,
+  auth?: AdminRequestContext,
+): Promise<EvaluationMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/evaluations?orgId=${encodeURIComponent(orgId)}`, {
-    headers: {
-      'x-user-id': DEMO_USER_ID,
-    },
+    headers: buildAdminHeaders(orgId, auth),
   });
 
   if (!response.ok) {
@@ -766,9 +784,12 @@ export interface SsoConnectionResponse {
   }>;
 }
 
-export async function fetchSsoConnections(orgId: string): Promise<SsoConnectionResponse> {
+export async function fetchSsoConnections(
+  orgId: string,
+  auth?: AdminRequestContext,
+): Promise<SsoConnectionResponse> {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: buildAdminHeaders(orgId, auth),
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SSO connections');
@@ -786,10 +807,11 @@ export async function saveSsoConnection(
     entityId?: string;
     defaultRole?: string;
   },
+  auth?: AdminRequestContext,
 ) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', ...buildAdminHeaders(orgId, auth) },
     body: JSON.stringify({ ...input, metadata: {}, groupMappings: {} }),
   });
   if (!response.ok) {
@@ -798,10 +820,14 @@ export async function saveSsoConnection(
   return response.json();
 }
 
-export async function removeSsoConnection(orgId: string, connectionId: string) {
+export async function removeSsoConnection(
+  orgId: string,
+  connectionId: string,
+  auth?: AdminRequestContext,
+) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso/${connectionId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: buildAdminHeaders(orgId, auth),
   });
   if (!response.ok) {
     throw new Error('Unable to delete SSO connection');
@@ -814,9 +840,9 @@ export interface ScimTokenResponse {
   expiresAt?: string | null;
 }
 
-export async function fetchScimTokens(orgId: string) {
+export async function fetchScimTokens(orgId: string, auth?: AdminRequestContext) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: buildAdminHeaders(orgId, auth),
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SCIM tokens');
@@ -824,10 +850,15 @@ export async function fetchScimTokens(orgId: string) {
   return response.json();
 }
 
-export async function createScimAccessToken(orgId: string, name: string, expiresAt?: string | null) {
+export async function createScimAccessToken(
+  orgId: string,
+  name: string,
+  expiresAt?: string | null,
+  auth?: AdminRequestContext,
+) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', ...buildAdminHeaders(orgId, auth) },
     body: JSON.stringify({ name, expiresAt }),
   });
   if (!response.ok) {
@@ -836,10 +867,10 @@ export async function createScimAccessToken(orgId: string, name: string, expires
   return response.json() as Promise<ScimTokenResponse>;
 }
 
-export async function deleteScimAccessToken(orgId: string, tokenId: string) {
+export async function deleteScimAccessToken(orgId: string, tokenId: string, auth?: AdminRequestContext) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens/${tokenId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: buildAdminHeaders(orgId, auth),
   });
   if (!response.ok) {
     throw new Error('Unable to delete SCIM token');
@@ -896,10 +927,10 @@ export async function acknowledgeCompliance(
   return response.json();
 }
 
-export async function fetchAuditEvents(orgId: string, limit = 50) {
+export async function fetchAuditEvents(orgId: string, limit = 50, auth?: AdminRequestContext) {
   const response = await fetch(
     `${API_BASE}/admin/org/${orgId}/audit-events?limit=${encodeURIComponent(String(limit))}`,
-    { headers: { 'x-user-id': DEMO_USER_ID } },
+    { headers: buildAdminHeaders(orgId, auth) },
   );
   if (!response.ok) {
     throw new Error('Unable to fetch audit events');
@@ -910,6 +941,7 @@ export async function fetchAuditEvents(orgId: string, limit = 50) {
 export async function fetchDeviceSessions(
   orgId: string,
   options?: { includeRevoked?: boolean; limit?: number; userId?: string },
+  auth?: AdminRequestContext,
 ): Promise<{ sessions: DeviceSession[] }> {
   const params = new URLSearchParams({ orgId });
   if (options?.includeRevoked) params.set('includeRevoked', 'true');
@@ -917,7 +949,7 @@ export async function fetchDeviceSessions(
   if (options?.userId) params.set('userId', options.userId);
 
   const response = await fetch(`${API_BASE}/security/devices?${params.toString()}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: buildAdminHeaders(orgId, auth),
   });
   if (!response.ok) {
     throw new Error('Unable to fetch device sessions');
@@ -950,12 +982,17 @@ export async function fetchDeviceSessions(
   return { sessions };
 }
 
-export async function revokeDeviceSession(orgId: string, sessionId: string, reason?: string) {
+export async function revokeDeviceSession(
+  orgId: string,
+  sessionId: string,
+  reason?: string,
+  auth?: AdminRequestContext,
+) {
   const response = await fetch(`${API_BASE}/security/devices/revoke`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': DEMO_USER_ID,
+      ...buildAdminHeaders(orgId, auth),
     },
     body: JSON.stringify({ orgId, sessionId, reason: reason ?? null }),
   });
@@ -967,9 +1004,9 @@ export async function revokeDeviceSession(orgId: string, sessionId: string, reas
   return response.json() as Promise<{ session: { id: string; revokedAt: string } }>;
 }
 
-export async function fetchIpAllowlist(orgId: string) {
+export async function fetchIpAllowlist(orgId: string, auth?: AdminRequestContext) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: buildAdminHeaders(orgId, auth),
   });
   if (!response.ok) {
     throw new Error('Unable to fetch IP allowlist');
@@ -980,6 +1017,7 @@ export async function fetchIpAllowlist(orgId: string) {
 export async function upsertIpAllowlistEntry(
   orgId: string,
   input: { id?: string; cidr: string; description?: string | null },
+  auth?: AdminRequestContext,
 ) {
   const url = input.id
     ? `${API_BASE}/admin/org/${orgId}/ip-allowlist/${input.id}`
@@ -987,7 +1025,7 @@ export async function upsertIpAllowlistEntry(
   const method = input.id ? 'PATCH' : 'POST';
   const response = await fetch(url, {
     method,
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', ...buildAdminHeaders(orgId, auth) },
     body: JSON.stringify({ cidr: input.cidr, description: input.description ?? null }),
   });
   if (!response.ok) {
@@ -996,10 +1034,10 @@ export async function upsertIpAllowlistEntry(
   return response.json();
 }
 
-export async function deleteIpAllowlistEntry(orgId: string, entryId: string) {
+export async function deleteIpAllowlistEntry(orgId: string, entryId: string, auth?: AdminRequestContext) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist/${entryId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: buildAdminHeaders(orgId, auth),
   });
   if (!response.ok) {
     throw new Error('Unable to delete IP entry');
@@ -1059,9 +1097,12 @@ export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOv
   return response.json();
 }
 
-export async function getOperationsOverview(orgId: string): Promise<OperationsOverviewResponse> {
+export async function getOperationsOverview(
+  orgId: string,
+  auth?: AdminRequestContext,
+): Promise<OperationsOverviewResponse> {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/operations/overview`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: buildAdminHeaders(orgId, auth),
   });
   if (!response.ok) {
     throw new Error('Unable to fetch operations overview');

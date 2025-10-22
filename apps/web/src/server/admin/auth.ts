@@ -1,5 +1,6 @@
 import { isAdminPanelEnabled, getAdminEnvironmentLabel } from '../../config/feature-flags';
-import { serverEnv } from '../../env.server';
+import { getSupabaseRouteSession } from '../supabase/session';
+import type { RouteSession } from '../supabase/session';
 
 export interface AdminContext {
   orgId: string;
@@ -22,19 +23,106 @@ export function ensureAdminEnabled() {
   }
 }
 
+function hasAdminCapability(session: RouteSession): boolean {
+  const metadata = {
+    ...(session.user.app_metadata ?? {}),
+    ...(session.user.user_metadata ?? {}),
+  } as Record<string, unknown>;
+  const roles = Array.isArray(metadata.roles)
+    ? metadata.roles.map(String)
+    : typeof metadata.roles === 'string'
+      ? metadata.roles.split(',').map((value) => value.trim())
+      : [];
+  const capabilities = Array.isArray(metadata.capabilities)
+    ? metadata.capabilities.map(String)
+    : typeof metadata.capabilities === 'string'
+      ? metadata.capabilities.split(',').map((value) => value.trim())
+      : [];
+
+  if (metadata.admin === true || metadata.is_admin === true) {
+    return true;
+  }
+  if (roles.some((role) => role.toLowerCase() === 'admin')) {
+    return true;
+  }
+  if (capabilities.some((capability) => capability.toLowerCase() === 'admin')) {
+    return true;
+  }
+  return false;
+}
+
+function deriveOrgId(request: Request, session: RouteSession): string | null {
+  const headerOrg = request.headers.get('x-admin-org');
+  if (headerOrg?.trim()) {
+    return headerOrg.trim();
+  }
+  const urlOrg = new URL(request.url).searchParams.get('orgId');
+  if (urlOrg?.trim()) {
+    return urlOrg.trim();
+  }
+  const metadata = {
+    ...(session.user.app_metadata ?? {}),
+    ...(session.user.user_metadata ?? {}),
+  } as Record<string, unknown>;
+  const candidates = [
+    metadata.org_id,
+    metadata.orgId,
+    metadata.organization_id,
+    metadata.organizationId,
+    metadata.org,
+    metadata.organization,
+    metadata.default_org_id,
+    metadata.defaultOrgId,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
+function deriveActorId(request: Request, session: RouteSession): string {
+  const headerActor = request.headers.get('x-admin-actor');
+  if (headerActor?.trim()) {
+    return headerActor.trim();
+  }
+  const metadata = {
+    ...(session.user.app_metadata ?? {}),
+    ...(session.user.user_metadata ?? {}),
+  } as Record<string, unknown>;
+  const metadataActor =
+    (typeof metadata.actor_id === 'string' && metadata.actor_id.trim().length > 0
+      ? metadata.actor_id
+      : typeof metadata.actorId === 'string' && metadata.actorId.trim().length > 0
+        ? metadata.actorId
+        : null);
+  if (metadataActor) {
+    return metadataActor.trim();
+  }
+  if (session.user.email?.trim()) {
+    return session.user.email.trim();
+  }
+  return session.user.id;
+}
+
 export async function requireAdminContext(request: Request): Promise<AdminContext> {
   ensureAdminEnabled();
-  const fallbackActor =
-    serverEnv.NODE_ENV !== 'production' ? 'dev-admin@local' : serverEnv.ADMIN_PANEL_ACTOR ?? '';
-  const actorId = request.headers.get('x-admin-actor') ?? serverEnv.ADMIN_PANEL_ACTOR ?? fallbackActor;
-  if (!actorId) {
-    throw new AdminAccessError('Missing admin actor header', 401);
+  const session = await getSupabaseRouteSession(request);
+  if (!session) {
+    throw new AdminAccessError('Missing or invalid session', 401);
   }
-  const orgId =
-    request.headers.get('x-admin-org') ??
-    new URL(request.url).searchParams.get('orgId') ??
-    serverEnv.ADMIN_PANEL_ORG ??
-    'org-demo';
+
+  if (!hasAdminCapability(session)) {
+    throw new AdminAccessError('Admin access required', 403);
+  }
+
+  const orgId = deriveOrgId(request, session);
+  if (!orgId) {
+    throw new AdminAccessError('Organization scope is required', 403);
+  }
+
+  const actorId = deriveActorId(request, session);
 
   return {
     orgId,
