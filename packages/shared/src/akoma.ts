@@ -99,15 +99,19 @@ export function buildAkomaBodyFromText(text: string): AkomaBody | null {
     }
 
     if (isArticleHeading(line)) {
+      const headingMatch = line.match(/^(article|art\.)\s*[0-9a-z][0-9a-z.-]*/i);
+      const marker = headingMatch?.[0] ?? line;
+      const remainder = line.slice(marker.length).trim().replace(/^[-:–—]\s*/, '');
+
       if (currentArticle) {
         currentArticle.excerpt = formatExcerpt(currentArticle.paragraphs);
       }
 
       currentArticle = {
-        marker: line.match(/^(article|art\.)\s*[0-9a-z][0-9a-z.-]*/i)?.[0] ?? line,
+        marker,
         heading: line,
-        paragraphs: [],
-        excerpt: '',
+        paragraphs: remainder ? [remainder] : [],
+        excerpt: remainder ? formatExcerpt([remainder]) : '',
         section: currentSection?.heading ?? null,
       };
 
@@ -151,6 +155,31 @@ export type CaseTreatmentHint = {
 };
 
 const SENTENCE_SPLIT_REGEX = /(?<=[.!?])\s+/;
+const ABBREVIATION_JOIN_REGEX = /(?:\bAff\.|\bArt\.|\bN°\.|\bNo\.)$/i;
+
+function splitIntoSentences(text: string): string[] {
+  const segments = text.split(SENTENCE_SPLIT_REGEX);
+  const sentences: string[] = [];
+
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    if (sentences.length > 0) {
+      const previous = sentences[sentences.length - 1];
+      if (ABBREVIATION_JOIN_REGEX.test(previous)) {
+        sentences[sentences.length - 1] = `${previous} ${trimmed}`;
+        continue;
+      }
+    }
+
+    sentences.push(trimmed);
+  }
+
+  return sentences;
+}
 
 function detectTreatment(sentence: string): CaseTreatmentHint['treatment'] {
   const lower = sentence.toLowerCase();
@@ -194,7 +223,7 @@ export function extractCaseTreatmentHints(text: string): CaseTreatmentHint[] {
     return [];
   }
 
-  const sentences = text.split(SENTENCE_SPLIT_REGEX);
+  const sentences = splitIntoSentences(text);
   const seen = new Set<string>();
   const hints: CaseTreatmentHint[] = [];
 
