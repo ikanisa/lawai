@@ -13,6 +13,7 @@
       "close": "Fermer",
       "keyboardHint": "Utilisez ↑ et ↓ pour parcourir les résultats, Entrée pour exécuter une commande.",
       "resultsCount": "{count} commande(s) disponible(s).",
+      "semanticResultsCount": "{count} commande(s) correspondent à votre recherche.",
       "sections": {
         "actions": "Actions rapides",
         "navigate": "Navigation"

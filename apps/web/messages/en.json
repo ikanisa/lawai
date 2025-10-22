@@ -13,6 +13,7 @@
       "close": "Close",
       "keyboardHint": "Use ↑ and ↓ to move between results, Enter to run a command.",
       "resultsCount": "{count} available command(s).",
+      "semanticResultsCount": "Found {count} matching command(s).",
       "sections": {
         "actions": "Quick actions",
         "navigate": "Navigation"
