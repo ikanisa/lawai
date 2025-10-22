@@ -21,9 +21,13 @@ response = client.responses.create(
     model="gpt-4.1",
     input="What is deep research by OpenAI?",
     tools=[{
-        "type": "file_search",
-        "vector_store_ids": ["<vector_store_id>"]
-    }]
+        "type": "file_search"
+    }],
+    tool_resources={
+        "file_search": {
+            "vector_store_ids": ["<vector_store_id>"]
+        }
+    }
 )
 print(response)
 ```
