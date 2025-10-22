@@ -65,6 +65,16 @@ provisionne les buckets privés (`authorities`, `uploads`, `snapshots`), synchro
 valide les garde-fous de résidence puis crée le vector store `authorities-francophone` si nécessaire.
 Elle échoue immédiatement si un secret critique (OpenAI ou Supabase) reste en valeur par défaut.
 
+#### Garde-fous sur les secrets de production
+
+Au démarrage en production, l'API refusera les valeurs de configuration suivantes :
+
+- `SUPABASE_URL` pointant vers `https://example.supabase.co`, `https://project.supabase.co` ou toute URL `localhost`.
+- `OPENAI_API_KEY` contenant `CHANGEME`, `placeholder`, `test-openai-key` ou des clés factices commençant par `sk-test-`, `sk-demo-`, `sk-example-`, `sk-placeholder-`, `sk-dummy-` ou `sk-sample-`.
+- `SUPABASE_SERVICE_ROLE_KEY` contenant `placeholder` ou `service-role-test`.
+
+Mettez à jour vos secrets avant déploiement pour éviter l'échec `configuration_invalid`.
+
 ### Provisionner l'environnement complet
 
 Si vous souhaitez uniquement reprovisionner migrations, buckets, allowlist et vector store (sans audit des secrets), exécutez :
