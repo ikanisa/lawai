@@ -9,11 +9,13 @@ import { getOpenAI, logOpenAIDebug, setOpenAILogger } from './openai.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent-wrapper.js';
 import { summariseDocumentFromPayload } from './summarization.js';
 // Defer finance workers to runtime without affecting typecheck
-try {
-  const dyn = new Function('p', 'return import(p)');
-  // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  (dyn as any)('./finance-workers.js');
-} catch {}
+if (process.env.NODE_ENV !== 'test') {
+  try {
+    const dyn = new Function('p', 'return import(p)');
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    (dyn as any)('./finance-workers.js');
+  } catch {}
+}
 import { z as zod } from 'zod';
 import {
   buildTransparencyReport,
@@ -65,8 +67,10 @@ import { InMemoryRateLimiter } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
+import { registerGracefulShutdown } from './core/lifecycle/graceful-shutdown.js';
 
 const { app, context } = await createApp();
+registerGracefulShutdown(app);
 
 setOpenAILogger(app.log);
 
@@ -401,7 +405,7 @@ interface ChangeLogRow {
 }
 
 registerChatkitRoutes(app, { supabase });
-registerOrchestratorRoutes(app, { supabase });
+registerOrchestratorRoutes(app, context);
 
 const GO_NO_GO_SECTIONS = new Set(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
 const GO_NO_GO_STATUSES = new Set(['pending', 'satisfied']);
