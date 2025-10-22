@@ -1,6 +1,7 @@
 # Agent Platform Migration Checklist
 
 ## CI / Automation
+- [ ] Wire `pnpm ops:evaluate -- --ci` into nightly pipelines with `OPENAI_EVAL_AGENT_ID`, `OPENAI_EVAL_DATASET_MAP`, `EVAL_ORG_ID`, and `EVAL_USER_ID` so OpenAI Evals jobs gate releases and persist metrics back to Supabase (`agent_learning_jobs`).
 - [ ] Run `pnpm --filter @apps/api export:agent` in CI and store `apps/dist/platform/avocat-francophone.json` as build artefact.
 - [ ] Upload artefacts to S3/GCS or attach to release tags for Agent Builder import.
 - [ ] Wire OpenAI request-tag metrics into Datadog dashboards (API/OPS/EDGE components) using `OpenAI-Request-Tags` headers.

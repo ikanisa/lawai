@@ -12,6 +12,8 @@ const envSchema = z.object({
   OPENAI_VECTOR_STORE_AUTHORITIES_ID: z.string().optional(),
   OPENAI_REQUEST_TAGS: z.string().optional(),
   OPENAI_REQUEST_TAGS_OPS: z.string().optional(),
+  OPENAI_EVAL_AGENT_ID: z.string().optional(),
+  OPENAI_EVAL_DATASET_MAP: z.string().optional(),
   OPS_CHECK_DRY_RUN: z.enum(['0', '1']).optional(),
   VECTOR_STORE_DRY_RUN: z.enum(['0', '1']).optional(),
   API_BASE_URL: z.string().url().optional(),
