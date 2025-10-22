@@ -52,6 +52,8 @@
 
 ## Shared Resources & Guardrail Roadmap
 
+- **File Inputs (PDF)**: Follow the [File Inputs (PDF) guide](./file-inputs-pdf.md) to prepare, OCR, and register artefacts before linking them to Agent Platform resources.
+
 | Resource / Guardrail | Status | Notes |
 | --- | --- | --- |
 | Authorities Vector Store (`OPENAI_VECTOR_STORE_AUTHORITIES_ID`) | In production (legal) | Register as managed resource in Agent Platform; finance agents will need separate stores (e.g. `OPENAI_VECTOR_STORE_FINANCE_TAX`, `..._AUDIT`). |
