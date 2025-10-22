@@ -29,6 +29,7 @@ vi.mock('workbox-window', () => ({
 describe('pwa utilities', () => {
   beforeEach(() => {
     vi.resetModules();
+    process.env.NEXT_PUBLIC_ENABLE_PWA = 'true';
     registerMock.mockClear();
     messageMock.mockClear();
     addEventListenerMock.mockClear();
@@ -43,6 +44,10 @@ describe('pwa utilities', () => {
     vi.stubGlobal('Notification', {
       requestPermission: vi.fn(async () => 'granted'),
     } as unknown as Notification);
+
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.clear();
+    }
   });
 
   afterEach(() => {
@@ -50,15 +55,18 @@ describe('pwa utilities', () => {
   });
 
   it('registers the service worker only once', async () => {
-    const { registerPwa } = await import('../src/lib/pwa');
-    registerPwa();
-    registerPwa();
+    const { registerPwa, setPwaOptInPreference } = await import('../src/lib/pwa');
+    setPwaOptInPreference(true);
+    await registerPwa();
+    await registerPwa();
 
     expect(registerMock).toHaveBeenCalledTimes(1);
   });
 
   it('enables digest notifications when permission granted', async () => {
-    const { enableDigestNotifications, isDigestEnabled } = await import('../src/lib/pwa');
+    const { enableDigestNotifications, isDigestEnabled, setPwaOptInPreference } = await import('../src/lib/pwa');
+
+    setPwaOptInPreference(true);
 
     const enabled = await enableDigestNotifications();
 
@@ -70,6 +78,31 @@ describe('pwa utilities', () => {
   it('returns false when notifications denied', async () => {
     const permissionMock = Notification.requestPermission as unknown as ReturnType<typeof vi.fn>;
     permissionMock.mockResolvedValueOnce('denied');
+    const { enableDigestNotifications, setPwaOptInPreference } = await import('../src/lib/pwa');
+    setPwaOptInPreference(true);
+    const enabled = await enableDigestNotifications();
+    expect(enabled).toBe(false);
+  });
+
+  it('skips registration when the environment flag is disabled', async () => {
+    process.env.NEXT_PUBLIC_ENABLE_PWA = 'false';
+    const { registerPwa, setPwaOptInPreference } = await import('../src/lib/pwa');
+    setPwaOptInPreference(true);
+    const result = registerPwa();
+    expect(result).toBeNull();
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('does not register during server-side rendering', async () => {
+    const { registerPwa, setPwaOptInPreference } = await import('../src/lib/pwa');
+    setPwaOptInPreference(true);
+    vi.stubGlobal('window', undefined);
+    const result = registerPwa();
+    expect(result).toBeNull();
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('requires pwa opt-in for digest notifications', async () => {
     const { enableDigestNotifications } = await import('../src/lib/pwa');
     const enabled = await enableDigestNotifications();
     expect(enabled).toBe(false);

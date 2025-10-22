@@ -9,6 +9,8 @@ import { useDigest } from '../hooks/use-digest';
 import { useOutbox } from '../hooks/use-outbox';
 import { toast } from 'sonner';
 import { sendTelemetryEvent } from '../lib/api';
+import { usePwaPreference } from '../hooks/use-pwa-preference';
+import { clientEnv } from '../env.client';
 
 interface PwaInstallPromptProps {
   messages?: Messages['app']['install'];
@@ -33,7 +35,13 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
   const { shouldPrompt, isAvailable, promptInstall, dismissPrompt } = usePwaInstall();
   const { enabled: digestEnabled, loading: digestLoading, enable: enableDigest } = useDigest();
   const { pendingCount, hasItems, stalenessMs } = useOutbox();
+  const { enabled: pwaOptIn, ready: pwaPreferenceReady } = usePwaPreference();
   const [notesOpen, setNotesOpen] = useState(false);
+  const optInMessages = messages?.optIn;
+
+  if (!clientEnv.NEXT_PUBLIC_ENABLE_PWA) {
+    return null;
+  }
 
   const releaseNotes = useMemo<ReleaseNotesCopy | null>(() => {
     if (!messages?.releaseNotes) return null;
@@ -175,7 +183,7 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
                     size="xs"
                     variant="secondary"
                     onClick={handleDigestOptIn}
-                    disabled={digestLoading || digestEnabled}
+                    disabled={digestLoading || digestEnabled || !pwaOptIn || !pwaPreferenceReady}
                   >
                     {digestEnabled
                       ? releaseNotes.digestEnabled ?? messages.success
@@ -183,6 +191,9 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
                   </Button>
                   {digestEnabled ? (
                     <span className="text-[11px] text-teal-200">✓</span>
+                  ) : null}
+                  {!pwaOptIn && pwaPreferenceReady && optInMessages?.description ? (
+                    <span className="basis-full text-[11px] text-slate-400">{optInMessages.description}</span>
                   ) : null}
                 </div>
                 {outboxMessage ? (
