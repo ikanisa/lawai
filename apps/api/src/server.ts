@@ -69,7 +69,7 @@ import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
 import { registerGracefulShutdown } from './core/lifecycle/graceful-shutdown.js';
 
-const { app, context } = await createApp();
+const { app, context } = await createApp({ registerWorkspaceRoutes: false });
 registerGracefulShutdown(app);
 
 setOpenAILogger(app.log);

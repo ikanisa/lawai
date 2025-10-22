@@ -20,10 +20,16 @@ import { observabilityPlugin } from './core/observability/observability-plugin.j
 export interface CreateAppOptions {
   supabase?: SupabaseClient;
   overrides?: AppContainerOverrides;
+  registerWorkspaceRoutes?: boolean;
 }
 
 export async function createApp(options: CreateAppOptions = {}) {
   const app = Fastify({
+    ajv: {
+      customOptions: {
+        removeAdditional: false,
+      },
+    },
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
       redact: [
@@ -53,6 +59,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     ...(options.overrides ?? {}),
   });
 
+  const shouldRegisterWorkspaceRoutes = options.registerWorkspaceRoutes ?? true;
+
   const context: AppContext = {
     supabase,
     config: {
@@ -78,8 +86,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   }, { prefix: '/api' });
 
   if (!(app as any).workspaceRoutesRegistered) {
-    await registerWorkspaceRoutes(app, context);
-    (app as any).workspaceRoutesRegistered = true;
+    if (shouldRegisterWorkspaceRoutes) {
+      await registerWorkspaceRoutes(app, context);
+      (app as any).workspaceRoutesRegistered = true;
+    }
   }
 
   return { app, context };
