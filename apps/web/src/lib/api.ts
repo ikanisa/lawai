@@ -366,6 +366,32 @@ export interface ComplianceStatusResponse {
   };
 }
 
+export interface ComplianceDashboardResponse {
+  orgId: string;
+  timeframe: { start: string; end: string };
+  limits: { hitl: number };
+  hitl: {
+    total: number;
+    pending: number;
+    resolved: number;
+    medianResponseMinutes: number | null;
+  };
+  allowlist: {
+    allowlistedRatio: number | null;
+    translationWarnings: number;
+    runsWithoutCitations: number;
+    runsTotal: number;
+    lastRunAt: string | null;
+  };
+  maghreb: {
+    bannerCoverage: number | null;
+    citationPrecisionP95: number | null;
+    temporalValidityP95: number | null;
+    evaluatedResults: number;
+    lastResultAt: string | null;
+  };
+}
+
 export interface DeviceSession {
   id: string;
   userId: string;
@@ -894,6 +920,19 @@ export async function acknowledgeCompliance(
     throw new Error('compliance_ack_failed');
   }
   return response.json();
+}
+
+export async function fetchComplianceDashboard(orgId: string, options?: { userId?: string }) {
+  const response = await fetch(`${API_BASE}/compliance/dashboard`, {
+    headers: {
+      'x-user-id': options?.userId ?? DEMO_USER_ID,
+      'x-org-id': orgId,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('compliance_dashboard_failed');
+  }
+  return response.json() as Promise<ComplianceDashboardResponse>;
 }
 
 export async function fetchAuditEvents(orgId: string, limit = 50) {
