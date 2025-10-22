@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { OperationsOverviewCard } from '../governance/operations-overview-card';
+import { useSession } from '../session-provider';
 import {
   DEMO_ORG_ID,
   fetchGovernanceMetrics,
@@ -84,17 +85,19 @@ function formatDateTime(value: string | null | undefined): string {
   return dateTimeFormatter.format(date);
 }
 
-function useGovernanceMetrics() {
+function useGovernanceMetrics(orgId: string) {
   return useQuery<GovernanceMetricsResponse>({
-    queryKey: ['governance-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchGovernanceMetrics(DEMO_ORG_ID),
+    queryKey: ['governance-metrics', orgId],
+    queryFn: () => fetchGovernanceMetrics(orgId),
     staleTime: 60_000,
   });
 }
 
 export function AdminView({ messages }: AdminViewProps) {
+  const { orgId: sessionOrgId } = useSession();
+  const orgId = sessionOrgId ?? DEMO_ORG_ID;
   const queryClient = useQueryClient();
-  const metricsQuery = useGovernanceMetrics();
+  const metricsQuery = useGovernanceMetrics(orgId);
   const overview = metricsQuery.data?.overview ?? null;
   const toolRows = metricsQuery.data?.tools ?? [];
   const jurisdictionLabels = useMemo(() => {
@@ -120,8 +123,8 @@ export function AdminView({ messages }: AdminViewProps) {
       })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [metricsQuery.data, jurisdictionLabels]);
   const retrievalQuery = useQuery<RetrievalMetricsResponse>({
-    queryKey: ['retrieval-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchRetrievalMetrics(DEMO_ORG_ID),
+    queryKey: ['retrieval-metrics', orgId],
+    queryFn: () => fetchRetrievalMetrics(orgId),
     staleTime: 60_000,
   });
   const retrievalSummary = retrievalQuery.data?.summary ?? null;
@@ -139,8 +142,8 @@ export function AdminView({ messages }: AdminViewProps) {
       .slice(0, 8);
   }, [retrievalQuery.data]);
   const evaluationQuery = useQuery<EvaluationMetricsResponse>({
-    queryKey: ['evaluation-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchEvaluationMetrics(DEMO_ORG_ID),
+    queryKey: ['evaluation-metrics', orgId],
+    queryFn: () => fetchEvaluationMetrics(orgId),
     staleTime: 60_000,
   });
   const evaluationSummary = evaluationQuery.data?.summary ?? null;
@@ -158,37 +161,37 @@ export function AdminView({ messages }: AdminViewProps) {
       })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [evaluationQuery.data, jurisdictionLabels, messages.admin.evaluationJurisdictionUnknown]);
   const sloQuery = useQuery<SloMetricsResponse>({
-    queryKey: ['slo-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchSloMetrics(DEMO_ORG_ID),
+    queryKey: ['slo-metrics', orgId],
+    queryFn: () => fetchSloMetrics(orgId),
     staleTime: 60_000,
   });
   const sloSummary = sloQuery.data?.summary ?? null;
   const sloSnapshots = sloQuery.data?.snapshots ?? [];
   const operationsQuery = useQuery<OperationsOverviewResponse>({
-    queryKey: ['operations-overview', DEMO_ORG_ID],
-    queryFn: () => getOperationsOverview(DEMO_ORG_ID),
+    queryKey: ['operations-overview', orgId],
+    queryFn: () => getOperationsOverview(orgId),
     staleTime: 60_000,
   });
   const operationsOverview = operationsQuery.data ?? null;
   const ssoQuery = useQuery({
-    queryKey: ['admin-sso', DEMO_ORG_ID],
-    queryFn: () => fetchSsoConnections(DEMO_ORG_ID),
+    queryKey: ['admin-sso', orgId],
+    queryFn: () => fetchSsoConnections(orgId),
   });
   const scimQuery = useQuery({
-    queryKey: ['admin-scim', DEMO_ORG_ID],
-    queryFn: () => fetchScimTokens(DEMO_ORG_ID),
+    queryKey: ['admin-scim', orgId],
+    queryFn: () => fetchScimTokens(orgId),
   });
   const auditQuery = useQuery({
-    queryKey: ['admin-audit', DEMO_ORG_ID],
-    queryFn: () => fetchAuditEvents(DEMO_ORG_ID, 25),
+    queryKey: ['admin-audit', orgId],
+    queryFn: () => fetchAuditEvents(orgId, 25),
   });
   const ipQuery = useQuery({
-    queryKey: ['admin-ip', DEMO_ORG_ID],
-    queryFn: () => fetchIpAllowlist(DEMO_ORG_ID),
+    queryKey: ['admin-ip', orgId],
+    queryFn: () => fetchIpAllowlist(orgId),
   });
   const deviceSessionsQuery = useQuery({
-    queryKey: ['admin-device-sessions', DEMO_ORG_ID],
-    queryFn: () => fetchDeviceSessions(DEMO_ORG_ID, { includeRevoked: false, limit: 200 }),
+    queryKey: ['admin-device-sessions', orgId],
+    queryFn: () => fetchDeviceSessions(orgId, { includeRevoked: false, limit: 200 }),
     staleTime: 30_000,
   });
   const deviceSessions = (deviceSessionsQuery.data?.sessions ?? []) as DeviceSession[];
@@ -323,23 +326,23 @@ export function AdminView({ messages }: AdminViewProps) {
       acsUrl?: string;
       entityId?: string;
       defaultRole?: string;
-    }) => saveSsoConnection(DEMO_ORG_ID, input),
+    }) => saveSsoConnection(orgId, input),
     onSuccess: () => {
       toast.success(messages.admin.ssoSaved);
       setSsoLabel('');
       setSsoAcsUrl('');
       setSsoEntityId('');
-      queryClient.invalidateQueries({ queryKey: ['admin-sso', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId] });
     },
     onError: () => {
       toast.error(messages.admin.ssoError);
     },
   });
   const deleteSsoMutation = useMutation({
-    mutationFn: (connectionId: string) => removeSsoConnection(DEMO_ORG_ID, connectionId),
+    mutationFn: (connectionId: string) => removeSsoConnection(orgId, connectionId),
     onSuccess: () => {
       toast.success(messages.admin.ssoDeleted);
-      queryClient.invalidateQueries({ queryKey: ['admin-sso', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId] });
     },
     onError: () => {
       toast.error(messages.admin.ssoError);
@@ -347,53 +350,53 @@ export function AdminView({ messages }: AdminViewProps) {
   });
   const createTokenMutation = useMutation({
     mutationFn: (input: { name: string; expiresAt?: string | null }) =>
-      createScimAccessToken(DEMO_ORG_ID, input.name, input.expiresAt ?? null),
+      createScimAccessToken(orgId, input.name, input.expiresAt ?? null),
     onSuccess: (result) => {
       setLastScimToken(result);
       toast.success(messages.admin.scimCreated);
-      queryClient.invalidateQueries({ queryKey: ['admin-scim', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId] });
     },
     onError: () => {
       toast.error(messages.admin.scimError);
     },
   });
   const deleteTokenMutation = useMutation({
-    mutationFn: (tokenId: string) => deleteScimAccessToken(DEMO_ORG_ID, tokenId),
+    mutationFn: (tokenId: string) => deleteScimAccessToken(orgId, tokenId),
     onSuccess: () => {
       toast.success(messages.admin.scimDeleted);
-      queryClient.invalidateQueries({ queryKey: ['admin-scim', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId] });
     },
     onError: () => {
       toast.error(messages.admin.scimError);
     },
   });
   const addIpMutation = useMutation({
-    mutationFn: () => upsertIpAllowlistEntry(DEMO_ORG_ID, { cidr: ipCidr, description: ipDescription || null }),
+    mutationFn: () => upsertIpAllowlistEntry(orgId, { cidr: ipCidr, description: ipDescription || null }),
     onSuccess: () => {
       toast.success(messages.admin.ipAdded);
       setIpCidr('');
       setIpDescription('');
-      queryClient.invalidateQueries({ queryKey: ['admin-ip', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId] });
     },
     onError: () => {
       toast.error(messages.admin.ipError);
     },
   });
   const removeIpMutation = useMutation({
-    mutationFn: (entryId: string) => deleteIpAllowlistEntry(DEMO_ORG_ID, entryId),
+    mutationFn: (entryId: string) => deleteIpAllowlistEntry(orgId, entryId),
     onSuccess: () => {
       toast.success(messages.admin.ipRemoved);
-      queryClient.invalidateQueries({ queryKey: ['admin-ip', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId] });
     },
     onError: () => {
       toast.error(messages.admin.ipError);
     },
   });
   const revokeDeviceMutation = useMutation({
-    mutationFn: (sessionId: string) => revokeDeviceSession(DEMO_ORG_ID, sessionId),
+    mutationFn: (sessionId: string) => revokeDeviceSession(orgId, sessionId),
     onSuccess: () => {
       toast.success(messages.admin.devicesRevokeSuccess);
-      queryClient.invalidateQueries({ queryKey: ['admin-device-sessions', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-device-sessions', orgId] });
     },
     onError: () => {
       toast.error(messages.admin.devicesRevokeError);
