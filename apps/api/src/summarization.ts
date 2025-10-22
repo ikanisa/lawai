@@ -2,7 +2,10 @@ import {
   fetchOpenAIDebugDetails,
   getOpenAIClient,
   isOpenAIDebugEnabled,
+  legalDocumentSummaryTextFormat,
 } from '@avocat-ai/shared';
+import type { LegalDocumentSummary } from '@avocat-ai/shared';
+import type { ParsedResponse } from 'openai/resources/responses/responses';
 import { env } from './config.js';
 
 const textDecoder = new TextDecoder('utf-8', { fatal: false });
@@ -133,6 +136,20 @@ export function chunkText(content: string, chunkSize = 1200, overlap = 200): Tex
   return chunks;
 }
 
+function findRefusalMessage(response: ParsedResponse<unknown>): string | null {
+  for (const item of response.output ?? []) {
+    if (item.type !== 'message') {
+      continue;
+    }
+    for (const content of item.content ?? []) {
+      if (content.type === 'refusal' && typeof content.refusal === 'string') {
+        return content.refusal;
+      }
+    }
+  }
+  return null;
+}
+
 async function generateStructuredSummary(
   text: string,
   metadata: { title: string; jurisdiction: string; publisher: string | null },
@@ -142,41 +159,12 @@ async function generateStructuredSummary(
   logger?: SummarisationLogger,
 ): Promise<{ summary: string; highlights: Array<{ heading: string; detail: string }> }> {
   const truncated = text.slice(0, maxSummaryChars);
-  const schema = {
-    name: 'LegalDocumentSummary',
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['summary', 'highlights'],
-      properties: {
-        summary: {
-          type: 'string',
-          description:
-            "Résumé exécutif en français (3 à 5 phrases) mettant en avant l’objet, la portée et les dates clés du document.",
-        },
-        highlights: {
-          type: 'array',
-          minItems: 1,
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['heading', 'detail'],
-            properties: {
-              heading: { type: 'string' },
-              detail: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-    strict: true,
-  } as const;
 
   const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
 
-  let json;
+  let response: ParsedResponse<LegalDocumentSummary>;
   try {
-    json = await openai.responses.create({
+    response = await openai.responses.parse({
       model,
       input: [
         {
@@ -199,7 +187,7 @@ async function generateStructuredSummary(
           ],
         },
       ],
-      response_format: { type: 'json_schema', json_schema: schema },
+      text: { format: legalDocumentSummaryTextFormat },
       max_output_tokens: 800,
     });
   } catch (error) {
@@ -208,20 +196,20 @@ async function generateStructuredSummary(
     throw new Error(message);
   }
 
-  const output = Array.isArray(json?.output) ? json.output : [];
-  const first = output[0]?.content?.[0]?.text ?? json?.output_text ?? '';
-  if (!first) {
-    throw new Error('Réponse vide du modèle de synthèse');
+  const parsed = response.output_parsed;
+
+  if (!parsed) {
+    const refusal = findRefusalMessage(response);
+    if (refusal) {
+      throw new Error(refusal);
+    }
+    throw new Error('Synthèse JSON invalide');
   }
 
-  const parsed = JSON.parse(first) as { summary?: string; highlights?: Array<{ heading?: string; detail?: string }> };
-  const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
-  const highlights = Array.isArray(parsed.highlights)
-    ? parsed.highlights.filter(
-        (entry): entry is { heading: string; detail: string } =>
-          typeof entry?.heading === 'string' && typeof entry?.detail === 'string',
-      )
-    : [];
+  const summary = parsed.summary.trim();
+  const highlights = parsed.highlights
+    .map((entry) => ({ heading: entry.heading.trim(), detail: entry.detail.trim() }))
+    .filter((entry) => entry.heading.length > 0 && entry.detail.length > 0);
 
   if (!summary) {
     throw new Error('Synthèse JSON invalide');
