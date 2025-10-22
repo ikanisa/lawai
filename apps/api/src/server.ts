@@ -70,7 +70,9 @@ import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js'
 import { registerGracefulShutdown } from './core/lifecycle/graceful-shutdown.js';
 
 const { app, context } = await createApp();
-registerGracefulShutdown(app);
+registerGracefulShutdown(app, {
+  cleanup: () => context.container.dispose(),
+});
 
 setOpenAILogger(app.log);
 
