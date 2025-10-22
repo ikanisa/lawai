@@ -1,7 +1,7 @@
 import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { IRACPayload } from '@avocat-ai/shared';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
+import { Button } from '@/ui/button';
+import { Badge } from '@/ui/badge';
 
 interface RiskBannerProps {
   risk: IRACPayload['risk'];

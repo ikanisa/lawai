@@ -1,8 +1,8 @@
 'use client';
 
 import { ShieldAlert } from 'lucide-react';
-import { Button } from './ui/button';
-import { useConfidentialMode } from '../state/confidential-mode';
+import { Button } from '@/ui/button';
+import { useConfidentialMode } from '@/state/confidential-mode';
 
 interface ConfidentialModeBannerProps {
   title: string;
