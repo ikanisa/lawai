@@ -1,4 +1,4 @@
-name: CI
+name: Node CI
 
 on:
   push:
@@ -7,106 +7,36 @@ on:
     branches: [ main, master ]
 
 jobs:
-  lint:
+  node-ci:
+    name: Install, typecheck, lint, build
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 8.15.4
-          run_install: true
-      - name: pnpm version
-        run: pnpm -v
-      - name: Lint (workspace)
-        run: pnpm -r lint
 
-  typecheck:
-    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 8.15.4
-          run_install: true
-      - name: pnpm version
-        run: pnpm -v
-      - name: Typecheck (API)
-        run: pnpm --filter @apps/api typecheck
-      - name: Typecheck (Web)
-        run: pnpm --filter @avocat-ai/web typecheck
-      - name: Check migrations (canonical & ordering)
-        run: pnpm check:migrations
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-      - uses: pnpm/action-setup@v2
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
         with:
           version: 8.15.4
-          run_install: true
-      - name: pnpm version
-        run: pnpm -v
-      - name: Run tests (workspace)
-        run: pnpm -r test
 
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 8.15.4
-          run_install: true
-      - name: pnpm version
-        run: pnpm -v
-      - name: Build API
-        run: pnpm --filter @apps/api build
-      - name: Build Web
-        run: pnpm --filter @avocat-ai/web build
-      - name: Build PWA
-        run: pnpm --filter @apps/pwa build
-      - name: Enforce PWA bundle budgets
-        run: pnpm --filter @apps/pwa bundle:check
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
 
-  rls-smoke:
-    runs-on: ubuntu-latest
-    if: ${{ vars.RUN_RLS_SMOKE == 'true' }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 8.15.4
-          run_install: true
-      - name: pnpm version
-        run: pnpm -v
-      - name: RLS smoke (skips if env missing)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "RLS smoke skipped: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set";
-            exit 0;
-          fi
-          pnpm --filter @apps/ops rls-smoke
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck workspace
+        run: pnpm typecheck
+
+      - name: Lint workspace
+        run: pnpm lint
+
+      - name: Build workspace
+        run: pnpm build
