@@ -448,6 +448,50 @@
       "monitoring": "Surveillance"
     }
   },
+  "chatkit": {
+    "title": "Sessions ChatKit en direct",
+    "subtitle": "Supervisez les fils ChatKit, suivez le flux d’événements et escaladez vers un reviewer dès que l’agent détecte un risque.",
+    "activeSessions": "Sessions actives",
+    "startSession": "Lancer une session",
+    "refresh": "Actualiser",
+    "cancel": "Terminer la session",
+    "tasksTitle": "File des tâches",
+    "escalate": "Escalader au HITL",
+    "escalateDescription": "Envoyer à un reviewer et suspendre l’automatisation jusqu’à sa décision.",
+    "metricsLabel": "Statut du flux",
+    "transportLabel": "Transport",
+    "lastEventLabel": "Dernier événement",
+    "eventIdle": "En attente d’événements…",
+    "sessionLabel": "Session {id}",
+    "startedAt": "Démarrée {time}",
+    "emptyStateDetail": "Les sessions ChatKit apparaîtront ici dès qu’une discussion en direct sera lancée.",
+    "loading": "Chargement des sessions…",
+    "loadError": "Impossible de charger les sessions ChatKit.",
+    "connection": {
+      "idle": "Inactif",
+      "connecting": "Connexion…",
+      "connected": "Connecté (SSE)",
+      "connectedWebrtc": "Connecté (WebRTC)",
+      "error": "Erreur de connexion"
+    },
+    "status": {
+      "active": "Active",
+      "ended": "Terminée",
+      "pending": "En attente",
+      "running": "En cours",
+      "completed": "Terminé",
+      "blocked": "Bloquée"
+    },
+    "defaultTasks": {
+      "genericTitle": "Tâche",
+      "intakeTitle": "Collecte & triage",
+      "intakeDescription": "Collecte des pièces et classification des signaux de risque.",
+      "analysisTitle": "Analyse de l’agent",
+      "analysisDescription": "Recherche des sources, rédaction et scoring du risque.",
+      "reviewTitle": "Passage au reviewer",
+      "reviewDescription": "En attente de validation humaine avant diffusion."
+    }
+  },
   "navigator": {
     "title": "Navigateur de procédures guidées",
     "subtitle": "Suivez les workflows par juridiction, les garde-fous et les passages en revue humaine pour chaque persona.",
