@@ -3,10 +3,67 @@
 import { Workbox } from 'workbox-window';
 
 const DIGEST_KEY = 'avocat-ai-digest-enabled';
+export const PWA_OPT_IN_STORAGE_KEY = 'avocat-ai.install.optIn';
+
 let registrationPromise: Promise<ServiceWorkerRegistration> | null = null;
 
+export function isPwaEnvEnabled(): boolean {
+  const flag = process.env.NEXT_PUBLIC_ENABLE_PWA;
+  return flag === undefined || flag === 'true';
+}
+
+export function getPwaPreference(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(PWA_OPT_IN_STORAGE_KEY) === 'true';
+  } catch (error) {
+    console.warn('pwa_preference_read_failed', error);
+    return false;
+  }
+}
+
+export function setPwaPreference(enabled: boolean): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(PWA_OPT_IN_STORAGE_KEY, enabled ? 'true' : 'false');
+  } catch (error) {
+    console.warn('pwa_preference_write_failed', error);
+  }
+}
+
+export function isPwaSupported(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const nav = window.navigator;
+  return Boolean(nav && 'serviceWorker' in nav);
+}
+
 export function registerPwa() {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+  if (!isPwaEnvEnabled()) {
+    console.info('pwa_registration_skipped', { reason: 'env_disabled' });
+    return;
+  }
+
+  if (typeof window === 'undefined') {
+    console.info('pwa_registration_skipped', { reason: 'ssr' });
+    return;
+  }
+
+  if (!isPwaSupported()) {
+    console.warn('pwa_unsupported_browser');
+    return;
+  }
+
+  if (!getPwaPreference()) {
+    console.info('pwa_registration_skipped', { reason: 'user_opt_out' });
     return;
   }
 
@@ -36,6 +93,8 @@ export async function enableDigestNotifications(): Promise<boolean> {
   if (permission !== 'granted') {
     return false;
   }
+
+  setPwaPreference(true);
 
   if (!registrationPromise) {
     registerPwa();

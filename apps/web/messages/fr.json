@@ -69,6 +69,11 @@
       "success": "Avocat-AI est installé sur votre appareil.",
       "snoozed": "Nous vous le rappellerons ultérieurement.",
       "unavailable": "L’installation n’est pas disponible sur cet appareil.",
+      "optInToggle": "Activer le mode hors ligne",
+      "optInDescription": "Autorisez Avocat-AI à mettre en cache les ressources et à proposer l’installation lorsque vous êtes prêt.",
+      "optInEnabled": "Mode hors ligne activé. Les fonctionnalités d’arrière-plan seront enregistrées.",
+      "optInDisabled": "Mode hors ligne désactivé.",
+      "optInUnavailable": "Les service workers ne sont pas pris en charge par ce navigateur.",
       "releaseNotes": {
         "title": "Nouveautés",
         "items": [

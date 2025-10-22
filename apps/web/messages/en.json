@@ -69,6 +69,11 @@
       "success": "Avocat-AI is ready on your device.",
       "snoozed": "We’ll remind you again soon.",
       "unavailable": "Installation is unavailable on this device.",
+      "optInToggle": "Enable offline mode",
+      "optInDescription": "Allow Avocat-AI to cache resources and surface install prompts when you’re ready.",
+      "optInEnabled": "Offline-ready mode enabled. Background features will be registered.",
+      "optInDisabled": "Offline mode disabled.",
+      "optInUnavailable": "Service workers are unavailable in this browser.",
       "releaseNotes": {
         "title": "What's new",
         "items": [

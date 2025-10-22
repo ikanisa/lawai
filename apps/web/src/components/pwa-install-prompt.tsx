@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, BellRing, History } from 'lucide-react';
 import { Button } from './ui/button';
+import { Switch } from './ui/switch';
 import type { Locale, Messages } from '../lib/i18n';
 import { usePwaInstall } from '../hooks/use-pwa-install';
 import { useDigest } from '../hooks/use-digest';
 import { useOutbox } from '../hooks/use-outbox';
+import { usePwaPreference } from '../hooks/use-pwa-preference';
 import { toast } from 'sonner';
 import { sendTelemetryEvent } from '../lib/api';
+import { isPwaEnvEnabled, isPwaSupported } from '../lib/pwa';
 
 interface PwaInstallPromptProps {
   messages?: Messages['app']['install'];
@@ -33,7 +36,10 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
   const { shouldPrompt, isAvailable, promptInstall, dismissPrompt } = usePwaInstall();
   const { enabled: digestEnabled, loading: digestLoading, enable: enableDigest } = useDigest();
   const { pendingCount, hasItems, stalenessMs } = useOutbox();
+  const { enabled: pwaOptIn, loading: pwaPreferenceLoading, setEnabled: setPwaOptIn } = usePwaPreference();
   const [notesOpen, setNotesOpen] = useState(false);
+  const pwaSupported = isPwaSupported();
+  const pwaEnvEnabled = isPwaEnvEnabled();
 
   const releaseNotes = useMemo<ReleaseNotesCopy | null>(() => {
     if (!messages?.releaseNotes) return null;
@@ -62,11 +68,43 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
     });
   }, [shouldPrompt, pendingCount, digestEnabled, releaseNotes?.items?.length]);
 
-  if (!messages || !shouldPrompt) {
+  if (!messages || !pwaEnvEnabled) {
     return null;
   }
 
+  if (!shouldPrompt && (pwaPreferenceLoading || pwaOptIn)) {
+    return null;
+  }
+
+  const handleOptInToggle = () => {
+    if (pwaPreferenceLoading) {
+      return;
+    }
+
+    if (!pwaSupported) {
+      toast.error(messages.optInUnavailable ?? messages.unavailable);
+      return;
+    }
+
+    const next = !pwaOptIn;
+    setPwaOptIn(next);
+    const toastMessage = next ? messages.optInEnabled : messages.optInDisabled;
+    if (toastMessage) {
+      if (next) {
+        toast.success(toastMessage);
+      } else {
+        toast.info(toastMessage);
+      }
+    }
+  };
+
+  const installReady = shouldPrompt && pwaOptIn && isAvailable;
+
   const handleInstallNow = async () => {
+    if (!installReady) {
+      return;
+    }
+
     void sendTelemetryEvent('pwa_install_attempt', { pendingOutbox: pendingCount });
     const outcome = await promptInstall();
     if (outcome === 'accepted') {
@@ -82,6 +120,10 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
   };
 
   const handleInstallLater = () => {
+    if (!shouldPrompt) {
+      return;
+    }
+
     dismissPrompt();
     toast.info(messages.snoozed);
     void sendTelemetryEvent('pwa_install_dismissed');
@@ -128,7 +170,25 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
               <p className="text-sm font-semibold text-white">{messages.title}</p>
               <p className="mt-1 text-slate-300">{messages.body}</p>
             </div>
-            {releaseNotes ? (
+            <div className="rounded-2xl bg-slate-900/50 p-3">
+              <Switch
+                type="button"
+                checked={pwaOptIn}
+                disabled={pwaPreferenceLoading || !pwaSupported}
+                onClick={handleOptInToggle}
+                label={messages.optInToggle}
+                className="w-full justify-between"
+              />
+              {messages.optInDescription ? (
+                <p className="mt-2 text-xs text-slate-300">{messages.optInDescription}</p>
+              ) : null}
+              {!pwaSupported ? (
+                <p className="mt-2 text-xs text-amber-200/80">
+                  {messages.optInUnavailable ?? messages.unavailable}
+                </p>
+              ) : null}
+            </div>
+            {shouldPrompt && releaseNotes ? (
               <div className="rounded-2xl bg-slate-900/50 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wide text-slate-200">
@@ -153,15 +213,17 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
                 ) : null}
               </div>
             ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={handleInstallNow} disabled={!isAvailable}>
-                {messages.cta}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={handleInstallLater}>
-                {messages.dismiss}
-              </Button>
-            </div>
-            {releaseNotes ? (
+            {shouldPrompt ? (
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={handleInstallNow} disabled={!installReady}>
+                  {messages.cta}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleInstallLater}>
+                  {messages.dismiss}
+                </Button>
+              </div>
+            ) : null}
+            {shouldPrompt && releaseNotes ? (
               <div className="rounded-2xl bg-slate-900/50 p-3 text-xs text-slate-300">
                 <div className="flex items-center gap-2 font-semibold text-slate-100">
                   <BellRing className="h-4 w-4 text-teal-200" aria-hidden />
