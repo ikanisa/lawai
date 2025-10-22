@@ -56,8 +56,9 @@ export function buildWebSearchAllowlist(options = {}) {
     const limit = Math.max(1, options.limit ?? DEFAULT_WEB_SEARCH_LIMIT);
     const base = Array.isArray(options.base) ? options.base : OFFICIAL_DOMAIN_ALLOWLIST;
     const override = Array.isArray(options.override) ? options.override : null;
-    const source = override ? 'override' : 'base';
-    const inputs = (override && override.length > 0 ? override : base) ?? [];
+    const hasOverride = override !== null;
+    const source = hasOverride ? 'override' : 'base';
+    const inputs = hasOverride ? override : base;
     const seen = new Set();
     const deduped = [];
     for (const value of inputs) {
