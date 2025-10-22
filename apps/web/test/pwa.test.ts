@@ -27,25 +27,57 @@ vi.mock('workbox-window', () => ({
 }));
 
 describe('pwa utilities', () => {
+  const originalEnv = process.env.NEXT_PUBLIC_ENABLE_PWA;
+
   beforeEach(() => {
     vi.resetModules();
+    process.env.NEXT_PUBLIC_ENABLE_PWA = 'true';
     registerMock.mockClear();
     messageMock.mockClear();
     addEventListenerMock.mockClear();
     serviceWorkerRegistration.showNotification = vi.fn(() => Promise.resolve());
 
-    vi.stubGlobal('navigator', {
+    const storage = new Map<string, string>();
+    const localStorageMock = {
+      getItem: vi.fn((key: string) => (storage.has(key) ? storage.get(key)! : null)),
+      setItem: vi.fn((key: string, value: string) => {
+        storage.set(key, value);
+      }),
+      removeItem: vi.fn((key: string) => {
+        storage.delete(key);
+      }),
+      clear: vi.fn(() => {
+        storage.clear();
+      }),
+    } as unknown as Storage;
+
+    vi.stubGlobal(
+      'window',
+      {
+        localStorage: localStorageMock,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as Window & typeof globalThis,
+    );
+
+    const navigatorMock = {
       serviceWorker: {
         ready: Promise.resolve(serviceWorkerRegistration),
       },
-    });
+    } as Navigator;
+
+    vi.stubGlobal('navigator', navigatorMock);
 
     vi.stubGlobal('Notification', {
       requestPermission: vi.fn(async () => 'granted'),
     } as unknown as Notification);
+
+    (window as any).navigator = navigatorMock;
+    (window as any).Notification = globalThis.Notification;
   });
 
   afterEach(() => {
+    process.env.NEXT_PUBLIC_ENABLE_PWA = originalEnv;
     vi.unstubAllGlobals();
   });
 
@@ -55,6 +87,23 @@ describe('pwa utilities', () => {
     registerPwa();
 
     expect(registerMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips registration when disabled via env flag', async () => {
+    process.env.NEXT_PUBLIC_ENABLE_PWA = 'false';
+    const { registerPwa } = await import('../src/lib/pwa');
+    registerPwa();
+
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('does not register during SSR execution', async () => {
+    vi.unstubAllGlobals();
+    process.env.NEXT_PUBLIC_ENABLE_PWA = 'true';
+    const { registerPwa } = await import('../src/lib/pwa');
+    registerPwa();
+
+    expect(registerMock).not.toHaveBeenCalled();
   });
 
   it('enables digest notifications when permission granted', async () => {
