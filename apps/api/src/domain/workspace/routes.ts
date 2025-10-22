@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { AppContext } from '../../types/context';
+import type { AppContext } from '../../types/context.js';
 
 const workspaceQuerySchema = z.object({
   orgId: z.string().uuid(),
