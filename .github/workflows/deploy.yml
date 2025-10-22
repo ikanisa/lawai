@@ -20,6 +20,10 @@ jobs:
           run_install: true
       - name: pnpm version
         run: pnpm -v
+      - name: SQL lint
+        run: pnpm lint:sql
+      - name: Check migrations
+        run: pnpm check:migrations
       - name: Lint
         run: pnpm -r lint
       - name: Typecheck
