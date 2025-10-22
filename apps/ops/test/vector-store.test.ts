@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as shared from '@avocat-ai/shared';
 import { chunkText } from '../src/lib/embeddings.js';
 import { validateVectorStore } from '../src/lib/vector-store.js';
 
@@ -13,31 +14,29 @@ describe('validateVectorStore', () => {
   });
 
   it('returns true when OpenAI responds with 200', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ id: 'vs_123' }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-    );
+    const retrieve = vi.fn().mockResolvedValue({ id: 'vs_123' });
+    vi.spyOn(shared, 'getOpenAIClient').mockReturnValue({
+      beta: { vectorStores: { retrieve } },
+    } as unknown as { beta: { vectorStores: { retrieve: typeof retrieve } } });
 
     await expect(validateVectorStore('sk-test', 'vs_123')).resolves.toBe(true);
+    expect(retrieve).toHaveBeenCalledWith('vs_123');
   });
 
   it('returns false when OpenAI returns 404', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ error: { message: 'Not found' } }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
+    const retrieve = vi.fn().mockRejectedValue({ status: 404 });
+    vi.spyOn(shared, 'getOpenAIClient').mockReturnValue({
+      beta: { vectorStores: { retrieve } },
+    } as unknown as { beta: { vectorStores: { retrieve: typeof retrieve } } });
 
     await expect(validateVectorStore('sk-test', 'vs_missing')).resolves.toBe(false);
   });
 
   it('throws on other OpenAI errors', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ error: { message: 'Upstream failure' } }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
+    const retrieve = vi.fn().mockRejectedValue(new Error('Upstream failure'));
+    vi.spyOn(shared, 'getOpenAIClient').mockReturnValue({
+      beta: { vectorStores: { retrieve } },
+    } as unknown as { beta: { vectorStores: { retrieve: typeof retrieve } } });
 
     await expect(validateVectorStore('sk-test', 'vs_fail')).rejects.toThrow('Upstream failure');
   });

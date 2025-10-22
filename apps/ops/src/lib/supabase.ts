@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createServiceClient } from '@avocat-ai/supabase';
+import { createServiceClient, type SupabaseEnv } from '@avocat-ai/supabase';
 import ora from 'ora';
 import { OFFICIAL_DOMAIN_ALLOWLIST, getJurisdictionsForDomain } from '@avocat-ai/shared';
 
@@ -8,8 +8,13 @@ type BucketListItem = {
   name: string;
 };
 
-export function createSupabaseService(env: Record<string, string>): SupabaseClient {
-  return createServiceClient({
+export type SupabaseClientFactory = (env: SupabaseEnv) => SupabaseClient;
+
+export function createSupabaseService(
+  env: Record<string, string>,
+  factory: SupabaseClientFactory = createServiceClient,
+): SupabaseClient {
+  return factory({
     SUPABASE_URL: env.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
   });

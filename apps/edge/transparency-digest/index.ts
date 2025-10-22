@@ -1,6 +1,11 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, EdgeSupabaseClient, rowsAs } from '../lib/supabase.ts';
+import {
+  formatTransparencyDigest,
+  type TransparencyDigestRecord,
+  type TransparencyMetrics,
+} from '../../../packages/shared/src/transparency/digest.ts';
 
 type Env = {
   supabaseUrl?: string;
@@ -9,26 +14,7 @@ type Env = {
   days?: number;
 };
 
-type TransparencyMetrics = {
-  operations?: {
-    totalRuns?: number | null;
-    hitlTriggered?: number | null;
-    hitl?: { medianResponseMinutes?: number | null } | null;
-  } | null;
-  compliance?: { cepejPassRate?: number | null } | null;
-  ingestion?: { total?: number | null; succeeded?: number | null } | null;
-  evaluations?: { passRate?: number | null } | null;
-} | null;
-
-type TransparencyReportRow = {
-  id: string;
-  org_id: string;
-  period_start: string;
-  period_end: string;
-  generated_at: string;
-  distribution_status?: string | null;
-  metrics: TransparencyMetrics;
-};
+type TransparencyReportRow = TransparencyDigestRecord & { metrics: TransparencyMetrics };
 
 type PublicationResult = {
   orgId: string;
@@ -68,76 +54,12 @@ async function listOrganisationIds(client: EdgeSupabaseClient, orgId?: string): 
     .filter((value): value is string => typeof value === 'string' && value.length > 0);
 }
 
-function formatPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) {
-    return 'n/a';
-  }
-  const normalized = value > 1 ? value : value * 100;
-  return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(normalized)}%`;
-}
-
-function formatCount(value: number | null | undefined): number {
-  if (value === null || value === undefined || Number.isNaN(value)) {
-    return 0;
-  }
-  return Math.max(0, Math.round(value));
-}
-
-function formatDuration(minutes: number | null | undefined): string {
-  if (minutes === null || minutes === undefined || Number.isNaN(minutes)) {
-    return 'n/a';
-  }
-  return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(Math.max(minutes, 0))} min`;
-}
-
 function buildReportLink(row: TransparencyReportRow): string {
   return `https://docs.avocat-ai.example/transparency-reports/${row.org_id}/${row.id}`;
 }
 
-function summariseReport(row: TransparencyReportRow): string {
-  const metrics = row.metrics ?? {};
-  const operations = metrics.operations ?? {};
-  const compliance = metrics.compliance ?? {};
-  const ingestion = metrics.ingestion ?? {};
-  const evaluations = metrics.evaluations ?? {};
-  const hitl = operations?.hitl ?? {};
-
-  const period = `${row.period_start ?? 'N/A'} → ${row.period_end ?? 'N/A'}`;
-  const runs = formatCount(operations?.totalRuns ?? 0);
-  const hitlCount = formatCount(operations?.hitlTriggered ?? 0);
-  const hitlMedian = formatDuration(hitl?.medianResponseMinutes ?? null);
-  const cepej = compliance && 'cepejPassRate' in compliance ? formatPercent(compliance?.cepejPassRate ?? null) : 'n/a';
-  const evalRate = evaluations && 'passRate' in evaluations ? formatPercent(evaluations?.passRate ?? null) : 'n/a';
-  const ingestionSummary = `${formatCount(ingestion?.succeeded ?? 0)}/${formatCount(ingestion?.total ?? 0)}`;
-  const status = (row.distribution_status ?? 'draft').toLowerCase();
-  const link = buildReportLink(row);
-
-  return [
-    `- ${period}`,
-    `runs ${runs} (HITL ${hitlCount}, délai ${hitlMedian})`,
-    `CEPEJ ${cepej}`,
-    `évaluations ${evalRate}`,
-    `ingestion ${ingestionSummary}`,
-    `statut ${status} [Rapport](${link})`,
-  ].join(' · ');
-}
-
 function buildDigest(reference: Date, reports: TransparencyReportRow[]): { markdown: string; summary: string } {
-  const header = `# Bulletin de transparence (${reference.toISOString().slice(0, 10)})`;
-  if (reports.length === 0) {
-    return {
-      markdown: `${header}\n\n_Aucun rapport de transparence généré durant la période demandée._\n`,
-      summary: 'Aucun rapport de transparence généré durant la période couverte.',
-    };
-  }
-
-  const lines = [header, ''];
-  for (const report of reports) {
-    lines.push(summariseReport(report));
-  }
-  const markdown = `${lines.join('\n')}\n`;
-  const summary = `Synthèse de ${reports.length} rapport(s) de transparence.`;
-  return { markdown, summary };
+  return formatTransparencyDigest(reference, reports, { linkBuilder: buildReportLink });
 }
 
 Deno.serve(async (req) => {
