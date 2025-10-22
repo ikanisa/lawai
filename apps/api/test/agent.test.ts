@@ -310,7 +310,7 @@ beforeEach(() => {
     run: runMock,
     tool: vi.fn((options) => ({ ...options })),
     defineOutputGuardrail: vi.fn((options) => options),
-    webSearchTool: vi.fn(() => ({ type: 'hosted_tool', name: 'web_search' })),
+    webSearchTool: vi.fn((options) => ({ type: 'hosted_tool', name: 'web_search', __options: options })),
     fileSearchTool: vi.fn(() => ({ type: 'hosted_tool', name: 'file_search' })),
     setDefaultModelProvider: vi.fn(),
     setDefaultOpenAIKey: vi.fn(),
@@ -606,6 +606,9 @@ describe('runLegalAgent', () => {
     });
 
     const { runLegalAgent } = await import('../src/agent.ts');
+    const agentsModule = await import('@openai/agents');
+    const webSearchToolMock = agentsModule.webSearchTool as unknown as vi.Mock;
+    webSearchToolMock.mockClear();
     await runLegalAgent(
       {
         question: 'Analyse confidentielle',
@@ -619,6 +622,81 @@ describe('runLegalAgent', () => {
     const agentInstance = runMock.mock.calls[0]?.[0] as { config?: { tools?: Array<{ name?: string }> } } | undefined;
     const toolNames = agentInstance?.config?.tools?.map((tool) => tool?.name) ?? [];
     expect(toolNames).not.toContain('web_search');
+    expect(webSearchToolMock).not.toHaveBeenCalled();
+  });
+
+  it('configures allowlist web search by default', async () => {
+    runMock.mockResolvedValue({
+      finalOutput: validPayload,
+    });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
+    await runLegalAgent(
+      {
+        question: 'Analyse en France',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext(),
+    );
+
+    const agentInstance = runMock.mock.calls[0]?.[0] as { config?: { tools?: Array<Record<string, unknown>> } } | undefined;
+    const webSearchConfig = agentInstance?.config?.tools?.find((tool) => tool?.name === 'web_search') as
+      | (Record<string, unknown> & { __options?: Record<string, unknown> })
+      | undefined;
+    expect(webSearchConfig).toBeDefined();
+    expect(webSearchConfig?.__options).toMatchObject({ searchContextSize: 'medium' });
+    expect((webSearchConfig?.__options as Record<string, unknown>)?.filters).toBeDefined();
+  });
+
+  it('expands web search scope when broad mode is requested', async () => {
+    runMock.mockResolvedValue({
+      finalOutput: validPayload,
+    });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
+    await runLegalAgent(
+      {
+        question: 'Analyse élargie',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+        webSearchMode: 'broad',
+      },
+      makeContext(),
+    );
+
+    const agentInstance = runMock.mock.calls[0]?.[0] as { config?: { tools?: Array<Record<string, unknown>> } } | undefined;
+    const webSearchConfig = agentInstance?.config?.tools?.find((tool) => tool?.name === 'web_search') as
+      | (Record<string, unknown> & { __options?: Record<string, unknown> })
+      | undefined;
+    expect(webSearchConfig).toBeDefined();
+    expect(webSearchConfig?.__options).toMatchObject({ searchContextSize: 'large' });
+    expect((webSearchConfig?.__options as Record<string, unknown>)?.filters).toBeUndefined();
+  });
+
+  it('omits web search when disabled mode is requested', async () => {
+    runMock.mockResolvedValue({
+      finalOutput: validPayload,
+    });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
+    const agentsModule = await import('@openai/agents');
+    const webSearchToolMock = agentsModule.webSearchTool as unknown as vi.Mock;
+    webSearchToolMock.mockClear();
+    await runLegalAgent(
+      {
+        question: 'Analyse sans web',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+        webSearchMode: 'disabled',
+      },
+      makeContext(),
+    );
+
+    const agentInstance = runMock.mock.calls[0]?.[0] as { config?: { tools?: Array<{ name?: string }> } } | undefined;
+    const toolNames = agentInstance?.config?.tools?.map((tool) => tool?.name) ?? [];
+    expect(toolNames).not.toContain('web_search');
+    expect(webSearchToolMock).not.toHaveBeenCalled();
   });
 
   it('avoids caching telemetry and hybrid retrieval data when confidential mode is active', async () => {

@@ -1,4 +1,11 @@
-import { ResearchDeskContextSchema, type ResearchDeskContext, type ResearchPlan, type ResearchCitation, type ResearchStreamEvent } from '@avocat-ai/shared';
+import {
+  ResearchDeskContextSchema,
+  type ResearchDeskContext,
+  type ResearchPlan,
+  type ResearchCitation,
+  type ResearchStreamEvent,
+  type WebSearchMode
+} from '@avocat-ai/shared';
 
 const researchPlan: ResearchPlan = {
   id: 'plan-ohada-default',
@@ -89,7 +96,8 @@ export const researchDeskContext: ResearchDeskContext = ResearchDeskContextSchem
 
 export function createResearchStream(
   input: string,
-  toolsEnabled: readonly string[]
+  toolsEnabled: readonly string[],
+  webSearchMode: WebSearchMode = 'allowlist'
 ): ResearchStreamEvent[] {
   const stream: ResearchStreamEvent[] = [];
   const lowerInput = input.toLowerCase();
@@ -157,6 +165,14 @@ export function createResearchStream(
   }
 
   if (toolsEnabled.includes('web_search')) {
+    const webSearchStartDetail =
+      webSearchMode === 'broad'
+        ? 'Recherche étendue incluant les sources publiques surveillées.'
+        : 'Requête ciblée sur le JO OHADA et les bulletins officiels.';
+    const webSearchSuccessDetail =
+      webSearchMode === 'broad'
+        ? 'Sources publiques élargies synthétisées et ajoutées aux preuves.'
+        : 'Sources publiques vérifiées et ajoutées aux preuves.';
     stream.push({
       type: 'tool',
       data: {
@@ -164,7 +180,7 @@ export function createResearchStream(
           id: 'tool-web-search',
           name: 'web_search',
           status: 'running',
-          detail: 'Requête ciblée sur le JO OHADA et les bulletins officiels.',
+          detail: webSearchStartDetail,
           planStepId: 'step-precedents'
         }
       }
@@ -180,7 +196,7 @@ export function createResearchStream(
           id: 'tool-web-search',
           name: 'web_search',
           status: 'success',
-          detail: 'Sources publiques vérifiées et ajoutées aux preuves.',
+          detail: webSearchSuccessDetail,
           planStepId: 'step-precedents'
         }
       }
