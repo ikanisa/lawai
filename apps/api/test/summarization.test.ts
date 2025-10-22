@@ -119,6 +119,45 @@ describe('summariseDocumentFromPayload', () => {
     expect(result.embeddings).toHaveLength(result.chunks.length);
   });
 
+  it('falls back to response.output when output_text is missing', async () => {
+    const text = 'Article 1 — Les dispositions relatives aux contrats sont détaillées. '.repeat(5);
+    const structured = JSON.stringify({
+      summary: 'Résumé alternatif',
+      highlights: [
+        { heading: 'Objet', detail: 'Détails des contrats.' },
+      ],
+    });
+
+    openAIResponsesCreateMock.mockResolvedValue({
+      output: [
+        {
+          content: [
+            {
+              text: structured,
+            },
+          ],
+        },
+      ],
+      output_text: '',
+    });
+
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
+
+    const result = await summariseDocumentFromPayload({
+      payload: encoder.encode(text),
+      mimeType: 'text/plain',
+      metadata: { title: 'Contrat', jurisdiction: 'FR', publisher: 'Légifrance' },
+      openaiApiKey: 'test-key',
+      summariserModel: 'gpt-summary',
+      embeddingModel: 'text-embedding-test',
+      maxSummaryChars: 4000,
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.summary).toBe('Résumé alternatif');
+    expect(result.highlights).toHaveLength(1);
+  });
+
   it('returns failed when the summary call errors', async () => {
     const quotaError = new Error('quota exceeded');
     openAIResponsesCreateMock.mockRejectedValue(quotaError);

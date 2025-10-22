@@ -146,6 +146,45 @@ describe('summariseDocumentFromPayload (legacy)', () => {
     expect(result.embeddings).toHaveLength(result.chunks.length);
   });
 
+  it('falls back to response.output when output_text is missing', async () => {
+    const text = 'Article 2 — Les dispositions relatives aux saisies sont détaillées. '.repeat(5);
+    const structured = JSON.stringify({
+      summary: 'Synthèse alternative',
+      highlights: [
+        { heading: 'Portée', detail: 'Synthèse lorsque output_text est absent.' },
+      ],
+    });
+
+    openAIResponsesCreateMock.mockResolvedValue({
+      output: [
+        {
+          content: [
+            {
+              text: structured,
+            },
+          ],
+        },
+      ],
+      output_text: '',
+    });
+
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
+
+    const result = await summariseDocumentFromPayload({
+      payload: encoder.encode(text),
+      mimeType: 'text/plain',
+      metadata: { title: 'Décret', jurisdiction: 'FR', publisher: 'Journal Officiel' },
+      openaiApiKey: 'test-key',
+      summariserModel: 'gpt-summary',
+      embeddingModel: 'text-embedding-test',
+      maxSummaryChars: 4000,
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.summary).toBe('Synthèse alternative');
+    expect(result.highlights).toHaveLength(1);
+  });
+
   it('returns failed when the summary call errors', async () => {
     const quotaError = new Error('quota exceeded');
     openAIResponsesCreateMock.mockRejectedValue(quotaError);

@@ -45,6 +45,53 @@ async function logOpenAIDebugSummary(
   }
 }
 
+type OpenAIResponsesResult = {
+  output_text?: unknown;
+  output?: Array<{ content?: Array<{ text?: unknown }> }>;
+  output_json?: unknown;
+};
+
+function extractStructuredOutputText(result: OpenAIResponsesResult | null | undefined): string {
+  const direct = typeof result?.output_text === 'string' ? result.output_text.trim() : '';
+  if (direct) {
+    return direct;
+  }
+
+  if (Array.isArray(result?.output)) {
+    for (const item of result.output) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const content = Array.isArray(item.content) ? item.content : [];
+      for (const part of content) {
+        if (part && typeof part === 'object' && typeof part.text === 'string') {
+          const text = part.text.trim();
+          if (text) {
+            return text;
+          }
+        }
+      }
+    }
+  }
+
+  const jsonPayload = result?.output_json;
+  if (typeof jsonPayload === 'string' && jsonPayload.trim()) {
+    return jsonPayload.trim();
+  }
+  if (jsonPayload && typeof jsonPayload === 'object') {
+    try {
+      const stringified = JSON.stringify(jsonPayload);
+      if (stringified.trim()) {
+        return stringified.trim();
+      }
+    } catch {
+      // ignore serialization errors
+    }
+  }
+
+  return '';
+}
+
 function stripHtml(html: string): string {
   return html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -176,7 +223,7 @@ async function generateStructuredSummary(
     throw new Error(message);
   }
 
-  const outputText = (json?.output_text ?? '').trim();
+  const outputText = extractStructuredOutputText(json);
   if (!outputText) {
     throw new Error('Réponse vide du modèle de synthèse');
   }
