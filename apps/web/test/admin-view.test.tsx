@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Messages } from '../src/lib/i18n';
 
 const {
@@ -60,10 +60,25 @@ vi.mock('../src/lib/api', async () => {
   } satisfies ApiModule;
 });
 
+const useSessionMock = vi.fn();
+
+vi.mock('../src/components/session-provider', () => ({
+  useSession: () => useSessionMock(),
+}));
+
 const { AdminView } = await import('../src/components/admin/admin-view');
 
 describe('AdminView provenance dashboard', () => {
   beforeEach(() => {
+    useSessionMock.mockReturnValue({
+      status: 'authenticated',
+      session: null,
+      orgId: 'org-123',
+      userId: 'user-123',
+      isDemo: false,
+      error: null,
+      refresh: vi.fn(),
+    });
     fetchGovernanceMetricsMock.mockReset();
     fetchRetrievalMetricsMock.mockReset();
     fetchEvaluationMetricsMock.mockReset();
@@ -73,6 +88,10 @@ describe('AdminView provenance dashboard', () => {
     fetchAuditEventsMock.mockReset();
     fetchIpAllowlistMock.mockReset();
     fetchOperationsOverviewMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('renders residency and identifier coverage per jurisdiction', async () => {
@@ -271,5 +290,51 @@ describe('AdminView provenance dashboard', () => {
     expect(await screen.findByText(messagesFr.admin.policyEvidenceHint, { exact: false })).toBeInTheDocument();
     expect(await screen.findByText(messagesFr.admin.policySupport)).toBeInTheDocument();
     expect(await screen.findByText(messagesFr.admin.policyRegulator)).toBeInTheDocument();
+  });
+
+  it('renders with demo session fallback when unauthenticated', async () => {
+    const fetchMock = vi.fn(async () => ({
+      status: 401,
+      ok: false,
+      json: async () => ({}),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    useSessionMock.mockReturnValue({
+      status: 'unauthenticated',
+      session: null,
+      orgId: null,
+      userId: null,
+      isDemo: true,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    fetchGovernanceMetricsMock.mockResolvedValue({ overview: null, tools: [], identifiers: [], jurisdictions: [] });
+    fetchRetrievalMetricsMock.mockResolvedValue({ summary: null, origins: [], hosts: [] });
+    fetchEvaluationMetricsMock.mockResolvedValue({ summary: null, jurisdictions: [] });
+    fetchSloMetricsMock.mockResolvedValue({ summary: null, snapshots: [] });
+    fetchOperationsOverviewMock.mockResolvedValue(null);
+    fetchSsoConnectionsMock.mockResolvedValue([]);
+    fetchScimTokensMock.mockResolvedValue({ tokens: [], lastToken: null });
+    fetchAuditEventsMock.mockResolvedValue([]);
+    fetchIpAllowlistMock.mockResolvedValue([]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AdminView messages={messagesFr as Messages} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Chargement…').length).toBeGreaterThan(0);
+    });
+    expect(fetchMock).toHaveBeenCalled();
+    const [requestUrl] = fetchMock.mock.calls[0] ?? [];
+    expect(requestUrl).toContain('orgId=00000000-0000-0000-0000-000000000000');
   });
 });
