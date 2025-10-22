@@ -343,15 +343,17 @@ const complianceAckSchema = z
   .object({
     consent: z
       .object({
-        type: z.string().min(1),
+        type: z.literal(COMPLIANCE_ACK_TYPES.consent),
         version: z.string().min(1),
       })
+      .strict()
       .nullable()
       .optional(),
     councilOfEurope: z
       .object({
         version: z.string().min(1),
       })
+      .strict()
       .nullable()
       .optional(),
   })
@@ -809,7 +811,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     records.push({
       user_id: userHeader,
       org_id: orgHeader,
-      consent_type: parsed.data.consent.type,
+      consent_type: COMPLIANCE_ACK_TYPES.consent,
       version: parsed.data.consent.version,
     });
   }
