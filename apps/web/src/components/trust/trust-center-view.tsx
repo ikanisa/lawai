@@ -8,9 +8,16 @@ import {
   DEMO_ORG_ID,
   getGovernancePublications,
   getOperationsOverview,
+  fetchHitlMetrics,
+  fetchRetrievalMetrics,
+  fetchEvaluationMetrics,
   type GovernancePublicationsResponse,
   type OperationsOverviewResponse,
+  type HitlMetricsResponse,
+  type RetrievalMetricsResponse,
+  type EvaluationMetricsResponse,
 } from '../../lib/api';
+import { ComplianceDashboardCard } from './compliance-dashboard-card';
 import { OperationsOverviewCard } from '../governance/operations-overview-card';
 
 interface TrustCenterViewProps {
@@ -33,6 +40,7 @@ export function TrustCenterView({ messages }: TrustCenterViewProps) {
   });
 
   const trustMessages = messages.trust;
+  const complianceMessages = trustMessages.compliance;
   const loadingText = messages.admin.loadingShort;
   const publications = publicationsQuery.data?.publications ?? [];
 
@@ -68,6 +76,14 @@ export function TrustCenterView({ messages }: TrustCenterViewProps) {
         messages={messages}
         data={operationsQuery.data ?? null}
         loading={operationsQuery.isLoading && !operationsQuery.data}
+      />
+
+      <ComplianceDashboardCard
+        messages={complianceMessages}
+        hitl={hitlMetricsQuery.data}
+        retrieval={retrievalMetricsQuery.data}
+        evaluation={evaluationMetricsQuery.data}
+        loading={complianceLoading}
       />
 
       <Card className="glass-card border border-slate-800/60">
@@ -126,3 +142,25 @@ export function TrustCenterView({ messages }: TrustCenterViewProps) {
     </div>
   );
 }
+  const hitlMetricsQuery = useQuery<HitlMetricsResponse>({
+    queryKey: ['trust-hitl-metrics', DEMO_ORG_ID],
+    queryFn: () => fetchHitlMetrics(DEMO_ORG_ID),
+    staleTime: 120_000,
+  });
+
+  const retrievalMetricsQuery = useQuery<RetrievalMetricsResponse>({
+    queryKey: ['trust-retrieval-metrics', DEMO_ORG_ID],
+    queryFn: () => fetchRetrievalMetrics(DEMO_ORG_ID),
+    staleTime: 120_000,
+  });
+
+  const evaluationMetricsQuery = useQuery<EvaluationMetricsResponse>({
+    queryKey: ['trust-evaluation-metrics', DEMO_ORG_ID],
+    queryFn: () => fetchEvaluationMetrics(DEMO_ORG_ID),
+    staleTime: 120_000,
+  });
+
+  const complianceLoading =
+    (hitlMetricsQuery.isLoading && !hitlMetricsQuery.data) ||
+    (retrievalMetricsQuery.isLoading && !retrievalMetricsQuery.data) ||
+    (evaluationMetricsQuery.isLoading && !evaluationMetricsQuery.data);

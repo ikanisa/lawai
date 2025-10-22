@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, EdgeSupabaseClient, rowsAs } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
 type Env = {
   supabaseUrl?: string;
@@ -140,7 +141,8 @@ function buildDigest(reference: Date, reports: TransparencyReportRow[]): { markd
   return { markdown, summary };
 }
 
-Deno.serve(async (req) => {
+Deno.serve(
+  instrumentEdgeHandler('transparency-digest', async (req) => {
   const payload: Env = {};
   if (req.method === 'POST') {
     const body = await req.json().catch(() => ({}));
@@ -238,4 +240,5 @@ Deno.serve(async (req) => {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
-});
+  }),
+);

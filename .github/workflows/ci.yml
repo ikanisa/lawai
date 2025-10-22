@@ -85,6 +85,30 @@ jobs:
       - name: Enforce PWA bundle budgets
         run: pnpm --filter @apps/pwa bundle:check
 
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.4
+          run_install: true
+      - name: pnpm version
+        run: pnpm -v
+      - name: Dependency audit
+        run: pnpm audit --prod --dev --audit-level=moderate
+      - name: Semgrep SAST scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/ci
+        env:
+          SECRETS_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   rls-smoke:
     runs-on: ubuntu-latest
     if: ${{ vars.RUN_RLS_SMOKE == 'true' }}

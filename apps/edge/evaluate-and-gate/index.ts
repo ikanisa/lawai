@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, EdgeSupabaseClient, rowAs } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
 const PRECISION_THRESHOLD = 0.95;
 const DEAD_LINK_THRESHOLD = 0.01;
@@ -28,7 +29,8 @@ async function fetchLatestMetric(supabase: EdgeSupabaseClient, metric: string) {
   return rowAs<LearningMetricRow>(response.data);
 }
 
-Deno.serve(async () => {
+Deno.serve(
+  instrumentEdgeHandler('evaluate-and-gate', async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceKey) {
@@ -91,4 +93,5 @@ Deno.serve(async () => {
   } catch (error) {
     return new Response((error as Error).message ?? 'evaluate_failed', { status: 500 });
   }
-});
+  }),
+);

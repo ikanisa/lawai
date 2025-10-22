@@ -3,7 +3,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
 import type { IRACPayload } from '@avocat-ai/shared';
 import { z } from 'zod';
-import { env } from './config.js';
+import { env, telemetryConfig } from './config.js';
 import { IRACPayloadSchema } from './schemas/irac.js';
 import { getOpenAI, logOpenAIDebug, setOpenAILogger } from './openai.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent-wrapper.js';
@@ -63,8 +63,28 @@ import { makeStoragePath } from './storage.js';
 import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
 import { InMemoryRateLimiter } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
+import { initTelemetry, shutdownTelemetry } from './observability/otel.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
+
+const telemetryOptions = telemetryConfig();
+await initTelemetry({
+  serviceName: 'lawai-api',
+  otlpEndpoint: telemetryOptions.otlpEndpoint,
+  metricsEndpoint: telemetryOptions.metricsEndpoint,
+  headers: telemetryOptions.headers,
+  enabled: telemetryOptions.enabled,
+  logLevel: telemetryOptions.logLevel,
+  environment: process.env.NODE_ENV,
+});
+
+const requestShutdown = () => {
+  shutdownTelemetry().catch(() => undefined);
+};
+
+process.once('SIGTERM', requestShutdown);
+process.once('SIGINT', requestShutdown);
+process.once('beforeExit', requestShutdown);
 
 const { app, context } = await createApp();
 

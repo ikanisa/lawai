@@ -1,10 +1,12 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
 type DeltaRequest = { limit?: number };
 
-Deno.serve(async (req) => {
+Deno.serve(
+  instrumentEdgeHandler('gdrive-delta', async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -42,4 +44,5 @@ Deno.serve(async (req) => {
   } catch (error) {
     return new Response((error as Error).message ?? 'delta_failed', { status: 500 });
   }
-});
+  }),
+);

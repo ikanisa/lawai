@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, EdgeSupabaseClient, rowsAs } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
 type Env = {
   supabaseUrl?: string;
@@ -96,7 +97,8 @@ function resolveNumber(input: unknown, fallback: number): number {
   return fallback;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(
+  instrumentEdgeHandler('regulator-digest-edge', async (req) => {
   const payload: Env = {};
   if (req.method === 'POST') {
     const body = await req.json().catch(() => ({}));
@@ -194,4 +196,5 @@ Deno.serve(async (req) => {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
-});
+  }),
+);
