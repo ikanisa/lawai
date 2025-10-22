@@ -87,6 +87,7 @@ export interface AgentRunInput {
   orgId: string;
   userId: string;
   confidentialMode?: boolean;
+  userLocationOverride?: string | null;
 }
 
 export interface AgentRunResult {

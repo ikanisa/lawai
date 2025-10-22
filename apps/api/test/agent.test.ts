@@ -774,6 +774,46 @@ describe('runLegalAgent', () => {
   });
 });
 
+describe('agent wrapper', () => {
+  it('forwards userLocationOverride to the implementation', async () => {
+    const forwardedRun = vi.fn(async () => ({
+      runId: 'wrapper-test',
+      payload: {},
+      allowlistViolations: [],
+      toolLogs: [],
+    }));
+
+    const originalFunction = Function;
+    const importer = vi.fn(async () => ({ runLegalAgent: forwardedRun }));
+    const functionMock = vi.fn(() => importer);
+    functionMock.prototype = originalFunction.prototype;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).Function = functionMock as unknown as FunctionConstructor;
+
+    try {
+      const { runLegalAgent } = await import('../src/agent-wrapper.ts');
+      const input = {
+        question: 'test',
+        orgId: 'org',
+        userId: 'user',
+        userLocationOverride: 'Paris',
+      };
+
+      await runLegalAgent(input, { access: true });
+
+      expect(forwardedRun).toHaveBeenCalledWith(
+        expect.objectContaining({ userLocationOverride: 'Paris' }),
+        { access: true },
+      );
+      expect(importer).toHaveBeenCalledWith('./agent.js');
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (globalThis as any).Function = originalFunction;
+      vi.resetModules();
+    }
+  });
+});
+
 describe('manifest alignment', () => {
   it('keeps manifest tool names aligned with runtime registry', async () => {
     const { getAgentPlatformDefinition, TOOL_NAMES } = await import('../src/agent.ts');
