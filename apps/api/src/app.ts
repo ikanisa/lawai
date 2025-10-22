@@ -36,6 +36,7 @@ export async function createApp() {
         'env.ALERTS_EMAIL_WEBHOOK_URL',
       ],
     },
+    trustProxy: true,
   });
 
   const supabase = serviceClient;
