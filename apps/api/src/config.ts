@@ -1,47 +1,48 @@
-import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
 
-if (process.env.NODE_ENV !== 'production') {
-  loadEnv();
-}
+import {
+  loadServerEnv,
+  sharedOpenAiSchema,
+  sharedOptionalIntegrationsSchema,
+  sharedSupabaseSchema,
+} from '@avocat-ai/shared';
 
-const envSchema = z.object({
-  PORT: z.coerce.number().default(3000),
-  OPENAI_API_KEY: z.string().default(''),
-  AGENT_MODEL: z.string().default('gpt-5-pro'),
-  EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
-  EMBEDDING_DIMENSION: z.coerce.number().int().positive().max(3072).optional(),
-  SUMMARISER_MODEL: z.string().optional(),
-  MAX_SUMMARY_CHARS: z.coerce.number().optional(),
-  OPENAI_VECTOR_STORE_AUTHORITIES_ID: z.string().min(1).default('vs_test'),
-  OPENAI_CHATKIT_PROJECT: z.string().min(1).optional(),
-  OPENAI_CHATKIT_SECRET: z.string().min(1).optional(),
-  OPENAI_CHATKIT_BASE_URL: z.string().url().optional(),
-  OPENAI_CHATKIT_MODEL: z.string().optional(),
-  SUPABASE_URL: z.string().url().default('https://example.supabase.co'),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().default(''),
-  JURIS_ALLOWLIST_JSON: z.string().optional(),
-  AGENT_STUB_MODE: z
-    .enum(['auto', 'always', 'never'])
-    .default('auto'),
-  // Optional WhatsApp OTP integration
-  WA_TOKEN: z.string().optional(),
-  WA_PHONE_NUMBER_ID: z.string().optional(),
-  WA_TEMPLATE_OTP_NAME: z.string().optional(),
-  WA_TEMPLATE_LOCALE: z.string().optional(),
-  WA_PROVIDER: z.enum(['twilio', 'meta']).optional(),
-  // Optional C2PA signing keys for export
-  C2PA_SIGNING_PRIVATE_KEY: z.string().optional(),
-  C2PA_SIGNING_KEY_ID: z.string().optional(),
-  // Governance / policy tagging
-  POLICY_VERSION: z.string().optional(),
-});
+const envSchema = sharedSupabaseSchema
+  .extend({
+    SUPABASE_URL: sharedSupabaseSchema.shape.SUPABASE_URL.default(
+      'https://example.supabase.co',
+    ),
+    SUPABASE_SERVICE_ROLE_KEY: sharedSupabaseSchema.shape.SUPABASE_SERVICE_ROLE_KEY.default(''),
+  })
+  .merge(
+    sharedOpenAiSchema.extend({
+      OPENAI_API_KEY: sharedOpenAiSchema.shape.OPENAI_API_KEY.default(''),
+      OPENAI_VECTOR_STORE_AUTHORITIES_ID: z.string().min(1).default('vs_test'),
+    }),
+  )
+  .merge(sharedOptionalIntegrationsSchema)
+  .extend({
+    PORT: z.coerce.number().default(3000),
+    AGENT_MODEL: z.string().default('gpt-5-pro'),
+    EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
+    EMBEDDING_DIMENSION: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(3072)
+      .optional(),
+    SUMMARISER_MODEL: z.string().optional(),
+    MAX_SUMMARY_CHARS: z.coerce.number().optional(),
+    AGENT_STUB_MODE: z
+      .enum(['auto', 'always', 'never'])
+      .default('auto'),
+    // Governance / policy tagging
+    POLICY_VERSION: z.string().optional(),
+  });
 
 export type Env = z.infer<typeof envSchema>;
 
-const parsed = envSchema.parse({
-  ...process.env,
-});
+const parsed = loadServerEnv(envSchema);
 
 const SUPABASE_URL_PLACEHOLDER_PATTERNS = [
   /example\.supabase\.co/i,
