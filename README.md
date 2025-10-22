@@ -52,6 +52,15 @@ packages/
    pnpm dev:web
    ```
 
+## Deployment checklist (Vercel)
+
+Avant de fusionner une branche dans `main` ou de promouvoir un déploiement Vercel en production, vérifiez :
+
+- [ ] Le workflow **CI** GitHub Actions est passé (lint, typecheck, tests et builds). Vous pouvez reproduire localement via `pnpm -r lint`, `pnpm -r test`, `pnpm --filter @apps/api typecheck`, `pnpm --filter @avocat-ai/web typecheck`, puis les commandes `build` et `bundle:check`.
+- [ ] L'ensemble des variables d'environnement (OpenAI, Supabase, OTP, alertes) sont saisies dans Vercel conformément au [guide de déploiement détaillé](docs/deployment/vercel.md).
+- [ ] Les migrations Supabase et les buckets obligatoires sont en place (`pnpm ops:foundation`) et les données de référence ont été chargées (`pnpm seed`).
+- [ ] Les drapeaux de fonctionnalités critiques (ex. `FEAT_ADMIN_PANEL`) sont positionnés selon la stratégie d'exposition souhaitée.
+
 ### Assembler les fondations en une étape
 
 Lorsque vous préparez un nouvel environnement (local ou cloud), exécutez :
