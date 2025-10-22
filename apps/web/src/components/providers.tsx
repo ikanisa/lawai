@@ -4,8 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode, useEffect, useState } from 'react';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
-import { registerPwa } from '../lib/pwa';
+import { PWA_REGISTRATION_EVENT, registerPwa } from '../lib/pwa';
 import { PwaInstallProvider } from '../hooks/use-pwa-install';
+import { clientEnv } from '../env.client';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,15 +19,35 @@ const queryClient = new QueryClient({
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
+  const enablePwa = clientEnv.NEXT_PUBLIC_ENABLE_PWA;
+
   useEffect(() => {
     setMounted(true);
-    registerPwa();
   }, []);
+
+  useEffect(() => {
+    if (!enablePwa) {
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleRegister = () => {
+      void registerPwa();
+    };
+
+    window.addEventListener(PWA_REGISTRATION_EVENT, handleRegister);
+    return () => {
+      window.removeEventListener(PWA_REGISTRATION_EVENT, handleRegister);
+    };
+  }, [enablePwa]);
 
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
-        <PwaInstallProvider>
+        <PwaInstallProvider enablePwa={enablePwa}>
           {children}
           <Toaster position="bottom-right" richColors closeButton />
         </PwaInstallProvider>
