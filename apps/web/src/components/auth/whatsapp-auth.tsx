@@ -7,7 +7,8 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
 import type { Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, startWhatsAppOtp, verifyWhatsAppOtp } from '../../lib/api';
+import { startWhatsAppOtp, verifyWhatsAppOtp } from '../../lib/api';
+import { useAppSession } from '../providers';
 
 interface WhatsAppAuthProps {
   messages: Messages;
@@ -22,16 +23,29 @@ export function WhatsAppAuth({ messages, orgId }: WhatsAppAuthProps) {
   const [otp, setOtp] = useState('');
   const [lastPhone, setLastPhone] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const { orgId: sessionOrgId } = useAppSession();
+
+  const resolveOrgId = () => {
+    const resolved = orgId ?? sessionOrgId;
+    if (!resolved) {
+      throw new Error('org_id_unavailable');
+    }
+    return resolved;
+  };
 
   const startMutation = useMutation({
     mutationFn: (formattedPhone: string) =>
-      startWhatsAppOtp({ phone: formattedPhone, orgId: orgId ?? DEMO_ORG_ID }),
+      startWhatsAppOtp({ phone: formattedPhone, orgId: resolveOrgId() }),
     onSuccess: (_result, formattedPhone) => {
       setLastPhone(formattedPhone);
       setStage('verify');
       toast.success(messages.auth.otpSent.replace('{phone}', formattedPhone));
     },
     onError: (error: Error) => {
+      if (error.message === 'org_id_unavailable') {
+        toast.error(messages.auth.errorGeneric);
+        return;
+      }
       const message =
         error.message === 'rate_limited_phone' || error.message === 'rate_limited_ip'
           ? messages.auth.errorRateLimit
@@ -42,13 +56,17 @@ export function WhatsAppAuth({ messages, orgId }: WhatsAppAuthProps) {
 
   const verifyMutation = useMutation({
     mutationFn: (payload: { phone: string; code: string }) =>
-      verifyWhatsAppOtp({ phone: payload.phone, otp: payload.code, orgHint: orgId ?? DEMO_ORG_ID }),
+      verifyWhatsAppOtp({ phone: payload.phone, otp: payload.code, orgHint: resolveOrgId() }),
     onSuccess: (data) => {
       setSessionToken(data.session_token);
       setStage('success');
       toast.success(messages.auth.success);
     },
-    onError: () => {
+    onError: (error: Error) => {
+      if (error.message === 'org_id_unavailable') {
+        toast.error(messages.auth.errorGeneric);
+        return;
+      }
       toast.error(messages.auth.errorGeneric);
     },
   });

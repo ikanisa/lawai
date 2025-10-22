@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Input } from '../../components/ui/input';
 import { OperationsOverviewCard } from '../governance/operations-overview-card';
 import {
-  DEMO_ORG_ID,
   fetchGovernanceMetrics,
   type GovernanceMetricsResponse,
   fetchRetrievalMetrics,
@@ -38,6 +37,7 @@ import {
 } from '../../lib/api';
 import type { Messages } from '../../lib/i18n';
 import { clientEnv } from '../../env.client';
+import { useAppSession } from '../providers';
 
 interface AdminViewProps {
   messages: Messages;
@@ -84,17 +84,31 @@ function formatDateTime(value: string | null | undefined): string {
   return dateTimeFormatter.format(date);
 }
 
-function useGovernanceMetrics() {
+function useGovernanceMetrics(orgId: string | null, enabled: boolean) {
   return useQuery<GovernanceMetricsResponse>({
-    queryKey: ['governance-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchGovernanceMetrics(DEMO_ORG_ID),
+    queryKey: ['governance-metrics', orgId],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchGovernanceMetrics(orgId);
+    },
+    enabled: enabled && !!orgId,
     staleTime: 60_000,
   });
 }
 
 export function AdminView({ messages }: AdminViewProps) {
   const queryClient = useQueryClient();
-  const metricsQuery = useGovernanceMetrics();
+  const { orgId, status } = useAppSession();
+  const isSessionReady = status === 'authenticated' || status === 'demo';
+  const ensureOrgId = () => {
+    if (!orgId) {
+      throw new Error('org_id_unavailable');
+    }
+    return orgId;
+  };
+  const metricsQuery = useGovernanceMetrics(orgId, isSessionReady);
   const overview = metricsQuery.data?.overview ?? null;
   const toolRows = metricsQuery.data?.tools ?? [];
   const jurisdictionLabels = useMemo(() => {
@@ -120,8 +134,14 @@ export function AdminView({ messages }: AdminViewProps) {
       })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [metricsQuery.data, jurisdictionLabels]);
   const retrievalQuery = useQuery<RetrievalMetricsResponse>({
-    queryKey: ['retrieval-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchRetrievalMetrics(DEMO_ORG_ID),
+    queryKey: ['retrieval-metrics', orgId],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchRetrievalMetrics(orgId);
+    },
+    enabled: isSessionReady && !!orgId,
     staleTime: 60_000,
   });
   const retrievalSummary = retrievalQuery.data?.summary ?? null;
@@ -139,8 +159,14 @@ export function AdminView({ messages }: AdminViewProps) {
       .slice(0, 8);
   }, [retrievalQuery.data]);
   const evaluationQuery = useQuery<EvaluationMetricsResponse>({
-    queryKey: ['evaluation-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchEvaluationMetrics(DEMO_ORG_ID),
+    queryKey: ['evaluation-metrics', orgId],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchEvaluationMetrics(orgId);
+    },
+    enabled: isSessionReady && !!orgId,
     staleTime: 60_000,
   });
   const evaluationSummary = evaluationQuery.data?.summary ?? null;
@@ -158,37 +184,79 @@ export function AdminView({ messages }: AdminViewProps) {
       })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [evaluationQuery.data, jurisdictionLabels, messages.admin.evaluationJurisdictionUnknown]);
   const sloQuery = useQuery<SloMetricsResponse>({
-    queryKey: ['slo-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchSloMetrics(DEMO_ORG_ID),
+    queryKey: ['slo-metrics', orgId],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchSloMetrics(orgId);
+    },
+    enabled: isSessionReady && !!orgId,
     staleTime: 60_000,
   });
   const sloSummary = sloQuery.data?.summary ?? null;
   const sloSnapshots = sloQuery.data?.snapshots ?? [];
   const operationsQuery = useQuery<OperationsOverviewResponse>({
-    queryKey: ['operations-overview', DEMO_ORG_ID],
-    queryFn: () => getOperationsOverview(DEMO_ORG_ID),
+    queryKey: ['operations-overview', orgId],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return getOperationsOverview(orgId);
+    },
+    enabled: isSessionReady && !!orgId,
     staleTime: 60_000,
   });
   const operationsOverview = operationsQuery.data ?? null;
   const ssoQuery = useQuery({
-    queryKey: ['admin-sso', DEMO_ORG_ID],
-    queryFn: () => fetchSsoConnections(DEMO_ORG_ID),
+    queryKey: ['admin-sso', orgId],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchSsoConnections(orgId);
+    },
+    enabled: isSessionReady && !!orgId,
   });
   const scimQuery = useQuery({
-    queryKey: ['admin-scim', DEMO_ORG_ID],
-    queryFn: () => fetchScimTokens(DEMO_ORG_ID),
+    queryKey: ['admin-scim', orgId],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchScimTokens(orgId);
+    },
+    enabled: isSessionReady && !!orgId,
   });
   const auditQuery = useQuery({
-    queryKey: ['admin-audit', DEMO_ORG_ID],
-    queryFn: () => fetchAuditEvents(DEMO_ORG_ID, 25),
+    queryKey: ['admin-audit', orgId],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchAuditEvents(orgId, 25);
+    },
+    enabled: isSessionReady && !!orgId,
   });
   const ipQuery = useQuery({
-    queryKey: ['admin-ip', DEMO_ORG_ID],
-    queryFn: () => fetchIpAllowlist(DEMO_ORG_ID),
+    queryKey: ['admin-ip', orgId],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchIpAllowlist(orgId);
+    },
+    enabled: isSessionReady && !!orgId,
   });
   const deviceSessionsQuery = useQuery({
-    queryKey: ['admin-device-sessions', DEMO_ORG_ID],
-    queryFn: () => fetchDeviceSessions(DEMO_ORG_ID, { includeRevoked: false, limit: 200 }),
+    queryKey: ['admin-device-sessions', orgId],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchDeviceSessions(orgId, { includeRevoked: false, limit: 200 });
+    },
+    enabled: isSessionReady && !!orgId,
     staleTime: 30_000,
   });
   const deviceSessions = (deviceSessionsQuery.data?.sessions ?? []) as DeviceSession[];
@@ -323,23 +391,27 @@ export function AdminView({ messages }: AdminViewProps) {
       acsUrl?: string;
       entityId?: string;
       defaultRole?: string;
-    }) => saveSsoConnection(DEMO_ORG_ID, input),
+    }) => saveSsoConnection(ensureOrgId(), input),
     onSuccess: () => {
       toast.success(messages.admin.ssoSaved);
       setSsoLabel('');
       setSsoAcsUrl('');
       setSsoEntityId('');
-      queryClient.invalidateQueries({ queryKey: ['admin-sso', DEMO_ORG_ID] });
+      if (orgId) {
+        queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId] });
+      }
     },
     onError: () => {
       toast.error(messages.admin.ssoError);
     },
   });
   const deleteSsoMutation = useMutation({
-    mutationFn: (connectionId: string) => removeSsoConnection(DEMO_ORG_ID, connectionId),
+    mutationFn: (connectionId: string) => removeSsoConnection(ensureOrgId(), connectionId),
     onSuccess: () => {
       toast.success(messages.admin.ssoDeleted);
-      queryClient.invalidateQueries({ queryKey: ['admin-sso', DEMO_ORG_ID] });
+      if (orgId) {
+        queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId] });
+      }
     },
     onError: () => {
       toast.error(messages.admin.ssoError);
@@ -347,53 +419,63 @@ export function AdminView({ messages }: AdminViewProps) {
   });
   const createTokenMutation = useMutation({
     mutationFn: (input: { name: string; expiresAt?: string | null }) =>
-      createScimAccessToken(DEMO_ORG_ID, input.name, input.expiresAt ?? null),
+      createScimAccessToken(ensureOrgId(), input.name, input.expiresAt ?? null),
     onSuccess: (result) => {
       setLastScimToken(result);
       toast.success(messages.admin.scimCreated);
-      queryClient.invalidateQueries({ queryKey: ['admin-scim', DEMO_ORG_ID] });
+      if (orgId) {
+        queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId] });
+      }
     },
     onError: () => {
       toast.error(messages.admin.scimError);
     },
   });
   const deleteTokenMutation = useMutation({
-    mutationFn: (tokenId: string) => deleteScimAccessToken(DEMO_ORG_ID, tokenId),
+    mutationFn: (tokenId: string) => deleteScimAccessToken(ensureOrgId(), tokenId),
     onSuccess: () => {
       toast.success(messages.admin.scimDeleted);
-      queryClient.invalidateQueries({ queryKey: ['admin-scim', DEMO_ORG_ID] });
+      if (orgId) {
+        queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId] });
+      }
     },
     onError: () => {
       toast.error(messages.admin.scimError);
     },
   });
   const addIpMutation = useMutation({
-    mutationFn: () => upsertIpAllowlistEntry(DEMO_ORG_ID, { cidr: ipCidr, description: ipDescription || null }),
+    mutationFn: () => upsertIpAllowlistEntry(ensureOrgId(), { cidr: ipCidr, description: ipDescription || null }),
     onSuccess: () => {
       toast.success(messages.admin.ipAdded);
       setIpCidr('');
       setIpDescription('');
-      queryClient.invalidateQueries({ queryKey: ['admin-ip', DEMO_ORG_ID] });
+      if (orgId) {
+        queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId] });
+      }
     },
     onError: () => {
       toast.error(messages.admin.ipError);
     },
   });
   const removeIpMutation = useMutation({
-    mutationFn: (entryId: string) => deleteIpAllowlistEntry(DEMO_ORG_ID, entryId),
+    mutationFn: (entryId: string) => deleteIpAllowlistEntry(ensureOrgId(), entryId),
     onSuccess: () => {
       toast.success(messages.admin.ipRemoved);
-      queryClient.invalidateQueries({ queryKey: ['admin-ip', DEMO_ORG_ID] });
+      if (orgId) {
+        queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId] });
+      }
     },
     onError: () => {
       toast.error(messages.admin.ipError);
     },
   });
   const revokeDeviceMutation = useMutation({
-    mutationFn: (sessionId: string) => revokeDeviceSession(DEMO_ORG_ID, sessionId),
+    mutationFn: (sessionId: string) => revokeDeviceSession(ensureOrgId(), sessionId),
     onSuccess: () => {
       toast.success(messages.admin.devicesRevokeSuccess);
-      queryClient.invalidateQueries({ queryKey: ['admin-device-sessions', DEMO_ORG_ID] });
+      if (orgId) {
+        queryClient.invalidateQueries({ queryKey: ['admin-device-sessions', orgId] });
+      }
     },
     onError: () => {
       toast.error(messages.admin.devicesRevokeError);

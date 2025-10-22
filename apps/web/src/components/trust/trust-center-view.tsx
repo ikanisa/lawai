@@ -5,13 +5,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import type { Messages } from '../../lib/i18n';
 import {
-  DEMO_ORG_ID,
   getGovernancePublications,
   getOperationsOverview,
   type GovernancePublicationsResponse,
   type OperationsOverviewResponse,
 } from '../../lib/api';
 import { OperationsOverviewCard } from '../governance/operations-overview-card';
+import { useAppSession } from '../providers';
 
 interface TrustCenterViewProps {
   messages: Messages;
@@ -20,15 +20,30 @@ interface TrustCenterViewProps {
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' });
 
 export function TrustCenterView({ messages }: TrustCenterViewProps) {
+  const { orgId, status } = useAppSession();
+  const canQuery = (status === 'authenticated' || status === 'demo') && !!orgId;
+
   const operationsQuery = useQuery<OperationsOverviewResponse>({
-    queryKey: ['trust-operations-overview', DEMO_ORG_ID],
-    queryFn: () => getOperationsOverview(DEMO_ORG_ID),
+    queryKey: ['trust-operations-overview', orgId],
+    enabled: canQuery,
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return getOperationsOverview(orgId);
+    },
     staleTime: 120_000,
   });
 
   const publicationsQuery = useQuery<GovernancePublicationsResponse>({
-    queryKey: ['trust-governance-publications'],
-    queryFn: () => getGovernancePublications({ status: 'published' }),
+    queryKey: ['trust-governance-publications', orgId],
+    enabled: canQuery,
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return getGovernancePublications({ status: 'published', orgId });
+    },
     staleTime: 120_000,
   });
 
@@ -67,7 +82,7 @@ export function TrustCenterView({ messages }: TrustCenterViewProps) {
       <OperationsOverviewCard
         messages={messages}
         data={operationsQuery.data ?? null}
-        loading={operationsQuery.isLoading && !operationsQuery.data}
+        loading={(operationsQuery.isLoading || !canQuery) && !operationsQuery.data}
       />
 
       <Card className="glass-card border border-slate-800/60">
@@ -76,7 +91,7 @@ export function TrustCenterView({ messages }: TrustCenterViewProps) {
           <p className="text-sm text-slate-400">{trustMessages.publicationsDescription}</p>
         </CardHeader>
         <CardContent className="space-y-5">
-          {publicationsQuery.isLoading && publications.length === 0 ? (
+          {(publicationsQuery.isLoading || !canQuery) && publications.length === 0 ? (
             <p className="text-sm text-slate-400">{loadingText}</p>
           ) : publications.length === 0 ? (
             <p className="text-sm text-slate-400">{trustMessages.publicationsEmpty}</p>

@@ -4,12 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from './ui/button';
-import {
-  DEMO_ORG_ID,
-  acknowledgeCompliance,
-  fetchComplianceStatus,
-  type ComplianceAcknowledgements,
-} from '../lib/api';
+import { acknowledgeCompliance, fetchComplianceStatus, type ComplianceAcknowledgements } from '../lib/api';
+import { useAppSession } from './providers';
 import type { Messages } from '../lib/i18n';
 
 interface ComplianceBannerProps {
@@ -18,6 +14,8 @@ interface ComplianceBannerProps {
 
 export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   const [isOffline, setIsOffline] = useState(false);
+  const { orgId, userId, status } = useAppSession();
+  const sessionReady = (status === 'authenticated' || status === 'demo') && !!orgId && !!userId;
 
   useEffect(() => {
     function syncStatus() {
@@ -39,8 +37,9 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   }, []);
 
   const statusQuery = useQuery({
-    queryKey: ['compliance-status', DEMO_ORG_ID],
-    queryFn: () => fetchComplianceStatus(DEMO_ORG_ID),
+    queryKey: ['compliance-status', orgId, userId],
+    enabled: sessionReady,
+    queryFn: () => fetchComplianceStatus(orgId ?? '', { userId: userId ?? '' }),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -78,7 +77,10 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
       if (!payload.consent && !payload.councilOfEurope) {
         return null;
       }
-      return acknowledgeCompliance(DEMO_ORG_ID, payload);
+      if (!sessionReady || !orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return acknowledgeCompliance(orgId, { ...payload, userId: userId ?? undefined });
     },
     onSuccess: () => {
       toast.success(messages.acknowledged);
@@ -92,6 +94,10 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   const hasPending = Boolean(pending.consent || pending.council);
   const isError = statusQuery.isError;
   const isSuccess = statusQuery.isSuccess;
+
+  if (!sessionReady) {
+    return null;
+  }
 
   if (statusQuery.isLoading) {
     return (

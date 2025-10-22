@@ -9,8 +9,9 @@ import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
 import type { Locale, Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, fetchDraftingTemplates } from '../../lib/api';
+import { fetchDraftingTemplates } from '../../lib/api';
 import { RedlineDiff, type RedlineEntry } from './redline-diff';
+import { useAppSession } from '../providers';
 
 interface DraftingViewProps {
   messages: Messages;
@@ -88,9 +89,18 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
   const [prompt, setPrompt] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
 
+  const { orgId, status } = useAppSession();
+  const canQuery = (status === 'authenticated' || status === 'demo') && !!orgId;
+
   const templatesQuery = useQuery({
-    queryKey: ['drafting-templates', DEMO_ORG_ID],
-    queryFn: () => fetchDraftingTemplates(DEMO_ORG_ID),
+    queryKey: ['drafting-templates', orgId],
+    enabled: canQuery,
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchDraftingTemplates(orgId);
+    },
   });
 
   const templates = useMemo<DraftTemplate[]>(() => {
@@ -114,7 +124,7 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
     return map;
   }, [templates]);
 
-  const isTemplatesLoading = templatesQuery.isLoading;
+  const isTemplatesLoading = templatesQuery.isLoading || !canQuery;
   const templatesError = templatesQuery.isError;
 
   const mutation = useMutation({

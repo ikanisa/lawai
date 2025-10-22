@@ -1,16 +1,21 @@
 import type { ReportHandler } from 'web-vitals';
-import { API_BASE, DEMO_ORG_ID, DEMO_USER_ID } from '../src/lib/api';
+import { API_BASE, getActiveOrgId, getActiveUserId } from '../src/lib/api';
 
 const ENDPOINT = `${API_BASE}/metrics/web-vitals`;
 
 function sendMetric(body: Record<string, unknown>) {
   try {
+    const orgId = getActiveOrgId();
+    const userId = getActiveUserId();
+    if (!orgId || !userId) {
+      return;
+    }
     void fetch(ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-id': DEMO_USER_ID,
-        'x-org-id': DEMO_ORG_ID,
+        'x-user-id': userId,
+        'x-org-id': orgId,
       },
       body: JSON.stringify(body),
       keepalive: true,

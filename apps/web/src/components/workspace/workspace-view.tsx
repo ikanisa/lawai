@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarCheck, ChevronRight, Clock, ExternalLink, ShieldAlert } from 'lucide-react';
-import { DEMO_ORG_ID, fetchWorkspaceOverview, type WorkspaceOverviewResponse } from '../../lib/api';
+import { fetchWorkspaceOverview, type WorkspaceOverviewResponse } from '../../lib/api';
 import type { Locale, Messages } from '../../lib/i18n';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -24,6 +24,7 @@ import type {
   WorkspaceDeskQuickAction,
   WorkspaceDeskToolChip,
 } from '@avocat-ai/shared';
+import { useAppSession } from '../providers';
 
 interface WorkspaceViewProps {
   messages: Messages;
@@ -63,10 +64,16 @@ function formatDate(value: string | null | undefined, locale: Locale): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
 }
 
-function useWorkspaceData(locale: Locale) {
+function useWorkspaceData(locale: Locale, orgId: string | null, enabled: boolean) {
   return useQuery<WorkspaceOverviewResponse>({
-    queryKey: ['workspace-overview', locale],
-    queryFn: () => fetchWorkspaceOverview(DEMO_ORG_ID),
+    queryKey: ['workspace-overview', locale, orgId],
+    enabled,
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchWorkspaceOverview(orgId);
+    },
   });
 }
 
@@ -74,7 +81,9 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
   const router = useRouter();
   const { open, toggle } = usePlanDrawer();
   const [heroQuestion, setHeroQuestion] = useState('');
-  const workspaceQuery = useWorkspaceData(locale);
+  const { orgId, status } = useAppSession();
+  const canQuery = (status === 'authenticated' || status === 'demo') && !!orgId;
+  const workspaceQuery = useWorkspaceData(locale, orgId ?? null, canQuery);
 
   const matters = workspaceQuery.data?.matters ?? [];
   const complianceWatch = workspaceQuery.data?.complianceWatch ?? [];

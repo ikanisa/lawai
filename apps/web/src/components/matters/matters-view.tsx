@@ -9,7 +9,8 @@ import { Badge } from '../../components/ui/badge';
 import { Separator } from '../../components/ui/separator';
 import { Input } from '../../components/ui/input';
 import type { Locale, Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, fetchMatters, fetchMatterDetail } from '../../lib/api';
+import { fetchMatters, fetchMatterDetail } from '../../lib/api';
+import { useAppSession } from '../providers';
 
 interface MattersViewProps {
   messages: Messages;
@@ -41,15 +42,29 @@ export function MattersView({ messages, locale }: MattersViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
 
+  const { orgId, status } = useAppSession();
+  const canQuery = (status === 'authenticated' || status === 'demo') && !!orgId;
+
   const mattersQuery = useQuery({
-    queryKey: ['matters'],
-    queryFn: () => fetchMatters(DEMO_ORG_ID),
+    queryKey: ['matters', orgId],
+    enabled: canQuery,
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchMatters(orgId);
+    },
   });
 
   const detailQuery = useQuery({
-    queryKey: ['matter', selectedId],
-    enabled: Boolean(selectedId),
-    queryFn: () => fetchMatterDetail(DEMO_ORG_ID, selectedId ?? ''),
+    queryKey: ['matter', orgId, selectedId],
+    enabled: Boolean(selectedId) && canQuery,
+    queryFn: () => {
+      if (!orgId || !selectedId) {
+        throw new Error('missing_identifiers');
+      }
+      return fetchMatterDetail(orgId, selectedId);
+    },
   });
 
   useEffect(() => {

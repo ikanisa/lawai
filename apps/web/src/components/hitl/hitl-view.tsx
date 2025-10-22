@@ -9,7 +9,6 @@ import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
 import type { Locale, Messages } from '../../lib/i18n';
 import {
-  DEMO_ORG_ID,
   fetchHitlAuditTrail,
   fetchHitlDetail,
   fetchHitlMetrics,
@@ -18,6 +17,7 @@ import {
   type AuditEvent,
   type HitlDetailResponse,
 } from '../../lib/api';
+import { useAppSession } from '../providers';
 
 interface HitlViewProps {
   messages: Messages;
@@ -107,15 +107,30 @@ export function HitlView({ messages, locale }: HitlViewProps) {
   const [comment, setComment] = useState('');
   const queryClient = useQueryClient();
 
-  const queueQuery = useQuery({ queryKey: ['hitl'], queryFn: () => fetchHitlQueue(DEMO_ORG_ID) });
+  const { orgId, status } = useAppSession();
+  const canQuery = (status === 'authenticated' || status === 'demo') && !!orgId;
+
+  const resolveOrgId = () => {
+    if (!orgId) {
+      throw new Error('org_id_unavailable');
+    }
+    return orgId;
+  };
+
+  const queueQuery = useQuery({
+    queryKey: ['hitl', orgId],
+    enabled: canQuery,
+    queryFn: () => fetchHitlQueue(resolveOrgId()),
+  });
   const detailQuery = useQuery<HitlDetailResponse>({
-    queryKey: ['hitl-detail', selectedHitlId],
-    enabled: Boolean(selectedHitlId),
-    queryFn: () => fetchHitlDetail(DEMO_ORG_ID, selectedHitlId ?? ''),
+    queryKey: ['hitl-detail', orgId, selectedHitlId],
+    enabled: Boolean(selectedHitlId) && canQuery,
+    queryFn: () => fetchHitlDetail(resolveOrgId(), selectedHitlId ?? ''),
   });
   const metricsQuery = useQuery({
-    queryKey: ['hitl-metrics'],
-    queryFn: () => fetchHitlMetrics(DEMO_ORG_ID),
+    queryKey: ['hitl-metrics', orgId],
+    enabled: canQuery,
+    queryFn: () => fetchHitlMetrics(resolveOrgId()),
   });
 
   const actionMutation = useMutation({
@@ -124,9 +139,9 @@ export function HitlView({ messages, locale }: HitlViewProps) {
     onSuccess: () => {
       toast.success(locale === 'fr' ? 'Revue enregistrée' : 'Review saved');
       setComment('');
-      queryClient.invalidateQueries({ queryKey: ['hitl'] });
-      queryClient.invalidateQueries({ queryKey: ['hitl-detail'] });
-      queryClient.invalidateQueries({ queryKey: ['hitl-audit'] });
+      queryClient.invalidateQueries({ queryKey: ['hitl', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['hitl-detail', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['hitl-audit', orgId] });
     },
     onError: () => {
       toast.error(locale === 'fr' ? 'Échec de la revue' : 'Review failed');
@@ -143,10 +158,10 @@ export function HitlView({ messages, locale }: HitlViewProps) {
   }, [selectedHitlId, queue]);
 
   const auditQuery = useQuery({
-    queryKey: ['hitl-audit', selectedItem?.runId ?? null, selectedHitlId],
-    enabled: Boolean(selectedHitlId),
+    queryKey: ['hitl-audit', orgId, selectedItem?.runId ?? null, selectedHitlId],
+    enabled: Boolean(selectedHitlId) && canQuery,
     queryFn: () =>
-      fetchHitlAuditTrail(DEMO_ORG_ID, {
+      fetchHitlAuditTrail(resolveOrgId(), {
         objectId: selectedHitlId ?? undefined,
         runId: selectedItem?.runId ?? undefined,
         limit: 50,

@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import type { Locale, Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, fetchCitations, fetchCorpus, fetchSnapshotDiff } from '../../lib/api';
+import { fetchCitations, fetchCorpus, fetchSnapshotDiff } from '../../lib/api';
+import { useAppSession } from '../providers';
 
 interface CitationsBrowserProps {
   messages: Messages;
@@ -36,11 +37,29 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
   const [search, setSearch] = useState('');
   const [jurisdictionFilter, setJurisdictionFilter] = useState<string | null>(null);
 
+  const { orgId, status } = useAppSession();
+  const canQuery = (status === 'authenticated' || status === 'demo') && !!orgId;
+
   const citationsQuery = useQuery({
-    queryKey: ['citations'],
-    queryFn: () => fetchCitations(DEMO_ORG_ID),
+    queryKey: ['citations', orgId],
+    enabled: canQuery,
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchCitations(orgId);
+    },
   });
-  const corpusQuery = useQuery({ queryKey: ['corpus'], queryFn: () => fetchCorpus(DEMO_ORG_ID) });
+  const corpusQuery = useQuery({
+    queryKey: ['corpus', orgId],
+    enabled: canQuery,
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error('org_id_unavailable');
+      }
+      return fetchCorpus(orgId);
+    },
+  });
 
   const entries = useMemo<CitationEntry[]>(() => {
     const list = (citationsQuery.data?.entries ?? []) as CitationEntry[];
@@ -71,9 +90,14 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
   }, [snapshots, baseSnapshot, compareSnapshot]);
 
   const diffQuery = useQuery({
-    queryKey: ['snapshot-diff', baseSnapshot, compareSnapshot],
-    queryFn: () => fetchSnapshotDiff(DEMO_ORG_ID, baseSnapshot as string, compareSnapshot as string),
-    enabled: Boolean(baseSnapshot && compareSnapshot),
+    queryKey: ['snapshot-diff', orgId, baseSnapshot, compareSnapshot],
+    queryFn: () => {
+      if (!orgId || !baseSnapshot || !compareSnapshot) {
+        throw new Error('snapshot_diff_unavailable');
+      }
+      return fetchSnapshotDiff(orgId, baseSnapshot, compareSnapshot);
+    },
+    enabled: Boolean(baseSnapshot && compareSnapshot) && canQuery,
   });
 
   return (

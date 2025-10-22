@@ -13,6 +13,65 @@ export const API_BASE = clientEnv.NEXT_PUBLIC_API_BASE_URL;
 export const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000000';
 
+type ActiveSession = {
+  orgId: string | null;
+  userId: string | null;
+};
+
+let activeSession: ActiveSession = { orgId: null, userId: null };
+let demoFallbackEnabled = process.env.NODE_ENV !== 'production';
+
+export function configureApiSession({
+  orgId,
+  userId,
+  allowDemoFallback,
+}: {
+  orgId: string | null;
+  userId: string | null;
+  allowDemoFallback?: boolean;
+}) {
+  activeSession = { orgId, userId };
+  if (typeof allowDemoFallback === 'boolean') {
+    demoFallbackEnabled = allowDemoFallback;
+  }
+
+  if (typeof window !== 'undefined') {
+    Object.assign(window as typeof window & { __APP_SESSION__?: ActiveSession }, {
+      __APP_SESSION__: { ...activeSession },
+    });
+  }
+}
+
+export function getActiveOrgId(): string | null {
+  if (activeSession.orgId) {
+    return activeSession.orgId;
+  }
+  return demoFallbackEnabled ? DEMO_ORG_ID : null;
+}
+
+export function getActiveUserId(): string | null {
+  if (activeSession.userId) {
+    return activeSession.userId;
+  }
+  return demoFallbackEnabled ? DEMO_USER_ID : null;
+}
+
+export function requireOrgId(orgId?: string | null): string {
+  const resolved = orgId ?? getActiveOrgId();
+  if (!resolved) {
+    throw new Error('org_id_unavailable');
+  }
+  return resolved;
+}
+
+export function requireUserId(userId?: string | null): string {
+  const resolved = userId ?? getActiveUserId();
+  if (!resolved) {
+    throw new Error('user_id_unavailable');
+  }
+  return resolved;
+}
+
 export type VerificationSeverity = 'info' | 'warning' | 'critical';
 
 export interface VerificationNote {
@@ -437,8 +496,8 @@ export async function requestHitlReview(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      orgId: input.orgId ?? DEMO_ORG_ID,
-      userId: input.userId ?? DEMO_USER_ID,
+      orgId: requireOrgId(input.orgId),
+      userId: requireUserId(input.userId),
       reason: input.reason,
       manual: input.manual ?? true,
     }),
@@ -452,14 +511,16 @@ export async function requestHitlReview(
 export async function sendTelemetryEvent(
   eventName: string,
   payload?: Record<string, unknown>,
-  orgId: string = DEMO_ORG_ID,
-  userId: string = DEMO_USER_ID,
+  orgId?: string,
+  userId?: string,
 ): Promise<void> {
+  const resolvedOrgId = requireOrgId(orgId);
+  const resolvedUserId = requireUserId(userId);
   try {
     await fetch(`${API_BASE}/telemetry`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orgId, userId, eventName, payload }),
+      body: JSON.stringify({ orgId: resolvedOrgId, userId: resolvedUserId, eventName, payload }),
     });
   } catch (error) {
     console.warn('telemetry_event_failed', eventName, error);
@@ -484,7 +545,7 @@ export async function fetchHitlQueue(orgId: string) {
 
 export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsResponse> {
   const response = await fetch(`${API_BASE}/hitl/metrics?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL metrics');
@@ -494,7 +555,7 @@ export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsRespon
 
 export async function fetchHitlDetail(orgId: string, id: string): Promise<HitlDetailResponse> {
   const response = await fetch(`${API_BASE}/hitl/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL detail');
@@ -548,7 +609,7 @@ export async function fetchHitlAuditTrail(
   }
 
   const response = await fetch(url.toString(), {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch audit events');
@@ -558,7 +619,7 @@ export async function fetchHitlAuditTrail(
 
 export async function fetchCorpus(orgId: string) {
   const response = await fetch(`${API_BASE}/corpus?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch corpus overview');
@@ -575,7 +636,7 @@ export async function resummarizeDocument(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': requireUserId(),
     },
     body: JSON.stringify({ orgId, ...overrides }),
   });
@@ -658,7 +719,7 @@ export interface GovernanceMetricsResponse {
 export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/governance?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': requireUserId(),
     },
   });
   if (!response.ok) {
@@ -670,7 +731,7 @@ export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceM
 export async function fetchRetrievalMetrics(orgId: string): Promise<RetrievalMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/retrieval?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': requireUserId(),
     },
   });
 
@@ -707,7 +768,7 @@ export interface EvaluationMetricsResponse {
 export async function fetchEvaluationMetrics(orgId: string): Promise<EvaluationMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/evaluations?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': requireUserId(),
     },
   });
 
@@ -722,7 +783,7 @@ export async function fetchSloMetrics(orgId: string, limit = 6): Promise<SloMetr
   const params = new URLSearchParams({ orgId, limit: String(limit) });
   const response = await fetch(`${API_BASE}/metrics/slo?${params.toString()}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': requireUserId(),
     },
   });
 
@@ -768,7 +829,7 @@ export interface SsoConnectionResponse {
 
 export async function fetchSsoConnections(orgId: string): Promise<SsoConnectionResponse> {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SSO connections');
@@ -789,7 +850,7 @@ export async function saveSsoConnection(
 ) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': requireUserId() },
     body: JSON.stringify({ ...input, metadata: {}, groupMappings: {} }),
   });
   if (!response.ok) {
@@ -801,7 +862,7 @@ export async function saveSsoConnection(
 export async function removeSsoConnection(orgId: string, connectionId: string) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso/${connectionId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to delete SSO connection');
@@ -816,7 +877,7 @@ export interface ScimTokenResponse {
 
 export async function fetchScimTokens(orgId: string) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SCIM tokens');
@@ -827,7 +888,7 @@ export async function fetchScimTokens(orgId: string) {
 export async function createScimAccessToken(orgId: string, name: string, expiresAt?: string | null) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': requireUserId() },
     body: JSON.stringify({ name, expiresAt }),
   });
   if (!response.ok) {
@@ -839,7 +900,7 @@ export async function createScimAccessToken(orgId: string, name: string, expires
 export async function deleteScimAccessToken(orgId: string, tokenId: string) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens/${tokenId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to delete SCIM token');
@@ -856,7 +917,7 @@ export async function fetchComplianceStatus(
   }
   const response = await fetch(`${API_BASE}/compliance/status?${params.toString()}`, {
     headers: {
-      'x-user-id': options?.userId ?? DEMO_USER_ID,
+      'x-user-id': requireUserId(options?.userId),
       'x-org-id': orgId,
     },
   });
@@ -885,7 +946,7 @@ export async function acknowledgeCompliance(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': input.userId ?? DEMO_USER_ID,
+      'x-user-id': requireUserId(input.userId),
       'x-org-id': orgId,
     },
     body: JSON.stringify(payload),
@@ -899,7 +960,7 @@ export async function acknowledgeCompliance(
 export async function fetchAuditEvents(orgId: string, limit = 50) {
   const response = await fetch(
     `${API_BASE}/admin/org/${orgId}/audit-events?limit=${encodeURIComponent(String(limit))}`,
-    { headers: { 'x-user-id': DEMO_USER_ID } },
+    { headers: { 'x-user-id': requireUserId() } },
   );
   if (!response.ok) {
     throw new Error('Unable to fetch audit events');
@@ -917,7 +978,7 @@ export async function fetchDeviceSessions(
   if (options?.userId) params.set('userId', options.userId);
 
   const response = await fetch(`${API_BASE}/security/devices?${params.toString()}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch device sessions');
@@ -955,7 +1016,7 @@ export async function revokeDeviceSession(orgId: string, sessionId: string, reas
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': requireUserId(),
     },
     body: JSON.stringify({ orgId, sessionId, reason: reason ?? null }),
   });
@@ -969,7 +1030,7 @@ export async function revokeDeviceSession(orgId: string, sessionId: string, reas
 
 export async function fetchIpAllowlist(orgId: string) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch IP allowlist');
@@ -987,7 +1048,7 @@ export async function upsertIpAllowlistEntry(
   const method = input.id ? 'PATCH' : 'POST';
   const response = await fetch(url, {
     method,
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': requireUserId() },
     body: JSON.stringify({ cidr: input.cidr, description: input.description ?? null }),
   });
   if (!response.ok) {
@@ -999,7 +1060,7 @@ export async function upsertIpAllowlistEntry(
 export async function deleteIpAllowlistEntry(orgId: string, entryId: string) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist/${entryId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to delete IP entry');
@@ -1061,7 +1122,7 @@ export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOv
 
 export async function getOperationsOverview(orgId: string): Promise<OperationsOverviewResponse> {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/operations/overview`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': requireUserId() },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch operations overview');
@@ -1102,7 +1163,7 @@ export async function getGovernancePublications(params?: {
 
   const headers: Record<string, string> = {};
   if (params?.orgId) {
-    headers['x-user-id'] = DEMO_USER_ID;
+    headers['x-user-id'] = requireUserId();
   }
 
   const query = search.toString();

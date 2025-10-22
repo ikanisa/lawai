@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import type { Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, DEMO_USER_ID, startWhatsAppOtp, linkWhatsAppOtp, unlinkWhatsApp } from '../../lib/api';
+import { startWhatsAppOtp, linkWhatsAppOtp, unlinkWhatsApp } from '../../lib/api';
+import { useAppSession } from '../providers';
 
 interface SecurityPanelProps {
   messages: Messages;
@@ -20,9 +21,24 @@ export function SecurityPanel({ messages }: SecurityPanelProps) {
   const [otp, setOtp] = useState('');
   const [linked, setLinked] = useState(false);
   const [waId, setWaId] = useState<string | null>(null);
+  const { orgId, userId } = useAppSession();
+
+  const resolveOrgId = () => {
+    if (!orgId) {
+      throw new Error('org_id_unavailable');
+    }
+    return orgId;
+  };
+
+  const resolveUserId = () => {
+    if (!userId) {
+      throw new Error('user_id_unavailable');
+    }
+    return userId;
+  };
 
   const startMutation = useMutation({
-    mutationFn: (formattedPhone: string) => startWhatsAppOtp({ phone: formattedPhone, orgId: DEMO_ORG_ID }),
+    mutationFn: (formattedPhone: string) => startWhatsAppOtp({ phone: formattedPhone, orgId: resolveOrgId() }),
     onSuccess: (_, formattedPhone) => {
       toast.success(messages.security.otpSent.replace('{phone}', formattedPhone));
     },
@@ -33,7 +49,7 @@ export function SecurityPanel({ messages }: SecurityPanelProps) {
 
   const linkMutation = useMutation({
     mutationFn: (payload: { phone: string; code: string }) =>
-      linkWhatsAppOtp({ phone: payload.phone, otp: payload.code, orgId: DEMO_ORG_ID, userId: DEMO_USER_ID }),
+      linkWhatsAppOtp({ phone: payload.phone, otp: payload.code, orgId: resolveOrgId(), userId: resolveUserId() }),
     onSuccess: (data) => {
       setWaId(data.wa_id);
       setLinked(true);
@@ -45,7 +61,7 @@ export function SecurityPanel({ messages }: SecurityPanelProps) {
   });
 
   const unlinkMutation = useMutation({
-    mutationFn: () => unlinkWhatsApp({ orgId: DEMO_ORG_ID, userId: DEMO_USER_ID }),
+    mutationFn: () => unlinkWhatsApp({ orgId: resolveOrgId(), userId: resolveUserId() }),
     onSuccess: () => {
       setLinked(false);
       setWaId(null);

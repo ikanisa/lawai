@@ -7,7 +7,8 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import type { Locale, Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, fetchCorpus, toggleAllowlistDomain, sendTelemetryEvent, resummarizeDocument } from '../../lib/api';
+import { fetchCorpus, toggleAllowlistDomain, sendTelemetryEvent, resummarizeDocument } from '../../lib/api';
+import { useAppSession } from '../providers';
 
 interface CorpusViewProps {
   messages: Messages;
@@ -54,7 +55,21 @@ interface IngestionRunRow {
 
 export function CorpusView({ messages, locale }: CorpusViewProps) {
   const queryClient = useQueryClient();
-  const corpusQuery = useQuery({ queryKey: ['corpus'], queryFn: () => fetchCorpus(DEMO_ORG_ID) });
+  const { orgId, status } = useAppSession();
+  const canQuery = (status === 'authenticated' || status === 'demo') && !!orgId;
+
+  const resolveOrgId = () => {
+    if (!orgId) {
+      throw new Error('org_id_unavailable');
+    }
+    return orgId;
+  };
+
+  const corpusQuery = useQuery({
+    queryKey: ['corpus', orgId],
+    enabled: canQuery,
+    queryFn: () => fetchCorpus(resolveOrgId()),
+  });
 
   const toggleMutation = useMutation({
     mutationFn: ({ host, active, jurisdiction }: { host: string; active: boolean; jurisdiction?: string }) =>
@@ -66,7 +81,7 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
         active: variables.active,
         jurisdiction: variables.jurisdiction ?? null,
       });
-      queryClient.invalidateQueries({ queryKey: ['corpus'] });
+      queryClient.invalidateQueries({ queryKey: ['corpus', orgId] });
     },
     onError: (_error, variables) => {
       toast.error(locale === 'fr' ? 'Échec de la mise à jour' : 'Update failed');
@@ -81,11 +96,11 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
   });
 
   const resummarizeMutation = useMutation<any, Error, string>({
-    mutationFn: (documentId: string) => resummarizeDocument(DEMO_ORG_ID, documentId),
+    mutationFn: (documentId: string) => resummarizeDocument(resolveOrgId(), documentId),
     onSuccess: (data) => {
       toast.success(messages.corpus.resummarizeSuccess);
       void sendTelemetryEvent('corpus_resummarize', { documentId: data.documentId, status: data.summaryStatus });
-      queryClient.invalidateQueries({ queryKey: ['corpus'] });
+      queryClient.invalidateQueries({ queryKey: ['corpus', orgId] });
     },
     onError: (_error, variables) => {
       toast.error(messages.corpus.resummarizeError);
