@@ -10,6 +10,7 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().default(''),
   AGENT_MODEL: z.string().default('gpt-5-pro'),
   EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
+  EMBEDDING_DIMENSION: z.coerce.number().int().positive().max(3072).optional(),
   SUMMARISER_MODEL: z.string().optional(),
   MAX_SUMMARY_CHARS: z.coerce.number().optional(),
   OPENAI_VECTOR_STORE_AUTHORITIES_ID: z.string().min(1).default('vs_test'),

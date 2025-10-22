@@ -193,7 +193,12 @@ async function generateStructuredSummary(
   return { summary, highlights };
 }
 
-async function generateEmbeddings(texts: string[], openaiApiKey: string, model: string): Promise<number[][]> {
+async function generateEmbeddings(
+  texts: string[],
+  openaiApiKey: string,
+  model: string,
+  dimensions: number | undefined,
+): Promise<number[][]> {
   const embeddings: number[][] = [];
   const batchSize = 16;
 
@@ -205,7 +210,11 @@ async function generateEmbeddings(texts: string[], openaiApiKey: string, model: 
         Authorization: `Bearer ${openaiApiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model, input: slice }),
+      body: JSON.stringify({
+        model,
+        input: slice,
+        ...(dimensions ? { dimensions } : {}),
+      }),
     });
 
     const json = await response.json();
@@ -285,7 +294,12 @@ export async function summariseDocumentFromPayload(params: {
     const chunks = chunkText(plainText);
     const inputs = chunks.map((chunk) => chunk.content);
     const embeddings = inputs.length
-      ? await generateEmbeddings(inputs, openaiApiKey, embeddingModel ?? env.EMBEDDING_MODEL)
+      ? await generateEmbeddings(
+          inputs,
+          openaiApiKey,
+          embeddingModel ?? env.EMBEDDING_MODEL,
+          env.EMBEDDING_DIMENSION,
+        )
       : [];
 
     return {
