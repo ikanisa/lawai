@@ -1,4 +1,4 @@
-# Cron schedules are documented in supabase/function_schedules.json until CLI support returns.
+# Cron schedules are now documented in scripts/cron.md for manual operators.
 
 [functions."crawl-authorities"]
 verify_jwt = false
