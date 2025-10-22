@@ -87,6 +87,7 @@ export interface AgentRunInput {
   orgId: string;
   userId: string;
   confidentialMode?: boolean;
+  userLocationOverride?: string | null;
 }
 
 export interface AgentRunResult {
@@ -129,6 +130,7 @@ interface AgentExecutionContext {
   toolBudgets: Record<string, number>;
   synonymExpansions: Record<string, string[]>;
   policyVersion: PolicyVersionContext | null;
+  userLocation: string | null;
 }
 
 interface PolicyVersionContext {
@@ -401,6 +403,10 @@ function createRunKey(input: AgentRunInput, routing: RoutingResult, confidential
   hash.update((input.context ?? '').trim());
   hash.update('|');
   hash.update(confidentialMode ? 'confidential' : 'standard');
+  if (input.userLocationOverride) {
+    hash.update('|');
+    hash.update(input.userLocationOverride.trim());
+  }
   if (routing.primary?.country) {
     hash.update('|');
     hash.update(routing.primary.country);
@@ -430,6 +436,16 @@ const RESIDENCY_ZONE_NOTICES: Record<string, string> = {
     'Résidence de données : stockage dans l’enveloppe Maghreb ; appliquer les restrictions locales sur les transferts transfrontaliers.',
 };
 
+const RESIDENCY_ZONE_LOCATIONS: Record<string, string> = {
+  eu: 'European Union',
+  eea: 'European Economic Area',
+  ohada: 'OHADA Member States',
+  ch: 'Switzerland',
+  ca: 'Canada',
+  rw: 'Rwanda',
+  maghreb: 'Maghreb Region',
+};
+
 function resolveResidencyZone(accessContext: OrgAccessContext | null | undefined): string | null {
   if (!accessContext) {
     return null;
@@ -451,6 +467,74 @@ function resolveResidencyZone(accessContext: OrgAccessContext | null | undefined
       return candidate.toLowerCase();
     }
   }
+  return null;
+}
+
+function mapResidencyZoneToLocation(zone: string | null | undefined): string | null {
+  if (typeof zone !== 'string') {
+    return null;
+  }
+  const normalized = zone.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (RESIDENCY_ZONE_LOCATIONS[normalized]) {
+    return RESIDENCY_ZONE_LOCATIONS[normalized];
+  }
+  if (/^[a-z]{2}$/i.test(normalized)) {
+    const code = normalized.toUpperCase();
+    const displayNamesCtor = (Intl as typeof Intl & {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      DisplayNames?: new (locales: string[], options: { type: 'region' }) => { of: (code: string) => string | undefined };
+    }).DisplayNames;
+    if (typeof displayNamesCtor === 'function') {
+      try {
+        const displayNames = new displayNamesCtor(['fr', 'en'], { type: 'region' });
+        const resolved = displayNames.of(code);
+        if (resolved) {
+          return resolved;
+        }
+      } catch {
+        // Fallback handled below
+      }
+    }
+    return code;
+  }
+  return zone;
+}
+
+function deriveUserLocation(options: {
+  accessContext: OrgAccessContext | null;
+  override?: string | null;
+}): string | null {
+  const override = options.override;
+  if (typeof override === 'string') {
+    const trimmed = override.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+
+  const candidateZones: string[] = [];
+  if (options.accessContext?.policies.residencyZone) {
+    candidateZones.push(options.accessContext.policies.residencyZone);
+  }
+  if (Array.isArray(options.accessContext?.policies.residencyZones)) {
+    candidateZones.push(...(options.accessContext?.policies.residencyZones ?? []));
+  }
+
+  const resolved = resolveResidencyZone(options.accessContext);
+  if (resolved) {
+    candidateZones.push(resolved);
+  }
+
+  for (const zone of candidateZones) {
+    const mapped = mapResidencyZoneToLocation(zone);
+    if (mapped) {
+      return mapped;
+    }
+  }
+
   return null;
 }
 
@@ -678,6 +762,11 @@ async function planRun(
       },
     )) ?? null;
 
+  const userLocation = deriveUserLocation({
+    accessContext,
+    override: input.userLocationOverride ?? null,
+  });
+
   const synonymRecord: Record<string, string[]> = {};
   for (const [term, expansions] of synonymMap) {
     synonymRecord[term] = expansions;
@@ -697,6 +786,7 @@ async function planRun(
     toolBudgets: { ...TOOL_BUDGET_DEFAULTS },
     synonymExpansions: synonymRecord,
     policyVersion,
+    userLocation,
   };
 
   if (enforcedConfidentialMode) {
@@ -3958,6 +4048,7 @@ function buildAgent(
     const baseWebSearch = webSearchTool({
       filters: { allowedDomains: DOMAIN_ALLOWLIST },
       searchContextSize: 'medium',
+      ...(context.userLocation ? { userLocation: context.userLocation } : {}),
     });
     const budgetedWebSearch = {
       ...baseWebSearch,

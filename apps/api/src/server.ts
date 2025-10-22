@@ -1050,7 +1050,14 @@ app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/di
 app.get('/healthz', async () => ({ status: 'ok' }));
 
 app.post<{
-  Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
+  Body: {
+    question: string;
+    context?: string;
+    orgId?: string;
+    userId?: string;
+    confidentialMode?: boolean;
+    userLocation?: string;
+  };
 }>('/runs', async (request, reply) => {
   const bodySchema = z.object({
     question: z.string().min(1),
@@ -1058,17 +1065,28 @@ app.post<{
     orgId: z.string().uuid(),
     userId: z.string().uuid(),
     confidentialMode: z.coerce.boolean().optional(),
+    userLocation: z.string().optional(),
   });
   const parsed = bodySchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
   }
-  const { question, context, orgId, userId, confidentialMode } = parsed.data;
+  const { question, context, orgId, userId, confidentialMode, userLocation } = parsed.data;
 
   try {
     const access = await authorizeRequestWithGuards('runs:execute', orgId, userId, request);
     const effectiveConfidential = access.policies.confidentialMode || Boolean(confidentialMode);
-    const result = await runLegalAgent({ question, context, orgId, userId, confidentialMode: effectiveConfidential }, access);
+    const result = await runLegalAgent(
+      {
+        question,
+        context,
+        orgId,
+        userId,
+        confidentialMode: effectiveConfidential,
+        userLocationOverride: userLocation?.trim() ?? null,
+      },
+      access,
+    );
     // Validate payload at the boundary with a conservative schema
     const safePayload = IRACPayloadSchema.safeParse(result.payload);
 
