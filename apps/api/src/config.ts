@@ -12,12 +12,14 @@ const envSchema = z.object({
   EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
   SUMMARISER_MODEL: z.string().optional(),
   MAX_SUMMARY_CHARS: z.coerce.number().optional(),
-  OPENAI_VECTOR_STORE_AUTHORITIES_ID: z.string().min(1).default('vs_test'),
+  OPENAI_VECTOR_STORE_AUTHORITIES_ID: z
+    .union([z.string().min(1), z.literal('')])
+    .default(''),
   OPENAI_CHATKIT_PROJECT: z.string().optional(),
   OPENAI_CHATKIT_SECRET: z.string().optional(),
   OPENAI_CHATKIT_BASE_URL: z.string().url().optional(),
   OPENAI_CHATKIT_MODEL: z.string().optional(),
-  SUPABASE_URL: z.string().url().default('https://example.supabase.co'),
+  SUPABASE_URL: z.union([z.string().url(), z.literal('')]).default(''),
   SUPABASE_SERVICE_ROLE_KEY: z.string().default(''),
   JURIS_ALLOWLIST_JSON: z.string().optional(),
   AGENT_STUB_MODE: z
@@ -49,12 +51,31 @@ function assertProductionEnv(e: Env) {
 
     if (!e.OPENAI_API_KEY) missing.push('OPENAI_API_KEY');
     if (!e.SUPABASE_URL) missing.push('SUPABASE_URL');
+    if (!e.OPENAI_VECTOR_STORE_AUTHORITIES_ID) missing.push('OPENAI_VECTOR_STORE_AUTHORITIES_ID');
     if (!e.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
 
     // Basic placeholder detection
+    const vectorStorePlaceholders = [/^vs(_|-)?(test|example|placeholder)$/i];
+    const supabaseServiceRolePlaceholders = [
+      /placeholder/i,
+      /service[-_]?role[-_]?key/i,
+      /service[-_]?role[-_]?test/i,
+    ];
+
     if (e.SUPABASE_URL && e.SUPABASE_URL.includes('example')) placeholders.push('SUPABASE_URL');
     if (e.OPENAI_API_KEY && /CHANGEME|placeholder|test-openai-key/i.test(e.OPENAI_API_KEY)) placeholders.push('OPENAI_API_KEY');
-    if (e.SUPABASE_SERVICE_ROLE_KEY && /placeholder|service-role-test/i.test(e.SUPABASE_SERVICE_ROLE_KEY)) placeholders.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (
+      e.OPENAI_VECTOR_STORE_AUTHORITIES_ID &&
+      vectorStorePlaceholders.some((pattern) => pattern.test(e.OPENAI_VECTOR_STORE_AUTHORITIES_ID))
+    ) {
+      placeholders.push('OPENAI_VECTOR_STORE_AUTHORITIES_ID');
+    }
+    if (
+      e.SUPABASE_SERVICE_ROLE_KEY &&
+      supabaseServiceRolePlaceholders.some((pattern) => pattern.test(e.SUPABASE_SERVICE_ROLE_KEY))
+    ) {
+      placeholders.push('SUPABASE_SERVICE_ROLE_KEY');
+    }
 
     if (missing.length || placeholders.length) {
       const details = [

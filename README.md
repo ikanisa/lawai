@@ -52,6 +52,26 @@ packages/
    pnpm dev:web
    ```
 
+### Production configuration guardrails
+
+The API now enforces stricter configuration checks in production environments.
+Deployments must provide real secrets for the following variables:
+
+- `OPENAI_API_KEY`
+- `OPENAI_VECTOR_STORE_AUTHORITIES_ID`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+The runtime rejects common placeholder patterns such as:
+
+- Vector store IDs like `vs_test`, `vs-example`, or `vs_placeholder`
+- Supabase URLs containing `example.supabase.co`
+- Service role keys containing `placeholder`, `service-role-key`, or `service-role-test`
+
+CI executes `apps/api/test/config.test.ts` to guarantee these guardrails stay in
+place. Refresh your `.env` or deployment secrets with production values before
+running the API behind Vercel or any other production target.
+
 ### Assembler les fondations en une étape
 
 Lorsque vous préparez un nouvel environnement (local ou cloud), exécutez :
