@@ -1,8 +1,8 @@
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { AppProviders } from '../../src/components/providers';
 import { AppShell } from '../../src/components/app-shell';
 import { getMessages, isLocale, locales, type Locale } from '../../src/lib/i18n';
+import { SessionHydrator } from './session-hydrator';
 
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
@@ -22,10 +22,10 @@ export default function LocaleLayout({
   const messages = getMessages(locale);
 
   return (
-    <AppProviders>
+    <SessionHydrator>
       <AppShell messages={messages} locale={locale}>
         {children}
       </AppShell>
-    </AppProviders>
+    </SessionHydrator>
   );
 }

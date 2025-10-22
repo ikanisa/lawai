@@ -8,6 +8,9 @@ const serverSchema = z.object({
   SUPABASE_URL: z
     .string()
     .url({ message: 'SUPABASE_URL must be a valid URL' }),
+  SUPABASE_ANON_KEY: z
+    .string()
+    .min(1, { message: 'SUPABASE_ANON_KEY is required' }),
   SUPABASE_SERVICE_ROLE_KEY: z
     .string()
     .min(1, { message: 'SUPABASE_SERVICE_ROLE_KEY is required' }),
@@ -21,6 +24,7 @@ export const serverEnv = serverSchema.parse({
   APP_ENV: process.env.APP_ENV,
   VERCEL_ENV: process.env.VERCEL_ENV,
   SUPABASE_URL: process.env.SUPABASE_URL,
+  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   ADMIN_PANEL_ACTOR: process.env.ADMIN_PANEL_ACTOR,
   ADMIN_PANEL_ORG: process.env.ADMIN_PANEL_ORG,

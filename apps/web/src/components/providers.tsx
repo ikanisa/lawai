@@ -6,6 +6,8 @@ import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { registerPwa } from '../lib/pwa';
 import { PwaInstallProvider } from '../hooks/use-pwa-install';
+import { SessionProvider } from './auth/session-provider';
+import type { SessionPayload } from '../types/session';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,7 +18,7 @@ const queryClient = new QueryClient({
   },
 });
 
-export function AppProviders({ children }: { children: ReactNode }) {
+export function AppProviders({ children, initialSession }: { children: ReactNode; initialSession?: SessionPayload | null }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -26,10 +28,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
-        <PwaInstallProvider>
-          {children}
-          <Toaster position="bottom-right" richColors closeButton />
-        </PwaInstallProvider>
+        <SessionProvider initialSession={initialSession}>
+          <PwaInstallProvider>
+            {children}
+            <Toaster position="bottom-right" richColors closeButton />
+          </PwaInstallProvider>
+        </SessionProvider>
       </QueryClientProvider>
       {/* Avoid hydration mismatch for theme-controlled elements */}
       {!mounted && <div aria-hidden />}
