@@ -5,6 +5,7 @@ on:
 
 jobs:
   preview:
+    name: Auto-create Preview
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +39,41 @@ jobs:
             --token="$VERCEL_TOKEN" \
             --env SUPABASE_BRANCH="$SUPABASE_BRANCH" \
             --env NEXT_PUBLIC_SUPABASE_BRANCH="$NEXT_PUBLIC_SUPABASE_BRANCH"
+
+      - name: Deploy Vercel preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "VERCEL_TOKEN must be configured to publish preview deployments." >&2
+            exit 1
+          fi
+          if [ -z "${VERCEL_ORG_ID:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "VERCEL_ORG_ID/VERCEL_PROJECT_ID must be configured to publish preview deployments." >&2
+            exit 1
+          fi
+          export SUPABASE_BRANCH
+          export NEXT_PUBLIC_SUPABASE_BRANCH
+          DEPLOY_OUTPUT=$(npx vercel deploy --prebuilt \
+            --token="$VERCEL_TOKEN" \
+            --yes \
+            --scope="$VERCEL_ORG_ID" \
+            --env SUPABASE_BRANCH="$SUPABASE_BRANCH" \
+            --env NEXT_PUBLIC_SUPABASE_BRANCH="$NEXT_PUBLIC_SUPABASE_BRANCH" \
+            --project "$VERCEL_PROJECT_ID" \
+            --archive=tgz)
+          DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -Eo 'https://[^ ]+\.vercel\.app' | tail -n 1)
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "Unable to determine Vercel preview URL from deployment output." >&2
+            exit 1
+          fi
+          echo "VERCEL_PREVIEW_URL=${DEPLOY_URL}" >> $GITHUB_ENV
+          echo "### Vercel preview deployment" >> $GITHUB_STEP_SUMMARY
+          echo "Published preview: ${DEPLOY_URL}" >> $GITHUB_STEP_SUMMARY
+          echo "*QA action:* validate the preview and add the \`qa-signoff\` label once smoke tests pass." >> $GITHUB_STEP_SUMMARY
       - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
