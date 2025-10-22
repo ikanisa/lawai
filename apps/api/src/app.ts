@@ -1,4 +1,3 @@
-// @ts-nocheck
 import Fastify from 'fastify';
 import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
@@ -12,11 +11,12 @@ import { registerResearchRoutes } from './routes/research/index.js';
 import { registerUploadRoutes } from './routes/upload/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
 import type { AppContext } from './types/context';
+import type { AppAssembly, AppFastifyInstance } from './types/fastify.js';
 import { env } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
 
-export async function createApp() {
-  const app = Fastify({
+export async function createApp(): Promise<AppAssembly> {
+  const app: AppFastifyInstance = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
       redact: [

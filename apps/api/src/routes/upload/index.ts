@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { AppFastifyInstance } from '../../types/fastify.js';
 import { z } from 'zod';
 import { UploadResponseSchema } from '@avocat-ai/shared';
 
@@ -15,7 +15,7 @@ const uploadRequestSchema = z
   })
   .strict();
 
-export async function registerUploadRoutes(app: FastifyInstance, _ctx: AppContext) {
+export async function registerUploadRoutes(app: AppFastifyInstance, _ctx: AppContext) {
   app.post('/upload', async (request, reply) => {
     const parsed = uploadRequestSchema.safeParse(request.body ?? {});
     if (!parsed.success) {

@@ -1,12 +1,12 @@
-import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../../types/context';
+import type { AppFastifyInstance } from '../../types/fastify.js';
 
 const workspaceQuerySchema = z.object({
   orgId: z.string().uuid(),
 });
 
-export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
+export async function registerWorkspaceRoutes(app: AppFastifyInstance, ctx: AppContext) {
   app.get<{ Querystring: z.infer<typeof workspaceQuerySchema> }>('/workspace', async (request, reply) => {
     const parse = workspaceQuerySchema.safeParse(request.query);
     if (!parse.success) {

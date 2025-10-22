@@ -22,7 +22,9 @@
     "src/summarization.ts",
     "src/orchestrator.ts",
     "src/http/**/*.ts",
+    "src/observability/**/*.ts",
     "src/server.ts",
+    "src/launch.ts",
     "src/avocat-pwa.ts",
     "src/reports.ts",
     "src/sso.ts",
@@ -39,6 +41,7 @@
     "src/avocat-pwa-data.ts",
     "src/schemas/**/*.ts",
     "src/worker.ts",
-    
+    "src/routes/**/*.ts",
+    "src/types/fastify.ts"
   ]
 }
