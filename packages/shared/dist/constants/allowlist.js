@@ -23,6 +23,62 @@ export const OFFICIAL_DOMAIN_REGISTRY = {
     'cima-afrique.org': ['CIMA'],
 };
 export const OFFICIAL_DOMAIN_ALLOWLIST = Object.keys(OFFICIAL_DOMAIN_REGISTRY);
+const DEFAULT_WEB_SEARCH_LIMIT = 20;
+function normaliseAllowlistInput(value) {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+    const candidate = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+        ? (() => {
+            try {
+                return new URL(trimmed).hostname;
+            }
+            catch (error) {
+                return trimmed;
+            }
+        })()
+        : trimmed;
+    const lower = candidate.toLowerCase().replace(/^\.+/, '');
+    if (!lower) {
+        return null;
+    }
+    // Basic hostname validation – reject values with spaces or protocol separators.
+    if (/[\s/]/.test(lower)) {
+        return null;
+    }
+    return lower;
+}
+export function buildWebSearchAllowlist(options = {}) {
+    const limit = Math.max(1, options.limit ?? DEFAULT_WEB_SEARCH_LIMIT);
+    const base = Array.isArray(options.base) ? options.base : OFFICIAL_DOMAIN_ALLOWLIST;
+    const override = Array.isArray(options.override) ? options.override : null;
+    const source = override ? 'override' : 'base';
+    const inputs = (override && override.length > 0 ? override : base) ?? [];
+    const seen = new Set();
+    const deduped = [];
+    for (const value of inputs) {
+        const host = normaliseAllowlistInput(value);
+        if (!host || seen.has(host)) {
+            continue;
+        }
+        seen.add(host);
+        deduped.push(host);
+    }
+    const allowlist = deduped.slice(0, limit);
+    const truncatedDomains = deduped.slice(limit);
+    return {
+        allowlist,
+        total: deduped.length,
+        truncated: truncatedDomains.length > 0,
+        truncatedDomains,
+        limit,
+        source,
+    };
+}
 export function isDomainAllowlisted(url) {
     try {
         const { hostname } = new URL(url);

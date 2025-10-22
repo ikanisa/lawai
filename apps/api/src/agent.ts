@@ -16,7 +16,9 @@ import {
   AgentPlanStep,
   IRACPayload,
   IRACSchema,
+  buildWebSearchAllowlist,
   OFFICIAL_DOMAIN_ALLOWLIST,
+  type WebSearchAllowlistResult,
   WebSearchMode,
 } from '@avocat-ai/shared';
 import { diffWordsWithSpace } from 'diff';
@@ -257,7 +259,50 @@ const supabase = createServiceClient({
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
 });
 
-const DOMAIN_ALLOWLIST = loadAllowlistOverride() ?? [...OFFICIAL_DOMAIN_ALLOWLIST];
+const WEB_SEARCH_ALLOWLIST = buildWebSearchAllowlist({
+  base: OFFICIAL_DOMAIN_ALLOWLIST,
+  override: loadAllowlistOverride(),
+  limit: 20,
+});
+
+function chunkDomains(domains: readonly string[], chunkSize = 5): string[][] {
+  if (chunkSize <= 0) {
+    return [domains.slice()];
+  }
+
+  const chunks: string[][] = [];
+  for (let index = 0; index < domains.length; index += chunkSize) {
+    chunks.push(domains.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+function logWebSearchAllowlist(agent: string, result: WebSearchAllowlistResult): void {
+  const payload = {
+    agent,
+    source: result.source,
+    total: result.total,
+    limit: result.limit,
+    truncated: result.truncated,
+    truncatedCount: result.truncatedDomains.length,
+    truncatedDomains: result.truncatedDomains,
+    chunks: chunkDomains(result.allowlist),
+  };
+
+  console.info('web_search_allowlist_config', payload);
+
+  if (result.truncated) {
+    console.warn('web_search_allowlist_truncated', payload);
+  }
+}
+
+logWebSearchAllowlist('avocat-api', WEB_SEARCH_ALLOWLIST);
+
+export const __TESTING__ = {
+  webSearchAllowlist: WEB_SEARCH_ALLOWLIST,
+};
+
+const DOMAIN_ALLOWLIST = WEB_SEARCH_ALLOWLIST.allowlist;
 
 const stubMode = env.AGENT_STUB_MODE;
 

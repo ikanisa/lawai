@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const validPayload = {
   jurisdiction: { country: 'FR', eu: true, ohada: false },
@@ -163,8 +163,11 @@ function makeContext(
 }
 
 const runMock = vi.fn();
+const ORIGINAL_ENV = { ...process.env };
 
 beforeEach(() => {
+  process.env = { ...ORIGINAL_ENV };
+  delete process.env.JURIS_ALLOWLIST_JSON;
   vi.resetModules();
   runMock.mockReset();
   runInsertMock.mockClear();
@@ -419,6 +422,42 @@ beforeEach(() => {
       },
     })),
   }));
+});
+
+describe('web search allowlist configuration', () => {
+  afterEach(() => {
+    vi.resetModules();
+    process.env = { ...ORIGINAL_ENV };
+    delete process.env.JURIS_ALLOWLIST_JSON;
+  });
+
+  it('honours the 20-domain ceiling and emits truncation telemetry', async () => {
+    vi.resetModules();
+    process.env = { ...ORIGINAL_ENV };
+    process.env.JURIS_ALLOWLIST_JSON = JSON.stringify(
+      Array.from({ length: 25 }, (_, index) => `override-${index}.example.test`),
+    );
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    const { __TESTING__ } = await import('../src/agent.js');
+
+    expect(__TESTING__.webSearchAllowlist.allowlist).toHaveLength(20);
+    expect(__TESTING__.webSearchAllowlist.truncatedDomains).toHaveLength(5);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'web_search_allowlist_truncated',
+      expect.objectContaining({ limit: 20, truncatedCount: 5, total: 25 }),
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      'web_search_allowlist_config',
+      expect.objectContaining({ total: 25, chunks: expect.any(Array) }),
+    );
+
+    warnSpy.mockRestore();
+    infoSpy.mockRestore();
+  });
 });
 
 describe('runLegalAgent', () => {
