@@ -1,5 +1,6 @@
 import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
+import { resolveDomainAllowlistOverride } from './allowlist-override.js';
 
 if (process.env.NODE_ENV !== 'production') {
   loadEnv();
@@ -118,10 +119,7 @@ export function loadAllowlistOverride(): string[] | null {
 
   try {
     const value = JSON.parse(parsed.JURIS_ALLOWLIST_JSON);
-    if (!Array.isArray(value)) {
-      return null;
-    }
-    return value as string[];
+    return resolveDomainAllowlistOverride(value);
   } catch (error) {
     return null;
   }
