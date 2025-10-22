@@ -23,7 +23,8 @@
     "ipaddr.js": "^2.1.0",
     "openai": "6.2.0",
     "pino": "^8.21.0",
-    "zod": "^3.25.42"
+    "zod": "^3.25.42",
+    "zod-to-json-schema": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",
