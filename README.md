@@ -52,6 +52,8 @@ packages/
    pnpm dev:web
    ```
 
+Pour un déploiement local en mode production (build Next.js + serveur Node), consultez [docs/local-hosting.md](docs/local-hosting.md).
+
 ### Assembler les fondations en une étape
 
 Lorsque vous préparez un nouvel environnement (local ou cloud), exécutez :
@@ -164,8 +166,8 @@ Un nouveau panneau d'administration Next.js est livré derrière le flag `FEAT_A
 développement et en préproduction, et reste désactivé en production tant que `FEAT_ADMIN_PANEL=1` n'est pas fourni.
 
 - **Activer localement** : ajoutez `FEAT_ADMIN_PANEL=1` à votre `.env.local`.
-- **Prévisualisation Vercel** : les environnements `preview` héritent d'un comportement activé par défaut.
-- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans les variables Vercel avant le déploiement.
+- **Environnements de préproduction** : lorsque `NODE_ENV` n'est pas `production`, le panneau reste activé par défaut.
+- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans la configuration d'exécution avant le déploiement.
 
 Les routes `/api/admin/*` valident systématiquement la présence des en-têtes `x-admin-actor` et `x-admin-org` (ou retombent sur
 les valeurs de configuration `ADMIN_PANEL_ACTOR`/`ADMIN_PANEL_ORG`).

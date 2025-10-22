@@ -1,7 +1,6 @@
 app,variable,scope,required,description
-apps/web,NODE_ENV,server,yes,"Node environment; set automatically by Next.js/Vercel"
+apps/web,NODE_ENV,server,yes,"Node environment; set automatically by Next.js"
 apps/web,APP_ENV,server,no,"Custom deployment stage identifier"
-apps/web,VERCEL_ENV,server,no,"Vercel provided deploy environment (development|preview|production)"
 apps/web,SUPABASE_URL,server,yes,"Supabase project URL for admin server actions"
 apps/web,SUPABASE_SERVICE_ROLE_KEY,server,yes,"Service role key used by admin Supabase client"
 apps/web,ADMIN_PANEL_ACTOR,server,no,"Email identifier for default admin actor"
@@ -21,8 +20,8 @@ apps/web,NEXT_PUBLIC_EVAL_MAGHREB_OK,client,no,"Regional coverage medium thresho
 apps/web,NEXT_PUBLIC_TOOL_FAILURE_WARN,client,no,"Warning threshold for tool failure rate"
 apps/web,NEXT_PUBLIC_TOOL_FAILURE_CRIT,client,no,"Critical threshold for tool failure rate"
 
-apps/api,NODE_ENV,server,yes,"Node environment; 'production' on Vercel"
-apps/api,PORT,server,no,"HTTP listen port (Vercel ignores)"
+apps/api,NODE_ENV,server,yes,"Node environment for HTTP server"
+apps/api,PORT,server,no,"HTTP listen port"
 apps/api,LOG_LEVEL,server,no,"Pino log level"
 apps/api,OPENAI_API_KEY,server,yes,"OpenAI API key"
 apps/api,OPENAI_BASE_URL,server,no,"Override for OpenAI API base URL"

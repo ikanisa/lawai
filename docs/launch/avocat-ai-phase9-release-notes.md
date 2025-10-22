@@ -37,7 +37,7 @@
 | --- | --- |
 | Bundle budgets may regress as new features arrive. | Monitor CI bundle check failures and refactor with dynamic imports when needed. |
 | Offline shell serves static copy without localisation toggles. | Follow-up backlog item to render locale-specific offline HTML snippets. |
-| Preview artifact requires manual hosting for stakeholders. | Evaluate integrating with Vercel/Pages for automated staging once credentials are provisioned. |
+| Preview artifact requires manual hosting for stakeholders. | Evaluate publishing Docker images or static archives via CI to simplify stakeholder previews. |
 
 ## Next Steps
 
