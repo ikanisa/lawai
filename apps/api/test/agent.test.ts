@@ -762,6 +762,62 @@ describe('runLegalAgent', () => {
     expect(telemetryInsertMock).not.toHaveBeenCalled();
   });
 
+  it('records web search allowlist truncation telemetry when hosted web search filters domains', async () => {
+    telemetryInsertMock.mockClear();
+
+    runMock.mockResolvedValueOnce({
+      finalOutput: validPayload,
+      newItems: [
+        {
+          rawItem: {
+            type: 'hosted_tool_call',
+            name: 'web_search_call',
+            providerData: {
+              results: [
+                {
+                  url: validPayload.citations[0]?.url,
+                },
+              ],
+              filtered_results: [
+                {
+                  url: 'https://example.com/analyse',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
+
+    await runLegalAgent(
+      {
+        question: 'Analyse avec citations mixtes',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext(),
+    );
+
+    expect(telemetryInsertMock).toHaveBeenCalled();
+    const telemetryPayload = telemetryInsertMock.mock.calls[0]?.[0] as Array<Record<string, unknown>>;
+    const truncationEvent = telemetryPayload.find(
+      (record) => record?.tool_name === 'web_search_allowlist_truncation',
+    ) as Record<string, unknown> | undefined;
+
+    expect(truncationEvent).toBeTruthy();
+    const metadata = truncationEvent?.metadata as Record<string, unknown>;
+    expect(metadata).toMatchObject({
+      allowlisted_results: 1,
+      filtered_results: 1,
+      mode: 'allowlist',
+    });
+    expect(metadata?.total_results).toBe(
+      (metadata?.allowlisted_results as number) + (metadata?.filtered_results as number),
+    );
+  });
+
   it('augments hybrid retrieval queries with learned synonyms', async () => {
     runMock.mockResolvedValue({
       finalOutput: validPayload,
