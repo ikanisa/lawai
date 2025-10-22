@@ -25,6 +25,7 @@ import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { z } from 'zod';
 import { env, loadAllowlistOverride } from './config.js';
+import { buildWebSearchAllowlist } from './tools/web-search-allowlist.js';
 import { CASE_TRUST_WEIGHTS, evaluateCaseQuality, type CaseScoreAxis } from './case-quality.js';
 import { OrgAccessContext, isJurisdictionAllowed } from './access-control.js';
 import { evaluateCompliance } from './compliance.js';
@@ -257,7 +258,9 @@ const supabase = createServiceClient({
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
 });
 
-const DOMAIN_ALLOWLIST = loadAllowlistOverride() ?? [...OFFICIAL_DOMAIN_ALLOWLIST];
+const { allowlist: DOMAIN_ALLOWLIST } = buildWebSearchAllowlist({
+  domains: loadAllowlistOverride() ?? OFFICIAL_DOMAIN_ALLOWLIST,
+});
 
 const stubMode = env.AGENT_STUB_MODE;
 
