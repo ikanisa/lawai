@@ -91,13 +91,33 @@ export function buildOpsScheduler(
         ciMode: true,
         benchmark: env.EVAL_BENCHMARK ?? null,
       };
-      await runEvaluation(cliOptions, {
+      const summary = await runEvaluation(cliOptions, {
         dataSource: createEvaluationDataSource(ctxSupabase ?? supabase),
         fetchImpl,
         retries: 3,
         retryDelayMs: 5_000,
         logger: console,
       });
+
+      if (summary.failed > 0 || summary.thresholdFailed) {
+        const failureDetails = [
+          summary.failed > 0 ? `${summary.failed} cas ont échoué` : null,
+          summary.thresholdFailed && summary.thresholdFailures.length > 0
+            ? `Seuils non respectés: ${summary.thresholdFailures.join(', ')}`
+            : summary.thresholdFailed
+              ? 'Seuils d’acceptation non respectés'
+              : null,
+          summary.errors.length > 0 ? `Erreurs: ${summary.errors.join('; ')}` : null,
+        ]
+          .filter((detail): detail is string => detail != null)
+          .join(' | ');
+
+        throw new Error(
+          failureDetails.length > 0
+            ? `Échec de la campagne d’évaluation nocturne: ${failureDetails}`
+            : 'Échec de la campagne d’évaluation nocturne',
+        );
+      }
     },
   });
 
