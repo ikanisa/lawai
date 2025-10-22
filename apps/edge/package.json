@@ -6,5 +6,9 @@
     "lint": "deno lint --config deno.jsonc",
     "typecheck": "deno run --allow-read --allow-run scripts/typecheck.ts",
     "test": "deno run --allow-read --allow-run scripts/typecheck.ts"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

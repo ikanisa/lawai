@@ -19,6 +19,10 @@ export default defineConfig({
     alias: {
       '@': resolveFromRoot('./src'),
       '@avocat-ai/shared': resolveFromRoot('../../packages/shared/src/index.ts'),
+      react: resolveFromRoot('../../node_modules/react'),
+      'react-dom': resolveFromRoot('../../node_modules/react-dom'),
+      'react/jsx-runtime': resolveFromRoot('../../node_modules/react/jsx-runtime.js'),
+      'react/jsx-dev-runtime': resolveFromRoot('../../node_modules/react/jsx-dev-runtime.js'),
     },
   },
 });

@@ -5,6 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Messages } from '../src/lib/i18n';
+import { SessionProvider } from '../src/components/auth/session-provider';
+import type { SessionPayload } from '../src/types/session';
+import { DEMO_ORG_ID } from '../src/lib/api';
 
 const {
   fetchGovernanceMetricsMock,
@@ -16,6 +19,8 @@ const {
   fetchAuditEventsMock,
   fetchIpAllowlistMock,
   fetchOperationsOverviewMock,
+  fetchDeviceSessionsMock,
+  revokeDeviceSessionMock,
 } = vi.hoisted(() => {
   return {
     fetchGovernanceMetricsMock: vi.fn(),
@@ -27,6 +32,8 @@ const {
     fetchAuditEventsMock: vi.fn(),
     fetchIpAllowlistMock: vi.fn(),
     fetchOperationsOverviewMock: vi.fn(),
+    fetchDeviceSessionsMock: vi.fn(),
+    revokeDeviceSessionMock: vi.fn(),
   };
 });
 
@@ -57,10 +64,23 @@ vi.mock('../src/lib/api', async () => {
     fetchAuditEvents: fetchAuditEventsMock,
     fetchIpAllowlist: fetchIpAllowlistMock,
     getOperationsOverview: fetchOperationsOverviewMock,
+    fetchDeviceSessions: fetchDeviceSessionsMock,
+    revokeDeviceSession: revokeDeviceSessionMock,
   } satisfies ApiModule;
 });
 
 const { AdminView } = await import('../src/components/admin/admin-view');
+
+const fetchMock = vi.fn();
+
+function mockResponse(status: number, body: unknown = '') {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
+  } as Response;
+}
 
 describe('AdminView provenance dashboard', () => {
   beforeEach(() => {
@@ -73,7 +93,50 @@ describe('AdminView provenance dashboard', () => {
     fetchAuditEventsMock.mockReset();
     fetchIpAllowlistMock.mockReset();
     fetchOperationsOverviewMock.mockReset();
+    fetchDeviceSessionsMock.mockReset();
+    revokeDeviceSessionMock.mockReset();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(mockResponse(401));
+    vi.stubGlobal('fetch', fetchMock);
   });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function renderAdminView(options: { session?: SessionPayload | null } = {}) {
+    const queryClient = new QueryClient();
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider initialSession={options.session ?? null}>
+          <AdminView messages={messagesFr} />
+        </SessionProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  function stubEmptyAdminData() {
+    fetchGovernanceMetricsMock.mockResolvedValue({
+      overview: null,
+      tools: [],
+      identifiers: [],
+      jurisdictions: [],
+    });
+    fetchRetrievalMetricsMock.mockResolvedValue({ summary: null, origins: [], hosts: [] });
+    fetchEvaluationMetricsMock.mockResolvedValue({ summary: null, jurisdictions: [] });
+    fetchSloMetricsMock.mockResolvedValue({ summary: null, snapshots: [] });
+    fetchOperationsOverviewMock.mockResolvedValue({
+      slo: { summary: null, snapshots: [] },
+      incidents: { total: 0, open: 0, closed: 0, latest: null, entries: [] },
+      changeLog: { total: 0, latest: null, entries: [] },
+      goNoGo: { section: 'A', criteria: [] },
+    });
+    fetchSsoConnectionsMock.mockResolvedValue({ connections: [] });
+    fetchScimTokensMock.mockResolvedValue({ tokens: [] });
+    fetchAuditEventsMock.mockResolvedValue({ events: [] });
+    fetchIpAllowlistMock.mockResolvedValue({ entries: [] });
+    fetchDeviceSessionsMock.mockResolvedValue({ sessions: [] });
+  }
 
   it('renders residency and identifier coverage per jurisdiction', async () => {
     fetchGovernanceMetricsMock.mockResolvedValue({
@@ -234,17 +297,11 @@ describe('AdminView provenance dashboard', () => {
     fetchAuditEventsMock.mockResolvedValue({ events: [] });
     fetchIpAllowlistMock.mockResolvedValue({ entries: [] });
 
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AdminView messages={messagesFr as Messages} />
-      </QueryClientProvider>,
-    );
+    renderAdminView();
 
     await waitFor(() => expect(fetchGovernanceMetricsMock).toHaveBeenCalled());
+    expect(fetchGovernanceMetricsMock).toHaveBeenCalledWith(DEMO_ORG_ID);
+    expect(fetchMock).toHaveBeenCalled();
 
     expect(await screen.findByText(messagesFr.admin.provenanceJurisdictionTitle)).toBeInTheDocument();
     expect(await screen.findByText('France')).toBeInTheDocument();
@@ -271,5 +328,33 @@ describe('AdminView provenance dashboard', () => {
     expect(await screen.findByText(messagesFr.admin.policyEvidenceHint, { exact: false })).toBeInTheDocument();
     expect(await screen.findByText(messagesFr.admin.policySupport)).toBeInTheDocument();
     expect(await screen.findByText(messagesFr.admin.policyRegulator)).toBeInTheDocument();
+  });
+
+  it('uses authenticated org id when session is provided', async () => {
+    stubEmptyAdminData();
+    const session: SessionPayload = {
+      session: { orgId: 'org-auth', userId: 'user-auth' },
+      isDemo: false,
+    };
+
+    renderAdminView({ session });
+
+    await waitFor(() => {
+      expect(fetchGovernanceMetricsMock).toHaveBeenCalledWith('org-auth');
+      expect(fetchRetrievalMetricsMock).toHaveBeenCalledWith('org-auth');
+      expect(fetchEvaluationMetricsMock).toHaveBeenCalledWith('org-auth');
+      expect(fetchSloMetricsMock).toHaveBeenCalledWith('org-auth');
+      expect(fetchOperationsOverviewMock).toHaveBeenCalledWith('org-auth');
+      expect(fetchSsoConnectionsMock).toHaveBeenCalledWith('org-auth');
+      expect(fetchScimTokensMock).toHaveBeenCalledWith('org-auth');
+      expect(fetchAuditEventsMock).toHaveBeenCalledWith('org-auth', 25);
+      expect(fetchIpAllowlistMock).toHaveBeenCalledWith('org-auth');
+      expect(fetchDeviceSessionsMock).toHaveBeenCalledWith(
+        'org-auth',
+        expect.objectContaining({ includeRevoked: false, limit: 200 }),
+      );
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
