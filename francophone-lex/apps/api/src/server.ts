@@ -53,7 +53,16 @@ import { authorizeRequestWithGuards } from './http/authorization.js';
 import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
-import { buildPhaseCWorkspaceDesk } from './workspace.js';
+import {
+  COMPLIANCE_ACK_TYPES,
+  type ConsentEventInsert,
+  type ComplianceAssessment,
+  fetchAcknowledgementEvents,
+  mergeDisclosuresWithAcknowledgements,
+  recordAcknowledgementEvents,
+  summariseAcknowledgements,
+  extractCountry,
+} from './domain/workspace/index.js';
 
 const { app, context } = await createApp();
 
@@ -82,119 +91,8 @@ async function embedQuery(text: string): Promise<number[]> {
   }
 }
 
-const COMPLIANCE_ACK_TYPES = {
-  consent: 'ai_assist',
-  councilOfEurope: 'council_of_europe_disclosure',
-} as const;
-
-type AcknowledgementEvent = {
-  type: string;
-  version: string;
-  created_at: string | null;
-};
-
 const toStringArray = (input: unknown): string[] =>
   Array.isArray(input) ? input.filter((value): value is string => typeof value === 'string') : [];
-
-async function fetchAcknowledgementEvents(orgId: string, userId: string): Promise<AcknowledgementEvent[]> {
-  const { data, error } = await supabase
-    .from('consent_events')
-    .select('consent_type, version, created_at, org_id')
-    .eq('user_id', userId)
-    .or(`org_id.eq.${orgId},org_id.is.null`)
-    .in('consent_type', [COMPLIANCE_ACK_TYPES.consent, COMPLIANCE_ACK_TYPES.councilOfEurope])
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    throw error;
-  }
-
-  const rows = (data ?? []) as Array<{ consent_type?: unknown; version?: unknown; created_at?: string | null }>;
-  const events: AcknowledgementEvent[] = [];
-  for (const row of rows) {
-    if (typeof row.consent_type !== 'string' || typeof row.version !== 'string') {
-      continue;
-    }
-    events.push({ type: row.consent_type, version: row.version, created_at: row.created_at ?? null });
-  }
-  return events;
-}
-
-function summariseAcknowledgements(
-  access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>,
-  events: AcknowledgementEvent[],
-) {
-  const latestByType = new Map<string, { version: string; created_at: string | null }>();
-  for (const event of events) {
-    if (!latestByType.has(event.type)) {
-      latestByType.set(event.type, { version: event.version, created_at: event.created_at });
-    }
-  }
-
-  const consentRequirement = access.consent.requirement;
-  const councilRequirement = access.councilOfEurope.requirement;
-  const consentAck = latestByType.get(COMPLIANCE_ACK_TYPES.consent);
-  const councilAck = latestByType.get(COMPLIANCE_ACK_TYPES.councilOfEurope);
-
-  const consentSatisfied =
-    !consentRequirement || consentAck?.version === consentRequirement.version || access.consent.latest?.version === consentRequirement.version;
-  const councilSatisfied =
-    !councilRequirement?.version || councilAck?.version === councilRequirement.version || access.councilOfEurope.acknowledgedVersion === councilRequirement.version;
-
-  return {
-    consent: {
-      requiredVersion: consentRequirement?.version ?? null,
-      acknowledgedVersion: consentAck?.version ?? access.consent.latest?.version ?? null,
-      acknowledgedAt: consentAck?.created_at ?? null,
-      satisfied: consentSatisfied,
-    },
-    councilOfEurope: {
-      requiredVersion: councilRequirement?.version ?? null,
-      acknowledgedVersion: councilAck?.version ?? access.councilOfEurope.acknowledgedVersion ?? null,
-      acknowledgedAt: councilAck?.created_at ?? null,
-      satisfied: councilSatisfied,
-    },
-  };
-}
-
-type ComplianceAssessment = {
-  fria: { required: boolean; reasons: string[] };
-  cepej: { passed: boolean; violations: string[] };
-  statute: { passed: boolean; violations: string[] };
-  disclosures: {
-    consentSatisfied: boolean;
-    councilSatisfied: boolean;
-    missing: string[];
-    requiredConsentVersion: string | null;
-    acknowledgedConsentVersion: string | null;
-    requiredCoeVersion: string | null;
-    acknowledgedCoeVersion: string | null;
-  };
-};
-
-function mergeDisclosuresWithAcknowledgements(
-  assessment: ComplianceAssessment,
-  acknowledgements: ReturnType<typeof summariseAcknowledgements>,
-): ComplianceAssessment['disclosures'] {
-  const missing = new Set(assessment.disclosures.missing);
-  if (!acknowledgements.consent.satisfied) {
-    missing.add('consent');
-  }
-  if (!acknowledgements.councilOfEurope.satisfied) {
-    missing.add('council_of_europe');
-  }
-
-  return {
-    ...assessment.disclosures,
-    consentSatisfied: acknowledgements.consent.satisfied,
-    councilSatisfied: acknowledgements.councilOfEurope.satisfied,
-    missing: Array.from(missing),
-    requiredConsentVersion: acknowledgements.consent.requiredVersion,
-    acknowledgedConsentVersion: acknowledgements.consent.acknowledgedVersion,
-    requiredCoeVersion: acknowledgements.councilOfEurope.requiredVersion,
-    acknowledgedCoeVersion: acknowledgements.councilOfEurope.acknowledgedVersion,
-  };
-}
 
 class ResidencyError extends Error {
   statusCode: number;
@@ -615,14 +513,6 @@ async function refreshFriaEvidence(orgId: string, actorId: string): Promise<void
   }
 }
 
-const extractCountry = (value: unknown): string | null => {
-  if (value && typeof value === 'object' && 'country' in (value as Record<string, unknown>)) {
-    const country = (value as { country?: unknown }).country;
-    return typeof country === 'string' ? country : null;
-  }
-  return null;
-};
-
 function resolveDateRange(startParam?: string, endParam?: string): { start: string; end: string } {
   const now = new Date();
   const end = endParam ? new Date(endParam) : now;
@@ -654,7 +544,7 @@ app.get('/compliance/acknowledgements', async (request, reply) => {
 
   try {
     const access = await authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request);
-    const events = await fetchAcknowledgementEvents(orgHeader, userHeader);
+  const events = await fetchAcknowledgementEvents(supabase, orgHeader, userHeader);
     const acknowledgements = summariseAcknowledgements(access, events);
     return reply.send({ orgId: orgHeader, userId: userHeader, acknowledgements });
   } catch (error) {
@@ -691,7 +581,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     return reply.code(status).send({ error: 'forbidden' });
   }
 
-  const records: Array<{ user_id: string; org_id: string | null; consent_type: string; version: string }> = [];
+  const records: ConsentEventInsert[] = [];
   if (parsed.data.consent) {
     records.push({
       user_id: userHeader,
@@ -710,14 +600,15 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
   }
 
   if (records.length > 0) {
-    const { error } = await supabase.from('consent_events').insert(records);
-    if (error) {
+    try {
+      await recordAcknowledgementEvents(supabase, records);
+    } catch (error) {
       request.log.error({ err: error }, 'compliance_ack_insert_failed');
       return reply.code(500).send({ error: 'compliance_ack_insert_failed' });
     }
   }
 
-  const events = await fetchAcknowledgementEvents(orgHeader, userHeader);
+  const events = await fetchAcknowledgementEvents(supabase, orgHeader, userHeader);
   const acknowledgements = summariseAcknowledgements(access, events);
   return reply.send({ orgId: orgHeader, userId: userHeader, acknowledgements });
 });
@@ -755,7 +646,7 @@ app.get<{
       .eq('org_id', orgHeader)
       .order('created_at', { ascending: false })
       .limit(limit),
-    fetchAcknowledgementEvents(orgHeader, userHeader),
+    fetchAcknowledgementEvents(supabase, orgHeader, userHeader),
   ]);
 
   if (assessmentsResult.error) {
@@ -3279,126 +3170,6 @@ app.post<{
   }
 
   return reply.code(204).send();
-});
-
-app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply) => {
-  const { orgId } = request.query;
-
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
-    const [jurisdictionsResult, mattersResult, complianceResult, hitlResult] = await Promise.all([
-      supabase.from('jurisdictions').select('code, name, eu, ohada').order('name', { ascending: true }),
-      supabase
-        .from('agent_runs')
-        .select('id, question, risk_level, hitl_required, status, started_at, finished_at, jurisdiction_json')
-        .eq('org_id', orgId)
-        .order('started_at', { ascending: false })
-        .limit(8),
-      supabase
-        .from('sources')
-        .select('id, title, publisher, source_url, jurisdiction_code, consolidated, effective_date, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(8),
-      supabase
-        .from('hitl_queue')
-        .select('id, run_id, reason, status, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(8),
-    ]);
-
-    const jurisdictionRows = jurisdictionsResult.data ?? [];
-    const matterRows = mattersResult.data ?? [];
-    const complianceRows = complianceResult.data ?? [];
-    const hitlRows = hitlResult.data ?? [];
-
-    if (jurisdictionsResult.error) {
-      request.log.error({ err: jurisdictionsResult.error }, 'workspace jurisdictions query failed');
-    }
-    if (mattersResult.error) {
-      request.log.error({ err: mattersResult.error }, 'workspace matters query failed');
-    }
-    if (complianceResult.error) {
-      request.log.error({ err: complianceResult.error }, 'workspace compliance query failed');
-    }
-    if (hitlResult.error) {
-      request.log.error({ err: hitlResult.error }, 'workspace hitl query failed');
-    }
-
-    const matterCounts = new Map<string, number>();
-    for (const row of matterRows) {
-      const jurisdiction = extractCountry(row.jurisdiction_json);
-      const key = jurisdiction ?? 'UNK';
-      matterCounts.set(key, (matterCounts.get(key) ?? 0) + 1);
-    }
-
-    const jurisdictions = jurisdictionRows.map((row) => ({
-      code: row.code,
-      name: row.name,
-      eu: row.eu,
-      ohada: row.ohada,
-      matterCount: matterCounts.get(row.code) ?? 0,
-    }));
-
-    const matters = matterRows.map((row) => ({
-      id: row.id,
-      question: row.question,
-      status: row.status,
-      riskLevel: row.risk_level,
-      hitlRequired: row.hitl_required,
-      startedAt: row.started_at,
-      finishedAt: row.finished_at,
-      jurisdiction: extractCountry(row.jurisdiction_json),
-    }));
-
-    const complianceWatch = complianceRows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      publisher: row.publisher,
-      url: row.source_url,
-      jurisdiction: row.jurisdiction_code,
-      consolidated: row.consolidated,
-      effectiveDate: row.effective_date,
-      createdAt: row.created_at,
-    }));
-
-    const hitlInbox = hitlRows.map((row) => ({
-      id: row.id,
-      runId: row.run_id,
-      reason: row.reason,
-      status: row.status,
-      createdAt: row.created_at,
-    }));
-
-    const pendingCount = hitlInbox.filter((item) => item.status === 'pending').length;
-
-    return {
-      jurisdictions,
-      matters,
-      complianceWatch,
-      hitlInbox: {
-        items: hitlInbox,
-        pendingCount,
-      },
-      desk: buildPhaseCWorkspaceDesk(),
-    };
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error }, 'workspace overview failed');
-    return reply.code(500).send({ error: 'workspace_failed' });
-  }
 });
 
 app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply) => {
