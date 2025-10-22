@@ -1,6 +1,5 @@
 // @ts-nocheck
 import Fastify from 'fastify';
-import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
 import { registerCorpusRoutes } from './routes/corpus/index.js';
@@ -48,6 +47,7 @@ export async function createApp() {
         baseUrl: process.env.OPENAI_BASE_URL,
       },
     },
+    rateLimits: {},
   };
 
   await app.register(async (instance) => {
@@ -62,8 +62,6 @@ export async function createApp() {
     await registerVoiceRoutes(instance, context);
     await registerRealtimeRoutes(instance, context);
   }, { prefix: '/api' });
-
-  await registerWorkspaceRoutes(app, context);
 
   return { app, context };
 }

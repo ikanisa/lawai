@@ -8,6 +8,12 @@ const workspaceQuerySchema = z.object({
 
 export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
   app.get<{ Querystring: z.infer<typeof workspaceQuerySchema> }>('/workspace', async (request, reply) => {
+    if (ctx.rateLimits?.workspace) {
+      await ctx.rateLimits.workspace(request, reply);
+      if (reply.sent) {
+        return;
+      }
+    }
     const parse = workspaceQuerySchema.safeParse(request.query);
     if (!parse.success) {
       return reply.code(400).send({ error: 'Invalid query parameters' });

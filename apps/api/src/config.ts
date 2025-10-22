@@ -18,7 +18,16 @@ const envSchema = z.object({
   OPENAI_CHATKIT_BASE_URL: z.string().url().optional(),
   OPENAI_CHATKIT_MODEL: z.string().optional(),
   SUPABASE_URL: z.string().url().default('https://example.supabase.co'),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().default(''),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().default('test-service-role-key'),
+  RATE_LIMIT_PROVIDER: z.enum(['memory', 'redis', 'supabase']).default('memory'),
+  RATE_LIMIT_REDIS_URL: z.string().url().optional(),
+  RATE_LIMIT_SUPABASE_FUNCTION: z.string().default('enforce_rate_limit'),
+  RATE_LIMIT_RUNS_LIMIT: z.coerce.number().default(60),
+  RATE_LIMIT_RUNS_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_COMPLIANCE_LIMIT: z.coerce.number().default(90),
+  RATE_LIMIT_COMPLIANCE_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_WORKSPACE_LIMIT: z.coerce.number().default(90),
+  RATE_LIMIT_WORKSPACE_WINDOW_MS: z.coerce.number().default(60_000),
   JURIS_ALLOWLIST_JSON: z.string().optional(),
   AGENT_STUB_MODE: z
     .enum(['auto', 'always', 'never'])
@@ -50,11 +59,18 @@ function assertProductionEnv(e: Env) {
     if (!e.OPENAI_API_KEY) missing.push('OPENAI_API_KEY');
     if (!e.SUPABASE_URL) missing.push('SUPABASE_URL');
     if (!e.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (e.RATE_LIMIT_PROVIDER === 'redis' && !e.RATE_LIMIT_REDIS_URL) {
+      missing.push('RATE_LIMIT_REDIS_URL');
+    }
 
     // Basic placeholder detection
     if (e.SUPABASE_URL && e.SUPABASE_URL.includes('example')) placeholders.push('SUPABASE_URL');
     if (e.OPENAI_API_KEY && /CHANGEME|placeholder|test-openai-key/i.test(e.OPENAI_API_KEY)) placeholders.push('OPENAI_API_KEY');
-    if (e.SUPABASE_SERVICE_ROLE_KEY && /placeholder|service-role-test/i.test(e.SUPABASE_SERVICE_ROLE_KEY)) placeholders.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (
+      e.SUPABASE_SERVICE_ROLE_KEY &&
+      /placeholder|service-role-test|^test-service-role-key$/i.test(e.SUPABASE_SERVICE_ROLE_KEY)
+    )
+      placeholders.push('SUPABASE_SERVICE_ROLE_KEY');
 
     if (missing.length || placeholders.length) {
       const details = [
