@@ -14,8 +14,8 @@ const envSchema = z.object({
   SUMMARISER_MODEL: z.string().optional(),
   MAX_SUMMARY_CHARS: z.coerce.number().optional(),
   OPENAI_VECTOR_STORE_AUTHORITIES_ID: z.string().min(1).default('vs_test'),
-  OPENAI_CHATKIT_PROJECT: z.string().optional(),
-  OPENAI_CHATKIT_SECRET: z.string().optional(),
+  OPENAI_CHATKIT_PROJECT: z.string().min(1).optional(),
+  OPENAI_CHATKIT_SECRET: z.string().min(1).optional(),
   OPENAI_CHATKIT_BASE_URL: z.string().url().optional(),
   OPENAI_CHATKIT_MODEL: z.string().optional(),
   SUPABASE_URL: z.string().url().default('https://example.supabase.co'),
@@ -69,6 +69,8 @@ function assertProductionEnv(e: Env) {
     if (!e.OPENAI_API_KEY) missing.push('OPENAI_API_KEY');
     if (!e.SUPABASE_URL) missing.push('SUPABASE_URL');
     if (!e.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (!e.OPENAI_CHATKIT_PROJECT) missing.push('OPENAI_CHATKIT_PROJECT');
+    if (!e.OPENAI_CHATKIT_SECRET) missing.push('OPENAI_CHATKIT_SECRET');
 
     // Basic placeholder detection
     if (
@@ -86,6 +88,12 @@ function assertProductionEnv(e: Env) {
       SUPABASE_SERVICE_ROLE_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(e.SUPABASE_SERVICE_ROLE_KEY))
     )
       placeholders.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (e.OPENAI_CHATKIT_PROJECT && e.OPENAI_CHATKIT_PROJECT.trim().toLowerCase() === 'example') {
+      placeholders.push('OPENAI_CHATKIT_PROJECT');
+    }
+    if (e.OPENAI_CHATKIT_SECRET && /placeholder|example|changeme/i.test(e.OPENAI_CHATKIT_SECRET)) {
+      placeholders.push('OPENAI_CHATKIT_SECRET');
+    }
 
     if (missing.length || placeholders.length) {
       const details = [
