@@ -39,6 +39,7 @@ const envSchema = z.object({
   RED_TEAM_USER_ID: z.string().optional(),
   SUPABASE_PROJECT_REF: z.string().optional(),
   SUPABASE_DB_URL: z.string().optional(),
+  EMBEDDING_DIMENSION: z.coerce.number().int().positive().max(3072).optional(),
 });
 
 export const serverEnv = envSchema.parse(process.env);

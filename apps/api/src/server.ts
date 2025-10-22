@@ -80,6 +80,7 @@ async function embedQuery(text: string): Promise<number[]> {
     const response = await openai.embeddings.create({
       model: env.EMBEDDING_MODEL,
       input: text,
+      ...(env.EMBEDDING_DIMENSION ? { dimensions: env.EMBEDDING_DIMENSION } : {}),
     });
 
     const embedding = response.data?.[0]?.embedding;

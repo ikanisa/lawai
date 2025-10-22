@@ -3,6 +3,7 @@ const decoder = new TextDecoder('utf-8', { fatal: false, ignoreBOM: true });
 export interface EmbeddingEnv {
   OPENAI_API_KEY: string;
   EMBEDDING_MODEL: string;
+  EMBEDDING_DIMENSION?: number;
 }
 
 export interface Chunk {
@@ -61,17 +62,18 @@ export async function embedTexts(inputs: string[], env: EmbeddingEnv): Promise<n
     return [];
   }
 
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: env.EMBEDDING_MODEL,
-      input: inputs,
-    }),
-  });
+    const response = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: env.EMBEDDING_MODEL,
+        input: inputs,
+        ...(env.EMBEDDING_DIMENSION ? { dimensions: env.EMBEDDING_DIMENSION } : {}),
+      }),
+    });
 
   const json = await response.json();
   if (!response.ok) {

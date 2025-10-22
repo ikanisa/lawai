@@ -234,6 +234,7 @@ async function generateEmbeddings(
   texts: string[],
   openaiApiKey: string,
   model: string,
+  dimensions: number | undefined,
   logger?: SummarisationLogger,
 ): Promise<number[][]> {
   const embeddings: number[][] = [];
@@ -244,7 +245,11 @@ async function generateEmbeddings(
     const slice = texts.slice(index, index + batchSize);
     let response;
     try {
-      response = await openai.embeddings.create({ model, input: slice });
+      response = await openai.embeddings.create({
+        model,
+        input: slice,
+        ...(dimensions ? { dimensions } : {}),
+      });
     } catch (error) {
       await logOpenAIDebugSummary(openai, 'document_embedding_batch', error, logger);
       const message = error instanceof Error ? error.message : 'Échec de génération des embeddings';
@@ -324,7 +329,13 @@ export async function summariseDocumentFromPayload(params: {
     const chunks = chunkText(plainText);
     const inputs = chunks.map((chunk) => chunk.content);
     const embeddings = inputs.length
-      ? await generateEmbeddings(inputs, openaiApiKey, embeddingModel ?? env.EMBEDDING_MODEL, logger)
+      ? await generateEmbeddings(
+          inputs,
+          openaiApiKey,
+          embeddingModel ?? env.EMBEDDING_MODEL,
+          env.EMBEDDING_DIMENSION,
+          logger,
+        )
       : [];
 
     return {

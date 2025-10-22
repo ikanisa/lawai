@@ -2043,6 +2043,7 @@ async function embedQuestionForHybrid(question: string): Promise<number[] | null
     body: JSON.stringify({
       model: env.EMBEDDING_MODEL,
       input: question,
+      ...(env.EMBEDDING_DIMENSION ? { dimensions: env.EMBEDDING_DIMENSION } : {}),
     }),
   });
 
