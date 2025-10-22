@@ -25,7 +25,7 @@ export const OFFICIAL_DOMAIN_REGISTRY: Readonly<Record<string, readonly string[]
 
 export const OFFICIAL_DOMAIN_ALLOWLIST: readonly string[] = Object.keys(OFFICIAL_DOMAIN_REGISTRY);
 
-export const DEFAULT_WEB_SEARCH_ALLOWLIST_MAX = 20;
+export const DEFAULT_WEB_SEARCH_ALLOWLIST_MAX = OFFICIAL_DOMAIN_ALLOWLIST.length;
 
 type AllowlistInput = readonly unknown[] | null | undefined;
 

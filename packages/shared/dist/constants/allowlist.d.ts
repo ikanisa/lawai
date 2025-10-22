@@ -1,6 +1,6 @@
 export declare const OFFICIAL_DOMAIN_REGISTRY: Readonly<Record<string, readonly string[]>>;
 export declare const OFFICIAL_DOMAIN_ALLOWLIST: readonly string[];
-export declare const DEFAULT_WEB_SEARCH_ALLOWLIST_MAX = 20;
+export declare const DEFAULT_WEB_SEARCH_ALLOWLIST_MAX: number;
 export interface BuildWebSearchAllowlistOptions {
     fallback: readonly string[];
     override?: readonly unknown[] | null | undefined;

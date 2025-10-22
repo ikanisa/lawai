@@ -23,7 +23,7 @@ export const OFFICIAL_DOMAIN_REGISTRY = {
     'cima-afrique.org': ['CIMA'],
 };
 export const OFFICIAL_DOMAIN_ALLOWLIST = Object.keys(OFFICIAL_DOMAIN_REGISTRY);
-export const DEFAULT_WEB_SEARCH_ALLOWLIST_MAX = 20;
+export const DEFAULT_WEB_SEARCH_ALLOWLIST_MAX = OFFICIAL_DOMAIN_ALLOWLIST.length;
 const normalizeDomains = (domains) => {
     if (!domains || domains.length === 0) {
         return [];
