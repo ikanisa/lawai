@@ -3,9 +3,39 @@
 import { Workbox } from 'workbox-window';
 
 const DIGEST_KEY = 'avocat-ai-digest-enabled';
+const PWA_FLAG_KEY = 'NEXT_PUBLIC_ENABLE_PWA';
 let registrationPromise: Promise<ServiceWorkerRegistration> | null = null;
 
+function readPwaFlag(): string | undefined {
+  const envFromProcess =
+    typeof process !== 'undefined' ? process.env?.[PWA_FLAG_KEY] : undefined;
+  if (typeof envFromProcess === 'string') {
+    return envFromProcess;
+  }
+
+  const globalEnv = (globalThis as { __env?: Record<string, string | undefined> }).__env;
+  return globalEnv?.[PWA_FLAG_KEY];
+}
+
+function toBooleanFlag(value: string | undefined): boolean {
+  if (!value) return false;
+
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on', 'enabled'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off', 'disabled'].includes(normalized)) return false;
+  return false;
+}
+
+export function isPwaFeatureEnabled(): boolean {
+  return toBooleanFlag(readPwaFlag());
+}
+
 export function registerPwa() {
+  if (!isPwaFeatureEnabled()) {
+    registrationPromise = null;
+    return;
+  }
+
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return;
   }
