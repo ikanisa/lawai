@@ -2,11 +2,11 @@
 cmds = [
   "corepack enable",
   "corepack prepare pnpm@8.15.4 --activate",
-  "npm ci --workspaces --include-workspace-root"
+  "pnpm install --frozen-lockfile"
 ]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["pnpm build"]
 
 [start]
-cmd = "npm start"
+cmd = "pnpm start"

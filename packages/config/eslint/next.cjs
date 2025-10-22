@@ -1,6 +1,7 @@
+const path = require('node:path');
 const { createConfig } = require('./shared.cjs');
 
-function createNodeConfig(options = {}) {
+function createNextConfig(options = {}) {
   const {
     tsconfigPath,
     extraExtends = [],
@@ -11,12 +12,14 @@ function createNodeConfig(options = {}) {
   } = options;
 
   if (!tsconfigPath) {
-    throw new Error('createNodeConfig: tsconfigPath is required');
+    throw new Error('createNextConfig: tsconfigPath is required');
   }
 
+  const projectDir = path.dirname(path.resolve(tsconfigPath));
+
   const baseExtends = typeAware
-    ? ['eslint:recommended', 'plugin:@typescript-eslint/recommended-type-checked']
-    : ['eslint:recommended', 'plugin:@typescript-eslint/recommended'];
+    ? ['next/core-web-vitals', 'plugin:@typescript-eslint/recommended-type-checked']
+    : ['next/core-web-vitals', 'plugin:@typescript-eslint/recommended'];
 
   const defaultRules = {
     '@typescript-eslint/ban-ts-comment': 'off',
@@ -24,13 +27,15 @@ function createNodeConfig(options = {}) {
     '@typescript-eslint/no-explicit-any': 'off',
     '@typescript-eslint/no-unused-vars': 'off',
     'no-empty': ['error', { allowEmptyCatch: true }],
+    'react-hooks/exhaustive-deps': 'off',
+    'react-hooks/rules-of-hooks': 'off',
   };
 
   return createConfig({
     tsconfigPath,
-    env: { node: true },
+    env: { browser: true, node: true },
     extends: [...baseExtends, ...extraExtends],
-    ignore: ['coverage', ...extraIgnore],
+    ignore: ['.next', 'out', 'coverage', ...extraIgnore],
     overrides,
     rules: typeAware
       ? {
@@ -39,8 +44,13 @@ function createNodeConfig(options = {}) {
           ...rules,
         }
       : { ...defaultRules, ...rules },
+    settings: {
+      next: {
+        rootDir: [projectDir],
+      },
+    },
     typeAware,
   });
 }
 
-module.exports = createNodeConfig;
+module.exports = createNextConfig;

@@ -1,0 +1,15 @@
+{
+  "name": "@avocat-ai/tsconfig",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "base.json",
+    "node.json",
+    "next.json"
+  ],
+  "exports": {
+    "./base": "./base.json",
+    "./node": "./node.json",
+    "./next": "./next.json"
+  }
+}

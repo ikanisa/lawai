@@ -1,8 +1,3 @@
 {
-  "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    "declaration": true,
-    "declarationMap": true,
-    "composite": true
-  }
+  "extends": "@avocat-ai/tsconfig/node.json"
 }

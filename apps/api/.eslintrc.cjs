@@ -1,3 +1,4 @@
-const createNodeConfig = require('../../packages/config/eslint/node.cjs');
+const path = require('node:path');
+const createNodeConfig = require('@avocat-ai/eslint-config/node');
 
-module.exports = createNodeConfig({ tsconfigPath: __dirname + '/tsconfig.json' });
+module.exports = createNodeConfig({ tsconfigPath: path.join(__dirname, 'tsconfig.json') });
