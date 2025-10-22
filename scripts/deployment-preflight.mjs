@@ -67,12 +67,11 @@ async function main() {
     checkEnv();
     run('npm --version');
     run('npm ci --prefer-offline');
-    const token = process.env.VERCEL_TOKEN ? ` --token=${process.env.VERCEL_TOKEN}` : '';
-    run(`npx vercel pull --yes --environment=preview${token}`);
-    run(`npx vercel build${token}`);
-    console.log('Preflight PASS');
+    run('npm run build --workspace @avocat-ai/web');
+    run('npm run build --workspace @apps/api');
+    console.log('Deployment preflight PASS');
   } catch (error) {
-    console.error('\nPreflight FAILED');
+    console.error('\nDeployment preflight FAILED');
     if (error instanceof Error) {
       console.error(error.message);
     } else {

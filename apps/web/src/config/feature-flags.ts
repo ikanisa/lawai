@@ -28,7 +28,7 @@ export function getAdminPanelMode(): AdminPanelMode {
 }
 
 export function getAdminEnvironmentLabel(): 'development' | 'staging' | 'production' {
-  const env = serverEnv.APP_ENV ?? serverEnv.VERCEL_ENV ?? serverEnv.NODE_ENV;
+  const env = serverEnv.APP_ENV ?? serverEnv.DEPLOY_ENV ?? serverEnv.NODE_ENV;
   if (!env) return 'development';
   const normalized = env.toLowerCase();
   if (['production', 'prod'].includes(normalized)) return 'production';

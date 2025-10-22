@@ -1,16 +1,16 @@
-# Vercel Deployment Plan
+# Deployment Plan
 
 ## Monorepo overview
 - **Root directory:** `/` (npm workspaces)
 - **Package manager:** npm 11.4.2 (respect `package-lock.json`)
 - **Node runtime:** 20.x (`.nvmrc` pins 20.11.0, engines `>=20 <21`)
 - **Install command:** `npm ci`
-- **Corepack:** enabled automatically by Vercel for npm >= 7
+- **Corepack:** enabled automatically for npm >= 7
 
 ## Apps
 
 ### @avocat-ai/web (Next.js)
-- **Vercel project:** `apps/web`
+- **Hosting project:** `apps/web`
 - **rootDirectory:** `apps/web`
 - **framework:** Next.js 14 (App Router + custom PWA scripts)
 - **installCommand:** `npm install`
@@ -20,7 +20,7 @@
 - **nodeVersion:** 20.x
 - **env requirements:** see `apps/web/.env.example`
 - **notes:**
-  - `next.config.js` exports `output: 'standalone'` for Vercel serverless.
+  - `next.config.js` exports `output: 'standalone'` for serverless runtimes.
   - Service worker preparation runs via npm script (prebuild hook). Ensure `PUBLIC_URL` not required.
 
 ### @apps/api (Fastify)
@@ -29,15 +29,15 @@
 - **installCommand:** `npm install`
 - **buildCommand:** `npm run build --workspace @apps/api`
 - **outputDirectory:** `dist`
-- **deployment target:** Vercel Serverless Functions (Node 20)
+- **deployment target:** Serverless functions (Node 20)
 - **notes:**
   - Requires environment variables validated in `apps/api/src/env.server.ts`.
-  - Consider Vercel Edge Config only for static assets (not part of this audit).
-  - Use `vercel.json` (root) rewrites if API shared with Next frontend.
+  - Configure edge key-value store only for static assets (not part of this audit).
+  - Use platform rewrites if API shared with Next frontend.
 
 ### @apps/ops (CLI / workers)
 - **rootDirectory:** `apps/ops`
-- **deployment target:** Not deployed to Vercel. Run via CI / cron.
+- **deployment target:** Not deployed to hosting provider. Run via CI / cron.
 - **notes:** Provide `.env.example` and validation for local + CI usage.
 
 ### @apps/pwa (Next.js demo)
@@ -45,11 +45,11 @@
 - **notes:** Secondary app, not configured for automated deploy yet. Follow same pattern as `@avocat-ai/web` when promoted.
 
 ### @apps/edge (Deno)
-- Not currently mapped to a Vercel project. Requires Vercel Edge Functions adapter when activated.
+- Not currently mapped to a hosting project. Requires edge functions adapter when activated.
 
 ## Global configuration recommendations
-- Add `apps/web/vercel.json` to pin build/route config for the primary Next.js project.
-- Configure Vercel project to use root `package.json` (npm) with `rootDirectory=apps/web`.
-- Provide CI job (`.github/workflows/vercel-preview-build.yml`) to mirror `vercel build` using Node 20.
+- Add platform routing config for the primary Next.js project (see `apps/web/deployment.config.json`).
+- Configure hosting project to use root `package.json` (npm) with `rootDirectory=apps/web`.
+- Provide CI job (`.github/workflows/preview-build.yml`) to mirror production builds using Node 20.
 - Enforce environment schema validation via app-specific `env` modules.
-- Use `scripts/vercel-preflight.mjs` before releases to confirm environment parity.
+- Use `scripts/deployment-preflight.mjs` before releases to confirm environment parity.
