@@ -52,6 +52,16 @@ packages/
    pnpm dev:web
    ```
 
+## Deployment checklist
+
+Follow this short list before promoting a change to production. A detailed walkthrough lives in [docs/deployment/vercel.md](docs/deployment/vercel.md).
+
+1. Provision or refresh Supabase by running `npm run db:migrate` and `npm run ops:foundation` against the target project.
+2. Populate the Vercel environment variables (server secrets and `NEXT_PUBLIC_*` settings) exactly as described in the deployment guide.
+3. Run `pnpm --filter @apps/pwa lint`, `pnpm --filter @apps/pwa test`, and `pnpm --filter @apps/pwa build` locally (or the equivalent `npm run ... --workspace @apps/pwa` commands); fix any failures before opening a PR.
+4. Check that the **Vercel Preview Build** GitHub workflow is green on your branch.
+5. Trigger `vercel deploy --prebuilt` (or let the GitHub → Vercel integration promote the passing build) and smoke-test `/healthz` plus the admin panel.
+
 ### Assembler les fondations en une étape
 
 Lorsque vous préparez un nouvel environnement (local ou cloud), exécutez :

@@ -1,9 +1,21 @@
+import { Fragment, type ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { PlanDrawer, type ToolLogEntry } from "@/components/agent/PlanDrawer";
 import type { ResearchPlan } from "@/lib/data/research";
-import { UIStateProvider } from "@/lib/state/ui-store";
+
+vi.mock("@/lib/state/ui-store", async () => {
+  const mockState = {
+    planDrawerOpen: true,
+    setPlanDrawerOpen: vi.fn()
+  };
+
+  return {
+    useUIState: (selector: (state: typeof mockState) => unknown) => selector(mockState),
+    UIStateProvider: ({ children }: { children: ReactNode }) => <Fragment>{children}</Fragment>
+  };
+});
 
 const plan: ResearchPlan = {
   id: "plan-1",
@@ -48,11 +60,7 @@ const toolLogs: ToolLogEntry[] = [
 
 describe("PlanDrawer", () => {
   it("renders the active plan with risk badges and tool logs", () => {
-    render(
-      <UIStateProvider initialState={{ planDrawerOpen: true }}>
-        <PlanDrawer plan={plan} toolLogs={toolLogs} />
-      </UIStateProvider>
-    );
+    render(<PlanDrawer plan={plan} toolLogs={toolLogs} />);
 
     expect(screen.getByRole("dialog", { name: /plan d'investigation de l'agent/i })).toBeInTheDocument();
     expect(screen.getByText("Analyse IRAC complète")).toBeInTheDocument();

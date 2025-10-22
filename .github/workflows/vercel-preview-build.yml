@@ -11,8 +11,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.4
+          run_install: false
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --recursive
+      - name: Lint @apps/pwa
+        run: pnpm --filter @apps/pwa lint
+      - name: Test @apps/pwa
+        run: pnpm --filter @apps/pwa test
+      - name: Build @apps/pwa
+        run: pnpm --filter @apps/pwa build
       - name: Pull Vercel environment (preview)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
