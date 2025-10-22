@@ -13,6 +13,28 @@ export const API_BASE = clientEnv.NEXT_PUBLIC_API_BASE_URL;
 export const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000000';
 
+const ALLOW_DEMO_FALLBACK = process.env.NODE_ENV !== 'production';
+
+function resolveOrgId(orgId?: string | null): string {
+  if (orgId && orgId.trim()) {
+    return orgId;
+  }
+  if (ALLOW_DEMO_FALLBACK) {
+    return DEMO_ORG_ID;
+  }
+  throw new Error('org_id_required');
+}
+
+function resolveUserId(userId?: string | null): string {
+  if (userId && userId.trim()) {
+    return userId;
+  }
+  if (ALLOW_DEMO_FALLBACK) {
+    return DEMO_USER_ID;
+  }
+  throw new Error('user_id_required');
+}
+
 export type VerificationSeverity = 'info' | 'warning' | 'critical';
 
 export interface VerificationNote {
@@ -452,14 +474,16 @@ export async function requestHitlReview(
 export async function sendTelemetryEvent(
   eventName: string,
   payload?: Record<string, unknown>,
-  orgId: string = DEMO_ORG_ID,
-  userId: string = DEMO_USER_ID,
+  orgId?: string,
+  userId?: string,
 ): Promise<void> {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(userId);
   try {
     await fetch(`${API_BASE}/telemetry`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orgId, userId, eventName, payload }),
+      body: JSON.stringify({ orgId: resolvedOrgId, userId: resolvedUserId, eventName, payload }),
     });
   } catch (error) {
     console.warn('telemetry_event_failed', eventName, error);
@@ -655,10 +679,15 @@ export interface GovernanceMetricsResponse {
   }>;
 }
 
-export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceMetricsResponse> {
-  const response = await fetch(`${API_BASE}/metrics/governance?orgId=${encodeURIComponent(orgId)}`, {
+export async function fetchGovernanceMetrics(
+  orgId?: string,
+  options?: { userId?: string },
+): Promise<GovernanceMetricsResponse> {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  const response = await fetch(`${API_BASE}/metrics/governance?orgId=${encodeURIComponent(resolvedOrgId)}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': resolvedUserId,
     },
   });
   if (!response.ok) {
@@ -667,10 +696,15 @@ export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceM
   return response.json();
 }
 
-export async function fetchRetrievalMetrics(orgId: string): Promise<RetrievalMetricsResponse> {
-  const response = await fetch(`${API_BASE}/metrics/retrieval?orgId=${encodeURIComponent(orgId)}`, {
+export async function fetchRetrievalMetrics(
+  orgId?: string,
+  options?: { userId?: string },
+): Promise<RetrievalMetricsResponse> {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  const response = await fetch(`${API_BASE}/metrics/retrieval?orgId=${encodeURIComponent(resolvedOrgId)}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': resolvedUserId,
     },
   });
 
@@ -704,10 +738,15 @@ export interface EvaluationMetricsResponse {
   }>;
 }
 
-export async function fetchEvaluationMetrics(orgId: string): Promise<EvaluationMetricsResponse> {
-  const response = await fetch(`${API_BASE}/metrics/evaluations?orgId=${encodeURIComponent(orgId)}`, {
+export async function fetchEvaluationMetrics(
+  orgId?: string,
+  options?: { userId?: string },
+): Promise<EvaluationMetricsResponse> {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  const response = await fetch(`${API_BASE}/metrics/evaluations?orgId=${encodeURIComponent(resolvedOrgId)}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': resolvedUserId,
     },
   });
 
@@ -718,11 +757,17 @@ export async function fetchEvaluationMetrics(orgId: string): Promise<EvaluationM
   return response.json();
 }
 
-export async function fetchSloMetrics(orgId: string, limit = 6): Promise<SloMetricsResponse> {
-  const params = new URLSearchParams({ orgId, limit: String(limit) });
+export async function fetchSloMetrics(
+  orgId?: string,
+  limit = 6,
+  options?: { userId?: string },
+): Promise<SloMetricsResponse> {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  const params = new URLSearchParams({ orgId: resolvedOrgId, limit: String(limit) });
   const response = await fetch(`${API_BASE}/metrics/slo?${params.toString()}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': resolvedUserId,
     },
   });
 
@@ -734,7 +779,8 @@ export async function fetchSloMetrics(orgId: string, limit = 6): Promise<SloMetr
 }
 
 export async function fetchSnapshotDiff(orgId: string, snapshotId: string, compareTo: string) {
-  const params = new URLSearchParams({ orgId, snapshotId, compareTo });
+  const resolvedOrgId = resolveOrgId(orgId);
+  const params = new URLSearchParams({ orgId: resolvedOrgId, snapshotId, compareTo });
   const response = await fetch(`${API_BASE}/corpus/diff?${params.toString()}`);
   if (!response.ok) {
     throw new Error('Unable to compute diff');
@@ -766,9 +812,14 @@ export interface SsoConnectionResponse {
   }>;
 }
 
-export async function fetchSsoConnections(orgId: string): Promise<SsoConnectionResponse> {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+export async function fetchSsoConnections(
+  orgId?: string,
+  options?: { userId?: string },
+): Promise<SsoConnectionResponse> {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  const response = await fetch(`${API_BASE}/admin/org/${resolvedOrgId}/sso`, {
+    headers: { 'x-user-id': resolvedUserId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SSO connections');
@@ -777,7 +828,7 @@ export async function fetchSsoConnections(orgId: string): Promise<SsoConnectionR
 }
 
 export async function saveSsoConnection(
-  orgId: string,
+  orgId?: string,
   input: {
     id?: string;
     provider: 'saml' | 'oidc';
@@ -785,12 +836,16 @@ export async function saveSsoConnection(
     acsUrl?: string;
     entityId?: string;
     defaultRole?: string;
+    userId?: string;
   },
 ) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const { userId, ...payload } = input;
+  const resolvedUserId = resolveUserId(userId);
+  const response = await fetch(`${API_BASE}/admin/org/${resolvedOrgId}/sso`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
-    body: JSON.stringify({ ...input, metadata: {}, groupMappings: {} }),
+    headers: { 'Content-Type': 'application/json', 'x-user-id': resolvedUserId },
+    body: JSON.stringify({ ...payload, metadata: {}, groupMappings: {} }),
   });
   if (!response.ok) {
     throw new Error('Unable to save SSO connection');
@@ -798,10 +853,15 @@ export async function saveSsoConnection(
   return response.json();
 }
 
-export async function removeSsoConnection(orgId: string, connectionId: string) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso/${connectionId}`, {
+export async function removeSsoConnection(orgId?: string, connectionId?: string, options?: { userId?: string }) {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  if (!connectionId) {
+    throw new Error('connection_id_required');
+  }
+  const response = await fetch(`${API_BASE}/admin/org/${resolvedOrgId}/sso/${connectionId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': resolvedUserId },
   });
   if (!response.ok) {
     throw new Error('Unable to delete SSO connection');
@@ -814,9 +874,11 @@ export interface ScimTokenResponse {
   expiresAt?: string | null;
 }
 
-export async function fetchScimTokens(orgId: string) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+export async function fetchScimTokens(orgId?: string, options?: { userId?: string }) {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  const response = await fetch(`${API_BASE}/admin/org/${resolvedOrgId}/scim-tokens`, {
+    headers: { 'x-user-id': resolvedUserId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SCIM tokens');
@@ -824,10 +886,20 @@ export async function fetchScimTokens(orgId: string) {
   return response.json();
 }
 
-export async function createScimAccessToken(orgId: string, name: string, expiresAt?: string | null) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
+export async function createScimAccessToken(
+  orgId?: string,
+  name?: string,
+  expiresAt?: string | null,
+  options?: { userId?: string },
+) {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  if (!name) {
+    throw new Error('token_name_required');
+  }
+  const response = await fetch(`${API_BASE}/admin/org/${resolvedOrgId}/scim-tokens`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': resolvedUserId },
     body: JSON.stringify({ name, expiresAt }),
   });
   if (!response.ok) {
@@ -836,10 +908,15 @@ export async function createScimAccessToken(orgId: string, name: string, expires
   return response.json() as Promise<ScimTokenResponse>;
 }
 
-export async function deleteScimAccessToken(orgId: string, tokenId: string) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens/${tokenId}`, {
+export async function deleteScimAccessToken(orgId?: string, tokenId?: string, options?: { userId?: string }) {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  if (!tokenId) {
+    throw new Error('token_id_required');
+  }
+  const response = await fetch(`${API_BASE}/admin/org/${resolvedOrgId}/scim-tokens/${tokenId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': resolvedUserId },
   });
   if (!response.ok) {
     throw new Error('Unable to delete SCIM token');
@@ -847,17 +924,19 @@ export async function deleteScimAccessToken(orgId: string, tokenId: string) {
 }
 
 export async function fetchComplianceStatus(
-  orgId: string,
+  orgId?: string,
   options?: { userId?: string; limit?: number },
 ): Promise<ComplianceStatusResponse> {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
   const params = new URLSearchParams();
   if (options?.limit) {
     params.set('limit', String(options.limit));
   }
   const response = await fetch(`${API_BASE}/compliance/status?${params.toString()}`, {
     headers: {
-      'x-user-id': options?.userId ?? DEMO_USER_ID,
-      'x-org-id': orgId,
+      'x-user-id': resolvedUserId,
+      'x-org-id': resolvedOrgId,
     },
   });
   if (!response.ok) {
@@ -867,13 +946,15 @@ export async function fetchComplianceStatus(
 }
 
 export async function acknowledgeCompliance(
-  orgId: string,
+  orgId?: string,
   input: {
     consent?: { type: string; version: string } | null;
     councilOfEurope?: { version: string } | null;
     userId?: string;
   },
 ): Promise<ComplianceStatusResponse> {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(input.userId);
   const payload: Record<string, unknown> = {};
   if (input.consent) {
     payload.consent = input.consent;
@@ -885,8 +966,8 @@ export async function acknowledgeCompliance(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': input.userId ?? DEMO_USER_ID,
-      'x-org-id': orgId,
+      'x-user-id': resolvedUserId,
+      'x-org-id': resolvedOrgId,
     },
     body: JSON.stringify(payload),
   });
@@ -896,10 +977,12 @@ export async function acknowledgeCompliance(
   return response.json();
 }
 
-export async function fetchAuditEvents(orgId: string, limit = 50) {
+export async function fetchAuditEvents(orgId?: string, limit = 50, options?: { userId?: string }) {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
   const response = await fetch(
-    `${API_BASE}/admin/org/${orgId}/audit-events?limit=${encodeURIComponent(String(limit))}`,
-    { headers: { 'x-user-id': DEMO_USER_ID } },
+    `${API_BASE}/admin/org/${resolvedOrgId}/audit-events?limit=${encodeURIComponent(String(limit))}`,
+    { headers: { 'x-user-id': resolvedUserId } },
   );
   if (!response.ok) {
     throw new Error('Unable to fetch audit events');
@@ -908,16 +991,18 @@ export async function fetchAuditEvents(orgId: string, limit = 50) {
 }
 
 export async function fetchDeviceSessions(
-  orgId: string,
+  orgId?: string,
   options?: { includeRevoked?: boolean; limit?: number; userId?: string },
 ): Promise<{ sessions: DeviceSession[] }> {
-  const params = new URLSearchParams({ orgId });
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  const params = new URLSearchParams({ orgId: resolvedOrgId });
   if (options?.includeRevoked) params.set('includeRevoked', 'true');
   if (options?.limit) params.set('limit', String(options.limit));
   if (options?.userId) params.set('userId', options.userId);
 
   const response = await fetch(`${API_BASE}/security/devices?${params.toString()}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': resolvedUserId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch device sessions');
@@ -950,14 +1035,24 @@ export async function fetchDeviceSessions(
   return { sessions };
 }
 
-export async function revokeDeviceSession(orgId: string, sessionId: string, reason?: string) {
+export async function revokeDeviceSession(
+  orgId?: string,
+  sessionId?: string,
+  reason?: string,
+  options?: { userId?: string },
+) {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  if (!sessionId) {
+    throw new Error('session_id_required');
+  }
   const response = await fetch(`${API_BASE}/security/devices/revoke`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': resolvedUserId,
     },
-    body: JSON.stringify({ orgId, sessionId, reason: reason ?? null }),
+    body: JSON.stringify({ orgId: resolvedOrgId, sessionId, reason: reason ?? null }),
   });
 
   if (!response.ok) {
@@ -967,9 +1062,11 @@ export async function revokeDeviceSession(orgId: string, sessionId: string, reas
   return response.json() as Promise<{ session: { id: string; revokedAt: string } }>;
 }
 
-export async function fetchIpAllowlist(orgId: string) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+export async function fetchIpAllowlist(orgId?: string, options?: { userId?: string }) {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  const response = await fetch(`${API_BASE}/admin/org/${resolvedOrgId}/ip-allowlist`, {
+    headers: { 'x-user-id': resolvedUserId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch IP allowlist');
@@ -978,16 +1075,21 @@ export async function fetchIpAllowlist(orgId: string) {
 }
 
 export async function upsertIpAllowlistEntry(
-  orgId: string,
-  input: { id?: string; cidr: string; description?: string | null },
+  orgId?: string,
+  input?: { id?: string; cidr: string; description?: string | null; userId?: string },
 ) {
+  const resolvedOrgId = resolveOrgId(orgId);
+  if (!input) {
+    throw new Error('ip_allowlist_payload_required');
+  }
+  const resolvedUserId = resolveUserId(input.userId);
   const url = input.id
-    ? `${API_BASE}/admin/org/${orgId}/ip-allowlist/${input.id}`
-    : `${API_BASE}/admin/org/${orgId}/ip-allowlist`;
+    ? `${API_BASE}/admin/org/${resolvedOrgId}/ip-allowlist/${input.id}`
+    : `${API_BASE}/admin/org/${resolvedOrgId}/ip-allowlist`;
   const method = input.id ? 'PATCH' : 'POST';
   const response = await fetch(url, {
     method,
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': resolvedUserId },
     body: JSON.stringify({ cidr: input.cidr, description: input.description ?? null }),
   });
   if (!response.ok) {
@@ -996,10 +1098,15 @@ export async function upsertIpAllowlistEntry(
   return response.json();
 }
 
-export async function deleteIpAllowlistEntry(orgId: string, entryId: string) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist/${entryId}`, {
+export async function deleteIpAllowlistEntry(orgId?: string, entryId?: string, options?: { userId?: string }) {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  if (!entryId) {
+    throw new Error('ip_entry_id_required');
+  }
+  const response = await fetch(`${API_BASE}/admin/org/${resolvedOrgId}/ip-allowlist/${entryId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': resolvedUserId },
   });
   if (!response.ok) {
     throw new Error('Unable to delete IP entry');
@@ -1059,9 +1166,11 @@ export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOv
   return response.json();
 }
 
-export async function getOperationsOverview(orgId: string): Promise<OperationsOverviewResponse> {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/operations/overview`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+export async function getOperationsOverview(orgId?: string, options?: { userId?: string }): Promise<OperationsOverviewResponse> {
+  const resolvedOrgId = resolveOrgId(orgId);
+  const resolvedUserId = resolveUserId(options?.userId);
+  const response = await fetch(`${API_BASE}/admin/org/${resolvedOrgId}/operations/overview`, {
+    headers: { 'x-user-id': resolvedUserId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch operations overview');
