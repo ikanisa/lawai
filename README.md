@@ -27,6 +27,18 @@ packages/
    pnpm install
    ```
 2. Copy `.env.example` to `.env` and fill in required secrets.
+   The API no longer falls back to placeholder defaults for production-critical
+   values. Provide explicit entries for at least the following keys before
+   starting the server or running migrations:
+   - `OPENAI_API_KEY`
+   - `AGENT_MODEL`
+   - `EMBEDDING_MODEL`
+   - `OPENAI_VECTOR_STORE_AUTHORITIES_ID`
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   Placeholder values such as `test`, `vs_test`, `changeme`, or the sample
+   Supabase domain will now cause the API to exit immediately when
+   `NODE_ENV=production`.
 3. Apply database migrations directly against your Supabase instance (requires `SUPABASE_DB_URL`):
    ```bash
    pnpm db:migrate

@@ -6,6 +6,14 @@ const resolveFromRoot = (relativePath: string) => path.resolve(__dirname, relati
 export default defineConfig({
   test: {
     environment: 'node',
+    env: {
+      OPENAI_API_KEY: 'test-key',
+      AGENT_MODEL: 'gpt-test',
+      EMBEDDING_MODEL: 'text-embedding-test',
+      OPENAI_VECTOR_STORE_AUTHORITIES_ID: 'vs_test',
+      SUPABASE_URL: 'https://example.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-role',
+    },
     coverage: {
       reporter: ['text'],
     },

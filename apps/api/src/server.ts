@@ -12,7 +12,7 @@ import { summariseDocumentFromPayload } from './summarization.js';
 try {
   const dyn = new Function('p', 'return import(p)');
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  (dyn as any)('./finance-workers.js');
+  Promise.resolve((dyn as any)('./finance-workers.js')).catch(() => {});
 } catch {}
 import { z as zod } from 'zod';
 import {

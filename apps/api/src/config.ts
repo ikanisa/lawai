@@ -7,18 +7,20 @@ if (process.env.NODE_ENV !== 'production') {
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
-  OPENAI_API_KEY: z.string().default(''),
-  AGENT_MODEL: z.string().default('gpt-5-pro'),
-  EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
+  OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
+  AGENT_MODEL: z.string().min(1, 'AGENT_MODEL is required'),
+  EMBEDDING_MODEL: z.string().min(1, 'EMBEDDING_MODEL is required'),
   SUMMARISER_MODEL: z.string().optional(),
   MAX_SUMMARY_CHARS: z.coerce.number().optional(),
-  OPENAI_VECTOR_STORE_AUTHORITIES_ID: z.string().min(1).default('vs_test'),
+  OPENAI_VECTOR_STORE_AUTHORITIES_ID: z
+    .string()
+    .min(1, 'OPENAI_VECTOR_STORE_AUTHORITIES_ID is required'),
   OPENAI_CHATKIT_PROJECT: z.string().optional(),
   OPENAI_CHATKIT_SECRET: z.string().optional(),
   OPENAI_CHATKIT_BASE_URL: z.string().url().optional(),
   OPENAI_CHATKIT_MODEL: z.string().optional(),
-  SUPABASE_URL: z.string().url().default('https://example.supabase.co'),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().default(''),
+  SUPABASE_URL: z.string().url(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
   JURIS_ALLOWLIST_JSON: z.string().optional(),
   AGENT_STUB_MODE: z
     .enum(['auto', 'always', 'never'])
@@ -42,28 +44,43 @@ const parsed = envSchema.parse({
   ...process.env,
 });
 
+const REQUIRED_PROD_KEYS: Array<keyof Env> = [
+  'OPENAI_API_KEY',
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'AGENT_MODEL',
+  'EMBEDDING_MODEL',
+  'OPENAI_VECTOR_STORE_AUTHORITIES_ID',
+];
+
+const PLACEHOLDER_PATTERNS: Partial<Record<keyof Env, RegExp[]>> = {
+  OPENAI_API_KEY: [/\btest\b/i, /placeholder/i, /changeme/i],
+  SUPABASE_URL: [/example\.supabase\.co/i],
+  SUPABASE_SERVICE_ROLE_KEY: [/\btest\b/i, /placeholder/i],
+  AGENT_MODEL: [/\btest\b/i, /placeholder/i],
+  EMBEDDING_MODEL: [/\btest\b/i, /placeholder/i],
+  OPENAI_VECTOR_STORE_AUTHORITIES_ID: [/\btest\b/i, /placeholder/i, /^vs?_?test$/i],
+};
+
 function assertProductionEnv(e: Env) {
-  if (process.env.NODE_ENV === 'production') {
-    const missing: string[] = [];
-    const placeholders: string[] = [];
+  if (process.env.NODE_ENV !== 'production') {
+    return;
+  }
 
-    if (!e.OPENAI_API_KEY) missing.push('OPENAI_API_KEY');
-    if (!e.SUPABASE_URL) missing.push('SUPABASE_URL');
-    if (!e.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+  for (const key of REQUIRED_PROD_KEYS) {
+    const value = e[key];
+    if (value === undefined || value === null || value === '') {
+      throw new Error(`configuration_invalid missing=${key}`);
+    }
+  }
 
-    // Basic placeholder detection
-    if (e.SUPABASE_URL && e.SUPABASE_URL.includes('example')) placeholders.push('SUPABASE_URL');
-    if (e.OPENAI_API_KEY && /CHANGEME|placeholder|test-openai-key/i.test(e.OPENAI_API_KEY)) placeholders.push('OPENAI_API_KEY');
-    if (e.SUPABASE_SERVICE_ROLE_KEY && /placeholder|service-role-test/i.test(e.SUPABASE_SERVICE_ROLE_KEY)) placeholders.push('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (missing.length || placeholders.length) {
-      const details = [
-        missing.length ? `missing=[${missing.join(', ')}]` : null,
-        placeholders.length ? `placeholders=[${placeholders.join(', ')}]` : null,
-      ]
-        .filter(Boolean)
-        .join(' ');
-      throw new Error(`configuration_invalid ${details}`);
+  for (const [key, patterns] of Object.entries(PLACEHOLDER_PATTERNS)) {
+    const value = e[key as keyof Env];
+    if (!value || typeof value !== 'string') continue;
+    for (const pattern of patterns ?? []) {
+      if (pattern.test(value)) {
+        throw new Error(`configuration_invalid placeholder=${key}`);
+      }
     }
   }
 }
