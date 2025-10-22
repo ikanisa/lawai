@@ -43,6 +43,24 @@ const parsed = envSchema.parse({
   ...process.env,
 });
 
+const SUPABASE_URL_PLACEHOLDER_PATTERNS = [
+  /example\.supabase\.co/i,
+  /project\.supabase\.co/i,
+  /localhost/i,
+];
+
+const OPENAI_KEY_PLACEHOLDER_PATTERNS = [
+  /CHANGEME/i,
+  /placeholder/i,
+  /test-openai-key/i,
+  /^sk-(?:test|demo|example|placeholder|dummy|sample)/i,
+];
+
+const SUPABASE_SERVICE_ROLE_PLACEHOLDER_PATTERNS = [
+  /placeholder/i,
+  /service-role-test/i,
+];
+
 function assertProductionEnv(e: Env) {
   if (process.env.NODE_ENV === 'production') {
     const missing: string[] = [];
@@ -53,9 +71,21 @@ function assertProductionEnv(e: Env) {
     if (!e.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
 
     // Basic placeholder detection
-    if (e.SUPABASE_URL && e.SUPABASE_URL.includes('example')) placeholders.push('SUPABASE_URL');
-    if (e.OPENAI_API_KEY && /CHANGEME|placeholder|test-openai-key/i.test(e.OPENAI_API_KEY)) placeholders.push('OPENAI_API_KEY');
-    if (e.SUPABASE_SERVICE_ROLE_KEY && /placeholder|service-role-test/i.test(e.SUPABASE_SERVICE_ROLE_KEY)) placeholders.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (
+      e.SUPABASE_URL &&
+      SUPABASE_URL_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(e.SUPABASE_URL))
+    )
+      placeholders.push('SUPABASE_URL');
+    if (
+      e.OPENAI_API_KEY &&
+      OPENAI_KEY_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(e.OPENAI_API_KEY))
+    )
+      placeholders.push('OPENAI_API_KEY');
+    if (
+      e.SUPABASE_SERVICE_ROLE_KEY &&
+      SUPABASE_SERVICE_ROLE_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(e.SUPABASE_SERVICE_ROLE_KEY))
+    )
+      placeholders.push('SUPABASE_SERVICE_ROLE_KEY');
 
     if (missing.length || placeholders.length) {
       const details = [
