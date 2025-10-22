@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import { createApiSupabaseClient } from '@avocat-ai/shared/supabase';
-import { registerWorkspaceRoutes } from './domain/workspace/routes';
-import type { AppContext } from './types/context';
+import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
+import type { AppContext } from './types/context.js';
 
 export async function createApp() {
   const app = Fastify({ logger: true });

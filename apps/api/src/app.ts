@@ -1,6 +1,6 @@
 // @ts-nocheck
 import Fastify from 'fastify';
-import { registerWorkspaceRoutes } from './domain/workspace/routes';
+import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
 import { registerCorpusRoutes } from './routes/corpus/index.js';
@@ -11,7 +11,7 @@ import { registerRealtimeRoutes } from './routes/realtime/index.js';
 import { registerResearchRoutes } from './routes/research/index.js';
 import { registerUploadRoutes } from './routes/upload/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
-import type { AppContext } from './types/context';
+import type { AppContext } from './types/context.js';
 import { env } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
 
