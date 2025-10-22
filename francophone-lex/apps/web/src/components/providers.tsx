@@ -5,6 +5,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { registerPwa } from '../lib/pwa';
+import { SessionProvider } from './session-provider';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,13 +24,15 @@ export function AppProviders({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-      <QueryClientProvider client={queryClient}>
-        {children}
-        <Toaster position="bottom-right" richColors closeButton />
-      </QueryClientProvider>
-      {/* Avoid hydration mismatch for theme-controlled elements */}
-      {!mounted && <div aria-hidden />}
-    </ThemeProvider>
+    <SessionProvider>
+      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+        <QueryClientProvider client={queryClient}>
+          {children}
+          <Toaster position="bottom-right" richColors closeButton />
+        </QueryClientProvider>
+        {/* Avoid hydration mismatch for theme-controlled elements */}
+        {!mounted && <div aria-hidden />}
+      </ThemeProvider>
+    </SessionProvider>
   );
 }

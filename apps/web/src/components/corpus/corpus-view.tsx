@@ -7,7 +7,8 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import type { Locale, Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, fetchCorpus, toggleAllowlistDomain, sendTelemetryEvent, resummarizeDocument } from '../../lib/api';
+import { fetchCorpus, toggleAllowlistDomain, sendTelemetryEvent, resummarizeDocument } from '../../lib/api';
+import { useRequiredSession } from '../session-provider';
 
 interface CorpusViewProps {
   messages: Messages;
@@ -54,43 +55,61 @@ interface IngestionRunRow {
 
 export function CorpusView({ messages, locale }: CorpusViewProps) {
   const queryClient = useQueryClient();
-  const corpusQuery = useQuery({ queryKey: ['corpus'], queryFn: () => fetchCorpus(DEMO_ORG_ID) });
+  const session = useRequiredSession();
+  const hasSession = Boolean(session.orgId && session.userId);
+  const queryKey = ['corpus', session.orgId, session.userId] as const;
+  const corpusQuery = useQuery({
+    queryKey,
+    queryFn: () => fetchCorpus(session.orgId, session.userId),
+    enabled: hasSession,
+  });
 
   const toggleMutation = useMutation({
     mutationFn: ({ host, active, jurisdiction }: { host: string; active: boolean; jurisdiction?: string }) =>
-      toggleAllowlistDomain(host, active, jurisdiction),
+      toggleAllowlistDomain(session.orgId, session.userId, host, active, jurisdiction),
     onSuccess: (_data, variables) => {
       toast.success(locale === 'fr' ? 'Domaine mis à jour' : 'Domain updated');
-      void sendTelemetryEvent('allowlist_toggled', {
-        host: variables.host,
-        active: variables.active,
-        jurisdiction: variables.jurisdiction ?? null,
-      });
-      queryClient.invalidateQueries({ queryKey: ['corpus'] });
-    },
-    onError: (_error, variables) => {
-      toast.error(locale === 'fr' ? 'Échec de la mise à jour' : 'Update failed');
-      if (variables) {
-        void sendTelemetryEvent('allowlist_toggle_failed', {
+      if (hasSession) {
+        void sendTelemetryEvent('allowlist_toggled', session.orgId, session.userId, {
           host: variables.host,
           active: variables.active,
           jurisdiction: variables.jurisdiction ?? null,
         });
       }
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (_error, variables) => {
+      toast.error(locale === 'fr' ? 'Échec de la mise à jour' : 'Update failed');
+      if (variables) {
+        if (hasSession) {
+          void sendTelemetryEvent('allowlist_toggle_failed', session.orgId, session.userId, {
+            host: variables.host,
+            active: variables.active,
+            jurisdiction: variables.jurisdiction ?? null,
+          });
+        }
+      }
     },
   });
 
   const resummarizeMutation = useMutation<any, Error, string>({
-    mutationFn: (documentId: string) => resummarizeDocument(DEMO_ORG_ID, documentId),
+    mutationFn: (documentId: string) => resummarizeDocument(session.orgId, session.userId, documentId),
     onSuccess: (data) => {
       toast.success(messages.corpus.resummarizeSuccess);
-      void sendTelemetryEvent('corpus_resummarize', { documentId: data.documentId, status: data.summaryStatus });
-      queryClient.invalidateQueries({ queryKey: ['corpus'] });
+      if (hasSession) {
+        void sendTelemetryEvent('corpus_resummarize', session.orgId, session.userId, {
+          documentId: data.documentId,
+          status: data.summaryStatus,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey });
     },
     onError: (_error, variables) => {
       toast.error(messages.corpus.resummarizeError);
       if (variables) {
-        void sendTelemetryEvent('corpus_resummarize_failed', { documentId: variables });
+        if (hasSession) {
+          void sendTelemetryEvent('corpus_resummarize_failed', session.orgId, session.userId, { documentId: variables });
+        }
       }
     },
   });
@@ -124,6 +143,10 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
     ? residencyInfo.allowedZones.filter((zone): zone is string => typeof zone === 'string' && zone.trim().length > 0)
     : [];
   const activeResidencyZone = residencyInfo?.activeZone ?? allowedResidencyZones[0] ?? null;
+
+  if (!hasSession) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">

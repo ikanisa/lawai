@@ -36,6 +36,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useOutbox } from '../hooks/use-outbox';
 import { useOnlineStatus } from '../hooks/use-online-status';
 import { PwaInstallPrompt } from './pwa-install-prompt';
+import { useRequiredSession } from './session-provider';
 
 interface AppShellProps {
   children: ReactNode;
@@ -74,6 +75,16 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   const { pendingCount: outboxCount, hasItems: hasOutbox, stalenessMs } = useOutbox();
   const online = useOnlineStatus();
   const statusBarMessages = messages.app.statusBar;
+  const session = useRequiredSession();
+  const sendUserTelemetry = useCallback(
+    (eventName: string, payload?: Record<string, unknown>) => {
+      if (!session.orgId || !session.userId) {
+        return;
+      }
+      void sendTelemetryEvent(eventName, session.orgId, session.userId, payload);
+    },
+    [session.orgId, session.userId],
+  );
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -91,8 +102,8 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
     if (toastMessage) {
       toast.info(toastMessage);
     }
-    void sendTelemetryEvent('confidential_mode_toggled', { enabled: next });
-  }, [confidentialMode, setConfidentialMode, statusMessages]);
+    sendUserTelemetry('confidential_mode_toggled', { enabled: next });
+  }, [confidentialMode, setConfidentialMode, statusMessages, sendUserTelemetry]);
 
   const confidentialToggleLabel = confidentialMode
     ? confidentialActions?.disable?.label ?? confidentialMessages?.cta ?? 'Disable confidential mode'
@@ -194,7 +205,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
 
   const handleCommandButton = () => {
     setCommandOpen(true);
-    void sendTelemetryEvent('command_palette_button');
+    sendUserTelemetry('command_palette_button');
   };
 
   const handleFabPointerDown = (event: ReactPointerEvent<HTMLAnchorElement>) => {

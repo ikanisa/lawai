@@ -436,25 +436,29 @@ export async function sendTelemetryEvent(
   }
 }
 
-export async function fetchCitations(orgId: string) {
-  const response = await fetch(`${API_BASE}/citations?orgId=${encodeURIComponent(orgId)}`);
+export async function fetchCitations(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/citations?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch citations');
   }
   return response.json();
 }
 
-export async function fetchHitlQueue(orgId: string) {
-  const response = await fetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`);
+export async function fetchHitlQueue(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId, 'x-org-id': orgId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL queue');
   }
   return response.json();
 }
 
-export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsResponse> {
+export async function fetchHitlMetrics(orgId: string, userId: string): Promise<HitlMetricsResponse> {
   const response = await fetch(`${API_BASE}/hitl/metrics?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL metrics');
@@ -462,9 +466,9 @@ export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsRespon
   return response.json();
 }
 
-export async function fetchHitlDetail(orgId: string, id: string): Promise<HitlDetailResponse> {
+export async function fetchHitlDetail(orgId: string, userId: string, id: string): Promise<HitlDetailResponse> {
   const response = await fetch(`${API_BASE}/hitl/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL detail');
@@ -472,11 +476,15 @@ export async function fetchHitlDetail(orgId: string, id: string): Promise<HitlDe
   return response.json();
 }
 
-export async function submitHitlAction(id: string, action: 'approve' | 'request_changes' | 'reject', comment?: string) {
-  const response = await fetch(`${API_BASE}/hitl/${id}`, {
+export async function submitHitlAction(
+  orgId: string,
+  userId: string,
+  input: { id: string; action: 'approve' | 'request_changes' | 'reject'; comment?: string },
+) {
+  const response = await fetch(`${API_BASE}/hitl/${input.id}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, comment }),
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId, 'x-org-id': orgId },
+    body: JSON.stringify({ action: input.action, comment: input.comment }),
   });
   if (!response.ok) {
     throw new Error('Unable to update review status');
@@ -484,17 +492,20 @@ export async function submitHitlAction(id: string, action: 'approve' | 'request_
   return response.json();
 }
 
-export async function fetchMatters(orgId: string) {
-  const response = await fetch(`${API_BASE}/matters?orgId=${encodeURIComponent(orgId)}`);
+export async function fetchMatters(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/matters?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch matters');
   }
   return response.json();
 }
 
-export async function fetchMatterDetail(orgId: string, id: string) {
+export async function fetchMatterDetail(orgId: string, userId: string, id: string) {
   const response = await fetch(
     `${API_BASE}/matters/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`,
+    { headers: { 'x-user-id': userId } },
   );
   if (!response.ok) {
     throw new Error('Unable to fetch matter');
@@ -504,6 +515,7 @@ export async function fetchMatterDetail(orgId: string, id: string) {
 
 export async function fetchHitlAuditTrail(
   orgId: string,
+  userId: string,
   options: { runId?: string; objectId?: string; limit?: number },
 ) {
   const url = new URL(`${API_BASE}/admin/org/${orgId}/audit-events`);
@@ -518,7 +530,7 @@ export async function fetchHitlAuditTrail(
   }
 
   const response = await fetch(url.toString(), {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch audit events');
@@ -526,9 +538,9 @@ export async function fetchHitlAuditTrail(
   return response.json() as Promise<{ events: AuditEvent[] }>;
 }
 
-export async function fetchCorpus(orgId: string) {
+export async function fetchCorpus(orgId: string, userId: string) {
   const response = await fetch(`${API_BASE}/corpus?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch corpus overview');
@@ -538,6 +550,7 @@ export async function fetchCorpus(orgId: string) {
 
 export async function resummarizeDocument(
   orgId: string,
+  userId: string,
   documentId: string,
   overrides?: { summariserModel?: string; embeddingModel?: string; maxSummaryChars?: number },
 ) {
@@ -545,7 +558,7 @@ export async function resummarizeDocument(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': userId,
     },
     body: JSON.stringify({ orgId, ...overrides }),
   });
@@ -692,19 +705,27 @@ export async function fetchSloMetrics(orgId: string, limit = 6): Promise<SloMetr
   return response.json();
 }
 
-export async function fetchSnapshotDiff(orgId: string, snapshotId: string, compareTo: string) {
+export async function fetchSnapshotDiff(orgId: string, userId: string, snapshotId: string, compareTo: string) {
   const params = new URLSearchParams({ orgId, snapshotId, compareTo });
-  const response = await fetch(`${API_BASE}/corpus/diff?${params.toString()}`);
+  const response = await fetch(`${API_BASE}/corpus/diff?${params.toString()}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to compute diff');
   }
   return response.json();
 }
 
-export async function toggleAllowlistDomain(host: string, active: boolean, jurisdiction?: string) {
+export async function toggleAllowlistDomain(
+  orgId: string,
+  userId: string,
+  host: string,
+  active: boolean,
+  jurisdiction?: string,
+) {
   const response = await fetch(`${API_BASE}/corpus/allowlist/${encodeURIComponent(host)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId, 'x-org-id': orgId },
     body: JSON.stringify({ active, jurisdiction }),
   });
   if (!response.ok) {
@@ -965,7 +986,11 @@ export async function deleteIpAllowlistEntry(orgId: string, entryId: string) {
   }
 }
 
-export async function fetchDraftingTemplates(orgId: string, params?: { jurisdiction?: string; matterType?: string }) {
+export async function fetchDraftingTemplates(
+  orgId: string,
+  userId: string,
+  params?: { jurisdiction?: string; matterType?: string },
+) {
   const search = new URLSearchParams({ orgId });
   if (params?.jurisdiction) {
     search.set('jurisdiction', params.jurisdiction);
@@ -973,7 +998,9 @@ export async function fetchDraftingTemplates(orgId: string, params?: { jurisdict
   if (params?.matterType) {
     search.set('matterType', params.matterType);
   }
-  const response = await fetch(`${API_BASE}/drafting/templates?${search.toString()}`);
+  const response = await fetch(`${API_BASE}/drafting/templates?${search.toString()}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch templates');
   }
@@ -1009,8 +1036,10 @@ export interface WorkspaceOverviewResponse {
   desk?: WorkspaceDesk;
 }
 
-export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOverviewResponse> {
-  const response = await fetch(`${API_BASE}/workspace?orgId=${encodeURIComponent(orgId)}`);
+export async function fetchWorkspaceOverview(orgId: string, userId: string): Promise<WorkspaceOverviewResponse> {
+  const response = await fetch(`${API_BASE}/workspace?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch workspace overview');
   }

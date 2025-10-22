@@ -815,8 +815,10 @@ export async function sendTelemetryEvent(
   }
 }
 
-export async function fetchCitations(orgId: string) {
-  const response = await fetch(`${API_BASE}/citations?orgId=${encodeURIComponent(orgId)}`);
+export async function fetchCitations(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/citations?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch citations');
   }
@@ -854,17 +856,19 @@ export async function fetchCaseTreatments(orgId: string, sourceId: string) {
   return (await response.json()) as { treatments: Array<{ treatment: string; decidedAt?: string | null }> };
 }
 
-export async function fetchHitlQueue(orgId: string) {
-  const response = await fetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`);
+export async function fetchHitlQueue(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId, 'x-org-id': orgId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL queue');
   }
   return response.json();
 }
 
-export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsResponse> {
+export async function fetchHitlMetrics(orgId: string, userId: string): Promise<HitlMetricsResponse> {
   const response = await fetch(`${API_BASE}/hitl/metrics?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL metrics');

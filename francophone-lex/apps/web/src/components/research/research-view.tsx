@@ -23,13 +23,7 @@ import { VoiceInputButton } from './voice-input-button';
 import { CameraOcrButton } from './camera-ocr-button';
 import { OutboxPanel } from './outbox-panel';
 import { ReadingModeToggle, type ReadingMode } from './reading-mode-toggle';
-import {
-  DEMO_ORG_ID,
-  DEMO_USER_ID,
-  submitResearchQuestion,
-  sendTelemetryEvent,
-  type AgentRunResponse,
-} from '../../lib/api';
+import { submitResearchQuestion, sendTelemetryEvent, requestHitlReview, type AgentRunResponse } from '../../lib/api';
 import type { Messages, Locale } from '../../lib/i18n';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
@@ -40,6 +34,7 @@ import { useOutbox, type OutboxItem } from '../../hooks/use-outbox';
 import { usePwaInstall } from '../../hooks/use-pwa-install';
 import { useConfidentialMode } from '../../state/confidential-mode';
 import { RwandaLanguageTriage } from './rwanda-language-triage';
+import { useRequiredSession } from '../session-provider';
 
 const EMPTY_VIOLATIONS: string[] = [];
 
@@ -215,6 +210,8 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const { open, toggle } = usePlanDrawer();
   const online = useOnlineStatus();
   const { items: outboxItems, enqueue, remove, flush } = useOutbox({ persist: !confidentialMode });
+  const [hitlRequestPending, setHitlRequestPending] = useState(false);
+  const [hitlQueued, setHitlQueued] = useState(false);
 
   const badgeMessages = messages.research.badges;
   const readingModeMessages = messages.research.readingModes;
@@ -312,9 +309,28 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     ? 'Agent indisponible. Veuillez réessayer.'
     : 'Agent unavailable. Please try again.';
   const complianceMessages = messages.app.compliance;
+  const session = useRequiredSession();
+  const sendUserTelemetry = useCallback(
+    (eventName: string, payload?: Record<string, unknown>) => {
+      if (!session.orgId || !session.userId) {
+        return;
+      }
+      void sendTelemetryEvent(eventName, session.orgId, session.userId, payload);
+    },
+    [session.orgId, session.userId],
+  );
+  const ensureSession = useCallback(() => {
+    if (!session.orgId || !session.userId) {
+      throw new Error('Session not available');
+    }
+    return { orgId: session.orgId, userId: session.userId };
+  }, [session.orgId, session.userId]);
 
   const mutation = useMutation({
-    mutationFn: submitResearchQuestion,
+    mutationFn: (input: Omit<Parameters<typeof submitResearchQuestion>[0], 'orgId' | 'userId'>) => {
+      const { orgId, userId } = ensureSession();
+      return submitResearchQuestion({ ...input, orgId, userId });
+    },
     onError: (error: unknown) => {
       const code = error instanceof Error ? error.message : '';
       if (code === 'consent_required' || code === 'coe_disclosure_required') {
@@ -348,26 +364,76 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const voiceMessages = messages.research.voice;
   const ocrMessages = messages.research.ocr;
   const staleMessages = messages.research.stale;
+  const trustMessages = messages.research.trust;
   const verifyLabel = staleMessages.verify;
   const rwandaMessages = messages.research.rwanda;
 
   const handleVoiceTranscript = (text: string) => {
     setQuestion((current) => (current ? `${current.trim()} ${text}` : text));
-    void sendTelemetryEvent('voice_dictation_used');
+    sendUserTelemetry('voice_dictation_used');
   };
 
   const handleOcrText = (text: string) => {
     setContext((current) => (current ? `${current}\n${text}` : text));
-    void sendTelemetryEvent('camera_ocr_added');
+    sendUserTelemetry('camera_ocr_added');
   };
 
+  const handleHitlRequest = useCallback(async () => {
+    if (!latestRun?.runId || hitlRequestPending || hitlQueued || !online) {
+      return;
+    }
+    setHitlRequestPending(true);
+    const reason =
+      trustMessages.manualHitlReason ??
+      (locale === 'fr'
+        ? 'Revue humaine demandée depuis le panneau de confiance.'
+        : 'Manual review requested from the trust panel.');
+    try {
+      const { orgId, userId } = ensureSession();
+      await requestHitlReview(latestRun.runId, orgId, userId, {
+        reason,
+        manual: true,
+      });
+      setHitlQueued(true);
+      toast.success(hitlMessage);
+      sendUserTelemetry('hitl_requested', {
+        runId: latestRun.runId,
+        manual: true,
+        alreadyPending:
+          latestRun.data?.risk.hitl_required ?? latestRun.trustPanel?.risk?.hitlRequired ?? false,
+      });
+    } catch (error) {
+      console.error('hitl_request_failed', error);
+      const failureMessage =
+        trustMessages.hitlRequestFailed ??
+        (locale === 'fr'
+          ? 'Impossible de demander une revue humaine. Réessayez plus tard.'
+          : 'Unable to request human review. Try again shortly.');
+      toast.error(failureMessage);
+    } finally {
+      setHitlRequestPending(false);
+    }
+  }, [
+    latestRun,
+    hitlRequestPending,
+    hitlQueued,
+    trustMessages.manualHitlReason,
+    trustMessages.hitlRequestFailed,
+    locale,
+    hitlMessage,
+    requestHitlReview,
+    ensureSession,
+    sendUserTelemetry,
+    online,
+  ]);
+
   const handleRwandaLanguageSelect = (language: 'fr' | 'en' | 'rw') => {
-    void sendTelemetryEvent('rwanda_language_toggle', { language });
+    sendUserTelemetry('rwanda_language_toggle', { language });
   };
 
   const handleReadingModeChange = (mode: ReadingMode) => {
     setReadingMode(mode);
-    void sendTelemetryEvent('reading_mode_changed', { mode });
+    sendUserTelemetry('reading_mode_changed', { mode });
   };
 
   const citationBadges = (note?: string) => {
@@ -397,7 +463,6 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     });
   }, [payload, locale]);
 
-  const trustMessages = messages.research.trust;
   const trustPanel = latestRun?.trustPanel ?? null;
   const trustCitationSummary = trustPanel?.citationSummary ?? null;
   const trustProvenance = trustPanel?.provenance ?? null;
@@ -406,6 +471,19 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const allowlistViolations = verification?.allowlistViolations ?? EMPTY_VIOLATIONS;
   const verificationNotes = verification?.notes ?? [];
   const verificationStatus = verification?.status ?? null;
+
+  useEffect(() => {
+    if (!latestRun?.runId) {
+      setHitlQueued(false);
+      setHitlRequestPending(false);
+      return;
+    }
+    const requiresHitl = Boolean(
+      latestRun.data?.risk.hitl_required ?? latestRun.trustPanel?.risk?.hitlRequired ?? false,
+    );
+    setHitlQueued(requiresHitl);
+    setHitlRequestPending(false);
+  }, [latestRun?.runId]);
 
   const fallbackViolationHosts = useMemo(() => {
     if (allowlistViolations.length === 0) return [] as string[];
@@ -480,10 +558,18 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     ? trustMessages.riskLabel.replace('{level}', trustMessages.riskLevels[payload.risk.level])
     : null;
   const hitlSummary = payload
-    ? payload.risk.hitl_required
+    ? payload.risk.hitl_required || hitlQueued
       ? trustMessages.hitlRequired
       : trustMessages.hitlNotRequired
     : null;
+  const hitlQueuedLabel =
+    messages.actions.hitlQueued ?? (locale === 'fr' ? 'Revue en attente' : 'Queued for review');
+  const hitlAlreadyRequired = Boolean(
+    payload?.risk.hitl_required ?? trustRisk?.hitlRequired ?? false,
+  );
+  const hitlButtonLabel = hitlQueued || hitlAlreadyRequired ? hitlQueuedLabel : messages.actions.hitl;
+  const hitlButtonDisabled =
+    !latestRun?.runId || hitlRequestPending || hitlQueued || hitlAlreadyRequired || !online;
   const verificationMessage =
     verificationStatus === 'hitl_escalated' ? trustMessages.verificationHitl : trustMessages.verificationPassed;
   const allowlistSummary = allowlistClean ? trustMessages.allowlistClean : trustMessages.allowlistIssues;
@@ -513,13 +599,13 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     if (!online) {
       enqueue({ question, context, confidentialMode });
       toast.info(outboxMessages.queued);
-      void sendTelemetryEvent('outbox_enqueued', { offline: true });
+      sendUserTelemetry('outbox_enqueued', { offline: true });
       setQuestion('');
       setContext('');
       return;
     }
 
-    void sendTelemetryEvent('run_submitted', {
+    sendUserTelemetry('run_submitted', {
       questionLength: question.length,
       ohadaMode,
       euOverlay,
@@ -530,14 +616,12 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
       const data = await mutation.mutateAsync({
         question,
         context,
-        orgId: DEMO_ORG_ID,
-        userId: DEMO_USER_ID,
         confidentialMode,
       });
       setLatestRun(data);
       toggle(true);
       toast.success(successMessage);
-      void sendTelemetryEvent('run_completed', {
+      sendUserTelemetry('run_completed', {
         runId: data.runId,
         jurisdiction: data.data?.jurisdiction.country ?? null,
         risk: data.data?.risk.level ?? null,
@@ -546,22 +630,22 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Agent indisponible';
       toast.error(message);
-      void sendTelemetryEvent('run_failed', { message });
+      sendUserTelemetry('run_failed', { message });
       enqueue({ question, context, confidentialMode });
       toast.info(outboxMessages.queued);
-      void sendTelemetryEvent('outbox_enqueued', { offline: false });
+      sendUserTelemetry('outbox_enqueued', { offline: false });
     }
   }
 
   function handleBilingualSelect(language: 'fr' | 'en') {
-    void sendTelemetryEvent('bilingual_toggle', {
+    sendUserTelemetry('bilingual_toggle', {
       language,
       jurisdiction: jurisdictionCode ?? null,
     });
   }
 
   function handleCitationVisit(url: string) {
-    void sendTelemetryEvent('citation_clicked', {
+    sendUserTelemetry('citation_clicked', {
       url,
       jurisdiction: jurisdictionCode ?? null,
     });
@@ -583,8 +667,6 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         const data = await mutation.mutateAsync({
           question: item.question,
           context: item.context,
-          orgId: DEMO_ORG_ID,
-          userId: DEMO_USER_ID,
           confidentialMode: item.confidentialMode,
         });
         setLatestRun(data);
@@ -594,7 +676,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         const toastId = `outbox-${item.id}`;
         const successLabel = source === 'manual' ? successMessage : outboxMessages.sent ?? successMessage;
         toast.success(successLabel, { id: toastId });
-        void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
+        sendUserTelemetry(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
           success: true,
           runId: data.runId,
         });
@@ -603,14 +685,14 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Agent indisponible';
         toast.error(message, { id: `outbox-${item.id}` });
-        void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
+        sendUserTelemetry(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
           success: false,
           message,
         });
         return false;
       }
     },
-    [mutation, open, toggle, successMessage, outboxMessages.sent, registerInstallSuccess],
+    [mutation, open, toggle, successMessage, outboxMessages.sent, registerInstallSuccess, sendUserTelemetry],
   );
 
   async function handleOutboxRetry(item: OutboxItem) {
@@ -633,7 +715,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
   const verifyCitation = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');
-    void sendTelemetryEvent('citation_verify', { url });
+    sendUserTelemetry('citation_verify', { url });
   };
 
   return (
@@ -760,7 +842,12 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         <div className="space-y-5">
           {payload ? (
             <div className="space-y-5">
-              <RiskBanner risk={payload.risk} hitlLabel={messages.actions.hitl} onHitl={() => toast.info(hitlMessage)} />
+              <RiskBanner
+                risk={payload.risk}
+                hitlLabel={hitlButtonLabel}
+                onHitl={handleHitlRequest}
+                hitlDisabled={hitlButtonDisabled}
+              />
               {confidentialMode && confidentialMessages.banner ? (
                 <LanguageBanner message={confidentialMessages.banner} />
               ) : null}

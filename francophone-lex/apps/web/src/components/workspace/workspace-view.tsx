@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarCheck, ChevronRight, Clock, ExternalLink, ShieldAlert } from 'lucide-react';
-import { DEMO_ORG_ID, fetchWorkspaceOverview, type WorkspaceOverviewResponse } from '../../lib/api';
+import { fetchWorkspaceOverview, type WorkspaceOverviewResponse } from '../../lib/api';
 import type { Locale, Messages } from '../../lib/i18n';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -15,6 +15,8 @@ import { JurisdictionChip } from '../jurisdiction-chip';
 import { usePlanDrawer } from '../../state/plan-drawer';
 import { PlanDrawer } from '../plan-drawer';
 import { MultiAgentDesk } from './multi-agent-desk';
+import { ProcessNavigator } from './process-navigator';
+import { useRequiredSession } from '../session-provider';
 import type {
   WorkspaceDesk,
   WorkspaceDeskMode,
@@ -62,10 +64,12 @@ function formatDate(value: string | null | undefined, locale: Locale): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
 }
 
-function useWorkspaceData(locale: Locale) {
+function useWorkspaceData(locale: Locale, orgId: string, userId: string) {
+  const enabled = Boolean(orgId && userId);
   return useQuery<WorkspaceOverviewResponse>({
-    queryKey: ['workspace-overview', locale],
-    queryFn: () => fetchWorkspaceOverview(DEMO_ORG_ID),
+    queryKey: ['workspace-overview', locale, orgId, userId],
+    queryFn: () => fetchWorkspaceOverview(orgId, userId),
+    enabled,
   });
 }
 
@@ -73,12 +77,14 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
   const router = useRouter();
   const { open, toggle } = usePlanDrawer();
   const [heroQuestion, setHeroQuestion] = useState('');
-  const workspaceQuery = useWorkspaceData(locale);
+  const session = useRequiredSession();
+  const workspaceQuery = useWorkspaceData(locale, session.orgId, session.userId);
 
   const matters = workspaceQuery.data?.matters ?? [];
   const complianceWatch = workspaceQuery.data?.complianceWatch ?? [];
   const hitlInbox = workspaceQuery.data?.hitlInbox ?? { items: [], pendingCount: 0 };
   const desk: WorkspaceDesk | undefined = workspaceQuery.data?.desk;
+  const navigatorFlows = workspaceQuery.data?.navigator ?? [];
 
   const jurisdictionChips = useMemo(
     () => {
@@ -267,6 +273,8 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
           onToolAction={handleToolAction}
         />
       ) : null}
+
+      <ProcessNavigator flows={navigatorFlows} messages={messages} locale={locale} />
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="glass-card border border-slate-800/60">

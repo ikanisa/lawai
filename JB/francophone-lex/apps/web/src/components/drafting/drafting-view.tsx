@@ -9,15 +9,9 @@ import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
 import type { Locale, Messages } from '../../lib/i18n';
-import {
-  DEMO_ORG_ID,
-  DEMO_USER_ID,
-  fetchDraftingTemplates,
-  createDraft,
-  type DraftClauseComparison,
-  type DraftExportMeta,
-  type DraftGenerationResponse,
-} from '../../lib/api';
+import { fetchDraftingTemplates } from '../../lib/api';
+import { useRequiredSession } from '../session-provider';
+import { RedlineDiff, type RedlineEntry } from './redline-diff';
 
 interface DraftingViewProps {
   messages: Messages;
@@ -36,79 +30,73 @@ interface DraftTemplate {
   scope?: string;
 }
 
-type IracRule = {
-  citation: string;
-  source_url: string;
-  binding: boolean;
-  effective_date: string;
-};
-
-const FALLBACK_CLAUSE_COMPARISONS: DraftClauseComparison[] = [
+const CLAUSE_LIBRARY = [
   {
-    clauseId: 'clause-noncompete-ma',
-    title: 'Clause de non-concurrence - Maroc',
-    rationale:
-      'Validite conditionnee a la duree, au perimetre et a une indemnisation proportionnee (Code du travail art. 61 bis).',
-    baseline:
-      'Le salarie s engage a ne pas exercer d activites concurrentes pendant douze (12) mois dans un rayon de dix (10) kilometres apres la rupture du contrat.',
-    proposed:
-      'Le salarie s engage a ne pas exercer d activites concurrentes pendant vingt-quatre (24) mois sur le territoire marocain, moyennant une indemnisation mensuelle egale a 30% de la remuneration moyenne.',
-    diff: {
-      summary: { additions: 0, deletions: 0, net: 0 },
-      changes: [],
-      recommendation: 'Generez un brouillon pour analyser la proportionnalite exacte de la clause.',
-    },
-    riskLevel: 'medium',
+    id: 'clause-noncompete-ma',
+    title: 'Clause de non-concurrence – Maroc',
+    rationale: 'Validité conditionnée à la durée, au périmètre et à l’indemnisation (Code du travail art. 61 bis).',
     citations: [
-      {
-        title: 'Code du travail marocain - Article 61 bis',
-        url: 'https://www.sgg.gov.ma/Portals/1/lois/Loi_travail_65-99.pdf',
-        binding: true,
-      },
+      'https://www.sgg.gov.ma/Portals/1/lois/Loi_travail_65-99.pdf',
+      'https://www.courdecassation.ma/jurisprudence/social/2019-115',
     ],
   },
   {
-    clauseId: 'clause-hardship-ohada',
-    title: 'Clause de hardship - OHADA',
-    rationale:
-      'Prevoir une renegociation lorsque l equilibre contractuel est bouleverse (AUSCGIE 2014).',
-    baseline:
-      'Les Parties conviennent de renegocier de bonne foi le contrat en cas de changement economique majeur affectant l equilibre initial.',
-    proposed:
-      'Les Parties s engagent a renegocier dans les quinze (15) jours suivant la notification d un evenement qui bouleverse l equilibre economique; a defaut d accord, le litige est soumis a la CCJA.',
-    diff: {
-      summary: { additions: 0, deletions: 0, net: 0 },
-      changes: [],
-      recommendation: 'Generez un brouillon pour obtenir la synthese de risques CCJA.',
-    },
-    riskLevel: 'low',
+    id: 'clause-hardship-ohada',
+    title: 'Clause de hardship – OHADA',
+    rationale: 'Anticiper les renégociations prévues par l’AUSCGIE et l’article 1134 du Code civil local.',
     citations: [
-      {
-        title: 'AUSCGIE 2014 - Article 10',
-        url: 'https://www.ohada.org/wp-content/uploads/2023/01/auscgie-2014.pdf',
-        binding: true,
-      },
+      'https://www.ohada.org/wp-content/uploads/2023/01/auscgie-2014.pdf',
     ],
   },
 ];
 
-const FALLBACK_EXPORTS: DraftExportMeta[] = [
-  { format: 'markdown', status: 'pending' },
-  { format: 'pdf', status: 'pending' },
-  { format: 'docx', status: 'pending' },
+const REDLINE_DIFF: RedlineEntry[] = [
+  {
+    id: 'r1',
+    title: 'Garantie produits',
+    original:
+      'Le Fournisseur garantit la conformité des produits pour une durée de douze (12) mois à compter de la livraison.',
+    revised:
+      'Le Fournisseur garantit la conformité des produits pour une durée de vingt-quatre (24) mois à compter de la livraison officielle, sous réserve des inspections de l’acheteur.',
+    impact: 'Allonge la garantie – vérifier compatibilité avec le Code de la consommation (FR).',
+    status: 'accepted',
+    risk: 'medium',
+    citations: ['https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000046736859'],
+  },
+  {
+    id: 'r2',
+    title: 'Clause compromissoire',
+    original: 'Tout litige sera soumis aux tribunaux de Paris.',
+    revised: 'Tout litige sera soumis à la CCJA conformément à la clause compromissoire OHADA annexée.',
+    impact: 'Modifie la juridiction compétente – nécessite consentement exprès des parties.',
+    status: 'flagged',
+    risk: 'high',
+    citations: ['https://www.ohada.org/wp-content/uploads/2023/01/auscgie-2014.pdf'],
+  },
+  {
+    id: 'r3',
+    title: 'Indemnité de rupture',
+    original: 'En cas de résiliation anticipée, aucune indemnité ne sera due.',
+    revised: 'En cas de résiliation anticipée, une indemnité équivalente à trois (3) mois de prestations sera due.',
+    impact: 'Introduit un coût supplémentaire — vérifier conformité avec le droit local du travail (OHADA/Maroc).',
+    status: 'pending',
+    risk: 'medium',
+    citations: ['https://www.sgg.gov.ma/Portals/1/lois/Loi_travail_65-99.pdf'],
+  },
 ];
 
 export function DraftingView({ messages, locale }: DraftingViewProps) {
   const [prompt, setPrompt] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
-  const [lastDraft, setLastDraft] = useState<DraftGenerationResponse | null>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState<DraftTemplate | null>(null);
-  const [fillInsEditor, setFillInsEditor] = useState('');
-  const [additionalContext, setAdditionalContext] = useState('');
+  const session = useRequiredSession();
+  const orgId = session.orgId;
+  const userId = session.userId;
+  const hasSession = Boolean(orgId && userId);
 
   const templatesQuery = useQuery({
-    queryKey: ['drafting-templates', DEMO_ORG_ID],
-    queryFn: () => fetchDraftingTemplates(DEMO_ORG_ID, undefined, DEMO_USER_ID),
+    queryKey: ['drafting-templates', orgId, userId],
+    queryFn: () => fetchDraftingTemplates(orgId),
+    enabled: hasSession,
   });
 
   const templates = useMemo<DraftTemplate[]>(() => {
@@ -137,83 +125,29 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
 
   const mutation = useMutation({
     mutationFn: async (input: { prompt: string }) => {
-      return createDraft({
-        orgId: DEMO_ORG_ID,
-        userId: DEMO_USER_ID,
-        prompt: input.prompt,
-        title: fileName ?? selectedTemplate?.title ?? undefined,
-        jurisdiction: selectedTemplate?.jurisdiction,
-        matterType: selectedTemplate?.matterType,
-        templateId: selectedTemplate?.id,
-        fillIns: parsedFillIns,
-        context: additionalContext.trim() || undefined,
-      });
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      return { success: true };
     },
-    onSuccess: (draft) => {
-      setLastDraft(draft);
-      toast.success(locale === 'fr' ? 'Brouillon généré' : 'Draft generated', {
-        description: `${draft.preview}${draft.preview.length >= 120 ? '…' : ''}`,
-      });
+    onSuccess: () => {
+      toast.success(locale === 'fr' ? 'Brouillon généré' : 'Draft generated');
       setPrompt('');
-      setFileName(null);
-      setAdditionalContext('');
-      setFillInsEditor(selectedTemplate ? (selectedTemplate.fillIns ?? []).join('\n') : '');
     },
     onError: () => {
       toast.error(locale === 'fr' ? 'Erreur de génération' : 'Generation failed');
     },
   });
 
-  const clauseComparisons = lastDraft?.clauseComparisons ?? FALLBACK_CLAUSE_COMPARISONS;
-  const exportsMeta = lastDraft?.exports ?? FALLBACK_EXPORTS;
-  const iracPayload = lastDraft?.structuredPayload ?? null;
-  const planSteps = lastDraft?.plan ?? [];
-  const trustPanel = lastDraft?.trustPanel ?? null;
-  const verification = lastDraft?.verification ?? null;
-  const parsedFillIns = useMemo(() => {
-    return fillInsEditor
-      .split('\n')
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-  }, [fillInsEditor]);
-
-  function handleExportClick() {
-    const lines = exportsMeta
-      .map((entry) => {
-        const label = entry.format.toUpperCase();
-        if (entry.status !== 'ready') {
-          return `${label}: ${locale === 'fr' ? 'en attente' : 'pending'}`;
-        }
-        const location = entry.storagePath ? ` → ${entry.storagePath}` : '';
-        return `${label}: ${locale === 'fr' ? 'prêt' : 'ready'}${location}`;
-      })
-      .join('\n');
-    toast.info(locale === 'fr' ? 'Exports' : 'Exports', {
-      description: lines,
-    });
+  if (!hasSession) {
+    return null;
   }
 
   function handleSmartDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    let effectivePrompt = prompt.trim();
-    if (!effectivePrompt) {
-      effectivePrompt = additionalContext.trim();
-    }
-    if (!effectivePrompt && selectedTemplate) {
-      effectivePrompt = `${messages.drafting.selectedTemplate}: ${selectedTemplate.title}`;
-    }
-    if (!effectivePrompt && fileName) {
-      effectivePrompt = `${locale === 'fr' ? 'Document téléversé' : 'Uploaded document'}: ${fileName}`;
-    }
-    if (!effectivePrompt) {
-      toast.error(
-        locale === 'fr'
-          ? 'Ajoutez un prompt, un contexte ou un document.'
-          : 'Provide a prompt, context, or upload a document.',
-      );
+    if (!prompt.trim() && !fileName) {
+      toast.error(locale === 'fr' ? 'Ajoutez un prompt ou un document.' : 'Provide a prompt or upload a document.');
       return;
     }
-    mutation.mutate({ prompt: effectivePrompt });
+    mutation.mutate({ prompt });
   }
 
   return (
@@ -237,30 +171,22 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
                 ) : templatesForCategory.length === 0 ? (
                   <p className="text-sm text-slate-500">{messages.drafting.empty}</p>
                 ) : (
-                  templatesForCategory.map((template) => {
-                    const isSelected = selectedTemplate?.id === template.id;
-                    return (
-                      <button
-                        key={template.id}
-                        type="button"
-                        className={`focus-ring w-full rounded-2xl border p-4 text-left transition ${
-                          isSelected
-                            ? 'border-teal-400/80 bg-slate-900/80 text-teal-100'
-                            : 'border-slate-800/60 bg-slate-900/60 hover:border-teal-400/80 hover:text-teal-100'
-                        }`}
-                        onClick={() => {
-                          setSelectedTemplate(template);
-                          setFillInsEditor((template.fillIns ?? []).join('\n'));
-                          toast.info(template.title, {
-                            description: template.summary ?? messages.drafting.templateSummaryFallback,
-                          });
-                        }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-semibold text-slate-100">{template.title}</p>
-                          <Badge variant="outline" className="text-[10px] uppercase text-slate-300">
-                            {template.jurisdiction}
-                          </Badge>
+                  templatesForCategory.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      className="focus-ring w-full rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4 text-left transition hover:border-teal-400/80 hover:text-teal-100"
+                      onClick={() =>
+                        toast.info(template.title, {
+                          description: template.summary ?? messages.drafting.templateSummaryFallback,
+                        })
+                      }
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-100">{template.title}</p>
+                        <Badge variant="outline" className="text-[10px] uppercase text-slate-300">
+                          {template.jurisdiction}
+                        </Badge>
                       </div>
                       <p className="mt-1 text-xs text-slate-400">
                         {template.summary ?? messages.drafting.templateSummaryFallback}
@@ -277,14 +203,8 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
                           ))}
                         </div>
                       ) : null}
-                        <div className="mt-3 flex justify-end">
-                          <Button size="sm" variant={isSelected ? 'default' : 'outline'}>
-                            {isSelected ? messages.drafting.templateSelected : messages.drafting.templateSelect}
-                          </Button>
-                        </div>
-                      </button>
-                    );
-                  })
+                    </button>
+                  ))
                 )}
                 {templatesError ? (
                   <p className="text-xs text-rose-400">{messages.drafting.templatesError}</p>
@@ -303,52 +223,6 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={handleSmartDraft}>
-              {selectedTemplate ? (
-                <div className="rounded-2xl border border-teal-400/40 bg-slate-900/60 p-4 text-sm text-slate-200">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-teal-200">
-                        {messages.drafting.selectedTemplate}
-                      </p>
-                      <p className="text-sm font-semibold text-slate-100">{selectedTemplate.title}</p>
-                      <p className="text-xs text-slate-400">
-                        {selectedTemplate.summary ?? messages.drafting.templateSummaryFallback}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setSelectedTemplate(null);
-                        setFillInsEditor('');
-                      }}
-                    >
-                      {messages.drafting.clearTemplate}
-                    </Button>
-                  </div>
-                  {selectedTemplate.sections && selectedTemplate.sections.length > 0 ? (
-                    <div className="mt-3 space-y-2">
-                      {selectedTemplate.sections.map((section, index) => {
-                        const heading =
-                          typeof section.heading === 'string' && section.heading.trim().length > 0
-                            ? section.heading.trim()
-                            : `${messages.drafting.sectionFallback} ${index + 1}`;
-                        const body =
-                          typeof section.body === 'string' && section.body.trim().length > 0
-                            ? section.body.trim()
-                            : messages.drafting.sectionBodyFallback;
-                        return (
-                          <div key={`${selectedTemplate.id}-${heading}-${index}`}>
-                            <p className="text-xs font-semibold text-slate-200">{heading}</p>
-                            <p className="text-xs text-slate-400">{body}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
               <label className="block text-sm font-medium text-slate-300" htmlFor="draft-upload">
                 {messages.drafting.uploadLabel}
               </label>
@@ -368,26 +242,6 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
                 rows={5}
                 placeholder={messages.drafting.promptPlaceholder}
               />
-              <label className="block text-sm font-medium text-slate-300" htmlFor="draft-context">
-                {messages.drafting.additionalContext}
-              </label>
-              <Textarea
-                id="draft-context"
-                value={additionalContext}
-                onChange={(event) => setAdditionalContext(event.target.value)}
-                rows={3}
-                placeholder={messages.drafting.additionalContextPlaceholder}
-              />
-              <label className="block text-sm font-medium text-slate-300" htmlFor="draft-fillins">
-                {messages.drafting.fillInsLabel}
-              </label>
-              <Textarea
-                id="draft-fillins"
-                value={fillInsEditor}
-                onChange={(event) => setFillInsEditor(event.target.value)}
-                rows={3}
-                placeholder={messages.drafting.fillInsPlaceholder}
-              />
               <div className="flex items-center justify-between">
                 <div className="text-xs text-slate-500">
                   {fileName ? `${locale === 'fr' ? 'Document sélectionné' : 'Selected file'}: ${fileName}` : null}
@@ -397,113 +251,6 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
                 </Button>
               </div>
             </form>
-            {lastDraft ? (
-              <div className="mt-6 rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4 text-sm text-slate-300">
-                <div className="flex items-baseline justify-between gap-3">
-                  <p className="font-semibold text-slate-100">{lastDraft.title}</p>
-                  <span className="text-xs text-slate-500">SHA-256: {lastDraft.contentSha256.slice(0, 12)}…</span>
-                </div>
-                <p className="mt-3 whitespace-pre-line text-xs leading-relaxed text-slate-400">{lastDraft.preview}</p>
-                {lastDraft.risk ? (
-                  <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-                    <Badge
-                      variant="outline"
-                      className={
-                        lastDraft.risk.level === 'HIGH'
-                          ? 'border-rose-500/50 text-rose-200'
-                          : lastDraft.risk.level === 'MEDIUM'
-                          ? 'border-amber-400/50 text-amber-200'
-                          : 'border-teal-400/50 text-teal-200'
-                      }
-                    >
-                      {locale === 'fr' ? 'Risque' : 'Risk'}: {lastDraft.risk.level}
-                    </Badge>
-                    {lastDraft.verification?.status === 'hitl_escalated' ? (
-                      <span className="text-rose-300">
-                        {locale === 'fr' ? 'Escalade HITL requise' : 'HITL escalation required'}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-                {iracPayload ? (
-                  <div className="mt-4 space-y-2 text-xs text-slate-300">
-                    <h4 className="text-sm font-semibold text-slate-100">{messages.drafting.iracHeader}</h4>
-                    <div>
-                      <p className="font-semibold text-slate-200">{messages.drafting.irac.question}</p>
-                      <p className="text-slate-400">{iracPayload.issue}</p>
-                    </div>
-                    {iracPayload.rules.length > 0 ? (
-                      <div>
-                        <p className="font-semibold text-slate-200">{messages.drafting.irac.rules}</p>
-                        <ul className="ml-4 list-disc text-slate-400">
-                          {iracPayload.rules.map((rule: IracRule) => (
-                            <li key={rule.source_url}>
-                              {rule.citation} • {rule.effective_date} • {rule.source_url}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-                    <div>
-                      <p className="font-semibold text-slate-200">{messages.drafting.irac.application}</p>
-                      <p className="text-slate-400">{iracPayload.application}</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-200">{messages.drafting.irac.conclusion}</p>
-                      <p className="text-slate-400">{iracPayload.conclusion}</p>
-                    </div>
-                  </div>
-                ) : null}
-                {verification && verification.notes?.length ? (
-                  <div className="mt-4 space-y-1 text-xs text-slate-300">
-                    <h4 className="text-sm font-semibold text-slate-100">{messages.drafting.verificationHeader}</h4>
-                    {verification.notes.map((note) => (
-                      <p key={note.code} className="text-slate-400">
-                        ({note.severity}) {note.message}
-                      </p>
-                    ))}
-                  </div>
-                ) : null}
-                {trustPanel ? (
-                  <div className="mt-4 space-y-1 text-xs text-slate-300">
-                    <h4 className="text-sm font-semibold text-slate-100">{messages.drafting.trustPanelHeader}</h4>
-                    {trustPanel.citationSummary ? (
-                      <p className="text-slate-400">
-                        {messages.drafting.citationSummary}:{' '}
-                        {trustPanel.citationSummary.allowlisted}/{trustPanel.citationSummary.total}
-                      </p>
-                    ) : null}
-                    {trustPanel.provenance ? (
-                      <p className="text-slate-400">
-                        {messages.drafting.provenance}:{' '}
-                        {trustPanel.provenance.residencyBreakdown
-                          .map((entry) => `${entry.zone}:${entry.count}`)
-                          .join(', ')}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-                {planSteps.length > 0 ? (
-                  <div className="mt-4 space-y-1 text-xs text-slate-300">
-                    <h4 className="text-sm font-semibold text-slate-100">{messages.drafting.planHeader}</h4>
-                    <ol className="ml-4 list-decimal text-slate-400">
-                      {planSteps.map((step, index) => {
-                        const label = step?.name ?? `${messages.drafting.sectionFallback} ${index + 1}`;
-                        return <li key={`${step?.id ?? index}`}>{label}</li>;
-                      })}
-                    </ol>
-                  </div>
-                ) : null}
-                <div className="mt-4 flex flex-wrap gap-2 text-[11px] uppercase tracking-wide text-slate-500">
-                  <span>{locale === 'fr' ? 'Exports' : 'Exports'}:</span>
-                  {exportsMeta.map((entry) => (
-                    <span key={`${entry.format}-${entry.status}`} className="rounded-full border border-slate-700/80 px-2 py-1 text-slate-300">
-                      {entry.format.toUpperCase()} • {entry.status === 'ready' ? (locale === 'fr' ? 'prêt' : 'ready') : locale === 'fr' ? 'en attente' : 'pending'}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
           </CardContent>
         </Card>
 
@@ -513,40 +260,24 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
             <p className="text-sm text-slate-400">{messages.drafting.clauseBenchmark}</p>
           </CardHeader>
           <CardContent className="space-y-4">
-            {clauseComparisons.map((clause) => (
-              <button
-                key={clause.clauseId}
-                type="button"
-                className="focus-ring w-full rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4 text-left transition hover:border-teal-400/60 hover:text-teal-100"
-                onClick={() =>
-                  toast.info(clause.title, {
-                    description: clause.diff.recommendation,
-                  })
-                }
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-100">{clause.title}</p>
-                  <Badge variant="outline" className="text-[10px] uppercase text-slate-300">
-                    {clause.riskLevel}
-                  </Badge>
-                </div>
+            {CLAUSE_LIBRARY.map((clause) => (
+              <div key={clause.id} className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
+                <p className="text-sm font-semibold text-slate-100">{clause.title}</p>
                 <p className="mt-2 text-xs text-slate-400">{clause.rationale}</p>
-                {clause.citations.length > 0 ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {clause.citations.map((citation) => (
-                      <a
-                        key={`${clause.clauseId}-${citation.url}`}
-                        href={citation.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="focus-ring inline-flex items-center rounded-full border border-teal-400/40 bg-slate-900/80 px-3 py-1 text-xs text-teal-200"
-                      >
-                        {citation.title}
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
-              </button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {clause.citations.map((citation) => (
+                    <a
+                      key={citation}
+                      href={citation}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="focus-ring inline-flex items-center rounded-full border border-teal-400/40 bg-slate-900/80 px-3 py-1 text-xs text-teal-200"
+                    >
+                      {messages.citationsBrowser.open}
+                    </a>
+                  ))}
+                </div>
+              </div>
             ))}
           </CardContent>
         </Card>
@@ -558,59 +289,17 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
             <h2 className="text-lg font-semibold text-slate-100">{messages.drafting.redline}</h2>
             <p className="text-sm text-slate-400">{messages.drafting.redlineDescription}</p>
           </div>
-          <Button variant="outline" onClick={handleExportClick}>
-            {messages.drafting.export}
-          </Button>
+          <Button variant="outline">{messages.drafting.export}</Button>
         </header>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {trustPanel ? (
-            <div className="rounded-3xl border border-slate-800/60 bg-slate-950/70 p-5 shadow-lg">
-              <p className="text-xs uppercase tracking-wide text-slate-400">{messages.drafting.trustPanelHeader}</p>
-              {trustPanel.risk ? (
-                <p className="mt-2 text-sm text-slate-200">
-                  {messages.drafting.hitlFlag}:{' '}
-                  {trustPanel.risk.hitlRequired ? messages.drafting.hitlYes : messages.drafting.hitlNo}
-                </p>
-              ) : null}
-              {trustPanel.citationSummary ? (
-                <p className="mt-1 text-xs text-slate-400">
-                  {messages.drafting.citationSummary}:{' '}
-                  {trustPanel.citationSummary.allowlisted}/{trustPanel.citationSummary.total}
-                </p>
-              ) : null}
-              {trustPanel.provenance ? (
-                <p className="mt-1 text-xs text-slate-400">
-                  {messages.drafting.residencyBreakdown}:{' '}
-                  {trustPanel.provenance.residencyBreakdown
-                    .map((entry) => `${entry.zone}:${entry.count}`)
-                    .join(', ')}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-          {clauseComparisons.map((clause) => (
-            <div key={clause.clauseId} className="rounded-3xl border border-slate-800/60 bg-slate-950/70 p-5 shadow-lg">
-              <p className="text-xs uppercase tracking-wide text-slate-400">Avant</p>
-              <p className="mt-1 text-sm text-slate-300">{clause.baseline}</p>
-              <p className="mt-4 text-xs uppercase tracking-wide text-slate-400">Après</p>
-              <p className="mt-1 text-sm text-emerald-200">{clause.proposed}</p>
-              <div className="mt-4 flex items-center justify-between">
-                <p className="text-xs text-slate-400">{clause.diff.recommendation}</p>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() =>
-                    toast.info(clause.title, {
-                      description: `${clause.rationale}\n\n${clause.diff.recommendation}`,
-                    })
-                  }
-                >
-                  {messages.drafting.explain}
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <RedlineDiff
+          entries={REDLINE_DIFF}
+          messages={messages.drafting.redlineViewer}
+          onExplain={(entry) =>
+            toast.info(messages.drafting.redlineViewer.explainToastTitle.replace('{title}', entry.title), {
+              description: entry.impact,
+            })
+          }
+        />
       </section>
     </div>
   );

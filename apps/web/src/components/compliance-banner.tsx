@@ -4,12 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from './ui/button';
-import {
-  DEMO_ORG_ID,
-  acknowledgeCompliance,
-  fetchComplianceStatus,
-  type ComplianceAcknowledgements,
-} from '../lib/api';
+import { acknowledgeCompliance, fetchComplianceStatus, type ComplianceAcknowledgements } from '../lib/api';
+import { useRequiredSession } from './session-provider';
 import type { Messages } from '../lib/i18n';
 
 interface ComplianceBannerProps {
@@ -18,6 +14,8 @@ interface ComplianceBannerProps {
 
 export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   const [isOffline, setIsOffline] = useState(false);
+  const session = useRequiredSession();
+  const hasSession = Boolean(session.orgId && session.userId);
 
   useEffect(() => {
     function syncStatus() {
@@ -39,8 +37,9 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   }, []);
 
   const statusQuery = useQuery({
-    queryKey: ['compliance-status', DEMO_ORG_ID],
-    queryFn: () => fetchComplianceStatus(DEMO_ORG_ID),
+    queryKey: ['compliance-status', session.orgId, session.userId],
+    queryFn: () => fetchComplianceStatus(session.orgId, session.userId),
+    enabled: hasSession,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -78,7 +77,10 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
       if (!payload.consent && !payload.councilOfEurope) {
         return null;
       }
-      return acknowledgeCompliance(DEMO_ORG_ID, payload);
+      if (!hasSession) {
+        throw new Error('Session not available');
+      }
+      return acknowledgeCompliance(session.orgId, session.userId, payload);
     },
     onSuccess: () => {
       toast.success(messages.acknowledged);
@@ -92,6 +94,10 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   const hasPending = Boolean(pending.consent || pending.council);
   const isError = statusQuery.isError;
   const isSuccess = statusQuery.isSuccess;
+
+  if (!hasSession) {
+    return null;
+  }
 
   if (statusQuery.isLoading) {
     return (
@@ -162,7 +168,7 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
       <Button
         size="sm"
         onClick={() => ackMutation.mutate()}
-        disabled={ackMutation.isLoading}
+        disabled={!hasSession || ackMutation.isLoading}
         aria-busy={ackMutation.isLoading}
         className="bg-amber-400 text-slate-900 hover:bg-amber-300"
       >

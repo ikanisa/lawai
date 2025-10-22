@@ -1,14 +1,10 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarCheck, ChevronRight, Clock, ExternalLink, ShieldAlert, Bell } from 'lucide-react';
-import {
-  DEMO_ORG_ID,
-  fetchWorkspaceOverview,
-  type WorkspaceOverviewResponse,
-} from '../../lib/api';
+import { CalendarCheck, ChevronRight, Clock, ExternalLink, ShieldAlert } from 'lucide-react';
+import { fetchWorkspaceOverview, type WorkspaceOverviewResponse } from '../../lib/api';
 import type { Locale, Messages } from '../../lib/i18n';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -18,10 +14,17 @@ import { Separator } from '../ui/separator';
 import { JurisdictionChip } from '../jurisdiction-chip';
 import { usePlanDrawer } from '../../state/plan-drawer';
 import { PlanDrawer } from '../plan-drawer';
-import { useOnlineStatus } from '../../hooks/use-online-status';
-import { useOutbox } from '../../hooks/use-outbox';
-import { useDigest } from '../../hooks/use-digest';
-import { toast } from 'sonner';
+import { MultiAgentDesk } from './multi-agent-desk';
+import { ProcessNavigator } from './process-navigator';
+import { useRequiredSession } from '../session-provider';
+import type {
+  WorkspaceDesk,
+  WorkspaceDeskMode,
+  WorkspaceDeskPersona,
+  WorkspaceDeskPlaybook,
+  WorkspaceDeskQuickAction,
+  WorkspaceDeskToolChip,
+} from '@avocat-ai/shared';
 
 interface WorkspaceViewProps {
   messages: Messages;
@@ -61,10 +64,12 @@ function formatDate(value: string | null | undefined, locale: Locale): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
 }
 
-function useWorkspaceData(locale: Locale) {
+function useWorkspaceData(locale: Locale, orgId: string, userId: string) {
+  const enabled = Boolean(orgId && userId);
   return useQuery<WorkspaceOverviewResponse>({
-    queryKey: ['workspace-overview', locale],
-    queryFn: () => fetchWorkspaceOverview(DEMO_ORG_ID),
+    queryKey: ['workspace-overview', locale, orgId, userId],
+    queryFn: () => fetchWorkspaceOverview(orgId),
+    enabled,
   });
 }
 
@@ -72,28 +77,14 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
   const router = useRouter();
   const { open, toggle } = usePlanDrawer();
   const [heroQuestion, setHeroQuestion] = useState('');
-  const workspaceQuery = useWorkspaceData(locale);
-  const online = useOnlineStatus();
-  const { items: outboxItems } = useOutbox();
-  const { enabled: digestEnabled, enable: enableDigest, loading: digestLoading } = useDigest();
-
-  async function handleEnableDigest() {
-    try {
-      const granted = await enableDigest();
-      if (granted) {
-        toast.success(messages.workspace.digestEnabled);
-      } else {
-        toast.error(messages.workspace.digestError);
-      }
-    } catch (error) {
-      console.error('digest_enable_failed', error);
-      toast.error(messages.workspace.digestError);
-    }
-  }
+  const session = useRequiredSession();
+  const workspaceQuery = useWorkspaceData(locale, session.orgId, session.userId);
 
   const matters = workspaceQuery.data?.matters ?? [];
   const complianceWatch = workspaceQuery.data?.complianceWatch ?? [];
   const hitlInbox = workspaceQuery.data?.hitlInbox ?? { items: [], pendingCount: 0 };
+  const desk: WorkspaceDesk | undefined = workspaceQuery.data?.desk;
+  const navigatorFlows = workspaceQuery.data?.navigator ?? [];
 
   const jurisdictionChips = useMemo(
     () => {
@@ -114,13 +105,94 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!online) {
-      toast.warning(messages.workspace.offlineNotice);
-      return;
-    }
     toggle(true);
     router.push(`/${locale}/research`);
   }
+
+  const navigateTo = useCallback(
+    (href: string) => {
+      router.push(`/${locale}${href.startsWith('/') ? href : `/${href}`}`);
+    },
+    [locale, router],
+  );
+
+  const handleLaunchPlaybook = useCallback(
+    (playbook: WorkspaceDeskPlaybook) => {
+      const modeRoutes: Record<WorkspaceDeskMode, string> = {
+        ask: '/research',
+        do: '/matters',
+        review: '/hitl',
+        generate: '/drafting',
+      };
+
+      const params = new URLSearchParams();
+      params.set('mode', playbook.cta.mode);
+      params.set('playbook', playbook.id);
+      if (playbook.cta.question) {
+        params.set('question', playbook.cta.question);
+      }
+
+      const target = modeRoutes[playbook.cta.mode] ?? '/research';
+      toggle(true);
+      navigateTo(`${target}?${params.toString()}`);
+    },
+    [navigateTo, toggle],
+  );
+
+  const handleQuickAction = useCallback(
+    (action: WorkspaceDeskQuickAction) => {
+      if (action.action === 'plan') {
+        toggle(true);
+        return;
+      }
+
+      if (action.action === 'trust') {
+        navigateTo(action.href ?? '/trust');
+        return;
+      }
+
+      if (action.action === 'hitl') {
+        navigateTo(action.href ?? '/hitl');
+        return;
+      }
+
+      if (action.action === 'navigate' && action.href) {
+        navigateTo(action.href);
+      }
+    },
+    [navigateTo, toggle],
+  );
+
+  const handlePersonaSelect = useCallback(
+    (persona: WorkspaceDeskPersona) => {
+      navigateTo(persona.href);
+    },
+    [navigateTo],
+  );
+
+  const handleToolAction = useCallback(
+    (chip: WorkspaceDeskToolChip) => {
+      if (chip.action === 'plan') {
+        toggle(true);
+        return;
+      }
+
+      if (chip.action === 'trust') {
+        navigateTo(chip.href ?? '/trust');
+        return;
+      }
+
+      if (chip.action === 'hitl') {
+        navigateTo(chip.href ?? '/hitl');
+        return;
+      }
+
+      if (chip.action === 'navigate' && chip.href) {
+        navigateTo(chip.href);
+      }
+    },
+    [navigateTo, toggle],
+  );
 
   return (
     <div className="space-y-10">
@@ -144,37 +216,12 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
                 placeholder={messages.research.heroPlaceholder}
               />
               <div className="flex flex-wrap items-center gap-3">
-                <Button type="submit" className="shadow-lg" disabled={!online}>
+                <Button type="submit" className="shadow-lg">
                   {messages.workspace.heroCta}
                 </Button>
                 <Badge variant="outline">{messages.workspace.keyboardHint}</Badge>
                 <Badge variant="success">{messages.workspace.wcagBadge}</Badge>
-                {digestEnabled ? (
-                  <Badge variant="outline" className="gap-2 text-xs uppercase tracking-wide text-teal-200">
-                    <Bell className="h-3 w-3" aria-hidden />
-                    {messages.workspace.digestEnabledBadge}
-                  </Badge>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-2 border-slate-700/60 text-slate-200"
-                    onClick={handleEnableDigest}
-                    disabled={digestLoading}
-                  >
-                    <Bell className="h-3 w-3" aria-hidden />
-                    {messages.workspace.enableDigest}
-                  </Button>
-                )}
               </div>
-              {!online ? (
-                <p className="text-xs text-amber-300">
-                  {outboxItems.length > 0
-                    ? messages.workspace.offlineQueued.replace('{count}', String(outboxItems.length))
-                    : messages.workspace.offlineNotice}
-                </p>
-              ) : null}
             </form>
             <div className="rounded-3xl border border-slate-700/60 bg-slate-900/60 p-5 text-sm text-slate-200/90">
               <h2 className="text-xs uppercase tracking-wide text-slate-400">{messages.workspace.planTitle}</h2>
@@ -216,19 +263,24 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
         </div>
       </section>
 
+      {desk ? (
+        <MultiAgentDesk
+          desk={desk}
+          messages={messages}
+          onLaunchPlaybook={handleLaunchPlaybook}
+          onQuickAction={handleQuickAction}
+          onPersonaSelect={handlePersonaSelect}
+          onToolAction={handleToolAction}
+        />
+      ) : null}
+
+      <ProcessNavigator flows={navigatorFlows} messages={messages} locale={locale} />
+
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="glass-card border border-slate-800/60">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>{messages.workspace.recentMatters}</CardTitle>
-            <div className="flex items-center gap-2">
-              {digestEnabled ? (
-                <Badge variant="outline" className="gap-1 text-xs text-teal-200">
-                  <Bell className="h-3 w-3" aria-hidden />
-                  {messages.workspace.digestEnabledBadge}
-                </Badge>
-              ) : null}
-              <Badge variant="outline">{matters.length}</Badge>
-            </div>
+            <Badge variant="outline">{matters.length}</Badge>
           </CardHeader>
           <CardContent className="space-y-4">
             {workspaceQuery.isLoading ? (
@@ -330,17 +382,6 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
                       </div>
                       <Badge variant="outline">{item.jurisdiction ?? '—'}</Badge>
                     </div>
-                    {Array.isArray(item.residency) && item.residency.length > 0 ? (
-                      <div className="mt-3 space-y-1 text-xs text-slate-400">
-                        {item.residency.map((entry: { zone: string; count: number }) => (
-                          <p key={`${entry.zone}-${entry.count}`}>
-                            {messages.research.trust.provenanceResidencyItem
-                              .replace('{zone}', entry.zone)
-                              .replace('{count}', entry.count.toString())}
-                          </p>
-                        ))}
-                      </div>
-                    ) : null}
                     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
                       {item.consolidated && <Badge variant="success">{messages.workspace.consolidated}</Badge>}
                       {item.effectiveDate && <span>{formatDate(item.effectiveDate, locale)}</span>}

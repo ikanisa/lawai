@@ -1,97 +1,135 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { OperationsOverviewCard } from '../governance/operations-overview-card';
-import type { Locale, Messages } from '../../lib/i18n';
+import type { Messages } from '../../lib/i18n';
 import {
-  DEMO_ORG_ID,
-  fetchGovernancePublications,
-  fetchOperationsOverview,
+  getGovernancePublications,
+  getOperationsOverview,
+  type GovernancePublicationsResponse,
   type OperationsOverviewResponse,
 } from '../../lib/api';
-
-interface GovernancePublication {
-  slug: string;
-  title: string;
-  summary: string | null;
-  doc_url: string | null;
-  category: string | null;
-  published_at?: string | null;
-}
+import { useRequiredSession } from '../session-provider';
+import { OperationsOverviewCard } from '../governance/operations-overview-card';
 
 interface TrustCenterViewProps {
   messages: Messages;
-  locale: Locale;
 }
 
-export function TrustCenterView({ messages, locale }: TrustCenterViewProps) {
-  const trustMessages = messages.trust;
+const dateFormatter = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' });
+
+export function TrustCenterView({ messages }: TrustCenterViewProps) {
+  const session = useRequiredSession();
+  const orgId = session.orgId;
+  const userId = session.userId;
+  const hasSession = Boolean(orgId && userId);
   const operationsQuery = useQuery<OperationsOverviewResponse>({
-    queryKey: ['operations-overview', DEMO_ORG_ID],
-    queryFn: () => fetchOperationsOverview(DEMO_ORG_ID),
-    staleTime: 60_000,
-  });
-  const publicationsQuery = useQuery<GovernancePublication[]>({
-    queryKey: ['governance-publications'],
-    queryFn: () => fetchGovernancePublications(DEMO_ORG_ID),
-    staleTime: 300_000,
+    queryKey: ['trust-operations-overview', orgId, userId],
+    queryFn: () => getOperationsOverview(orgId, userId),
+    staleTime: 120_000,
+    enabled: hasSession,
   });
 
-  const dateFormatter = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' });
-  const publications = publicationsQuery.data ?? [];
+  const publicationsQuery = useQuery<GovernancePublicationsResponse>({
+    queryKey: ['trust-governance-publications', orgId, userId],
+    queryFn: () => getGovernancePublications({ status: 'published', orgId, userId }),
+    staleTime: 120_000,
+    enabled: hasSession,
+  });
+
+  const trustMessages = messages.trust;
+  const loadingText = messages.admin.loadingShort;
+  const publications = publicationsQuery.data?.publications ?? [];
+
+  const publicationsByCategory = useMemo(() => {
+    const groups = new Map<string, typeof publications>();
+    for (const publication of publications) {
+      const key = publication.category ?? 'general';
+      const bucket = groups.get(key);
+      if (bucket) {
+        bucket.push(publication);
+      } else {
+        groups.set(key, [publication]);
+      }
+    }
+    return Array.from(groups.entries()).map(([category, items]) => ({
+      category,
+      items: items.sort((a, b) => {
+        const aTime = a.published_at ? new Date(a.published_at).getTime() : 0;
+        const bTime = b.published_at ? new Date(b.published_at).getTime() : 0;
+        return bTime - aTime;
+      }),
+    }));
+  }, [publications]);
+
+  if (!hasSession) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">
-      <header className="glass-card rounded-3xl border border-slate-800/60 bg-slate-900/40 p-6 text-slate-100">
-        <h1 className="text-2xl font-semibold">{trustMessages.title}</h1>
-        <p className="mt-2 text-sm text-slate-400">{trustMessages.description}</p>
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold text-slate-100">{trustMessages.title}</h1>
+        <p className="text-sm text-slate-400">{trustMessages.description}</p>
       </header>
 
       <OperationsOverviewCard
         messages={messages}
         data={operationsQuery.data ?? null}
         loading={operationsQuery.isLoading && !operationsQuery.data}
-        locale={locale === 'en' ? 'en-US' : 'fr-FR'}
       />
 
       <Card className="glass-card border border-slate-800/60">
         <CardHeader>
           <CardTitle className="text-slate-100">{trustMessages.publicationsTitle}</CardTitle>
+          <p className="text-sm text-slate-400">{trustMessages.publicationsDescription}</p>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-5">
           {publicationsQuery.isLoading && publications.length === 0 ? (
-            <p className="text-sm text-slate-400">{trustMessages.loading}</p>
+            <p className="text-sm text-slate-400">{loadingText}</p>
           ) : publications.length === 0 ? (
             <p className="text-sm text-slate-400">{trustMessages.publicationsEmpty}</p>
           ) : (
-            publications.map((doc) => (
-              <article
-                key={doc.slug}
-                className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4 text-sm text-slate-200"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-medium text-slate-100">{doc.title}</h3>
-                  <span className="text-xs text-slate-400">
-                    {trustMessages.publishedOn.replace(
-                      '{date}',
-                      doc.published_at ? dateFormatter.format(new Date(doc.published_at)) : '—',
-                    )}
-                  </span>
-                </div>
-                {doc.summary ? <p className="mt-2 text-slate-300">{doc.summary}</p> : null}
-                {doc.doc_url ? (
-                  <a
-                    className="mt-3 inline-flex items-center text-sm text-sky-300 underline-offset-4 hover:underline"
-                    href={doc.doc_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {trustMessages.viewDocument}
-                  </a>
-                ) : null}
-              </article>
-            ))
+            publicationsByCategory.map(({ category, items }) => {
+              const label = trustMessages.categories[category as keyof typeof trustMessages.categories] ?? category;
+              return (
+                <section key={category} className="space-y-3">
+                  <h3 className="text-base font-semibold text-slate-100">{label}</h3>
+                  <div className="space-y-3">
+                    {items.map((publication) => (
+                      <article
+                        key={publication.slug}
+                        className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4 text-sm text-slate-200"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h4 className="font-medium text-slate-100">{publication.title}</h4>
+                          {publication.published_at ? (
+                            <span className="text-xs text-slate-400">
+                              {trustMessages.publishedOn.replace(
+                                '{date}',
+                                dateFormatter.format(new Date(publication.published_at)),
+                              )}
+                            </span>
+                          ) : null}
+                        </div>
+                        {publication.summary ? (
+                          <p className="mt-2 text-slate-300">{publication.summary}</p>
+                        ) : null}
+                        {publication.doc_url ? (
+                          <a
+                            className="mt-3 inline-flex items-center text-sm text-sky-300 underline-offset-4 hover:underline"
+                            href={publication.doc_url}
+                          >
+                            {trustMessages.viewDocument}
+                          </a>
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              );
+            })
           )}
         </CardContent>
       </Card>

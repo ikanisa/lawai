@@ -23,14 +23,7 @@ import { VoiceInputButton } from './voice-input-button';
 import { CameraOcrButton } from './camera-ocr-button';
 import { OutboxPanel } from './outbox-panel';
 import { ReadingModeToggle, type ReadingMode } from './reading-mode-toggle';
-import {
-  DEMO_ORG_ID,
-  DEMO_USER_ID,
-  submitResearchQuestion,
-  sendTelemetryEvent,
-  requestHitlReview,
-  type AgentRunResponse,
-} from '../../lib/api';
+import { submitResearchQuestion, sendTelemetryEvent, requestHitlReview, type AgentRunResponse } from '../../lib/api';
 import type { Messages, Locale } from '../../lib/i18n';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
@@ -41,6 +34,7 @@ import { useOutbox, type OutboxItem } from '../../hooks/use-outbox';
 import { usePwaInstall } from '../../hooks/use-pwa-install';
 import { useConfidentialMode } from '../../state/confidential-mode';
 import { RwandaLanguageTriage } from './rwanda-language-triage';
+import { useRequiredSession } from '../session-provider';
 
 const EMPTY_VIOLATIONS: string[] = [];
 
@@ -315,9 +309,28 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     ? 'Agent indisponible. Veuillez réessayer.'
     : 'Agent unavailable. Please try again.';
   const complianceMessages = messages.app.compliance;
+  const session = useRequiredSession();
+  const sendUserTelemetry = useCallback(
+    (eventName: string, payload?: Record<string, unknown>) => {
+      if (!session.orgId || !session.userId) {
+        return;
+      }
+      void sendTelemetryEvent(eventName, session.orgId, session.userId, payload);
+    },
+    [session.orgId, session.userId],
+  );
+  const ensureSession = useCallback(() => {
+    if (!session.orgId || !session.userId) {
+      throw new Error('Session not available');
+    }
+    return { orgId: session.orgId, userId: session.userId };
+  }, [session.orgId, session.userId]);
 
   const mutation = useMutation({
-    mutationFn: submitResearchQuestion,
+    mutationFn: (input: Omit<Parameters<typeof submitResearchQuestion>[0], 'orgId' | 'userId'>) => {
+      const { orgId, userId } = ensureSession();
+      return submitResearchQuestion({ ...input, orgId, userId });
+    },
     onError: (error: unknown) => {
       const code = error instanceof Error ? error.message : '';
       if (code === 'consent_required' || code === 'coe_disclosure_required') {
@@ -357,12 +370,12 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
   const handleVoiceTranscript = (text: string) => {
     setQuestion((current) => (current ? `${current.trim()} ${text}` : text));
-    void sendTelemetryEvent('voice_dictation_used');
+    sendUserTelemetry('voice_dictation_used');
   };
 
   const handleOcrText = (text: string) => {
     setContext((current) => (current ? `${current}\n${text}` : text));
-    void sendTelemetryEvent('camera_ocr_added');
+    sendUserTelemetry('camera_ocr_added');
   };
 
   const handleHitlRequest = useCallback(async () => {
@@ -376,15 +389,14 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         ? 'Revue humaine demandée depuis le panneau de confiance.'
         : 'Manual review requested from the trust panel.');
     try {
-      await requestHitlReview(latestRun.runId, {
+      const { orgId, userId } = ensureSession();
+      await requestHitlReview(latestRun.runId, orgId, userId, {
         reason,
         manual: true,
-        orgId: DEMO_ORG_ID,
-        userId: DEMO_USER_ID,
       });
       setHitlQueued(true);
       toast.success(hitlMessage);
-      void sendTelemetryEvent('hitl_requested', {
+      sendUserTelemetry('hitl_requested', {
         runId: latestRun.runId,
         manual: true,
         alreadyPending:
@@ -410,17 +422,18 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     locale,
     hitlMessage,
     requestHitlReview,
-    sendTelemetryEvent,
+    ensureSession,
+    sendUserTelemetry,
     online,
   ]);
 
   const handleRwandaLanguageSelect = (language: 'fr' | 'en' | 'rw') => {
-    void sendTelemetryEvent('rwanda_language_toggle', { language });
+    sendUserTelemetry('rwanda_language_toggle', { language });
   };
 
   const handleReadingModeChange = (mode: ReadingMode) => {
     setReadingMode(mode);
-    void sendTelemetryEvent('reading_mode_changed', { mode });
+    sendUserTelemetry('reading_mode_changed', { mode });
   };
 
   const citationBadges = (note?: string) => {
@@ -586,13 +599,13 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     if (!online) {
       enqueue({ question, context, confidentialMode });
       toast.info(outboxMessages.queued);
-      void sendTelemetryEvent('outbox_enqueued', { offline: true });
+      sendUserTelemetry('outbox_enqueued', { offline: true });
       setQuestion('');
       setContext('');
       return;
     }
 
-    void sendTelemetryEvent('run_submitted', {
+    sendUserTelemetry('run_submitted', {
       questionLength: question.length,
       ohadaMode,
       euOverlay,
@@ -603,14 +616,12 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
       const data = await mutation.mutateAsync({
         question,
         context,
-        orgId: DEMO_ORG_ID,
-        userId: DEMO_USER_ID,
         confidentialMode,
       });
       setLatestRun(data);
       toggle(true);
       toast.success(successMessage);
-      void sendTelemetryEvent('run_completed', {
+      sendUserTelemetry('run_completed', {
         runId: data.runId,
         jurisdiction: data.data?.jurisdiction.country ?? null,
         risk: data.data?.risk.level ?? null,
@@ -619,22 +630,22 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Agent indisponible';
       toast.error(message);
-      void sendTelemetryEvent('run_failed', { message });
+      sendUserTelemetry('run_failed', { message });
       enqueue({ question, context, confidentialMode });
       toast.info(outboxMessages.queued);
-      void sendTelemetryEvent('outbox_enqueued', { offline: false });
+      sendUserTelemetry('outbox_enqueued', { offline: false });
     }
   }
 
   function handleBilingualSelect(language: 'fr' | 'en') {
-    void sendTelemetryEvent('bilingual_toggle', {
+    sendUserTelemetry('bilingual_toggle', {
       language,
       jurisdiction: jurisdictionCode ?? null,
     });
   }
 
   function handleCitationVisit(url: string) {
-    void sendTelemetryEvent('citation_clicked', {
+    sendUserTelemetry('citation_clicked', {
       url,
       jurisdiction: jurisdictionCode ?? null,
     });
@@ -656,8 +667,6 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         const data = await mutation.mutateAsync({
           question: item.question,
           context: item.context,
-          orgId: DEMO_ORG_ID,
-          userId: DEMO_USER_ID,
           confidentialMode: item.confidentialMode,
         });
         setLatestRun(data);
@@ -667,7 +676,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         const toastId = `outbox-${item.id}`;
         const successLabel = source === 'manual' ? successMessage : outboxMessages.sent ?? successMessage;
         toast.success(successLabel, { id: toastId });
-        void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
+        sendUserTelemetry(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
           success: true,
           runId: data.runId,
         });
@@ -676,14 +685,14 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Agent indisponible';
         toast.error(message, { id: `outbox-${item.id}` });
-        void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
+        sendUserTelemetry(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
           success: false,
           message,
         });
         return false;
       }
     },
-    [mutation, open, toggle, successMessage, outboxMessages.sent, registerInstallSuccess],
+    [mutation, open, toggle, successMessage, outboxMessages.sent, registerInstallSuccess, sendUserTelemetry],
   );
 
   async function handleOutboxRetry(item: OutboxItem) {
@@ -706,7 +715,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
   const verifyCitation = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');
-    void sendTelemetryEvent('citation_verify', { url });
+    sendUserTelemetry('citation_verify', { url });
   };
 
   return (

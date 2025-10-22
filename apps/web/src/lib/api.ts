@@ -429,7 +429,9 @@ export async function submitResearchQuestion(input: {
 
 export async function requestHitlReview(
   runId: string,
-  input: { reason: string; manual?: boolean; orgId?: string; userId?: string },
+  orgId: string,
+  userId: string,
+  input: { reason: string; manual?: boolean },
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/runs/${encodeURIComponent(runId)}/hitl`, {
     method: 'POST',
@@ -437,8 +439,8 @@ export async function requestHitlReview(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      orgId: input.orgId ?? DEMO_ORG_ID,
-      userId: input.userId ?? DEMO_USER_ID,
+      orgId,
+      userId,
       reason: input.reason,
       manual: input.manual ?? true,
     }),
@@ -451,9 +453,9 @@ export async function requestHitlReview(
 
 export async function sendTelemetryEvent(
   eventName: string,
+  orgId: string,
+  userId: string,
   payload?: Record<string, unknown>,
-  orgId: string = DEMO_ORG_ID,
-  userId: string = DEMO_USER_ID,
 ): Promise<void> {
   try {
     await fetch(`${API_BASE}/telemetry`, {
@@ -466,25 +468,29 @@ export async function sendTelemetryEvent(
   }
 }
 
-export async function fetchCitations(orgId: string) {
-  const response = await fetch(`${API_BASE}/citations?orgId=${encodeURIComponent(orgId)}`);
+export async function fetchCitations(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/citations?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch citations');
   }
   return response.json();
 }
 
-export async function fetchHitlQueue(orgId: string) {
-  const response = await fetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`);
+export async function fetchHitlQueue(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId, 'x-org-id': orgId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL queue');
   }
   return response.json();
 }
 
-export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsResponse> {
+export async function fetchHitlMetrics(orgId: string, userId: string): Promise<HitlMetricsResponse> {
   const response = await fetch(`${API_BASE}/hitl/metrics?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL metrics');
@@ -492,9 +498,9 @@ export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsRespon
   return response.json();
 }
 
-export async function fetchHitlDetail(orgId: string, id: string): Promise<HitlDetailResponse> {
+export async function fetchHitlDetail(orgId: string, userId: string, id: string): Promise<HitlDetailResponse> {
   const response = await fetch(`${API_BASE}/hitl/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL detail');
@@ -502,11 +508,15 @@ export async function fetchHitlDetail(orgId: string, id: string): Promise<HitlDe
   return response.json();
 }
 
-export async function submitHitlAction(id: string, action: 'approve' | 'request_changes' | 'reject', comment?: string) {
-  const response = await fetch(`${API_BASE}/hitl/${id}`, {
+export async function submitHitlAction(
+  orgId: string,
+  userId: string,
+  input: { id: string; action: 'approve' | 'request_changes' | 'reject'; comment?: string },
+) {
+  const response = await fetch(`${API_BASE}/hitl/${input.id}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, comment }),
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId, 'x-org-id': orgId },
+    body: JSON.stringify({ action: input.action, comment: input.comment }),
   });
   if (!response.ok) {
     throw new Error('Unable to update review status');
@@ -514,17 +524,20 @@ export async function submitHitlAction(id: string, action: 'approve' | 'request_
   return response.json();
 }
 
-export async function fetchMatters(orgId: string) {
-  const response = await fetch(`${API_BASE}/matters?orgId=${encodeURIComponent(orgId)}`);
+export async function fetchMatters(orgId: string, userId: string) {
+  const response = await fetch(`${API_BASE}/matters?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch matters');
   }
   return response.json();
 }
 
-export async function fetchMatterDetail(orgId: string, id: string) {
+export async function fetchMatterDetail(orgId: string, userId: string, id: string) {
   const response = await fetch(
     `${API_BASE}/matters/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`,
+    { headers: { 'x-user-id': userId } },
   );
   if (!response.ok) {
     throw new Error('Unable to fetch matter');
@@ -534,6 +547,7 @@ export async function fetchMatterDetail(orgId: string, id: string) {
 
 export async function fetchHitlAuditTrail(
   orgId: string,
+  userId: string,
   options: { runId?: string; objectId?: string; limit?: number },
 ) {
   const url = new URL(`${API_BASE}/admin/org/${orgId}/audit-events`);
@@ -548,7 +562,7 @@ export async function fetchHitlAuditTrail(
   }
 
   const response = await fetch(url.toString(), {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch audit events');
@@ -556,9 +570,9 @@ export async function fetchHitlAuditTrail(
   return response.json() as Promise<{ events: AuditEvent[] }>;
 }
 
-export async function fetchCorpus(orgId: string) {
+export async function fetchCorpus(orgId: string, userId: string) {
   const response = await fetch(`${API_BASE}/corpus?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch corpus overview');
@@ -568,6 +582,7 @@ export async function fetchCorpus(orgId: string) {
 
 export async function resummarizeDocument(
   orgId: string,
+  userId: string,
   documentId: string,
   overrides?: { summariserModel?: string; embeddingModel?: string; maxSummaryChars?: number },
 ) {
@@ -575,7 +590,7 @@ export async function resummarizeDocument(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': userId,
     },
     body: JSON.stringify({ orgId, ...overrides }),
   });
@@ -655,10 +670,10 @@ export interface GovernanceMetricsResponse {
   }>;
 }
 
-export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceMetricsResponse> {
+export async function fetchGovernanceMetrics(orgId: string, userId: string): Promise<GovernanceMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/governance?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': userId,
     },
   });
   if (!response.ok) {
@@ -667,10 +682,10 @@ export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceM
   return response.json();
 }
 
-export async function fetchRetrievalMetrics(orgId: string): Promise<RetrievalMetricsResponse> {
+export async function fetchRetrievalMetrics(orgId: string, userId: string): Promise<RetrievalMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/retrieval?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': userId,
     },
   });
 
@@ -704,10 +719,10 @@ export interface EvaluationMetricsResponse {
   }>;
 }
 
-export async function fetchEvaluationMetrics(orgId: string): Promise<EvaluationMetricsResponse> {
+export async function fetchEvaluationMetrics(orgId: string, userId: string): Promise<EvaluationMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/evaluations?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': userId,
     },
   });
 
@@ -718,11 +733,11 @@ export async function fetchEvaluationMetrics(orgId: string): Promise<EvaluationM
   return response.json();
 }
 
-export async function fetchSloMetrics(orgId: string, limit = 6): Promise<SloMetricsResponse> {
+export async function fetchSloMetrics(orgId: string, userId: string, limit = 6): Promise<SloMetricsResponse> {
   const params = new URLSearchParams({ orgId, limit: String(limit) });
   const response = await fetch(`${API_BASE}/metrics/slo?${params.toString()}`, {
     headers: {
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': userId,
     },
   });
 
@@ -733,19 +748,27 @@ export async function fetchSloMetrics(orgId: string, limit = 6): Promise<SloMetr
   return response.json();
 }
 
-export async function fetchSnapshotDiff(orgId: string, snapshotId: string, compareTo: string) {
+export async function fetchSnapshotDiff(orgId: string, userId: string, snapshotId: string, compareTo: string) {
   const params = new URLSearchParams({ orgId, snapshotId, compareTo });
-  const response = await fetch(`${API_BASE}/corpus/diff?${params.toString()}`);
+  const response = await fetch(`${API_BASE}/corpus/diff?${params.toString()}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to compute diff');
   }
   return response.json();
 }
 
-export async function toggleAllowlistDomain(host: string, active: boolean, jurisdiction?: string) {
+export async function toggleAllowlistDomain(
+  orgId: string,
+  userId: string,
+  host: string,
+  active: boolean,
+  jurisdiction?: string,
+) {
   const response = await fetch(`${API_BASE}/corpus/allowlist/${encodeURIComponent(host)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId, 'x-org-id': orgId },
     body: JSON.stringify({ active, jurisdiction }),
   });
   if (!response.ok) {
@@ -766,9 +789,9 @@ export interface SsoConnectionResponse {
   }>;
 }
 
-export async function fetchSsoConnections(orgId: string): Promise<SsoConnectionResponse> {
+export async function fetchSsoConnections(orgId: string, userId: string): Promise<SsoConnectionResponse> {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SSO connections');
@@ -778,6 +801,7 @@ export async function fetchSsoConnections(orgId: string): Promise<SsoConnectionR
 
 export async function saveSsoConnection(
   orgId: string,
+  userId: string,
   input: {
     id?: string;
     provider: 'saml' | 'oidc';
@@ -789,7 +813,7 @@ export async function saveSsoConnection(
 ) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
     body: JSON.stringify({ ...input, metadata: {}, groupMappings: {} }),
   });
   if (!response.ok) {
@@ -798,10 +822,10 @@ export async function saveSsoConnection(
   return response.json();
 }
 
-export async function removeSsoConnection(orgId: string, connectionId: string) {
+export async function removeSsoConnection(orgId: string, userId: string, connectionId: string) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso/${connectionId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to delete SSO connection');
@@ -814,9 +838,9 @@ export interface ScimTokenResponse {
   expiresAt?: string | null;
 }
 
-export async function fetchScimTokens(orgId: string) {
+export async function fetchScimTokens(orgId: string, userId: string) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SCIM tokens');
@@ -824,10 +848,15 @@ export async function fetchScimTokens(orgId: string) {
   return response.json();
 }
 
-export async function createScimAccessToken(orgId: string, name: string, expiresAt?: string | null) {
+export async function createScimAccessToken(
+  orgId: string,
+  userId: string,
+  name: string,
+  expiresAt?: string | null,
+) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
     body: JSON.stringify({ name, expiresAt }),
   });
   if (!response.ok) {
@@ -836,10 +865,10 @@ export async function createScimAccessToken(orgId: string, name: string, expires
   return response.json() as Promise<ScimTokenResponse>;
 }
 
-export async function deleteScimAccessToken(orgId: string, tokenId: string) {
+export async function deleteScimAccessToken(orgId: string, userId: string, tokenId: string) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens/${tokenId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to delete SCIM token');
@@ -848,7 +877,8 @@ export async function deleteScimAccessToken(orgId: string, tokenId: string) {
 
 export async function fetchComplianceStatus(
   orgId: string,
-  options?: { userId?: string; limit?: number },
+  userId: string,
+  options?: { limit?: number },
 ): Promise<ComplianceStatusResponse> {
   const params = new URLSearchParams();
   if (options?.limit) {
@@ -856,7 +886,7 @@ export async function fetchComplianceStatus(
   }
   const response = await fetch(`${API_BASE}/compliance/status?${params.toString()}`, {
     headers: {
-      'x-user-id': options?.userId ?? DEMO_USER_ID,
+      'x-user-id': userId,
       'x-org-id': orgId,
     },
   });
@@ -868,10 +898,10 @@ export async function fetchComplianceStatus(
 
 export async function acknowledgeCompliance(
   orgId: string,
+  userId: string,
   input: {
     consent?: { type: string; version: string } | null;
     councilOfEurope?: { version: string } | null;
-    userId?: string;
   },
 ): Promise<ComplianceStatusResponse> {
   const payload: Record<string, unknown> = {};
@@ -885,7 +915,7 @@ export async function acknowledgeCompliance(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': input.userId ?? DEMO_USER_ID,
+      'x-user-id': userId,
       'x-org-id': orgId,
     },
     body: JSON.stringify(payload),
@@ -896,10 +926,10 @@ export async function acknowledgeCompliance(
   return response.json();
 }
 
-export async function fetchAuditEvents(orgId: string, limit = 50) {
+export async function fetchAuditEvents(orgId: string, userId: string, limit = 50) {
   const response = await fetch(
     `${API_BASE}/admin/org/${orgId}/audit-events?limit=${encodeURIComponent(String(limit))}`,
-    { headers: { 'x-user-id': DEMO_USER_ID } },
+    { headers: { 'x-user-id': userId } },
   );
   if (!response.ok) {
     throw new Error('Unable to fetch audit events');
@@ -909,6 +939,7 @@ export async function fetchAuditEvents(orgId: string, limit = 50) {
 
 export async function fetchDeviceSessions(
   orgId: string,
+  userId: string,
   options?: { includeRevoked?: boolean; limit?: number; userId?: string },
 ): Promise<{ sessions: DeviceSession[] }> {
   const params = new URLSearchParams({ orgId });
@@ -917,7 +948,7 @@ export async function fetchDeviceSessions(
   if (options?.userId) params.set('userId', options.userId);
 
   const response = await fetch(`${API_BASE}/security/devices?${params.toString()}`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch device sessions');
@@ -950,12 +981,12 @@ export async function fetchDeviceSessions(
   return { sessions };
 }
 
-export async function revokeDeviceSession(orgId: string, sessionId: string, reason?: string) {
+export async function revokeDeviceSession(orgId: string, userId: string, sessionId: string, reason?: string) {
   const response = await fetch(`${API_BASE}/security/devices/revoke`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': DEMO_USER_ID,
+      'x-user-id': userId,
     },
     body: JSON.stringify({ orgId, sessionId, reason: reason ?? null }),
   });
@@ -967,9 +998,9 @@ export async function revokeDeviceSession(orgId: string, sessionId: string, reas
   return response.json() as Promise<{ session: { id: string; revokedAt: string } }>;
 }
 
-export async function fetchIpAllowlist(orgId: string) {
+export async function fetchIpAllowlist(orgId: string, userId: string) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch IP allowlist');
@@ -979,6 +1010,7 @@ export async function fetchIpAllowlist(orgId: string) {
 
 export async function upsertIpAllowlistEntry(
   orgId: string,
+  userId: string,
   input: { id?: string; cidr: string; description?: string | null },
 ) {
   const url = input.id
@@ -987,7 +1019,7 @@ export async function upsertIpAllowlistEntry(
   const method = input.id ? 'PATCH' : 'POST';
   const response = await fetch(url, {
     method,
-    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
     body: JSON.stringify({ cidr: input.cidr, description: input.description ?? null }),
   });
   if (!response.ok) {
@@ -996,17 +1028,21 @@ export async function upsertIpAllowlistEntry(
   return response.json();
 }
 
-export async function deleteIpAllowlistEntry(orgId: string, entryId: string) {
+export async function deleteIpAllowlistEntry(orgId: string, userId: string, entryId: string) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist/${entryId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to delete IP entry');
   }
 }
 
-export async function fetchDraftingTemplates(orgId: string, params?: { jurisdiction?: string; matterType?: string }) {
+export async function fetchDraftingTemplates(
+  orgId: string,
+  userId: string,
+  params?: { jurisdiction?: string; matterType?: string },
+) {
   const search = new URLSearchParams({ orgId });
   if (params?.jurisdiction) {
     search.set('jurisdiction', params.jurisdiction);
@@ -1014,7 +1050,9 @@ export async function fetchDraftingTemplates(orgId: string, params?: { jurisdict
   if (params?.matterType) {
     search.set('matterType', params.matterType);
   }
-  const response = await fetch(`${API_BASE}/drafting/templates?${search.toString()}`);
+  const response = await fetch(`${API_BASE}/drafting/templates?${search.toString()}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch templates');
   }
@@ -1051,17 +1089,19 @@ export interface WorkspaceOverviewResponse {
   navigator?: ProcessNavigatorFlow[];
 }
 
-export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOverviewResponse> {
-  const response = await fetch(`${API_BASE}/workspace?orgId=${encodeURIComponent(orgId)}`);
+export async function fetchWorkspaceOverview(orgId: string, userId: string): Promise<WorkspaceOverviewResponse> {
+  const response = await fetch(`${API_BASE}/workspace?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': userId },
+  });
   if (!response.ok) {
     throw new Error('Unable to fetch workspace overview');
   }
   return response.json();
 }
 
-export async function getOperationsOverview(orgId: string): Promise<OperationsOverviewResponse> {
+export async function getOperationsOverview(orgId: string, userId: string): Promise<OperationsOverviewResponse> {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/operations/overview`, {
-    headers: { 'x-user-id': DEMO_USER_ID },
+    headers: { 'x-user-id': userId },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch operations overview');
@@ -1088,6 +1128,7 @@ export async function getGovernancePublications(params?: {
   status?: string;
   category?: string;
   orgId?: string;
+  userId?: string;
 }): Promise<GovernancePublicationsResponse> {
   const search = new URLSearchParams();
   if (params?.status) {
@@ -1101,8 +1142,8 @@ export async function getGovernancePublications(params?: {
   }
 
   const headers: Record<string, string> = {};
-  if (params?.orgId) {
-    headers['x-user-id'] = DEMO_USER_ID;
+  if (params?.orgId && params.userId) {
+    headers['x-user-id'] = params.userId;
   }
 
   const query = search.toString();

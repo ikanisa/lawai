@@ -1,167 +1,160 @@
 'use client';
 
-import type { FormEvent } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent, ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
-import { Switch } from '../../components/ui/switch';
-import { Badge } from '../../components/ui/badge';
+import { OperationsOverviewCard } from '../governance/operations-overview-card';
 import {
-  DEMO_ORG_ID,
-  DEMO_USER_ID,
   fetchGovernanceMetrics,
   type GovernanceMetricsResponse,
   fetchRetrievalMetrics,
   type RetrievalMetricsResponse,
   fetchEvaluationMetrics,
   type EvaluationMetricsResponse,
+  fetchSloMetrics,
+  type SloMetricsResponse,
   fetchSsoConnections,
   saveSsoConnection,
   removeSsoConnection,
   fetchScimTokens,
   createScimAccessToken,
   deleteScimAccessToken,
-  fetchOrgMembers,
-  createOrgInvite,
-  updateMemberRole,
-  fetchJurisdictions,
-  updateJurisdictions,
   fetchAuditEvents,
   fetchIpAllowlist,
   upsertIpAllowlistEntry,
   deleteIpAllowlistEntry,
-  fetchExports,
-  fetchDeletionRequests,
-  requestExport,
-  createDeletionRequest,
   type ScimTokenResponse,
-  fetchOperationsOverview,
+  getOperationsOverview,
   type OperationsOverviewResponse,
-  fetchOrgPolicies,
-  updateOrgPolicies,
-  fetchAlerts,
-  fetchLearningMetrics,
-  fetchLearningSignals,
-  fetchAutonomousUserTypes,
+  fetchDeviceSessions,
+  revokeDeviceSession,
+  type DeviceSession,
 } from '../../lib/api';
-import type { Locale, Messages } from '../../lib/i18n';
-import { OperationsOverviewCard } from '../governance/operations-overview-card';
-import { JurisdictionCoverageCard } from '../governance/jurisdiction-coverage-card';
+import type { Messages } from '../../lib/i18n';
+import { clientEnv } from '../../env.client';
+import { useRequiredSession } from '../session-provider';
 
 interface AdminViewProps {
   messages: Messages;
-  locale: Locale;
+}
+
+const numberFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+const decimalFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
+const dateTimeFormatter = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+
+function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  return `${decimalFormatter.format(value * 100)} %`;
+}
+
+function formatMinutes(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  return `${decimalFormatter.format(value)} min`;
+}
+
+function formatSeconds(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  return `${decimalFormatter.format(value)} s`;
+}
+
+function formatPercentValue(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  return `${decimalFormatter.format(value)} %`;
+}
+
+function formatDecimal(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  return decimalFormatter.format(value);
 }
 
 const selectClassName =
   'focus-ring w-full rounded-2xl border border-slate-600/60 bg-slate-900/60 px-4 py-3 text-sm text-slate-100';
 
-const ADMIN_JURISDICTIONS = ['FR', 'BE', 'LU', 'CH-FR', 'CA-QC', 'MC', 'OHADA', 'MA', 'TN', 'DZ', 'RW', 'EU'];
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+  return dateTimeFormatter.format(date);
+}
 
-function useGovernanceMetrics() {
+function useGovernanceMetrics(orgId: string, userId: string, enabled: boolean) {
   return useQuery<GovernanceMetricsResponse>({
-    queryKey: ['governance-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchGovernanceMetrics(DEMO_ORG_ID),
+    queryKey: ['governance-metrics', orgId, userId],
+    queryFn: () => fetchGovernanceMetrics(orgId, userId),
     staleTime: 60_000,
+    enabled,
   });
 }
 
-export function AdminView({ messages, locale }: AdminViewProps) {
+export function AdminView({ messages }: AdminViewProps) {
   const queryClient = useQueryClient();
-  const metricsQuery = useGovernanceMetrics();
-  const operationsQuery = useQuery<OperationsOverviewResponse>({
-    queryKey: ['operations-overview', DEMO_ORG_ID],
-    queryFn: () => fetchOperationsOverview(DEMO_ORG_ID),
-    staleTime: 60_000,
-  });
-  const policiesQuery = useQuery({ queryKey: ['admin-policies', DEMO_ORG_ID], queryFn: () => fetchOrgPolicies(DEMO_ORG_ID, DEMO_USER_ID) });
-  const alertsQuery = useQuery({ queryKey: ['alerts', DEMO_ORG_ID], queryFn: () => fetchAlerts(DEMO_ORG_ID), refetchInterval: 60000 });
-  const exportsQuery = useQuery({ queryKey: ['exports', DEMO_ORG_ID], queryFn: () => fetchExports(DEMO_ORG_ID) });
-  const deletionQuery = useQuery({ queryKey: ['deletion-requests', DEMO_ORG_ID], queryFn: () => fetchDeletionRequests(DEMO_ORG_ID) });
-  const userTypesQuery = useQuery({ queryKey: ['autonomous-user-types'], queryFn: fetchAutonomousUserTypes, staleTime: 300_000 });
-  const exportMutation = useMutation({ mutationFn: (fmt: 'csv' | 'json') => requestExport(DEMO_ORG_ID, fmt), onSuccess: () => { toast.success('Export demandé'); queryClient.invalidateQueries({ queryKey: ['exports', DEMO_ORG_ID] }); } });
-  const deletionMutation = useMutation({ mutationFn: (payload: { id: string; reason?: string }) => createDeletionRequest(DEMO_ORG_ID, 'document', payload.id, payload.reason), onSuccess: () => { toast.success('Suppression demandée'); queryClient.invalidateQueries({ queryKey: ['deletion-requests', DEMO_ORG_ID] }); } });
+  const session = useRequiredSession();
+  const orgId = session.orgId;
+  const userId = session.userId;
+  const hasSession = Boolean(orgId && userId);
+  const metricsQuery = useGovernanceMetrics(orgId, userId, hasSession);
   const overview = metricsQuery.data?.overview ?? null;
   const toolRows = metricsQuery.data?.tools ?? [];
-  const jurisdictionLabels = useMemo<Map<string, string>>(
-    () =>
-      new Map<string, string>(
-        SUPPORTED_JURISDICTIONS.map((entry: { id: string; labelFr: string }) => [entry.id, entry.labelFr]),
-      ),
-    [],
-  );
+  const jurisdictionLabels = useMemo(() => {
+    const arr = SUPPORTED_JURISDICTIONS as Array<{ id: string; labelFr: string }>;
+    return new Map(arr.map((entry) => [entry.id, entry.labelFr]));
+  }, []);
   const identifierRows = useMemo(() => {
     const rows = metricsQuery.data?.identifiers ?? [];
-    return rows
+    type Row = (typeof rows)[number] & { label: string };
+    return (rows
       .map((row) => ({
         ...row,
         label: jurisdictionLabels.get(row.jurisdiction) ?? row.jurisdiction,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+      })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }, [metricsQuery.data, jurisdictionLabels]);
+  const jurisdictionCoverage = useMemo(() => {
+    const rows = metricsQuery.data?.jurisdictions ?? [];
+    type Row = (typeof rows)[number] & { label: string };
+    return (rows
+      .map((row) => ({
+        ...row,
+        label: jurisdictionLabels.get(row.jurisdiction) ?? row.jurisdiction,
+      })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [metricsQuery.data, jurisdictionLabels]);
   const retrievalQuery = useQuery<RetrievalMetricsResponse>({
-    queryKey: ['retrieval-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchRetrievalMetrics(DEMO_ORG_ID),
+    queryKey: ['retrieval-metrics', orgId, userId],
+    queryFn: () => fetchRetrievalMetrics(orgId, userId),
     staleTime: 60_000,
+    enabled: hasSession,
   });
   const retrievalSummary = retrievalQuery.data?.summary ?? null;
   const retrievalOrigins = useMemo(() => {
-    const origins = retrievalQuery.data?.origins ?? [];
+    const origins = (retrievalQuery.data?.origins ?? []) as RetrievalMetricsResponse['origins'];
     return origins
       .filter((entry) => entry.snippetCount > 0)
       .sort((a, b) => b.snippetCount - a.snippetCount);
   }, [retrievalQuery.data]);
   const retrievalHosts = useMemo(() => {
-    const hosts = retrievalQuery.data?.hosts ?? [];
+    const hosts = (retrievalQuery.data?.hosts ?? []) as RetrievalMetricsResponse['hosts'];
     return hosts
       .filter((entry) => entry.citationCount > 0)
       .sort((a, b) => b.citationCount - a.citationCount)
       .slice(0, 8);
   }, [retrievalQuery.data]);
-  const jurisdictionCoverage = metricsQuery.data?.jurisdictions ?? [];
-  const intlLocale = locale === 'en' ? 'en-US' : 'fr-FR';
-  const numberFormatter = useMemo(() => new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 0 }), [intlLocale]);
-  const decimalFormatter = useMemo(() => new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 1 }), [intlLocale]);
-  const dateTimeFormatter = useMemo(
-    () => new Intl.DateTimeFormat(intlLocale, { dateStyle: 'short', timeStyle: 'short' }),
-    [intlLocale],
-  );
-  const formatPercent = (value: number | null | undefined): string => {
-    if (value === null || value === undefined) return '—';
-    return `${decimalFormatter.format(value * 100)} %`;
-  };
-
-  const formatMinutes = (value: number | null | undefined): string => {
-    if (value === null || value === undefined) return '—';
-    return `${decimalFormatter.format(value)} min`;
-  };
-
-  const formatDecimal = (value: number | null | undefined): string => {
-    if (value === null || value === undefined) return '—';
-    return decimalFormatter.format(value);
-  };
-
-  const formatDateTime = (value: string | null | undefined): string => {
-    if (!value) return '—';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return '—';
-    }
-    return dateTimeFormatter.format(date);
-  };
   const evaluationQuery = useQuery<EvaluationMetricsResponse>({
-    queryKey: ['evaluation-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchEvaluationMetrics(DEMO_ORG_ID),
+    queryKey: ['evaluation-metrics', orgId, userId],
+    queryFn: () => fetchEvaluationMetrics(orgId, userId),
     staleTime: 60_000,
+    enabled: hasSession,
   });
   const evaluationSummary = evaluationQuery.data?.summary ?? null;
   const evaluationJurisdictions = useMemo(() => {
     const rows = evaluationQuery.data?.jurisdictions ?? [];
-    return rows
+    type Row = (typeof rows)[number] & { label: string };
+    return (rows
       .map((row) => ({
         ...row,
         label:
@@ -169,73 +162,54 @@ export function AdminView({ messages, locale }: AdminViewProps) {
           (row.jurisdiction === 'UNKNOWN'
             ? messages.admin.evaluationJurisdictionUnknown
             : row.jurisdiction),
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+      })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [evaluationQuery.data, jurisdictionLabels, messages.admin.evaluationJurisdictionUnknown]);
+  const sloQuery = useQuery<SloMetricsResponse>({
+    queryKey: ['slo-metrics', orgId, userId],
+    queryFn: () => fetchSloMetrics(orgId, userId),
+    staleTime: 60_000,
+    enabled: hasSession,
+  });
+  const sloSummary = sloQuery.data?.summary ?? null;
+  const sloSnapshots = sloQuery.data?.snapshots ?? [];
+  const operationsQuery = useQuery<OperationsOverviewResponse>({
+    queryKey: ['operations-overview', orgId, userId],
+    queryFn: () => getOperationsOverview(orgId, userId),
+    staleTime: 60_000,
+    enabled: hasSession,
+  });
+  const operationsOverview = operationsQuery.data ?? null;
   const ssoQuery = useQuery({
-    queryKey: ['admin-sso', DEMO_ORG_ID],
-    queryFn: () => fetchSsoConnections(DEMO_ORG_ID),
+    queryKey: ['admin-sso', orgId, userId],
+    queryFn: () => fetchSsoConnections(orgId, userId),
+    enabled: hasSession,
   });
   const scimQuery = useQuery({
-    queryKey: ['admin-scim', DEMO_ORG_ID],
-    queryFn: () => fetchScimTokens(DEMO_ORG_ID),
+    queryKey: ['admin-scim', orgId, userId],
+    queryFn: () => fetchScimTokens(orgId, userId),
+    enabled: hasSession,
   });
   const auditQuery = useQuery({
-    queryKey: ['admin-audit', DEMO_ORG_ID],
-    queryFn: () => fetchAuditEvents(DEMO_ORG_ID, DEMO_USER_ID, 25),
+    queryKey: ['admin-audit', orgId, userId],
+    queryFn: () => fetchAuditEvents(orgId, userId, 25),
+    enabled: hasSession,
   });
   const ipQuery = useQuery({
-    queryKey: ['admin-ip', DEMO_ORG_ID],
-    queryFn: () => fetchIpAllowlist(DEMO_ORG_ID),
+    queryKey: ['admin-ip', orgId, userId],
+    queryFn: () => fetchIpAllowlist(orgId, userId),
+    enabled: hasSession,
   });
-  const membersQuery = useQuery({
-    queryKey: ['admin-members', DEMO_ORG_ID],
-    queryFn: () => fetchOrgMembers(DEMO_ORG_ID, DEMO_USER_ID),
+  const deviceSessionsQuery = useQuery({
+    queryKey: ['admin-device-sessions', orgId, userId],
+    queryFn: () => fetchDeviceSessions(orgId, userId, { includeRevoked: false, limit: 200 }),
+    staleTime: 30_000,
+    enabled: hasSession,
   });
-  const members = membersQuery.data?.members ?? [];
-  const jurisdictionsQuery = useQuery({
-    queryKey: ['admin-jurisdictions', DEMO_ORG_ID],
-    queryFn: () => fetchJurisdictions(DEMO_ORG_ID, DEMO_USER_ID),
-  });
-  const jurisdictionAccess = useMemo(() => {
-    const map = new Map<string, { can_read: boolean; can_write: boolean }>();
-    for (const entry of jurisdictionsQuery.data?.entitlements ?? []) {
-      map.set(entry.juris_code.toUpperCase(), {
-        can_read: Boolean(entry.can_read),
-        can_write: Boolean(entry.can_write),
-      });
-    }
-    return map;
-  }, [jurisdictionsQuery.data]);
-  const learningMetricsQuery = useQuery({
-    queryKey: ['learning-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchLearningMetrics({ limit: 50 }),
-    refetchInterval: 60_000,
-  });
-  const learningSignalsQuery = useQuery({
-    queryKey: ['learning-signals', DEMO_ORG_ID],
-    queryFn: () => fetchLearningSignals(DEMO_ORG_ID, DEMO_USER_ID, 50),
-    refetchInterval: 60_000,
-  });
+  const deviceSessions = (deviceSessionsQuery.data?.sessions ?? []) as DeviceSession[];
 
-  const learningMetrics = learningMetricsQuery.data?.metrics ?? [];
-  const learningSignals = learningSignalsQuery.data?.signals ?? [];
-  const allowlistedMetric = learningMetrics.find((metric) => metric.metric === 'citations_allowlisted_ratio');
-  const deadLinkMetric = learningMetrics.find((metric) => metric.metric === 'dead_link_rate');
-  const learningSignalsDisplayed = learningSignals.slice(0, 10);
-  const userTypes = useMemo(() => userTypesQuery.data?.userTypes ?? [], [userTypesQuery.data]);
-  const userTypeMap = useMemo(() => {
-    const map = new Map<string, { code: string; label: string; defaultRole: string; features: string[] }>();
-    for (const entry of userTypes) {
-      map.set(entry.code, {
-        code: entry.code,
-        label: entry.label,
-        defaultRole: entry.default_role ?? 'member',
-        features: Array.isArray(entry.features) ? entry.features : [],
-      });
-    }
-    return map;
-  }, [userTypes]);
+  if (!hasSession) {
+    return null;
+  }
 
   const [ssoProvider, setSsoProvider] = useState<'saml' | 'oidc'>('saml');
   const [ssoLabel, setSsoLabel] = useState('');
@@ -247,50 +221,54 @@ export function AdminView({ messages, locale }: AdminViewProps) {
   const [lastScimToken, setLastScimToken] = useState<ScimTokenResponse | null>(null);
   const [ipCidr, setIpCidr] = useState('');
   const [ipDescription, setIpDescription] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteUserType, setInviteUserType] = useState<string | null>(null);
-  const [inviteRole, setInviteRole] = useState('member');
-  const [latestInvite, setLatestInvite] = useState<{ token: string; expires_at: string } | null>(null);
-  const [confidentialMode, setConfidentialMode] = useState(false);
-  const [frMode, setFrMode] = useState(true);
-  const [sensitiveTopicHitl, setSensitiveTopicHitl] = useState(true);
-  const [residencyZone, setResidencyZone] = useState('eu');
-  const [deleteDocId, setDeleteDocId] = useState('');
-  const [deleteReason, setDeleteReason] = useState('');
-  useEffect(() => {
-    const p = policiesQuery.data?.policies ?? {};
-    const conf = (p['confidential_mode'] as any)?.enabled ?? p['confidential_mode'] ?? false;
-    const fr = (p['fr_judge_analytics_block'] as any)?.enabled ?? p['fr_judge_analytics_block'] ?? true;
-    const sensitive = (p['sensitive_topic_hitl'] as any)?.enabled ?? p['sensitive_topic_hitl'] ?? true;
-    const rz = (p['residency_zone'] as any)?.code ?? p['residency_zone'] ?? 'eu';
-    setConfidentialMode(Boolean(conf));
-    setFrMode(Boolean(fr));
-    setSensitiveTopicHitl(Boolean(sensitive ?? true));
-    setResidencyZone(typeof rz === 'string' ? rz : 'eu');
-  }, [policiesQuery.data]);
-  useEffect(() => {
-    if (inviteUserType === null && userTypesQuery.data?.userTypes?.length) {
-      const first = userTypesQuery.data.userTypes[0];
-      setInviteUserType(first.code);
-      setInviteRole(first.default_role ?? 'member');
-    }
-  }, [inviteUserType, userTypesQuery.data]);
-  const savePolicies = async () => {
-    await updateOrgPolicies(DEMO_ORG_ID, DEMO_USER_ID, [
-      { key: 'confidential_mode', value: { enabled: confidentialMode } },
-      { key: 'fr_judge_analytics_block', value: { enabled: frMode } },
-      { key: 'sensitive_topic_hitl', value: { enabled: sensitiveTopicHitl } },
-      { key: 'residency_zone', value: { code: residencyZone } },
-    ]);
-    toast.success('Politiques mises à jour');
-    await queryClient.invalidateQueries({ queryKey: ['admin-policies', DEMO_ORG_ID] });
-  };
   const providerLabels = useMemo(
     () => ({
       saml: messages.admin.ssoProviderSaml,
       oidc: messages.admin.ssoProviderOidc,
     }),
     [messages.admin.ssoProviderOidc, messages.admin.ssoProviderSaml],
+  );
+  const typeLabels = useMemo(
+    () => ({
+      statute: messages.admin.provenanceSourceTypeStatute,
+      regulation: messages.admin.provenanceSourceTypeRegulation,
+      gazette: messages.admin.provenanceSourceTypeGazette,
+      case: messages.admin.provenanceSourceTypeCase,
+    }),
+    [
+      messages.admin.provenanceSourceTypeCase,
+      messages.admin.provenanceSourceTypeGazette,
+      messages.admin.provenanceSourceTypeRegulation,
+      messages.admin.provenanceSourceTypeStatute,
+    ],
+  );
+  const policyDocuments = useMemo(
+    () => [
+      { href: '/governance/responsible_ai_policy.md', label: messages.admin.policyResponsible },
+      { href: '/governance/dpia_commitments.md', label: messages.admin.policyDpia },
+      { href: '/governance/coe_ai_alignment.md', label: messages.admin.policyCoe },
+      { href: '/governance/cepej_charter_mapping.md', label: messages.admin.policyCepej },
+      { href: '/governance/incident_response_plan.md', label: messages.admin.policyIncident },
+      { href: '/governance/change_management_playbook.md', label: messages.admin.policyChange },
+      { href: '/governance/support_runbook.md', label: messages.admin.policySupport },
+      { href: '/governance/slo_and_support.md', label: messages.admin.policySlo },
+      { href: '/governance/pilot_onboarding_playbook.md', label: messages.admin.policyOnboarding },
+      { href: '/governance/pricing_collateral.md', label: messages.admin.policyPricing },
+      { href: '/governance/regulator_outreach_plan.md', label: messages.admin.policyRegulator },
+    ],
+    [
+      messages.admin.policyResponsible,
+      messages.admin.policyDpia,
+      messages.admin.policyCoe,
+      messages.admin.policyCepej,
+      messages.admin.policyIncident,
+      messages.admin.policyChange,
+      messages.admin.policySupport,
+      messages.admin.policySlo,
+      messages.admin.policyOnboarding,
+      messages.admin.policyPricing,
+      messages.admin.policyRegulator,
+    ],
   );
   const roleOptions = useMemo(
     () => [
@@ -312,21 +290,6 @@ export function AdminView({ messages, locale }: AdminViewProps) {
       messages.admin.roleViewer,
     ],
   );
-  const inviteUserTypeOptions = useMemo(() => {
-    return userTypes.map((entry) => ({
-      value: entry.code,
-      label: entry.label,
-      defaultRole: entry.default_role ?? 'member',
-    }));
-  }, [userTypes]);
-  const selectedUserType = inviteUserType ? userTypeMap.get(inviteUserType) ?? null : null;
-  const handleUserTypeChange = (code: string) => {
-    setInviteUserType(code);
-    const entry = userTypeMap.get(code);
-    if (entry) {
-      setInviteRole(entry.defaultRole);
-    }
-  };
   const roleDisplay = useMemo(() => {
     const map = new Map(roleOptions.map((entry) => [entry.value, entry.label]));
     return (value: string) => map.get(value) ?? value;
@@ -338,6 +301,39 @@ export function AdminView({ messages, locale }: AdminViewProps) {
     ]);
     return (value: string) => map.get(value) ?? value;
   }, [messages.admin.retrievalOriginFile, messages.admin.retrievalOriginLocal]);
+
+  const bindingSummaryFor = (breakdown: Record<string, number>) => {
+    const entries = Object.entries(breakdown ?? {});
+    if (entries.length === 0) {
+      return messages.admin.provenanceJurisdictionBindingNone;
+    }
+    return entries
+      .map(([language, count]) => `${language.toUpperCase()} (${numberFormatter.format(count)})`)
+      .join(', ');
+  };
+
+  const languageNoteSummaryFor = (breakdown: Record<string, number>) => {
+    const entries = Object.entries(breakdown ?? {});
+    if (entries.length === 0) {
+      return null;
+    }
+    return entries
+      .map(([note, count]) => `${note} (${numberFormatter.format(count)})`)
+      .join(' · ');
+  };
+
+  const sourceTypeSummaryFor = (breakdown: Record<string, number>) => {
+    const entries = Object.entries(breakdown ?? {});
+    if (entries.length === 0) {
+      return messages.admin.provenanceJurisdictionBindingNone;
+    }
+    return entries
+      .map(([type, count]) => {
+        const label = typeLabels[type as keyof typeof typeLabels] ?? type;
+        return `${label} (${numberFormatter.format(count)})`;
+      })
+      .join(', ');
+  };
   const saveSsoMutation = useMutation({
     mutationFn: (input: {
       provider: 'saml' | 'oidc';
@@ -345,23 +341,23 @@ export function AdminView({ messages, locale }: AdminViewProps) {
       acsUrl?: string;
       entityId?: string;
       defaultRole?: string;
-    }) => saveSsoConnection(DEMO_ORG_ID, input),
+    }) => saveSsoConnection(orgId, userId, input),
     onSuccess: () => {
       toast.success(messages.admin.ssoSaved);
       setSsoLabel('');
       setSsoAcsUrl('');
       setSsoEntityId('');
-      queryClient.invalidateQueries({ queryKey: ['admin-sso', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.ssoError);
     },
   });
   const deleteSsoMutation = useMutation({
-    mutationFn: (connectionId: string) => removeSsoConnection(DEMO_ORG_ID, connectionId),
+    mutationFn: (connectionId: string) => removeSsoConnection(orgId, userId, connectionId),
     onSuccess: () => {
       toast.success(messages.admin.ssoDeleted);
-      queryClient.invalidateQueries({ queryKey: ['admin-sso', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.ssoError);
@@ -369,46 +365,56 @@ export function AdminView({ messages, locale }: AdminViewProps) {
   });
   const createTokenMutation = useMutation({
     mutationFn: (input: { name: string; expiresAt?: string | null }) =>
-      createScimAccessToken(DEMO_ORG_ID, input.name, input.expiresAt ?? null),
+      createScimAccessToken(orgId, userId, input.name, input.expiresAt ?? null),
     onSuccess: (result) => {
       setLastScimToken(result);
       toast.success(messages.admin.scimCreated);
-      queryClient.invalidateQueries({ queryKey: ['admin-scim', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.scimError);
     },
   });
   const deleteTokenMutation = useMutation({
-    mutationFn: (tokenId: string) => deleteScimAccessToken(DEMO_ORG_ID, tokenId),
+    mutationFn: (tokenId: string) => deleteScimAccessToken(orgId, userId, tokenId),
     onSuccess: () => {
       toast.success(messages.admin.scimDeleted);
-      queryClient.invalidateQueries({ queryKey: ['admin-scim', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.scimError);
     },
   });
   const addIpMutation = useMutation({
-    mutationFn: () => upsertIpAllowlistEntry(DEMO_ORG_ID, { cidr: ipCidr, description: ipDescription || null }),
+    mutationFn: () => upsertIpAllowlistEntry(orgId, userId, { cidr: ipCidr, description: ipDescription || null }),
     onSuccess: () => {
       toast.success(messages.admin.ipAdded);
       setIpCidr('');
       setIpDescription('');
-      queryClient.invalidateQueries({ queryKey: ['admin-ip', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.ipError);
     },
   });
   const removeIpMutation = useMutation({
-    mutationFn: (entryId: string) => deleteIpAllowlistEntry(DEMO_ORG_ID, entryId),
+    mutationFn: (entryId: string) => deleteIpAllowlistEntry(orgId, userId, entryId),
     onSuccess: () => {
       toast.success(messages.admin.ipRemoved);
-      queryClient.invalidateQueries({ queryKey: ['admin-ip', DEMO_ORG_ID] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.ipError);
+    },
+  });
+  const revokeDeviceMutation = useMutation({
+    mutationFn: (sessionId: string) => revokeDeviceSession(orgId, userId, sessionId),
+    onSuccess: () => {
+      toast.success(messages.admin.devicesRevokeSuccess);
+      queryClient.invalidateQueries({ queryKey: ['admin-device-sessions', orgId, userId] });
+    },
+    onError: () => {
+      toast.error(messages.admin.devicesRevokeError);
     },
   });
   const ssoConnections = ssoQuery.data?.connections ?? [];
@@ -419,58 +425,19 @@ export function AdminView({ messages, locale }: AdminViewProps) {
     expiresAt?: string | null;
     lastUsedAt?: string | null;
   }>;
-  const auditEvents = useMemo(
-    () =>
-      (auditQuery.data?.events ?? []).map((event: any) => ({
-        id: event.id as string,
-        kind: event.kind as string,
-        object: (event.object as string | null) ?? '—',
-        actor: (event.actor_user_id as string | null) ?? messages.admin.auditSystem,
-        ts: (event.ts as string | null) ?? (event.created_at as string | null) ?? null,
-      })),
-    [auditQuery.data, messages.admin.auditSystem],
-  );
+  const auditEvents = (auditQuery.data?.events ?? []) as Array<{
+    id: string;
+    kind: string;
+    object: string;
+    created_at: string;
+    actor_user_id?: string | null;
+  }>;
   const ipEntries = (ipQuery.data?.entries ?? []) as Array<{
     id: string;
     cidr: string;
     description?: string | null;
     created_at?: string | null;
   }>;
-  const inviteMutation = useMutation({
-    mutationFn: (payload: { email: string; role: string; expiresInHours?: number }) =>
-      createOrgInvite(DEMO_ORG_ID, DEMO_USER_ID, payload),
-    onSuccess: (data) => {
-      toast.success(messages.admin.inviteSuccess);
-      setLatestInvite(data);
-      setInviteEmail('');
-      queryClient.invalidateQueries({ queryKey: ['admin-members', DEMO_ORG_ID] });
-    },
-    onError: () => {
-      toast.error(messages.admin.inviteError);
-    },
-  });
-  const memberRoleMutation = useMutation({
-    mutationFn: (payload: { userId: string; role: string }) =>
-      updateMemberRole(DEMO_ORG_ID, DEMO_USER_ID, payload.userId, payload.role),
-    onSuccess: () => {
-      toast.success(messages.admin.roleUpdated);
-      queryClient.invalidateQueries({ queryKey: ['admin-members', DEMO_ORG_ID] });
-    },
-    onError: () => {
-      toast.error(messages.admin.roleUpdateError);
-    },
-  });
-  const jurisdictionMutation = useMutation({
-    mutationFn: (payload: { juris_code: string; can_read: boolean; can_write: boolean }) =>
-      updateJurisdictions(DEMO_ORG_ID, DEMO_USER_ID, [payload]),
-    onSuccess: () => {
-      toast.success(messages.admin.jurisdictionUpdated);
-      queryClient.invalidateQueries({ queryKey: ['admin-jurisdictions', DEMO_ORG_ID] });
-    },
-    onError: () => {
-      toast.error(messages.admin.jurisdictionError);
-    },
-  });
 
   const handleSsoSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -497,33 +464,6 @@ export function AdminView({ messages, locale }: AdminViewProps) {
     }
     addIpMutation.mutate();
   };
-  const handleInviteSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!inviteEmail.trim()) {
-      toast.error(messages.admin.inviteEmailRequired);
-      return;
-    }
-    inviteMutation.mutate({ email: inviteEmail.trim(), role: inviteRole });
-  };
-  const handleMemberRoleChange = (userId: string, role: string) => {
-    memberRoleMutation.mutate({ userId, role });
-  };
-  const getJurisdictionAccess = (code: string) => {
-    return (
-      jurisdictionAccess.get(code.toUpperCase()) ?? {
-        can_read: false,
-        can_write: false,
-      }
-    );
-  };
-  const handleJurisdictionToggle = (code: string, field: 'can_read' | 'can_write') => {
-    const current = getJurisdictionAccess(code);
-    jurisdictionMutation.mutate({
-      juris_code: code,
-      can_read: field === 'can_read' ? !current.can_read : current.can_read,
-      can_write: field === 'can_write' ? !current.can_write : current.can_write,
-    });
-  };
 
   const handleCopyToken = async () => {
     if (!lastScimToken?.token) return;
@@ -540,103 +480,242 @@ export function AdminView({ messages, locale }: AdminViewProps) {
     }
   };
 
-  // Google Drive watch state
-  const [driveId, setDriveId] = useState('');
-  const [folderId, setFolderId] = useState('');
-  const [gdriveState, setGdriveState] = useState<{ expiration?: string | null; drive_id?: string | null; folder_id?: string | null } | null>(null);
-  useEffect(() => {
-    (async () => {
-      try {
-        const api = await import('../../lib/api');
-        const res = await api.fetchGDriveState(DEMO_ORG_ID, DEMO_ORG_ID);
-        setGdriveState(res.state);
-        if (res.state?.drive_id) setDriveId(res.state.drive_id);
-        if (res.state?.folder_id) setFolderId(res.state.folder_id);
-      } catch {
-        // ignore
-      }
-    })();
-  }, []);
-  const installGDrive = async () => {
-    try {
-      const api = await import('../../lib/api');
-      const res = await api.gdriveInstall(DEMO_ORG_ID, DEMO_ORG_ID, driveId || null, folderId || null);
-      setGdriveState(res.state);
-      toast.success('GDrive installé');
-    } catch (e) {
-      toast.error('Échec installation GDrive');
-    }
-  };
-  const renewGDrive = async () => {
-    try {
-      const api = await import('../../lib/api');
-      const res = await api.gdriveRenew(DEMO_ORG_ID, DEMO_ORG_ID);
-      setGdriveState(res.state);
-      toast.success('GDrive renouvelé');
-    } catch (e) {
-      toast.error('Échec renouvellement GDrive');
-    }
-  };
-  const uninstallGDrive = async () => {
-    try {
-      const api = await import('../../lib/api');
-      await api.gdriveUninstall(DEMO_ORG_ID, DEMO_ORG_ID);
-      setGdriveState(null);
-      toast.success('GDrive désinstallé');
-    } catch (e) {
-      toast.error('Échec désinstallation GDrive');
-    }
-  };
-  const processChangesNow = async () => {
-    try {
-      const api = await import('../../lib/api');
-      const res = await api.gdriveProcessChanges(DEMO_ORG_ID, DEMO_ORG_ID, null);
-      setGdriveState((s) => ({ ...s, last_page_token: res.next_page_token } as any));
-      toast.success(`Traitement: ${res.processed}`);
-    } catch (e) {
-      toast.error('Échec traitement des changements');
-    }
-  };
-  const backfillNow = async () => {
-    try {
-      const api = await import('../../lib/api');
-      const res = await api.gdriveBackfill(DEMO_ORG_ID, DEMO_ORG_ID, 5);
-      setGdriveState((s) => ({ ...s, last_page_token: res.next_page_token } as any));
-      toast.success(`Backfill: ${res.processed}`);
-    } catch (e) {
-      toast.error('Échec backfill');
-    }
-  };
-
   const summaryPrimary = useMemo(() => {
     if (!overview) return '—';
     if (overview.documentsTotal === 0) {
       return messages.admin.summaryCoverageEmpty;
     }
     return `${numberFormatter.format(overview.documentsReady)} / ${numberFormatter.format(overview.documentsTotal)}`;
-  }, [overview, messages.admin.summaryCoverageEmpty, numberFormatter]);
+  }, [overview, messages.admin.summaryCoverageEmpty]);
 
   const summarySecondary = useMemo(() => {
     if (!overview) return messages.admin.summaryCoverageHint;
-    const pending = numberFormatter.format(overview.documentsPending);
-    const failed = numberFormatter.format(overview.documentsFailed);
+    const pendingNum = overview.documentsPending ?? 0;
+    const failedNum = overview.documentsFailed ?? 0;
+    const statusKind = failedNum > 0 ? 'error' : pendingNum > 0 ? 'warning' : 'ok';
+    const statusLabel =
+      statusKind === 'error'
+        ? messages.admin.summaryStatusErrors
+        : statusKind === 'warning'
+          ? messages.admin.summaryStatusPending
+          : messages.admin.summaryStatusOk;
+    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge =
+      statusKind === 'error'
+        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+        : statusKind === 'warning'
+          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
+          : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
+
+    const pending = numberFormatter.format(pendingNum);
+    const failed = numberFormatter.format(failedNum);
     const skipped = numberFormatter.format(overview.documentsSkipped);
     const chunked = numberFormatter.format(overview.documentsChunked);
-    return `${messages.admin.summaryPendingLabel} ${pending} · ${messages.admin.summaryFailedLabel} ${failed} · ${messages.admin.summarySkippedLabel} ${skipped} · ${messages.admin.summaryChunkedLabel} ${chunked}`;
+    return (
+      <span>
+        <span className={`${baseBadge} ${colorBadge}`}>{statusLabel}</span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>
+          {messages.admin.summaryPendingLabel} {pending} · {messages.admin.summaryFailedLabel} {failed} · {messages.admin.summarySkippedLabel} {skipped} · {messages.admin.summaryChunkedLabel} {chunked}
+        </span>
+      </span>
+    );
   }, [
     overview,
     messages.admin.summaryCoverageHint,
+    messages.admin.summaryStatusErrors,
+    messages.admin.summaryStatusPending,
+    messages.admin.summaryStatusOk,
     messages.admin.summaryPendingLabel,
     messages.admin.summaryFailedLabel,
     messages.admin.summarySkippedLabel,
     messages.admin.summaryChunkedLabel,
-    numberFormatter,
   ]);
 
   const ingestionSummary = useMemo(() => {
     if (!overview) return '—';
     return `${overview.ingestionSuccessLast7Days} ${messages.admin.ingestionSuccessLabel} · ${overview.ingestionFailedLast7Days} ${messages.admin.ingestionFailureLabel}`;
   }, [overview, messages.admin.ingestionSuccessLabel, messages.admin.ingestionFailureLabel]);
+  const ingestionSecondary = useMemo(() => {
+    if (!overview) return messages.admin.ingestionHint;
+    const kind = overview.ingestionFailedLast7Days > 0 ? 'error' : 'ok';
+    const label = kind === 'error' ? messages.admin.ingestionStatusFailures : messages.admin.ingestionStatusOk;
+    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge =
+      kind === 'error'
+        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+        : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
+    return (
+      <span>
+        <span
+          className={`${baseBadge} ${colorBadge}`}
+          title={`Success ${overview.ingestionSuccessLast7Days} · Failures ${overview.ingestionFailedLast7Days}`}
+        >
+          {label}
+        </span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>{messages.admin.ingestionHint}</span>
+      </span>
+    );
+  }, [overview, messages.admin.ingestionHint, messages.admin.ingestionStatusFailures, messages.admin.ingestionStatusOk]);
+
+  const hitlSecondary = useMemo(() => {
+    if (!overview) return `${messages.admin.hitlMedianResponse} ${formatMinutes(null)}`;
+    const hasBacklog = (overview.hitlPending ?? 0) > 0;
+    const label = hasBacklog ? messages.admin.hitlStatusBacklog : messages.admin.hitlStatusOk;
+    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge = hasBacklog
+      ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+      : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
+    return (
+      <span>
+        <span
+          className={`${baseBadge} ${colorBadge}`}
+          title={`Pending ${overview.hitlPending} · Median ${formatMinutes(overview.hitlMedianResponseMinutes)}`}
+        >
+          {label}
+        </span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>
+          {messages.admin.hitlMedianResponse} {formatMinutes(overview.hitlMedianResponseMinutes)}
+        </span>
+      </span>
+    );
+  }, [overview, messages.admin.hitlStatusBacklog, messages.admin.hitlStatusOk, messages.admin.hitlMedianResponse]);
+
+  const highRiskSecondary = useMemo(() => {
+    const count = overview?.highRiskRuns ?? 0;
+    const kind = count > 0 ? 'warning' : 'ok';
+    const label = kind === 'ok' ? messages.admin.highRiskStatusOk : messages.admin.highRiskStatusPresent;
+    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge =
+      kind === 'ok'
+        ? 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50'
+        : 'bg-amber-900/40 text-amber-200 border-amber-700/50';
+
+    // Allowlisted precision badge (green >=95%, amber >=90%, red otherwise)
+    const ratio = overview?.allowlistedCitationRatio ?? null;
+    let allowlistedKind: 'good' | 'ok' | 'low' | null = null;
+    if (typeof ratio === 'number') {
+      allowlistedKind = ratio >= 0.95 ? 'good' : ratio >= 0.9 ? 'ok' : 'low';
+    }
+    const allowlistedLabel =
+      allowlistedKind === 'good'
+        ? messages.admin.allowlistedStatusGood
+        : allowlistedKind === 'ok'
+          ? messages.admin.allowlistedStatusAcceptable
+          : allowlistedKind === 'low'
+            ? messages.admin.allowlistedStatusPoor
+            : null;
+    const allowlistedColor =
+      allowlistedKind === 'good'
+        ? 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50'
+        : allowlistedKind === 'ok'
+          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
+          : allowlistedKind === 'low'
+            ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+            : null;
+    return (
+      <span>
+        {allowlistedLabel && allowlistedColor ? (
+          <>
+            <span
+              className={`${baseBadge} ${allowlistedColor}`}
+              title={`Allowlisted precision ${formatPercent(overview?.allowlistedCitationRatio)} (≥95% good, ≥90% acceptable)`}
+            >
+              {allowlistedLabel}
+            </span>
+            <span className="mx-1 text-slate-600">·</span>
+          </>
+        ) : null}
+        <span
+          className={`${baseBadge} ${colorBadge}`}
+          title={`${messages.admin.highRiskRunsLabel}: ${overview ? numberFormatter.format(count) : '—'}`}
+        >
+          {label}
+        </span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>
+          {messages.admin.highRiskRunsLabel} {overview ? numberFormatter.format(count) : '—'}
+        </span>
+      </span>
+    );
+  }, [overview, messages.admin.allowlistedStatusGood, messages.admin.allowlistedStatusAcceptable, messages.admin.allowlistedStatusPoor, messages.admin.highRiskStatusOk, messages.admin.highRiskStatusPresent, messages.admin.highRiskRunsLabel]);
+
+  const confidentialSecondary = useMemo(() => {
+    const count = overview?.confidentialRuns ?? 0;
+    const active = count > 0;
+    const label = active ? messages.admin.confidentialStatusActive : messages.admin.confidentialStatusNone;
+    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge = active
+      ? 'bg-sky-900/40 text-sky-200 border-sky-700/50'
+      : 'bg-slate-800/40 text-slate-300 border-slate-700/50';
+    return (
+      <span>
+        <span
+          className={`${baseBadge} ${colorBadge}`}
+          title={`Confidential runs: ${numberFormatter.format(count)}`}
+        >
+          {label}
+        </span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>
+          {messages.admin.avgLatency} {overview ? decimalFormatter.format(overview.avgLatencyMs) : '—'} ms
+        </span>
+      </span>
+    );
+  }, [overview, messages.admin.confidentialStatusActive, messages.admin.confidentialStatusNone, messages.admin.avgLatency]);
+
+  const manifest = metricsQuery.data?.manifest ?? null;
+  const manifestStatus = useMemo(() => {
+    if (!manifest) return null;
+    const s = manifest.status ?? null;
+    if (s === 'errors') return messages.admin.manifestStatusErrors;
+    if (s === 'warnings') return messages.admin.manifestStatusWarnings;
+    if (s === 'ok') return messages.admin.manifestStatusOk;
+    if (manifest.errorCount > 0) return messages.admin.manifestStatusErrors;
+    if (manifest.warningCount > 0) return messages.admin.manifestStatusWarnings;
+    return messages.admin.manifestStatusOk;
+  }, [manifest, messages.admin.manifestStatusErrors, messages.admin.manifestStatusWarnings, messages.admin.manifestStatusOk]);
+  const manifestPrimary = useMemo(() => {
+    if (!manifest) return '—';
+    return `${numberFormatter.format(manifest.validCount)} / ${numberFormatter.format(manifest.fileCount)} · ${numberFormatter.format(manifest.warningCount)} ${messages.admin.manifestWarningsLabel} · ${numberFormatter.format(manifest.errorCount)} ${messages.admin.manifestErrorsLabel}`;
+  }, [manifest, messages.admin.manifestWarningsLabel, messages.admin.manifestErrorsLabel]);
+  const manifestSecondary = useMemo(() => {
+    if (!manifest) return messages.admin.manifestHint;
+    const name = manifest.manifestName ?? 'manifest.jsonl';
+    const statusLabel = manifestStatus ?? '';
+    const statusKind = manifest.status === 'errors' ? 'error' : manifest.status === 'warnings' ? 'warning' : 'ok';
+    const baseBadge =
+      'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+    const colorBadge =
+      statusKind === 'error'
+        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+        : statusKind === 'warning'
+          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
+          : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
+    const badge = statusLabel ? (
+      <span
+        className={`${baseBadge} ${colorBadge}`}
+        title={`Warnings ${manifest.warningCount} · Errors ${manifest.errorCount}`}
+      >
+        {statusLabel}
+      </span>
+    ) : null;
+    return (
+      <span>
+        {badge ? (
+          <>
+            {badge}
+            <span className="mx-1 text-slate-600">·</span>
+          </>
+        ) : null}
+        <span>{name}</span>
+        <span className="mx-1 text-slate-600">·</span>
+        <span>{formatDateTime(manifest.createdAt)}</span>
+      </span>
+    );
+  }, [manifest, manifestStatus, messages.admin.manifestHint]);
 
   return (
     <div className="space-y-6">
@@ -651,25 +730,53 @@ export function AdminView({ messages, locale }: AdminViewProps) {
               <MetricBlock
                 label={messages.admin.runs30d}
                 primary={overview ? numberFormatter.format(overview.runsLast30Days) : '—'}
-                secondary={`${messages.admin.totalRunsLabel} ${overview ? numberFormatter.format(overview.totalRuns) : '—'}`}
+                secondary={(function () {
+                  const high = clientEnv.NEXT_PUBLIC_DASHBOARD_RUNS_HIGH;
+                  const medium = clientEnv.NEXT_PUBLIC_DASHBOARD_RUNS_MEDIUM;
+                  const count = overview?.runsLast30Days ?? 0;
+                  let kind: 'high' | 'medium' | 'low' = 'low';
+                  if (count >= high) kind = 'high';
+                  else if (count >= medium) kind = 'medium';
+                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                  const { label, color } =
+                    kind === 'high'
+                      ? { label: messages.admin.runsStatusHigh, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                      : kind === 'medium'
+                        ? { label: messages.admin.runsStatusMedium, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                        : { label: messages.admin.runsStatusLow, color: 'bg-slate-800/40 text-slate-300 border-slate-700/50' };
+                  return (
+                    <span>
+                      <span
+                        className={`${baseBadge} ${color}`}
+                        title={`Runs(30d): ${numberFormatter.format(count)} (high ≥ ${high}, medium ≥ ${medium})`}
+                      >
+                        {label}
+                      </span>
+                      <span className="mx-1 text-slate-600">·</span>
+                      <span>
+                        {messages.admin.totalRunsLabel} {overview ? numberFormatter.format(overview.totalRuns) : '—'}
+                      </span>
+                    </span>
+                  );
+                })()}
                 loading={metricsQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.allowlistedPrecision}
                 primary={formatPercent(overview?.allowlistedCitationRatio)}
-                secondary={`${messages.admin.highRiskRunsLabel} ${overview ? numberFormatter.format(overview.highRiskRuns) : '—'}`}
+                secondary={highRiskSecondary}
                 loading={metricsQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.hitlPending}
                 primary={overview ? numberFormatter.format(overview.hitlPending) : '—'}
-                secondary={`${messages.admin.hitlMedianResponse} ${formatMinutes(overview?.hitlMedianResponseMinutes)}`}
+                secondary={hitlSecondary}
                 loading={metricsQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.confidentialUsage}
                 primary={overview ? numberFormatter.format(overview.confidentialRuns) : '—'}
-                secondary={`${messages.admin.avgLatency} ${overview ? decimalFormatter.format(overview.avgLatencyMs) : '—'} ms`}
+                secondary={confidentialSecondary}
                 loading={metricsQuery.isLoading}
               />
               <MetricBlock
@@ -681,327 +788,22 @@ export function AdminView({ messages, locale }: AdminViewProps) {
               <MetricBlock
                 label={messages.admin.ingestionHealth}
                 primary={ingestionSummary}
-                secondary={messages.admin.ingestionHint}
+                secondary={ingestionSecondary}
                 loading={metricsQuery.isLoading}
               />
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.admin.peopleTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.admin.peopleDescription}</p>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-200">
-            <form className="grid gap-3 md:grid-cols-[2fr_1.5fr_1fr]" onSubmit={handleInviteSubmit}>
-              <Input
-                value={inviteEmail}
-                onChange={(event) => setInviteEmail(event.target.value)}
-                placeholder="avocat@example.com"
-                aria-label={messages.admin.inviteEmailLabel}
+              <MetricBlock
+                label={messages.admin.manifestStatus}
+                primary={manifestPrimary}
+                secondary={manifestSecondary}
+                loading={metricsQuery.isLoading}
               />
-              <select
-                className={selectClassName}
-                value={inviteUserType ?? ''}
-                onChange={(event) => handleUserTypeChange(event.target.value)}
-                aria-label={messages.admin.inviteUserTypeLabel}
-              >
-                {inviteUserTypeOptions.length === 0 ? (
-                  <option value="">{messages.admin.loading}</option>
-                ) : null}
-                {inviteUserTypeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select className={selectClassName} value={inviteRole} onChange={(event) => setInviteRole(event.target.value)}>
-                {roleOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <Button type="submit" disabled={inviteMutation.isPending}>
-                {inviteMutation.isPending ? messages.admin.inviteSending : messages.admin.inviteSend}
-              </Button>
-            </form>
-            {selectedUserType ? (
-              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-3 text-xs text-slate-300">
-                <p className="font-semibold text-slate-100">{selectedUserType.label}</p>
-                <p className="text-slate-400">
-                  {messages.admin.inviteDefaultRole}{' '}
-                  <Badge variant="outline">{selectedUserType.defaultRole}</Badge>
-                </p>
-                {selectedUserType.features.length > 0 ? (
-                  <ul className="mt-2 space-y-1 list-disc pl-4">
-                    {selectedUserType.features.map((feature) => (
-                      <li key={feature}>{feature}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-            {latestInvite ? (
-              <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200">
-                <p className="font-semibold">{messages.admin.inviteLatest}</p>
-                <p className="break-all">{latestInvite.token}</p>
-                <p className="text-emerald-300/70">{messages.admin.inviteExpires} {formatDateTime(latestInvite.expires_at)}</p>
-              </div>
-            ) : null}
-            {userTypesQuery.isLoading ? (
-              <p className="text-xs text-slate-500">{messages.admin.loading}</p>
-            ) : userTypesQuery.isError ? (
-              <p className="text-xs text-rose-500">{messages.admin.userTypesError}</p>
-            ) : userTypes.length > 0 ? (
-              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-4 text-xs text-slate-300">
-                <p className="font-semibold text-slate-100">{messages.admin.userTypesTitle}</p>
-                <p className="text-slate-400">{messages.admin.userTypesDescription}</p>
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  {userTypes.map((entry) => (
-                    <div key={entry.code} className="rounded-xl border border-slate-800/60 bg-slate-900/60 p-3 space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-slate-100">{entry.label}</span>
-                        <Badge variant="outline">{entry.default_role ?? 'member'}</Badge>
-                      </div>
-                      {Array.isArray(entry.features) && entry.features.length > 0 ? (
-                        <ul className="space-y-1 list-disc pl-4">
-                          {entry.features.map((feature) => (
-                            <li key={`${entry.code}-${feature}`}>{feature}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-slate-500">{messages.admin.userTypesNoFeatures}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            </CardContent>
+          </Card>
 
-            {membersQuery.isLoading ? (
-              <p className="text-slate-400">{messages.admin.loading}</p>
-            ) : members.length === 0 ? (
-              <p className="text-slate-400">{messages.admin.membersEmpty}</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-xs uppercase tracking-wide text-slate-400">
-                  <thead>
-                    <tr>
-                      <th className="pb-2 pr-3">{messages.admin.memberName}</th>
-                      <th className="pb-2 pr-3">Email</th>
-                      <th className="pb-2 pr-3">{messages.admin.memberPhone}</th>
-                      <th className="pb-2 pr-3">{messages.admin.memberRole}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-slate-200">
-                    {members.map((member) => (
-                      <tr key={member.user_id}>
-                        <td className="py-2 pr-3">{member.profile?.full_name ?? messages.admin.memberUnknown}</td>
-                        <td className="py-2 pr-3 text-slate-400">{member.profile?.email ?? '—'}</td>
-                        <td className="py-2 pr-3 text-slate-400">{member.profile?.phone_e164 ?? '—'}</td>
-                        <td className="py-2 pr-3">
-                          <select
-                            className={selectClassName}
-                            value={member.role}
-                            onChange={(event) => handleMemberRoleChange(member.user_id, event.target.value)}
-                            disabled={memberRoleMutation.isPending}
-                          >
-                            {roleOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.admin.policyTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.admin.policyDescription}</p>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-200">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
-                <div>
-                  <p className="font-semibold text-slate-100">{messages.admin.confidentialMode}</p>
-                  <p className="text-xs text-slate-400">{messages.admin.confidentialHint}</p>
-                </div>
-                <Switch checked={confidentialMode} onClick={() => setConfidentialMode((prev) => !prev)} label="" />
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
-                <div>
-                  <p className="font-semibold text-slate-100">{messages.admin.franceMode}</p>
-                  <p className="text-xs text-slate-400">{messages.admin.franceModeHint}</p>
-                </div>
-                <Switch checked={frMode} onClick={() => setFrMode((prev) => !prev)} label="" />
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
-                <div>
-                  <p className="font-semibold text-slate-100">{messages.admin.sensitiveHitl}</p>
-                  <p className="text-xs text-slate-400">{messages.admin.sensitiveHitlHint}</p>
-                </div>
-                <Switch
-                  checked={sensitiveTopicHitl}
-                  onClick={() => setSensitiveTopicHitl((prev) => !prev)}
-                  label=""
-                />
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1 text-xs text-slate-300">
-                <span className="uppercase tracking-wide text-slate-400">{messages.admin.residencyZone}</span>
-                <select className={selectClassName} value={residencyZone} onChange={(event) => setResidencyZone(event.target.value)}>
-                  <option value="eu">EU</option>
-                  <option value="ohada">OHADA</option>
-                  <option value="ch">CH</option>
-                  <option value="ca">CA</option>
-                  <option value="maghreb">Maghreb</option>
-                  <option value="rw">RW</option>
-                </select>
-              </label>
-              <div className="flex items-center justify-end">
-                <Button type="button" variant="outline" onClick={savePolicies} disabled={policiesQuery.isFetching}>
-                  {messages.admin.savePolicies}
-                </Button>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() =>
-                window.open('/governance/responsible_ai_policy.md', '_blank', 'noopener,noreferrer')
-              }
-            >
-              {messages.admin.download}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.admin.jurisdictionMatrixTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.admin.jurisdictionMatrixDescription}</p>
-          </CardHeader>
-          <CardContent className="overflow-x-auto text-sm text-slate-200">
-            {jurisdictionsQuery.isLoading ? (
-              <p className="text-slate-400">{messages.admin.loading}</p>
-            ) : (
-              <table className="min-w-full text-left text-xs uppercase tracking-wide text-slate-400">
-                <thead>
-                  <tr>
-                    <th className="pb-2 pr-3">{messages.admin.jurisdictionCode}</th>
-                    <th className="pb-2 pr-3 text-right">{messages.admin.jurisdictionRead}</th>
-                    <th className="pb-2 pr-3 text-right">{messages.admin.jurisdictionWrite}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-200">
-                  {ADMIN_JURISDICTIONS.map((code) => {
-                    const access = getJurisdictionAccess(code);
-                    return (
-                      <tr key={code}>
-                        <td className="py-2 pr-3 font-medium text-slate-100">{code}</td>
-                        <td className="py-2 pr-3 text-right">
-                          <Switch
-                            checked={access.can_read}
-                            onClick={() => handleJurisdictionToggle(code, 'can_read')}
-                            label=""
-                          />
-                        </td>
-                        <td className="py-2 pr-3 text-right">
-                          <Switch
-                            checked={access.can_write}
-                            onClick={() => handleJurisdictionToggle(code, 'can_write')}
-                            label=""
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.admin.learningTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.admin.learningDescription}</p>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-200">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-400">{messages.admin.learningAllowlisted}</p>
-                <p className="text-2xl font-semibold text-slate-100">
-                  {allowlistedMetric ? formatPercent(allowlistedMetric.value) : '—'}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {allowlistedMetric ? formatDateTime(allowlistedMetric.computed_at) : messages.admin.learningNoData}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-400">{messages.admin.learningDeadLinks}</p>
-                <p className="text-2xl font-semibold text-slate-100">
-                  {deadLinkMetric ? formatPercent(deadLinkMetric.value) : '—'}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {deadLinkMetric ? formatDateTime(deadLinkMetric.computed_at) : messages.admin.learningNoData}
-                </p>
-              </div>
-            </div>
-            {learningSignalsQuery.isLoading ? (
-              <p className="text-slate-400">{messages.admin.loadingShort}</p>
-            ) : learningSignalsDisplayed.length === 0 ? (
-              <p className="text-slate-400">{messages.admin.learningSignalsEmpty}</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-xs uppercase tracking-wide text-slate-400">
-                  <thead>
-                    <tr>
-                      <th className="pb-2 pr-3">{messages.admin.learningSignalSource}</th>
-                      <th className="pb-2 pr-3">{messages.admin.learningSignalKind}</th>
-                      <th className="pb-2 pr-3">{messages.admin.learningSignalRun}</th>
-                      <th className="pb-2">{messages.admin.learningSignalWhen}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-slate-200">
-                    {learningSignalsDisplayed.map((signal) => (
-                      <tr key={signal.id}>
-                        <td className="py-2 pr-3 text-slate-300">{signal.source}</td>
-                        <td className="py-2 pr-3 text-slate-300">{signal.kind}</td>
-                        <td className="py-2 pr-3 text-slate-400">{signal.run_id ?? '—'}</td>
-                        <td className="py-2 text-slate-400">{formatDateTime(signal.created_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        </div>
-
-        <div className="space-y-6">
           <OperationsOverviewCard
             messages={messages}
-            data={operationsQuery.data ?? null}
-            loading={operationsQuery.isLoading && !operationsQuery.data}
-            locale={locale === 'en' ? 'en-US' : 'fr-FR'}
-          />
-
-          <JurisdictionCoverageCard
-            messages={messages}
-            data={jurisdictionCoverage}
-            loading={metricsQuery.isLoading && jurisdictionCoverage.length === 0}
+            data={operationsOverview}
+            loading={operationsQuery.isLoading && !operationsOverview}
           />
 
           <Card className="glass-card border border-slate-800/60">
@@ -1048,7 +850,29 @@ export function AdminView({ messages, locale }: AdminViewProps) {
                       ? numberFormatter.format(retrievalSummary.runsWithoutCitations)
                       : '—'
                   }
-                  secondary={messages.admin.retrievalNoCitationsHint}
+                  secondary={(function () {
+                    const count = retrievalSummary?.runsWithoutCitations ?? null;
+                    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                    const isOk = count !== null && count === 0;
+                    const label = isOk
+                      ? messages.admin.retrievalStatusOk
+                      : messages.admin.retrievalStatusAttention;
+                    const color = isOk
+                      ? 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50'
+                      : 'bg-rose-900/40 text-rose-200 border-rose-700/50';
+                    return (
+                      <span>
+                        <span
+                          className={`${baseBadge} ${color}`}
+                          title={`Runs without citations: ${count ?? '—'}`}
+                        >
+                          {label}
+                        </span>
+                        <span className="mx-1 text-slate-600">·</span>
+                        <span>{messages.admin.retrievalNoCitationsHint}</span>
+                      </span>
+                    );
+                  })()}
                   loading={retrievalQuery.isLoading && !retrievalSummary}
                 />
               </div>
@@ -1142,49 +966,321 @@ export function AdminView({ messages, locale }: AdminViewProps) {
 
         <Card className="glass-card border border-slate-800/60">
           <CardHeader>
+            <CardTitle className="text-slate-100">{messages.admin.sloTitle}</CardTitle>
+            <p className="text-sm text-slate-400">{messages.admin.sloDescription}</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <MetricBlock
+                label={messages.admin.sloUptime}
+                primary={formatPercentValue(sloSummary?.apiUptimeP95)}
+                secondary={messages.admin.sloLastCapture.replace(
+                  '{date}',
+                  formatDateTime(sloSummary?.latestCapture ?? null),
+                )}
+                loading={sloQuery.isLoading && !sloSummary}
+              />
+              <MetricBlock
+                label={messages.admin.sloHitlP95}
+                primary={formatMinutes(
+                  sloSummary?.hitlResponseP95Seconds === null
+                    ? null
+                    : (sloSummary?.hitlResponseP95Seconds ?? 0) / 60,
+                )}
+                secondary={messages.admin.sloHitlHint}
+                loading={sloQuery.isLoading && !sloSummary}
+              />
+              <MetricBlock
+                label={messages.admin.sloRetrievalP95}
+                primary={formatSeconds(sloSummary?.retrievalLatencyP95Seconds)}
+                secondary={messages.admin.sloRetrievalHint}
+                loading={sloQuery.isLoading && !sloSummary}
+              />
+              <MetricBlock
+                label={messages.admin.sloCitationP95}
+                primary={formatPercent(sloSummary?.citationPrecisionP95)}
+                secondary={messages.admin.sloCitationHint}
+                loading={sloQuery.isLoading && !sloSummary}
+              />
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-slate-100">{messages.admin.sloSnapshotsTitle}</h4>
+              {sloQuery.isLoading && sloSnapshots.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-400">{messages.admin.loadingShort}</p>
+              ) : sloSnapshots.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-400">{messages.admin.sloSnapshotsEmpty}</p>
+              ) : (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-left text-sm text-slate-200">
+                    <thead className="text-xs uppercase tracking-wide text-slate-400">
+                      <tr>
+                        <th className="py-2 pr-4">{messages.admin.sloCapturedAt}</th>
+                        <th className="py-2 pr-4">{messages.admin.sloUptime}</th>
+                        <th className="py-2 pr-4">{messages.admin.sloHitlP95}</th>
+                        <th className="py-2 pr-4">{messages.admin.sloRetrievalP95}</th>
+                        <th className="py-2 pr-4">{messages.admin.sloCitationP95}</th>
+                        <th className="py-2">{messages.admin.sloNotes}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {sloSnapshots.slice(0, 5).map((snapshot) => (
+                        <tr key={snapshot.captured_at}>
+                          <td className="py-2 pr-4 text-slate-300">{formatDateTime(snapshot.captured_at)}</td>
+                          <td className="py-2 pr-4">{formatPercentValue(snapshot.api_uptime_percent)}</td>
+                          <td className="py-2 pr-4">{formatMinutes(
+                            snapshot.hitl_response_p95_seconds === null
+                              ? null
+                              : snapshot.hitl_response_p95_seconds / 60,
+                          )}</td>
+                          <td className="py-2 pr-4">{formatSeconds(snapshot.retrieval_latency_p95_seconds)}</td>
+                          <td className="py-2 pr-4">{formatPercent(snapshot.citation_precision_p95)}</td>
+                          <td className="py-2 text-slate-300">{snapshot.notes ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
+            <CardTitle className="text-slate-100">{messages.admin.provenanceJurisdictionTitle}</CardTitle>
+            <p className="text-sm text-slate-400">{messages.admin.provenanceJurisdictionDescription}</p>
+          </CardHeader>
+          <CardContent>
+            {metricsQuery.isLoading && jurisdictionCoverage.length === 0 ? (
+              <p className="text-sm text-slate-400">{messages.admin.loadingShort}</p>
+            ) : jurisdictionCoverage.length === 0 ? (
+              <p className="text-sm text-slate-400">{messages.admin.provenanceJurisdictionEmpty}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed text-sm text-slate-200">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th className="pb-2">{messages.admin.provenanceJurisdictionColumnJurisdiction}</th>
+                      <th className="pb-2 text-right">{messages.admin.provenanceJurisdictionColumnResidency}</th>
+                      <th className="pb-2 text-right">{messages.admin.provenanceJurisdictionColumnSources}</th>
+                      <th className="pb-2">{messages.admin.provenanceJurisdictionColumnBinding}</th>
+                      <th className="pb-2">{messages.admin.provenanceJurisdictionColumnIdentifiers}</th>
+                      <th className="pb-2">{messages.admin.provenanceJurisdictionColumnAkoma}</th>
+                      <th className="pb-2">{messages.admin.provenanceJurisdictionColumnTypes}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {jurisdictionCoverage.map((row) => {
+                      const bindingSummary = bindingSummaryFor(row.bindingBreakdown ?? {});
+                      const languageNotes = languageNoteSummaryFor(row.languageNoteBreakdown ?? {});
+                      const identifiersText = messages.admin.provenanceJurisdictionIdentifiers
+                        .replace('{eli}', numberFormatter.format(row.sourcesWithEli ?? 0))
+                        .replace('{ecli}', numberFormatter.format(row.sourcesWithEcli ?? 0));
+                      const akomaText = messages.admin.provenanceJurisdictionAkoma.replace(
+                        '{count}',
+                        numberFormatter.format(row.sourcesWithAkoma ?? 0),
+                      );
+                      const typeSummary = sourceTypeSummaryFor(row.sourceTypeBreakdown ?? {});
+                      return (
+                        <tr key={row.jurisdiction}>
+                          <td className="py-3 pr-3 align-top">
+                            <div className="font-medium text-slate-100">{row.label}</div>
+                          </td>
+                          <td className="py-3 pr-3 text-right align-top text-sm text-slate-300">
+                            {row.residencyZone.toUpperCase()}
+                          </td>
+                          <td className="py-3 pr-3 text-right align-top text-sm text-slate-300">
+                            {`${numberFormatter.format(row.sourcesConsolidated ?? 0)} / ${numberFormatter.format(
+                              row.totalSources ?? 0,
+                            )}`}
+                          </td>
+                          <td className="py-3 pr-3 align-top text-sm text-slate-200">
+                            {bindingSummary}
+                            {languageNotes ? (
+                              <div className="text-xs text-slate-400">{languageNotes}</div>
+                            ) : null}
+                          </td>
+                          <td className="py-3 pr-3 align-top text-sm text-slate-200">{identifiersText}</td>
+                          <td className="py-3 pr-3 align-top text-sm text-slate-200">{akomaText}</td>
+                          <td className="py-3 align-top text-sm text-slate-200">{typeSummary}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
             <CardTitle className="text-slate-100">{messages.admin.evaluationTitle}</CardTitle>
             <p className="text-sm text-slate-400">{messages.admin.evaluationDescription}</p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <MetricBlock
                 label={messages.admin.evaluationPassRate}
                 primary={formatPercent(evaluationSummary?.passRate)}
-                secondary={`${messages.admin.evaluationCases} ${
-                  evaluationSummary ? numberFormatter.format(evaluationSummary.totalCases) : '—'
-                } · ${messages.admin.evaluationsExecuted} ${
-                  evaluationSummary ? numberFormatter.format(evaluationSummary.evaluatedResults) : '—'
-                } · ${messages.admin.evaluationLastRun} ${formatDateTime(
-                  evaluationSummary?.lastResultAt ?? null,
-                )}`}
+                secondary={(function () {
+                  const pass = evaluationSummary?.passRate ?? null;
+                  const good = clientEnv.NEXT_PUBLIC_EVAL_PASS_GOOD;
+                  const ok = clientEnv.NEXT_PUBLIC_EVAL_PASS_OK;
+                  let kind: 'good' | 'ok' | 'poor' | null = null;
+                  if (typeof pass === 'number') {
+                    kind = pass >= good ? 'good' : pass >= ok ? 'ok' : 'poor';
+                  }
+                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                  const { label, color } =
+                    kind === 'good'
+                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                      : kind === 'ok'
+                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                        : kind === 'poor'
+                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                          : { label: null, color: '' } as any;
+                  return (
+                    <span>
+                      {label ? (
+                        <>
+                          <span
+                            className={`${baseBadge} ${color}`}
+                            title={`Pass rate ${formatPercent(evaluationSummary?.passRate)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_PASS_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_PASS_OK * 100}%)`}
+                          >
+                            {label}
+                          </span>
+                          <span className="mx-1 text-slate-600">·</span>
+                        </>
+                      ) : null}
+                      <span>
+                        {messages.admin.evaluationCases} {evaluationSummary ? numberFormatter.format(evaluationSummary.totalCases) : '—'} · {messages.admin.evaluationsExecuted} {evaluationSummary ? numberFormatter.format(evaluationSummary.evaluatedResults) : '—'} · {messages.admin.evaluationLastRun} {formatDateTime(evaluationSummary?.lastResultAt ?? null)}
+                      </span>
+                    </span>
+                  );
+                })()}
                 loading={evaluationQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.evaluationCitationCoverage}
                 primary={formatPercent(evaluationSummary?.citationPrecisionCoverage)}
-                secondary={`${messages.admin.evaluationCitationP95} ${formatPercent(
-                  evaluationSummary?.citationPrecisionP95,
-                )}`}
+                secondary={(function () {
+                  const cov = evaluationSummary?.citationPrecisionCoverage ?? null;
+                  const good = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD;
+                  const ok = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK;
+                  let kind: 'good' | 'ok' | 'poor' | null = null;
+                  if (typeof cov === 'number') {
+                    kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
+                  }
+                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                  const { label, color } =
+                    kind === 'good'
+                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                      : kind === 'ok'
+                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                        : kind === 'poor'
+                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                          : { label: null, color: '' } as any;
+                  return (
+                    <span>
+                      {label ? (
+                        <>
+                          <span
+                            className={`${baseBadge} ${color}`}
+                            title={`Coverage ${formatPercent(evaluationSummary?.citationPrecisionCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK * 100}%)`}
+                          >
+                            {label}
+                          </span>
+                          <span className="mx-1 text-slate-600">·</span>
+                        </>
+                      ) : null}
+                      <span>
+                        {messages.admin.evaluationCitationP95} {formatPercent(evaluationSummary?.citationPrecisionP95)}
+                      </span>
+                    </span>
+                  );
+                })()}
                 loading={evaluationQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.evaluationTemporalCoverage}
                 primary={formatPercent(evaluationSummary?.temporalValidityCoverage)}
-                secondary={`${messages.admin.evaluationTemporalP95} ${formatPercent(
-                  evaluationSummary?.temporalValidityP95,
-                )}`}
+                secondary={(function () {
+                  const cov = evaluationSummary?.temporalValidityCoverage ?? null;
+                  const good = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD;
+                  const ok = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK;
+                  let kind: 'good' | 'ok' | 'poor' | null = null;
+                  if (typeof cov === 'number') {
+                    kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
+                  }
+                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                  const { label, color } =
+                    kind === 'good'
+                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                      : kind === 'ok'
+                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                        : kind === 'poor'
+                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                          : { label: null, color: '' } as any;
+                  return (
+                    <span>
+                      {label ? (
+                        <>
+                          <span
+                            className={`${baseBadge} ${color}`}
+                            title={`Coverage ${formatPercent(evaluationSummary?.temporalValidityCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK * 100}%)`}
+                          >
+                            {label}
+                          </span>
+                          <span className="mx-1 text-slate-600">·</span>
+                        </>
+                      ) : null}
+                      <span>
+                        {messages.admin.evaluationTemporalP95} {formatPercent(evaluationSummary?.temporalValidityP95)}
+                      </span>
+                    </span>
+                  );
+                })()}
                 loading={evaluationQuery.isLoading}
               />
               <MetricBlock
                 label={messages.admin.evaluationMaghrebCoverage}
                 primary={formatPercent(evaluationSummary?.maghrebBannerCoverage)}
-                secondary={messages.admin.evaluationMaghrebHint}
-                loading={evaluationQuery.isLoading}
-              />
-              <MetricBlock
-                label={messages.admin.evaluationRwandaCoverage}
-                primary={formatPercent(evaluationSummary?.rwandaNoticeCoverage)}
-                secondary={messages.admin.evaluationRwandaHint}
+                secondary={(function () {
+                  const cov = evaluationSummary?.maghrebBannerCoverage ?? null;
+                  const good = clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_GOOD;
+                  const ok = clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_OK;
+                  let kind: 'good' | 'ok' | 'poor' | null = null;
+                  if (typeof cov === 'number') {
+                    kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
+                  }
+                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                  const { label, color } =
+                    kind === 'good'
+                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                      : kind === 'ok'
+                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                        : kind === 'poor'
+                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                          : { label: null, color: '' } as any;
+                  return (
+                    <span>
+                      {label ? (
+                        <>
+                          <span
+                            className={`${baseBadge} ${color}`}
+                            title={`Coverage ${formatPercent(evaluationSummary?.maghrebBannerCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_OK * 100}%)`}
+                          >
+                            {label}
+                          </span>
+                          <span className="mx-1 text-slate-600">·</span>
+                        </>
+                      ) : null}
+                      <span>{messages.admin.evaluationMaghrebHint}</span>
+                    </span>
+                  );
+                })()}
                 loading={evaluationQuery.isLoading}
               />
             </div>
@@ -1206,7 +1302,6 @@ export function AdminView({ messages, locale }: AdminViewProps) {
                       <th className="pb-2 text-right">{messages.admin.evaluationTemporalMedian}</th>
                       <th className="pb-2 text-right">{messages.admin.evaluationBindingWarnings}</th>
                       <th className="pb-2 text-right">{messages.admin.evaluationMaghrebCoverage}</th>
-                      <th className="pb-2 text-right">{messages.admin.evaluationRwandaCoverage}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
@@ -1219,7 +1314,6 @@ export function AdminView({ messages, locale }: AdminViewProps) {
                         <td className="py-2 text-right text-sm">{formatPercent(row.temporalValidityMedian)}</td>
                         <td className="py-2 text-right text-sm">{formatDecimal(row.avgBindingWarnings)}</td>
                         <td className="py-2 text-right text-sm">{formatPercent(row.maghrebBannerCoverage)}</td>
-                        <td className="py-2 text-right text-sm">{formatPercent(row.rwandaNoticeCoverage)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1275,97 +1369,32 @@ export function AdminView({ messages, locale }: AdminViewProps) {
             </CardContent>
           </Card>
 
-        <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">Retention & Export</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-200">
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => exportMutation.mutate('csv')}>Export CSV</Button>
-              <Button size="sm" variant="outline" onClick={() => exportMutation.mutate('json')}>Export JSON</Button>
-            </div>
-            <div className="space-y-2 text-xs">
-              {(exportsQuery.data?.exports ?? []).map((ex) => (
-                <div key={ex.id} className="flex items-center justify-between gap-3">
-                  <span>{ex.format} · {ex.status} · {new Date(ex.created_at).toLocaleString()}</span>
-                  {ex.signedUrl ? (
-                    <a className="text-teal-200" href={ex.signedUrl} target="_blank" rel="noreferrer">Télécharger</a>
-                  ) : null}
-                </div>
-              ))}
-              <p className="text-slate-400">{messages.admin.exportResidencyHint}</p>
-            </div>
-            <div className="mt-4 grid gap-2 md:grid-cols-3">
-              <input
-                placeholder="Document ID"
-                value={deleteDocId}
-                onChange={(e) => setDeleteDocId(e.target.value)}
-                className={selectClassName}
-              />
-              <input
-                placeholder="Raison (optionnelle)"
-                value={deleteReason}
-                onChange={(e) => setDeleteReason(e.target.value)}
-                className={selectClassName}
-              />
-              <Button size="sm" variant="outline" onClick={() => deletionMutation.mutate({ id: deleteDocId, reason: deleteReason || undefined })} disabled={!deleteDocId}>
-                Supprimer le document
-              </Button>
-            </div>
-            <div className="space-y-2 text-xs">
-              {(deletionQuery.data?.requests ?? []).map((req) => (
-                <div key={req.id} className="flex items-center justify-between gap-3">
-                  <span>{req.target}:{req.target_id ?? 'org'} · {req.status} · {new Date(req.created_at).toLocaleString()}</span>
-                  {req.error ? <span className="text-rose-400">{req.error}</span> : null}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
           <Card className="glass-card border border-slate-800/60">
             <CardHeader>
-              <CardTitle className="text-slate-100">Google Drive — Watch</CardTitle>
+              <CardTitle className="text-slate-100">{messages.admin.policies}</CardTitle>
+              <p className="text-sm text-slate-400">{messages.admin.policyDescription}</p>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-300">
-              <div className="grid gap-2 md:grid-cols-2">
-                <input
-                  placeholder="Drive ID (optionnel)"
-                  value={driveId}
-                  onChange={(e) => setDriveId(e.target.value)}
-                  className={selectClassName}
-                />
-                <input
-                  placeholder="Folder ID autorisé"
-                  value={folderId}
-                  onChange={(e) => setFolderId(e.target.value)}
-                  className={selectClassName}
-                />
+            <CardContent className="space-y-4">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {policyDocuments.map((doc) => (
+                  <Button key={doc.href} asChild variant="outline">
+                    <a href={doc.href} target="_blank" rel="noreferrer">
+                      {doc.label}
+                    </a>
+                  </Button>
+                ))}
               </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={installGDrive}>
-                  Installer
-                </Button>
-                <Button size="sm" variant="outline" onClick={renewGDrive}>
-                  Renouveler
-                </Button>
-                <Button size="sm" variant="outline" onClick={uninstallGDrive}>
-                  Désinstaller
-                </Button>
-                <Button size="sm" variant="outline" onClick={processChangesNow}>
-                  Traiter maintenant
-                </Button>
-                <Button size="sm" variant="outline" onClick={backfillNow}>
-                  Backfill ×5
-                </Button>
-              </div>
-              <div className="text-xs text-slate-400">
-                <p>Expiration: {gdriveState?.expiration ?? '—'}</p>
-                <p>Dernier token: {(gdriveState as any)?.last_page_token ?? '—'}</p>
-              </div>
+              <p className="text-sm text-slate-400">{messages.admin.policyEvidenceHint}</p>
+              <ul className="space-y-2 text-sm text-slate-200">
+                <li>{messages.admin.policyRetention}</li>
+                <li>{messages.admin.policyIncidentHint}</li>
+                <li>{messages.admin.policyChangeHint}</li>
+                <li>{messages.admin.policySupportHint}</li>
+                <li>{messages.admin.policyGoNoGo}</li>
+              </ul>
             </CardContent>
           </Card>
-      </div>
+        </div>
 
         <Card className="glass-card border border-slate-800/60">
           <CardHeader>
@@ -1389,52 +1418,47 @@ export function AdminView({ messages, locale }: AdminViewProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {toolRows.map((row) => (
-                    <tr key={row.toolName}>
-                      <td className="py-2 pr-4 font-medium text-slate-100">{row.toolName}</td>
-                      <td className="py-2 pr-4">{decimalFormatter.format(row.avgLatencyMs)}</td>
-                      <td className="py-2 pr-4">{decimalFormatter.format(row.p95LatencyMs)}</td>
-                      <td className="py-2 pr-4">
-                        {row.failureCount}/{row.totalInvocations}
-                      </td>
-                      <td className="py-2 text-slate-400">{row.lastInvokedAt ? formatDateTime(row.lastInvokedAt) : '—'}</td>
-                    </tr>
-                  ))}
+                  {toolRows.map((row) => {
+                    const warn = clientEnv.NEXT_PUBLIC_TOOL_FAILURE_WARN;
+                    const crit = clientEnv.NEXT_PUBLIC_TOOL_FAILURE_CRIT;
+                    const ratio = row.totalInvocations > 0 ? row.failureCount / row.totalInvocations : 0;
+                    const kind = ratio >= crit ? 'crit' : ratio >= warn ? 'warn' : 'ok';
+                    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                    const label =
+                      kind === 'crit'
+                        ? messages.admin.toolHealthCrit
+                        : kind === 'warn'
+                          ? messages.admin.toolHealthWarn
+                          : messages.admin.toolHealthGood;
+                    const color =
+                      kind === 'crit'
+                        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
+                        : kind === 'warn'
+                          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
+                          : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
+                    return (
+                      <tr key={row.toolName}>
+                        <td className="py-2 pr-4 font-medium text-slate-100">{row.toolName}</td>
+                        <td className="py-2 pr-4">{decimalFormatter.format(row.avgLatencyMs)}</td>
+                        <td className="py-2 pr-4">{decimalFormatter.format(row.p95LatencyMs)}</td>
+                        <td className="py-2 pr-4">
+                          <span
+                            className={`${baseBadge} ${color}`}
+                            title={`Failure rate ${(ratio * 100).toFixed(1)}% (warn ≥ ${(warn * 100).toFixed(0)}%, crit ≥ ${(crit * 100).toFixed(0)}%)`}
+                          >
+                            {label}
+                          </span>
+                          <span className="mx-1 text-slate-600">·</span>
+                          <span>
+                            {row.failureCount}/{row.totalInvocations}
+                          </span>
+                        </td>
+                        <td className="py-2 text-slate-400">{row.lastInvokedAt ? formatDateTime(row.lastInvokedAt) : '—'}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">Alerts</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-200">
-            {alertsQuery.isLoading ? (
-              <p className="text-slate-400">Chargement…</p>
-            ) : alertsQuery.isError ? (
-              <p className="text-rose-400">Erreur</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span>Citation precision</span>
-                  <Badge variant={alertsQuery.data!.results.citationPrecision.ok ? 'success' : 'warning'}>
-                    {alertsQuery.data!.results.citationPrecision.value ?? '—'}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>Temporal validity</span>
-                  <Badge variant={alertsQuery.data!.results.temporalValidity.ok ? 'success' : 'warning'}>
-                    {alertsQuery.data!.results.temporalValidity.value ?? '—'}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>Link health</span>
-                  <Badge variant={alertsQuery.data!.results.linkHealth.ok ? 'success' : 'warning'}>
-                    {alertsQuery.data!.results.linkHealth.failed}/{alertsQuery.data!.results.linkHealth.totalSources}
-                  </Badge>
-                </div>
-              </div>
             )}
           </CardContent>
         </Card>
@@ -1638,6 +1662,105 @@ export function AdminView({ messages, locale }: AdminViewProps) {
 
         <Card className="glass-card border border-slate-800/60">
           <CardHeader>
+            <CardTitle className="text-slate-100">{messages.admin.devicesTitle}</CardTitle>
+            <p className="text-sm text-slate-400">{messages.admin.devicesDescription}</p>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-slate-200">
+            {deviceSessionsQuery.isLoading ? (
+              <p className="text-slate-400">{messages.admin.loadingShort}</p>
+            ) : deviceSessions.length === 0 ? (
+              <p className="text-slate-400">{messages.admin.devicesEmpty}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm text-slate-200">
+                  <thead className="text-xs uppercase tracking-wide text-slate-400">
+                    <tr>
+                      <th className="py-2 pr-4">{messages.admin.devicesTableDevice}</th>
+                      <th className="py-2 pr-4">{messages.admin.devicesTablePlatform}</th>
+                      <th className="py-2 pr-4">{messages.admin.devicesTableIp}</th>
+                      <th className="py-2 pr-4">{messages.admin.devicesTableAuth}</th>
+                      <th className="py-2 pr-4">{messages.admin.devicesTableLastSeen}</th>
+                      <th className="py-2 pr-4">{messages.admin.devicesTableStatus}</th>
+                      <th className="py-2">{messages.admin.devicesTableActions}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {deviceSessions.map((session) => {
+                      const statusActive = !session.revokedAt;
+                      return (
+                        <tr key={session.id}>
+                          <td className="py-3 pr-4 align-top">
+                            <p className="font-semibold text-slate-100">{session.deviceLabel ?? messages.admin.devicesUnknownDevice}</p>
+                            <p className="text-xs text-slate-400 break-all">{session.userAgent ?? messages.admin.devicesUnknownAgent}</p>
+                            <p className="text-xs text-slate-500">{messages.admin.devicesFingerprint}: {session.deviceFingerprint.slice(0, 12)}…</p>
+                          </td>
+                          <td className="py-3 pr-4 align-top text-slate-300">
+                            <div className="space-y-1">
+                              <div>{session.platform ?? '—'}</div>
+                              <div className="text-xs text-slate-500">{session.clientVersion ?? '—'}</div>
+                              {session.attested ? (
+                                <span className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-200">
+                                  {messages.admin.devicesAttested}
+                                </span>
+                              ) : null}
+                              {session.passkey ? (
+                                <span className="ml-1 inline-flex items-center rounded-full border border-sky-400/50 bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-200">
+                                  {messages.admin.devicesPasskey}
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4 align-top">
+                            <p>{session.ipAddress ?? '—'}</p>
+                            <p className="text-xs text-slate-500">
+                              {session.metadata?.role
+                                ? roleDisplay(String(session.metadata.role))
+                                : '—'}
+                            </p>
+                          </td>
+                          <td className="py-3 pr-4 align-top text-slate-300">
+                            <p>{session.authStrength ?? '—'}</p>
+                            <p className="text-xs text-slate-500">
+                              {session.mfaMethod ? `${messages.admin.devicesMfa}: ${session.mfaMethod}` : '—'}
+                            </p>
+                          </td>
+                          <td className="py-3 pr-4 align-top text-slate-300">
+                            <p>{formatDateTime(session.lastSeenAt)}</p>
+                            <p className="text-xs text-slate-500">{messages.admin.devicesCreated}: {formatDateTime(session.createdAt)}</p>
+                          </td>
+                          <td className="py-3 pr-4 align-top">
+                            <span
+                              className={statusActive ? 'text-emerald-200' : 'text-rose-300'}
+                            >
+                              {statusActive ? messages.admin.devicesStatusActive : messages.admin.devicesStatusRevoked}
+                            </span>
+                            {!statusActive && session.revokedAt ? (
+                              <p className="text-xs text-slate-500">{formatDateTime(session.revokedAt)}</p>
+                            ) : null}
+                          </td>
+                          <td className="py-3 align-top">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="text-xs text-rose-300 hover:text-rose-100"
+                              disabled={!statusActive || revokeDeviceMutation.isPending}
+                              onClick={() => revokeDeviceMutation.mutate(session.id)}
+                            >
+                              {messages.admin.devicesRevoke}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader>
             <CardTitle className="text-slate-100">{messages.admin.ipTitle}</CardTitle>
             <p className="text-sm text-slate-400">{messages.admin.ipDescription}</p>
           </CardHeader>
@@ -1726,8 +1849,10 @@ export function AdminView({ messages, locale }: AdminViewProps) {
                     <tr key={event.id}>
                       <td className="py-2 pr-4 font-medium text-slate-100">{event.kind}</td>
                       <td className="py-2 pr-4 text-slate-300">{event.object}</td>
-                      <td className="py-2 pr-4 text-slate-400">{event.actor}</td>
-                      <td className="py-2 text-slate-400">{formatDateTime(event.ts)}</td>
+                      <td className="py-2 pr-4 text-slate-400">
+                        {event.actor_user_id ?? messages.admin.auditSystem}
+                      </td>
+                      <td className="py-2 text-slate-400">{formatDateTime(event.created_at)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1743,7 +1868,7 @@ export function AdminView({ messages, locale }: AdminViewProps) {
 interface MetricBlockProps {
   label: string;
   primary: string;
-  secondary?: string;
+  secondary?: ReactNode;
   loading?: boolean;
 }
 

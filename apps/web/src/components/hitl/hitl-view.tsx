@@ -9,7 +9,6 @@ import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
 import type { Locale, Messages } from '../../lib/i18n';
 import {
-  DEMO_ORG_ID,
   fetchHitlAuditTrail,
   fetchHitlDetail,
   fetchHitlMetrics,
@@ -18,6 +17,7 @@ import {
   type AuditEvent,
   type HitlDetailResponse,
 } from '../../lib/api';
+import { useRequiredSession } from '../session-provider';
 
 interface HitlViewProps {
   messages: Messages;
@@ -106,27 +106,32 @@ export function HitlView({ messages, locale }: HitlViewProps) {
   const [selectedHitlId, setSelectedHitlId] = useState<string | null>(null);
   const [comment, setComment] = useState('');
   const queryClient = useQueryClient();
+  const session = useRequiredSession();
+  const hasSession = Boolean(session.orgId && session.userId);
+  const queueKey = ['hitl-queue', session.orgId, session.userId] as const;
+  const metricsKey = ['hitl-metrics', session.orgId, session.userId] as const;
 
-  const queueQuery = useQuery({ queryKey: ['hitl'], queryFn: () => fetchHitlQueue(DEMO_ORG_ID) });
+  const queueQuery = useQuery({
+    queryKey: queueKey,
+    queryFn: () => fetchHitlQueue(session.orgId, session.userId),
+    enabled: hasSession,
+  });
   const detailQuery = useQuery<HitlDetailResponse>({
-    queryKey: ['hitl-detail', selectedHitlId],
-    enabled: Boolean(selectedHitlId),
-    queryFn: () => fetchHitlDetail(DEMO_ORG_ID, selectedHitlId ?? ''),
+    queryKey: ['hitl-detail', session.orgId, session.userId, selectedHitlId],
+    enabled: hasSession && Boolean(selectedHitlId),
+    queryFn: () => fetchHitlDetail(session.orgId, session.userId, selectedHitlId ?? ''),
   });
-  const metricsQuery = useQuery({
-    queryKey: ['hitl-metrics'],
-    queryFn: () => fetchHitlMetrics(DEMO_ORG_ID),
-  });
+  const metricsQuery = useQuery({ queryKey: metricsKey, queryFn: () => fetchHitlMetrics(session.orgId, session.userId), enabled: hasSession });
 
   const actionMutation = useMutation({
     mutationFn: (input: { id: string; action: 'approve' | 'request_changes' | 'reject'; comment?: string }) =>
-      submitHitlAction(input.id, input.action, input.comment),
+      submitHitlAction(session.orgId, session.userId, input),
     onSuccess: () => {
       toast.success(locale === 'fr' ? 'Revue enregistrée' : 'Review saved');
       setComment('');
-      queryClient.invalidateQueries({ queryKey: ['hitl'] });
-      queryClient.invalidateQueries({ queryKey: ['hitl-detail'] });
-      queryClient.invalidateQueries({ queryKey: ['hitl-audit'] });
+      queryClient.invalidateQueries({ queryKey: queueKey });
+      queryClient.invalidateQueries({ queryKey: ['hitl-detail', session.orgId, session.userId] });
+      queryClient.invalidateQueries({ queryKey: ['hitl-audit', session.orgId, session.userId] });
     },
     onError: () => {
       toast.error(locale === 'fr' ? 'Échec de la revue' : 'Review failed');
@@ -142,11 +147,15 @@ export function HitlView({ messages, locale }: HitlViewProps) {
     }
   }, [selectedHitlId, queue]);
 
+  if (!hasSession) {
+    return null;
+  }
+
   const auditQuery = useQuery({
-    queryKey: ['hitl-audit', selectedItem?.runId ?? null, selectedHitlId],
-    enabled: Boolean(selectedHitlId),
+    queryKey: ['hitl-audit', session.orgId, session.userId, selectedItem?.runId ?? null, selectedHitlId],
+    enabled: hasSession && Boolean(selectedHitlId),
     queryFn: () =>
-      fetchHitlAuditTrail(DEMO_ORG_ID, {
+      fetchHitlAuditTrail(session.orgId, session.userId, {
         objectId: selectedHitlId ?? undefined,
         runId: selectedItem?.runId ?? undefined,
         limit: 50,

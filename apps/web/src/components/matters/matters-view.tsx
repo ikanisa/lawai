@@ -9,7 +9,8 @@ import { Badge } from '../../components/ui/badge';
 import { Separator } from '../../components/ui/separator';
 import { Input } from '../../components/ui/input';
 import type { Locale, Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, fetchMatters, fetchMatterDetail } from '../../lib/api';
+import { fetchMatters, fetchMatterDetail } from '../../lib/api';
+import { useRequiredSession } from '../session-provider';
 
 interface MattersViewProps {
   messages: Messages;
@@ -40,16 +41,21 @@ interface MatterDetail {
 export function MattersView({ messages, locale }: MattersViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const session = useRequiredSession();
+  const orgId = session.orgId;
+  const userId = session.userId;
+  const hasSession = Boolean(orgId && userId);
 
   const mattersQuery = useQuery({
-    queryKey: ['matters'],
-    queryFn: () => fetchMatters(DEMO_ORG_ID),
+    queryKey: ['matters', orgId, userId],
+    queryFn: () => fetchMatters(orgId, userId),
+    enabled: hasSession,
   });
 
   const detailQuery = useQuery({
-    queryKey: ['matter', selectedId],
-    enabled: Boolean(selectedId),
-    queryFn: () => fetchMatterDetail(DEMO_ORG_ID, selectedId ?? ''),
+    queryKey: ['matter', orgId, userId, selectedId],
+    enabled: hasSession && Boolean(selectedId),
+    queryFn: () => fetchMatterDetail(orgId, userId, selectedId ?? ''),
   });
 
   useEffect(() => {
@@ -100,6 +106,10 @@ export function MattersView({ messages, locale }: MattersViewProps) {
       toast.error(locale === 'fr' ? 'Calcul impossible' : 'Unable to compute');
     },
   });
+
+  if (!hasSession) {
+    return null;
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[320px,1fr]">

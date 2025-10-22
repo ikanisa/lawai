@@ -9,7 +9,8 @@ import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
 import type { Locale, Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, fetchDraftingTemplates } from '../../lib/api';
+import { fetchDraftingTemplates } from '../../lib/api';
+import { useRequiredSession } from '../session-provider';
 import { RedlineDiff, type RedlineEntry } from './redline-diff';
 
 interface DraftingViewProps {
@@ -87,10 +88,15 @@ const REDLINE_DIFF: RedlineEntry[] = [
 export function DraftingView({ messages, locale }: DraftingViewProps) {
   const [prompt, setPrompt] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
+  const session = useRequiredSession();
+  const orgId = session.orgId;
+  const userId = session.userId;
+  const hasSession = Boolean(orgId && userId);
 
   const templatesQuery = useQuery({
-    queryKey: ['drafting-templates', DEMO_ORG_ID],
-    queryFn: () => fetchDraftingTemplates(DEMO_ORG_ID),
+    queryKey: ['drafting-templates', orgId, userId],
+    queryFn: () => fetchDraftingTemplates(orgId, userId),
+    enabled: hasSession,
   });
 
   const templates = useMemo<DraftTemplate[]>(() => {
@@ -130,6 +136,10 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
       toast.error(locale === 'fr' ? 'Erreur de génération' : 'Generation failed');
     },
   });
+
+  if (!hasSession) {
+    return null;
+  }
 
   function handleSmartDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

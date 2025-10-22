@@ -3,8 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
-import { AUTONOMOUS_JUSTICE_SUITE } from '../../../../../packages/shared/src/config/autonomous-suite';
+import { IRACPayload, SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { Switch } from '../../components/ui/switch';
@@ -23,104 +22,204 @@ import { usePlanDrawer } from '../../state/plan-drawer';
 import { VoiceInputButton } from './voice-input-button';
 import { CameraOcrButton } from './camera-ocr-button';
 import { OutboxPanel } from './outbox-panel';
-import {
-  DEMO_ORG_ID,
-  DEMO_USER_ID,
-  submitResearchQuestion,
-  sendTelemetryEvent,
-  type AgentRunResponse,
-} from '../../lib/api';
+import { ReadingModeToggle, type ReadingMode } from './reading-mode-toggle';
+import { submitResearchQuestion, sendTelemetryEvent, requestHitlReview, type AgentRunResponse } from '../../lib/api';
 import type { Messages, Locale } from '../../lib/i18n';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
 import { exportIracToDocx, exportIracToPdf } from '../../lib/exporters';
+import { cn } from '../../lib/utils';
 import { useOnlineStatus } from '../../hooks/use-online-status';
 import { useOutbox, type OutboxItem } from '../../hooks/use-outbox';
-import { isDateStale } from '../../lib/staleness';
-import { cn } from '../../lib/utils';
+import { usePwaInstall } from '../../hooks/use-pwa-install';
+import { useConfidentialMode } from '../../state/confidential-mode';
+import { RwandaLanguageTriage } from './rwanda-language-triage';
+import { useRequiredSession } from '../session-provider';
 
-const SUITE_MANIFEST = AUTONOMOUS_JUSTICE_SUITE;
-const AGENT_OPTIONS = Object.entries(SUITE_MANIFEST.agents)
-  .map(([key, definition]) => {
-    const code = typeof definition.code === 'string' ? definition.code : key;
-    const label = typeof definition.label === 'string' ? definition.label : code;
-    const mission = typeof definition.mission === 'string' ? definition.mission : '';
-    return { key, code, label, mission };
-  })
-  .filter((option) => option.code)
-  .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
-
-const DEFAULT_AGENT_CODE =
-  AGENT_OPTIONS.find((option) => option.key === 'counsel_research')?.code ??
-  SUITE_MANIFEST.agents.counsel_research?.code ??
-  AGENT_OPTIONS[0]?.code ??
-  'conseil_recherche';
+const EMPTY_VIOLATIONS: string[] = [];
 
 interface ResearchViewProps {
   messages: Messages;
   locale: Locale;
 }
 
-type IracRule = {
-  citation: string;
-  source_url: string;
-  binding: boolean;
-  effective_date: string;
-};
+interface BriefSummaryProps {
+  payload: IRACPayload;
+  readingMessages: Messages['research']['readingModes'];
+  textClassName?: string;
+}
 
-type IracPayload = {
-  jurisdiction: {
-    country: string;
-    eu: boolean;
-    ohada: boolean;
-  };
-  issue: string;
-  rules: IracRule[];
-  application: string;
-  conclusion: string;
-  citations: Array<{
-    title: string;
-    court_or_publisher: string;
-    date: string;
-    url: string;
-    note?: string;
-  }>;
-  risk: {
-    level: 'LOW' | 'MEDIUM' | 'HIGH';
-    why: string;
-    hitl_required: boolean;
-  };
-};
+function BriefSummary({ payload, readingMessages, textClassName }: BriefSummaryProps) {
+  const leadingRules = payload.rules?.slice(0, 3) ?? [];
+
+  return (
+    <Card className="font-serif">
+      <CardHeader>
+        <CardTitle className="text-xl text-slate-100">{readingMessages.briefTitle}</CardTitle>
+        <p className="text-sm text-slate-300">{readingMessages.briefLead}</p>
+      </CardHeader>
+      <CardContent className={cn('space-y-4 text-lg leading-relaxed text-slate-100', textClassName)}>
+        <section>
+          <h3 className="text-base font-semibold uppercase tracking-wide text-slate-300">
+            {readingMessages.briefIssue}
+          </h3>
+          <p className="mt-1">{payload.issue}</p>
+        </section>
+
+        <section>
+          <h3 className="text-base font-semibold uppercase tracking-wide text-slate-300">
+            {readingMessages.briefConclusion}
+          </h3>
+          <p className="mt-1">{payload.conclusion}</p>
+        </section>
+
+        <section>
+          <h3 className="text-base font-semibold uppercase tracking-wide text-slate-300">
+            {readingMessages.briefRules}
+          </h3>
+          {leadingRules.length > 0 ? (
+            <ul className="mt-1 space-y-2 text-base leading-relaxed">
+              {leadingRules.map((rule, index) => (
+                <li key={`${rule.citation}-${index}`}>
+                  <span className="font-semibold text-slate-200">{rule.citation}</span>
+                  {rule.effective_date ? (
+                    <span className="text-sm text-slate-400"> · {rule.effective_date}</span>
+                  ) : null}
+                  <div className="text-sm text-slate-300">{rule.summary ?? rule.note}</div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-base text-slate-300">{readingMessages.briefRulesEmpty}</p>
+          )}
+        </section>
+
+        <section>
+          <h3 className="text-base font-semibold uppercase tracking-wide text-slate-300">
+            {readingMessages.briefApplication}
+          </h3>
+          <p className="mt-1">{payload.application}</p>
+        </section>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface EvidenceFocusProps {
+  citations?: IRACPayload['citations'];
+  readingMessages: Messages['research']['readingModes'];
+  onVisit: (url: string) => void;
+  citationBadges: (note?: string) => string[];
+  verifyLabel: string;
+  staleLabel: string;
+  isCitationStale: (date: string) => boolean;
+  onVerify: (url: string) => void;
+  textClassName?: string;
+}
+
+function EvidenceFocusCard({
+  citations = [],
+  readingMessages,
+  onVisit,
+  citationBadges,
+  verifyLabel,
+  staleLabel,
+  isCitationStale,
+  onVerify,
+  textClassName,
+}: EvidenceFocusProps) {
+  const primary = citations[0];
+  const secondary = citations.slice(1);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{readingMessages.evidenceModeTitle}</CardTitle>
+        <p className="text-sm text-slate-300">{readingMessages.evidenceModeSubtitle}</p>
+      </CardHeader>
+      <CardContent className={cn('space-y-4', textClassName)}>
+        {primary ? (
+          <article className={cn('glass-card space-y-3 rounded-2xl border border-slate-700/60 p-4', textClassName)}>
+            <header className="space-y-1">
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                {readingMessages.evidencePrimary}
+              </p>
+              <h4 className="text-sm font-semibold text-slate-100">{primary.title}</h4>
+              <p className="text-xs text-slate-400">
+                {primary.court_or_publisher} · {primary.date}
+              </p>
+            </header>
+            <div className="flex flex-wrap items-center gap-2">
+              {citationBadges(primary.note).map((badge) => (
+                <Badge key={badge} variant={badge === 'Officiel' ? 'success' : 'outline'}>
+                  {badge}
+                </Badge>
+              ))}
+              {isCitationStale(primary.date ?? '') ? (
+                <Badge variant="warning">{staleLabel}</Badge>
+              ) : null}
+            </div>
+            {primary.note ? <p className="text-xs text-slate-300">{primary.note}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => onVisit(primary.url)}>
+                {readingMessages.evidenceOpen}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onVerify(primary.url)}>
+                {verifyLabel}
+              </Button>
+            </div>
+          </article>
+        ) : (
+          <p className="text-sm text-slate-300">{readingMessages.evidenceEmpty}</p>
+        )}
+
+        {secondary.length > 0 ? (
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-400">
+              {readingMessages.evidenceSecondary}
+            </p>
+            <ul className="mt-2 space-y-2 text-sm text-slate-300">
+              {secondary.map((citation) => (
+                <li key={citation.url}>
+                  <button
+                    type="button"
+                    onClick={() => onVisit(citation.url)}
+                    className="text-left text-indigo-300 underline-offset-4 hover:underline"
+                  >
+                    {citation.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
 
 export function ResearchView({ messages, locale }: ResearchViewProps) {
   const [question, setQuestion] = useState('');
   const [context, setContext] = useState('');
   const [ohadaMode, setOhadaMode] = useState(true);
   const [euOverlay, setEuOverlay] = useState(true);
-  const [confidentialMode, setConfidentialMode] = useState(false);
-  const [agentCode, setAgentCode] = useState<string>(DEFAULT_AGENT_CODE);
+  const confidentialMode = useConfidentialMode((state) => state.enabled);
+  const setConfidentialMode = useConfidentialMode((state) => state.setEnabled);
+  const [readingMode, setReadingMode] = useState<ReadingMode>('research');
   const [latestRun, setLatestRun] = useState<AgentRunResponse | null>(null);
   const { open, toggle } = usePlanDrawer();
   const online = useOnlineStatus();
-  const { items: outboxItems, enqueue, remove, flush } = useOutbox();
-
-  const agentOptions = AGENT_OPTIONS;
-  const selectedAgent = useMemo(
-    () => agentOptions.find((option) => option.code === agentCode) ?? agentOptions[0],
-    [agentOptions, agentCode],
-  );
-  const executedAgentLabel = latestRun?.agent?.label ?? selectedAgent?.label ?? '';
+  const { items: outboxItems, enqueue, remove, flush } = useOutbox({ persist: !confidentialMode });
+  const [hitlRequestPending, setHitlRequestPending] = useState(false);
+  const [hitlQueued, setHitlQueued] = useState(false);
 
   const badgeMessages = messages.research.badges;
-  const agentSelectorMessages = messages.research.agentSelector;
-  const jurisdictionEntries = useMemo<Array<{
-    code: string;
-    id: string;
-    label: string;
-    badges: NonNullable<JurisdictionChipProps['badges']>;
-  }>>(
+  const readingModeMessages = messages.research.readingModes;
+  const readingModeDescriptions = readingModeMessages.descriptions ?? {};
+  const confidentialMessages = messages.research.confidential;
+  const jurisdictionEntries = useMemo(
     () =>
-      SUPPORTED_JURISDICTIONS.map((jurisdiction: (typeof SUPPORTED_JURISDICTIONS)[number]) => {
+      SUPPORTED_JURISDICTIONS.map((jurisdiction) => {
         const label = locale === 'fr' ? jurisdiction.labelFr : jurisdiction.labelEn;
         const badges: NonNullable<JurisdictionChipProps['badges']> = [];
 
@@ -133,14 +232,14 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         if (jurisdiction.bilingual) {
           badges.push({ label: badgeMessages.bilingual, variant: 'warning' });
         }
+        if (jurisdiction.triLingual) {
+          badges.push({ label: badgeMessages.trilingual, variant: 'warning' });
+        }
         if (jurisdiction.maghreb) {
           badges.push({ label: badgeMessages.maghreb, variant: 'warning' });
         }
         if (jurisdiction.notes?.includes('swiss')) {
           badges.push({ label: badgeMessages.swiss, variant: 'outline' });
-        }
-        if (jurisdiction.id === 'RW') {
-          badges.push({ label: badgeMessages.rwanda, variant: 'success' });
         }
 
         return {
@@ -156,10 +255,18 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const successMessage = locale === 'fr' ? 'Analyse prête' : 'Analysis ready';
   const consolidatedMessage = locale === 'fr' ? 'Filtre consolidé activé' : 'Consolidated filter enabled';
   const hitlMessage = locale === 'fr' ? 'Dossier envoyé en revue humaine' : 'Submitted to human review';
-  const exportPdfMessage = locale === 'fr' ? 'Export PDF en préparation…' : 'Preparing PDF export…';
-  const exportDocxMessage = locale === 'fr' ? 'Export DOCX en préparation…' : 'Preparing DOCX export…';
-  const exportPdfSuccessMessage = locale === 'fr' ? 'PDF prêt à être téléchargé.' : 'PDF ready to download.';
-  const exportDocxSuccessMessage = locale === 'fr' ? 'DOCX prêt à être téléchargé.' : 'DOCX ready to download.';
+  const exportPdfMessage =
+    locale === 'fr' ? 'Création de l’archive PDF signée…' : 'Preparing signed PDF archive…';
+  const exportDocxMessage =
+    locale === 'fr' ? 'Création de l’archive DOCX signée…' : 'Preparing signed DOCX archive…';
+  const exportPdfSuccessMessage =
+    locale === 'fr'
+      ? 'Archive ZIP (PDF + manifeste C2PA) téléchargée.'
+      : 'Signed PDF and C2PA manifest bundle downloaded.';
+  const exportDocxSuccessMessage =
+    locale === 'fr'
+      ? 'Archive ZIP (DOCX + manifeste C2PA) téléchargée.'
+      : 'Signed DOCX and C2PA manifest bundle downloaded.';
   const exportErrorMessage = locale === 'fr' ? 'Export impossible. Réessayez.' : 'Export failed. Please try again.';
   const opposingMessage =
     locale === 'fr'
@@ -198,17 +305,54 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
       ? 'Étapes détectées, outils appelés et preuves consultées.'
       : 'Detected steps, invoked tools, and reviewed evidence.';
 
-  const mutation = useMutation({
-    mutationFn: submitResearchQuestion,
-  });
+  const agentUnavailableMessage = locale === 'fr'
+    ? 'Agent indisponible. Veuillez réessayer.'
+    : 'Agent unavailable. Please try again.';
+  const complianceMessages = messages.app.compliance;
+  const session = useRequiredSession();
+  const sendUserTelemetry = useCallback(
+    (eventName: string, payload?: Record<string, unknown>) => {
+      if (!session.orgId || !session.userId) {
+        return;
+      }
+      void sendTelemetryEvent(eventName, session.orgId, session.userId, payload);
+    },
+    [session.orgId, session.userId],
+  );
+  const ensureSession = useCallback(() => {
+    if (!session.orgId || !session.userId) {
+      throw new Error('Session not available');
+    }
+    return { orgId: session.orgId, userId: session.userId };
+  }, [session.orgId, session.userId]);
 
-  const payload: IracPayload | null = (latestRun?.data as IracPayload | null) ?? null;
+  const mutation = useMutation({
+    mutationFn: (input: Omit<Parameters<typeof submitResearchQuestion>[0], 'orgId' | 'userId'>) => {
+      const { orgId, userId } = ensureSession();
+      return submitResearchQuestion({ ...input, orgId, userId });
+    },
+    onError: (error: unknown) => {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'consent_required' || code === 'coe_disclosure_required') {
+        if (complianceMessages?.prompt) {
+          toast.warning(complianceMessages.prompt);
+        } else {
+          toast.warning(agentUnavailableMessage);
+        }
+        return;
+      }
+      toast.error(agentUnavailableMessage);
+    },
+  });
+  const { registerSuccess: registerInstallSuccess } = usePwaInstall();
+
+  const payload: IRACPayload | null = latestRun?.data ?? null;
   const jurisdictionCode = payload?.jurisdiction.country;
   const isMaghreb = jurisdictionCode === 'MA' || jurisdictionCode === 'TN' || jurisdictionCode === 'DZ';
   const isCanadian = jurisdictionCode === 'CA-QC' || jurisdictionCode === 'CA';
   const isSwiss = jurisdictionCode === 'CH';
   const isRwanda = jurisdictionCode === 'RW';
-  const telemetryEnabled = !confidentialMode;
+  const hyphenatedClass = isRwanda ? 'hyphenate-kinyarwanda' : undefined;
 
   const planSteps = latestRun?.plan ?? null;
   const planLogs = latestRun?.toolLogs ?? [];
@@ -220,20 +364,76 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const voiceMessages = messages.research.voice;
   const ocrMessages = messages.research.ocr;
   const staleMessages = messages.research.stale;
+  const trustMessages = messages.research.trust;
   const verifyLabel = staleMessages.verify;
+  const rwandaMessages = messages.research.rwanda;
 
   const handleVoiceTranscript = (text: string) => {
     setQuestion((current) => (current ? `${current.trim()} ${text}` : text));
-    if (telemetryEnabled) {
-      void sendTelemetryEvent('voice_dictation_used');
-    }
+    sendUserTelemetry('voice_dictation_used');
   };
 
   const handleOcrText = (text: string) => {
     setContext((current) => (current ? `${current}\n${text}` : text));
-    if (telemetryEnabled) {
-      void sendTelemetryEvent('camera_ocr_added');
+    sendUserTelemetry('camera_ocr_added');
+  };
+
+  const handleHitlRequest = useCallback(async () => {
+    if (!latestRun?.runId || hitlRequestPending || hitlQueued || !online) {
+      return;
     }
+    setHitlRequestPending(true);
+    const reason =
+      trustMessages.manualHitlReason ??
+      (locale === 'fr'
+        ? 'Revue humaine demandée depuis le panneau de confiance.'
+        : 'Manual review requested from the trust panel.');
+    try {
+      const { orgId, userId } = ensureSession();
+      await requestHitlReview(latestRun.runId, orgId, userId, {
+        reason,
+        manual: true,
+      });
+      setHitlQueued(true);
+      toast.success(hitlMessage);
+      sendUserTelemetry('hitl_requested', {
+        runId: latestRun.runId,
+        manual: true,
+        alreadyPending:
+          latestRun.data?.risk.hitl_required ?? latestRun.trustPanel?.risk?.hitlRequired ?? false,
+      });
+    } catch (error) {
+      console.error('hitl_request_failed', error);
+      const failureMessage =
+        trustMessages.hitlRequestFailed ??
+        (locale === 'fr'
+          ? 'Impossible de demander une revue humaine. Réessayez plus tard.'
+          : 'Unable to request human review. Try again shortly.');
+      toast.error(failureMessage);
+    } finally {
+      setHitlRequestPending(false);
+    }
+  }, [
+    latestRun,
+    hitlRequestPending,
+    hitlQueued,
+    trustMessages.manualHitlReason,
+    trustMessages.hitlRequestFailed,
+    locale,
+    hitlMessage,
+    requestHitlReview,
+    ensureSession,
+    sendUserTelemetry,
+    online,
+  ]);
+
+  const handleRwandaLanguageSelect = (language: 'fr' | 'en' | 'rw') => {
+    sendUserTelemetry('rwanda_language_toggle', { language });
+  };
+
+  const handleReadingModeChange = (mode: ReadingMode) => {
+    setReadingMode(mode);
+    sendUserTelemetry('reading_mode_changed', { mode });
   };
 
   const citationBadges = (note?: string) => {
@@ -263,21 +463,27 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     });
   }, [payload, locale]);
 
-  const trustMessages = messages.research.trust;
-  const complianceMessages = messages.research.compliance;
   const trustPanel = latestRun?.trustPanel ?? null;
   const trustCitationSummary = trustPanel?.citationSummary ?? null;
   const trustProvenance = trustPanel?.provenance ?? null;
-  const residencyBreakdown = trustProvenance?.residencyBreakdown ?? [];
   const trustRisk = trustPanel?.risk ?? null;
-  const trustCompliance = trustPanel?.compliance ?? null;
   const verification = latestRun?.verification ?? trustRisk?.verification ?? null;
-  const allowlistViolations = useMemo(
-    () => verification?.allowlistViolations ?? [],
-    [verification?.allowlistViolations],
-  );
+  const allowlistViolations = verification?.allowlistViolations ?? EMPTY_VIOLATIONS;
   const verificationNotes = verification?.notes ?? [];
   const verificationStatus = verification?.status ?? null;
+
+  useEffect(() => {
+    if (!latestRun?.runId) {
+      setHitlQueued(false);
+      setHitlRequestPending(false);
+      return;
+    }
+    const requiresHitl = Boolean(
+      latestRun.data?.risk.hitl_required ?? latestRun.trustPanel?.risk?.hitlRequired ?? false,
+    );
+    setHitlQueued(requiresHitl);
+    setHitlRequestPending(false);
+  }, [latestRun?.runId]);
 
   const fallbackViolationHosts = useMemo(() => {
     if (allowlistViolations.length === 0) return [] as string[];
@@ -315,9 +521,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     : fallbackViolationHosts;
 
   const fallbackTranslationWarnings = useMemo(() => {
-    if (!payload || !payload.citations.length) {
-      return [] as IracPayload['citations'];
-    }
+    if (!payload?.citations?.length) return [] as typeof payload.citations;
     return payload.citations.filter((citation) => {
       const note = citation.note?.toLowerCase() ?? '';
       return note.includes('traduction') || note.includes('translation') || note.includes('langue');
@@ -329,16 +533,12 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     : fallbackTranslationWarnings.map((citation) => `${citation.title} — ${citation.note ?? ''}`.trim());
 
   const nonBindingRules = useMemo(() => {
-    if (!payload || !payload.rules.length) {
-      return [] as IracPayload['rules'];
-    }
+    if (!payload?.rules?.length) return [] as typeof payload.rules;
     return payload.rules.filter((rule) => !rule.binding);
   }, [payload]);
 
   const citationHosts = useMemo(() => {
-    if (!payload || !payload.citations.length) {
-      return [] as Array<{ host: string; count: number }>;
-    }
+    if (!payload?.citations?.length) return [] as Array<{ host: string; count: number }>;
     const counts = new Map<string, number>();
     for (const citation of payload.citations) {
       try {
@@ -358,118 +558,18 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     ? trustMessages.riskLabel.replace('{level}', trustMessages.riskLevels[payload.risk.level])
     : null;
   const hitlSummary = payload
-    ? payload.risk.hitl_required
+    ? payload.risk.hitl_required || hitlQueued
       ? trustMessages.hitlRequired
       : trustMessages.hitlNotRequired
     : null;
-
-  const complianceIssues = useMemo(() => {
-    if (!trustCompliance) return [] as string[];
-
-    const issues: string[] = [];
-
-    if (trustCompliance.friaRequired && !trustCompliance.friaValidated) {
-      const reason = trustCompliance.friaReasons[0] ?? trustMessages.complianceFriaFallback;
-      issues.push(trustMessages.complianceFria.replace('{reason}', reason));
-    }
-
-    if (!trustCompliance.cepejPassed) {
-      const detail = trustCompliance.cepejViolations.length
-        ? trustCompliance.cepejViolations
-            .map(
-              (code) =>
-                complianceMessages.cepejViolations[
-                  code as keyof typeof complianceMessages.cepejViolations
-                ] ?? trustMessages.complianceCepejFallback,
-            )
-            .join(' • ')
-        : trustMessages.complianceCepejFallback;
-      issues.push(trustMessages.complianceCepej.replace('{detail}', detail));
-    }
-
-    if (trustCompliance.consent.requirement && !trustCompliance.consent.accepted) {
-      issues.push(
-        trustMessages.complianceConsentPending.replace(
-          '{version}',
-          trustCompliance.consent.requirement.version,
-        ),
-      );
-    }
-
-    if (
-      trustCompliance.councilOfEurope.requirement?.version &&
-      !trustCompliance.councilOfEurope.acknowledged
-    ) {
-      issues.push(
-        trustMessages.complianceCoePending.replace(
-          '{version}',
-          trustCompliance.councilOfEurope.requirement.version,
-        ),
-      );
-    }
-
-    return issues;
-  }, [trustCompliance, complianceMessages, trustMessages]);
-
-  const complianceStatusMessages = useMemo(() => {
-    if (!trustCompliance) return [] as string[];
-
-    const statuses: string[] = [];
-
-    if (trustCompliance.friaRequired) {
-      statuses.push(
-        trustCompliance.friaValidated
-          ? trustMessages.complianceFriaValidated
-          : trustMessages.complianceFriaPending,
-      );
-    } else {
-      statuses.push(trustMessages.complianceFriaNotRequired);
-    }
-
-    if (trustCompliance.consent.requirement) {
-      statuses.push(
-        trustCompliance.consent.accepted
-          ? trustMessages.complianceConsentAcknowledged.replace(
-              '{version}',
-              trustCompliance.consent.requirement.version,
-            )
-          : trustMessages.complianceConsentPending.replace(
-              '{version}',
-              trustCompliance.consent.requirement.version,
-            ),
-      );
-    } else if (trustCompliance.consent.latestVersion) {
-      statuses.push(
-        trustMessages.complianceConsentAcknowledged.replace(
-          '{version}',
-          trustCompliance.consent.latestVersion,
-        ),
-      );
-    }
-
-    if (trustCompliance.councilOfEurope.requirement?.version) {
-      statuses.push(
-        trustCompliance.councilOfEurope.acknowledged
-          ? trustMessages.complianceCoeAcknowledged.replace(
-              '{version}',
-              trustCompliance.councilOfEurope.requirement.version,
-            )
-          : trustMessages.complianceCoePending.replace(
-              '{version}',
-              trustCompliance.councilOfEurope.requirement.version,
-            ),
-      );
-    } else if (trustCompliance.councilOfEurope.acknowledgedVersion) {
-      statuses.push(
-        trustMessages.complianceCoeAcknowledged.replace(
-          '{version}',
-          trustCompliance.councilOfEurope.acknowledgedVersion,
-        ),
-      );
-    }
-
-    return statuses;
-  }, [trustCompliance, trustMessages]);
+  const hitlQueuedLabel =
+    messages.actions.hitlQueued ?? (locale === 'fr' ? 'Revue en attente' : 'Queued for review');
+  const hitlAlreadyRequired = Boolean(
+    payload?.risk.hitl_required ?? trustRisk?.hitlRequired ?? false,
+  );
+  const hitlButtonLabel = hitlQueued || hitlAlreadyRequired ? hitlQueuedLabel : messages.actions.hitl;
+  const hitlButtonDisabled =
+    !latestRun?.runId || hitlRequestPending || hitlQueued || hitlAlreadyRequired || !online;
   const verificationMessage =
     verificationStatus === 'hitl_escalated' ? trustMessages.verificationHitl : trustMessages.verificationPassed;
   const allowlistSummary = allowlistClean ? trustMessages.allowlistClean : trustMessages.allowlistIssues;
@@ -489,8 +589,6 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         .replace('{total}', trustCitationSummary.rules.total.toString())
     : null;
 
-  const resultContainerClass = cn('space-y-5', confidentialMode && 'confidential-blur');
-
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!question.trim()) {
@@ -499,114 +597,77 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     }
 
     if (!online) {
-      enqueue({
-        question,
-        context,
-        confidentialMode,
-        agentCode,
-        agentLabel: selectedAgent?.label ?? agentCode,
-        agentSettings: null,
-      });
+      enqueue({ question, context, confidentialMode });
       toast.info(outboxMessages.queued);
-      if (telemetryEnabled) {
-        void sendTelemetryEvent('outbox_enqueued', { offline: true, agent: agentCode });
-      }
+      sendUserTelemetry('outbox_enqueued', { offline: true });
       setQuestion('');
       setContext('');
       return;
     }
 
-    if (telemetryEnabled) {
-      void sendTelemetryEvent('run_submitted', {
-        questionLength: question.length,
-        ohadaMode,
-        euOverlay,
-        confidentialMode,
-        agent: agentCode,
-      });
-    }
+    sendUserTelemetry('run_submitted', {
+      questionLength: question.length,
+      ohadaMode,
+      euOverlay,
+      confidentialMode,
+    });
 
     try {
       const data = await mutation.mutateAsync({
         question,
         context,
-        orgId: DEMO_ORG_ID,
-        userId: DEMO_USER_ID,
         confidentialMode,
-        agentCode,
       });
       setLatestRun(data);
       toggle(true);
       toast.success(successMessage);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('avocat-run-success'));
-      }
-      if (telemetryEnabled) {
-        void sendTelemetryEvent('run_completed', {
-          runId: data.runId,
-          jurisdiction: data.data?.jurisdiction.country ?? null,
-          risk: data.data?.risk.level ?? null,
-          agent: data.agent?.code ?? agentCode,
-        });
-      }
+      sendUserTelemetry('run_completed', {
+        runId: data.runId,
+        jurisdiction: data.data?.jurisdiction.country ?? null,
+        risk: data.data?.risk.level ?? null,
+      });
+      registerInstallSuccess();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Agent indisponible';
       toast.error(message);
-      if (telemetryEnabled) {
-        void sendTelemetryEvent('run_failed', { message, agent: agentCode });
-      }
-      enqueue({
-        question,
-        context,
-        confidentialMode,
-        agentCode,
-        agentLabel: selectedAgent?.label ?? agentCode,
-        agentSettings: null,
-      });
+      sendUserTelemetry('run_failed', { message });
+      enqueue({ question, context, confidentialMode });
       toast.info(outboxMessages.queued);
-      if (telemetryEnabled) {
-        void sendTelemetryEvent('outbox_enqueued', { offline: false, agent: agentCode });
-      }
+      sendUserTelemetry('outbox_enqueued', { offline: false });
     }
   }
 
   function handleBilingualSelect(language: 'fr' | 'en') {
-    if (telemetryEnabled) {
-      void sendTelemetryEvent('bilingual_toggle', {
-        language,
-        jurisdiction: jurisdictionCode ?? null,
-      });
-    }
+    sendUserTelemetry('bilingual_toggle', {
+      language,
+      jurisdiction: jurisdictionCode ?? null,
+    });
   }
 
   function handleCitationVisit(url: string) {
-    if (telemetryEnabled) {
-      void sendTelemetryEvent('citation_clicked', {
-        url,
-        jurisdiction: jurisdictionCode ?? null,
-      });
-    }
+    sendUserTelemetry('citation_clicked', {
+      url,
+      jurisdiction: jurisdictionCode ?? null,
+    });
   }
 
   const staleThresholdDays = 90;
+  const staleCutoff = Date.now() - staleThresholdDays * 24 * 60 * 60 * 1000;
 
-  const isCitationStale = (date: string) =>
-    isDateStale(date, { thresholdDays: staleThresholdDays, offline: !online });
+  const isCitationStale = (date: string) => {
+    if (!online) return true;
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return true;
+    return parsed.getTime() < staleCutoff;
+  };
 
   const processOutboxItem = useCallback(
     async (item: OutboxItem, source: 'manual' | 'auto') => {
-      if (item.confidentialMode && source === 'auto') {
-        return false;
-      }
       try {
         const data = await mutation.mutateAsync({
           question: item.question,
           context: item.context,
-          orgId: DEMO_ORG_ID,
-          userId: DEMO_USER_ID,
           confidentialMode: item.confidentialMode,
-          agentCode: item.agentCode,
-          agentSettings: item.agentSettings ?? undefined,
         });
         setLatestRun(data);
         if (source === 'manual' || !open) {
@@ -615,33 +676,23 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
         const toastId = `outbox-${item.id}`;
         const successLabel = source === 'manual' ? successMessage : outboxMessages.sent ?? successMessage;
         toast.success(successLabel, { id: toastId });
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('avocat-run-success'));
-        }
-        const itemTelemetryEnabled = telemetryEnabled && !item.confidentialMode;
-        if (itemTelemetryEnabled) {
-          void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
-            success: true,
-            runId: data.runId,
-            agent: data.agent?.code ?? item.agentCode,
-          });
-        }
+        sendUserTelemetry(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
+          success: true,
+          runId: data.runId,
+        });
+        registerInstallSuccess();
         return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Agent indisponible';
         toast.error(message, { id: `outbox-${item.id}` });
-        const itemTelemetryEnabled = telemetryEnabled && !item.confidentialMode;
-        if (itemTelemetryEnabled) {
-          void sendTelemetryEvent(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
-            success: false,
-            message,
-            agent: item.agentCode,
-          });
-        }
+        sendUserTelemetry(source === 'manual' ? 'outbox_retry' : 'outbox_auto_flush', {
+          success: false,
+          message,
+        });
         return false;
       }
     },
-    [mutation, open, toggle, successMessage, outboxMessages.sent, telemetryEnabled],
+    [mutation, open, toggle, successMessage, outboxMessages.sent, registerInstallSuccess, sendUserTelemetry],
   );
 
   async function handleOutboxRetry(item: OutboxItem) {
@@ -664,9 +715,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
   const verifyCitation = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');
-    if (telemetryEnabled) {
-      void sendTelemetryEvent('citation_verify', { url });
-    }
+    sendUserTelemetry('citation_verify', { url });
   };
 
   return (
@@ -684,7 +733,12 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                 onChange={(event) => setQuestion(event.target.value)}
                 placeholder={messages.research.heroPlaceholder}
               />
-              <VoiceInputButton messages={voiceMessages} onTranscript={handleVoiceTranscript} />
+              <VoiceInputButton
+                messages={voiceMessages}
+                onTranscript={handleVoiceTranscript}
+                disabled={confidentialMode}
+                disabledMessage={confidentialMessages.voiceDisabled}
+              />
             </div>
             <div className="space-y-2">
               <Textarea
@@ -692,27 +746,12 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                 onChange={(event) => setContext(event.target.value)}
                 placeholder={contextPlaceholder}
               />
-              <CameraOcrButton messages={ocrMessages} onText={handleOcrText} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-200" htmlFor="agent-profile">
-                {agentSelectorMessages.label}
-              </label>
-              <select
-                id="agent-profile"
-                value={agentCode}
-                onChange={(event) => setAgentCode(event.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 focus:border-slate-400 focus:outline-none"
-              >
-                {agentOptions.map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-400">
-                {selectedAgent?.mission || agentSelectorMessages.helper}
-              </p>
+              <CameraOcrButton
+                messages={ocrMessages}
+                onText={handleOcrText}
+                disabled={confidentialMode}
+                disabledMessage={confidentialMessages.ocrDisabled}
+              />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
@@ -720,7 +759,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
                 <Switch checked={euOverlay} onClick={() => setEuOverlay((prev) => !prev)} label={messages.research.euOverlay} />
                 <Switch
                   checked={confidentialMode}
-                  onClick={() => setConfidentialMode((prev) => !prev)}
+                  onClick={() => setConfidentialMode(!confidentialMode)}
                   label={messages.research.confidentialMode}
                 />
               </div>
@@ -731,7 +770,6 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
           </form>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Badge variant="outline">{executedAgentLabel || agentSelectorMessages.badge}</Badge>
           <Badge variant="outline">{autoDetectionLabel}</Badge>
           <Badge variant="success">{ohadaPriorityLabel}</Badge>
           <Badge variant="outline">{wcagLabel}</Badge>
@@ -742,17 +780,30 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
             {messages.research.plan}
           </Button>
         </div>
+        <ReadingModeToggle
+          mode={readingMode}
+          onChange={handleReadingModeChange}
+          labels={{
+            label: readingModeMessages.label,
+            research: readingModeMessages.research,
+            brief: readingModeMessages.brief,
+            evidence: readingModeMessages.evidence,
+          }}
+          descriptions={readingModeDescriptions}
+        />
       </header>
 
       <section className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
         <div className="space-y-4">
-          <OutboxPanel
-            items={outboxItems}
-            locale={locale}
-            onRetry={handleOutboxRetry}
-            onRemove={remove}
-            messages={outboxMessages}
-          />
+          <div id="outbox-panel">
+            <OutboxPanel
+              items={outboxItems}
+              locale={locale}
+              onRetry={handleOutboxRetry}
+              onRemove={remove}
+              messages={outboxMessages}
+            />
+          </div>
           <Card>
             <CardHeader>
               <CardTitle>{messages.research.jurisdictionLabel}</CardTitle>
@@ -788,279 +839,249 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
           </Card>
         </div>
 
-        <div className={resultContainerClass}>
+        <div className="space-y-5">
           {payload ? (
             <div className="space-y-5">
-              <RiskBanner risk={payload.risk} hitlLabel={messages.actions.hitl} onHitl={() => toast.info(hitlMessage)} />
+              <RiskBanner
+                risk={payload.risk}
+                hitlLabel={hitlButtonLabel}
+                onHitl={handleHitlRequest}
+                hitlDisabled={hitlButtonDisabled}
+              />
+              {confidentialMode && confidentialMessages.banner ? (
+                <LanguageBanner message={confidentialMessages.banner} />
+              ) : null}
               {isMaghreb && <LanguageBanner message={messages.research.languageWarning} />}
               {isCanadian && <LanguageBanner message={messages.research.canadaLanguageNotice} />}
               {isSwiss && <LanguageBanner message={messages.research.switzerlandLanguageNotice} />}
-              {isRwanda && <LanguageBanner message={messages.research.rwandaLanguageNotice} />}
+              {isRwanda && messages.research.rwandaLanguageNotice ? (
+                <LanguageBanner message={messages.research.rwandaLanguageNotice} />
+              ) : null}
               {noticeMessages.map((message) => (
                 <LanguageBanner key={message} message={message} />
               ))}
               {isCanadian && (
                 <BilingualToggle messages={messages.research.bilingual} onSelect={handleBilingualSelect} />
               )}
-              <IRACAccordion
-                payload={payload}
-                labels={messages.research.irac}
-                onCopy={() => navigator.clipboard.writeText(JSON.stringify(payload, null, 2))}
-                onExportPdf={async () => {
-                  const toastId = 'export-pdf';
-                  toast.loading(exportPdfMessage, { id: toastId });
-                  try {
-                    await exportIracToPdf(payload, locale);
-                    toast.success(exportPdfSuccessMessage, { id: toastId });
-                  } catch (error) {
-                    console.error('export_pdf_failed', error);
-                    toast.error(exportErrorMessage, { id: toastId });
-                  }
-                }}
-                onExportDocx={async () => {
-                  const toastId = 'export-docx';
-                  toast.loading(exportDocxMessage, { id: toastId });
-                  try {
-                    await exportIracToDocx(payload, locale);
-                    toast.success(exportDocxSuccessMessage, { id: toastId });
-                  } catch (error) {
-                    console.error('export_docx_failed', error);
-                    toast.error(exportErrorMessage, { id: toastId });
-                  }
-                }}
-                copyLabel={messages.actions.copy}
-                exportPdfLabel={messages.actions.exportPdf}
-                exportDocxLabel={messages.actions.exportDocx}
-              />
-              <Card>
-                <CardHeader>
-                  <CardTitle>{trustMessages.title}</CardTitle>
-                  <p className="text-sm text-slate-300">{trustMessages.description}</p>
-                </CardHeader>
-                <CardContent className="space-y-5 text-sm text-slate-200">
-                  <div>
-                    <h4 className="font-semibold text-slate-100">{trustMessages.verificationHeading}</h4>
-                    <p className="mt-1">{verificationMessage}</p>
-                    {verificationNotes.length > 0 ? (
-                      <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
-                        {verificationNotes.map((note) => (
-                          <li key={`${note.code}-${note.message}`}>{note.message}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-2 text-slate-400">{trustMessages.verificationNotesEmpty}</p>
-                    )}
-                  </div>
+              {isRwanda && rwandaMessages ? (
+                <RwandaLanguageTriage messages={rwandaMessages} onSelect={handleRwandaLanguageSelect} />
+              ) : null}
+              {readingMode === 'research' ? (
+                <IRACAccordion
+                  payload={payload}
+                  labels={messages.research.irac}
+                  onCopy={() => navigator.clipboard.writeText(JSON.stringify(payload, null, 2))}
+                  onExportPdf={async () => {
+                    const toastId = 'export-pdf';
+                    toast.loading(exportPdfMessage, { id: toastId });
+                    try {
+                      await exportIracToPdf(payload, locale);
+                      toast.success(exportPdfSuccessMessage, { id: toastId });
+                    } catch (error) {
+                      console.error('export_pdf_failed', error);
+                      toast.error(exportErrorMessage, { id: toastId });
+                    }
+                  }}
+                  onExportDocx={async () => {
+                    const toastId = 'export-docx';
+                    toast.loading(exportDocxMessage, { id: toastId });
+                    try {
+                      await exportIracToDocx(payload, locale);
+                      toast.success(exportDocxSuccessMessage, { id: toastId });
+                    } catch (error) {
+                      console.error('export_docx_failed', error);
+                      toast.error(exportErrorMessage, { id: toastId });
+                    }
+                  }}
+                  copyLabel={messages.actions.copy}
+                  exportPdfLabel={messages.actions.exportPdf}
+                  exportDocxLabel={messages.actions.exportDocx}
+                  contentClassName={hyphenatedClass}
+                />
+              ) : readingMode === 'brief' ? (
+                <BriefSummary
+                  payload={payload}
+                  readingMessages={readingModeMessages}
+                  textClassName={hyphenatedClass}
+                />
+              ) : (
+                <EvidenceFocusCard
+                  citations={payload.citations}
+                  readingMessages={readingModeMessages}
+                  onVisit={handleCitationVisit}
+                  citationBadges={citationBadges}
+                  verifyLabel={verifyLabel}
+                  staleLabel={staleMessages.label}
+                  isCitationStale={isCitationStale}
+                  onVerify={verifyCitation}
+                  textClassName={hyphenatedClass}
+                />
+              )}
+              {readingMode !== 'evidence' ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{trustMessages.title}</CardTitle>
+                    <p className="text-sm text-slate-300">{trustMessages.description}</p>
+                  </CardHeader>
+                  <CardContent className="space-y-5 text-sm text-slate-200">
+                    <div>
+                      <h4 className="font-semibold text-slate-100">{trustMessages.verificationHeading}</h4>
+                      <p className="mt-1">{verificationMessage}</p>
+                      {verificationNotes.length > 0 ? (
+                        <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
+                          {verificationNotes.map((note) => (
+                            <li key={`${note.code}-${note.message}`}>{note.message}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-slate-400">{trustMessages.verificationNotesEmpty}</p>
+                      )}
+                    </div>
 
-                  <div>
-                    <h4 className="font-semibold text-slate-100">{trustMessages.allowlistHeading}</h4>
-                    <p className="mt-1">{allowlistSummary}</p>
-                    {allowlistStats && <p className="mt-1 text-slate-300">{allowlistStats}</p>}
-                    {allowlistDetails.length > 0 && (
-                      <ul className="mt-2 space-y-1 list-inside list-disc text-amber-300">
-                        {allowlistDetails.map((item, index) => (
-                          <li key={`${item}-${index}`}>{item}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                    <div>
+                      <h4 className="font-semibold text-slate-100">{trustMessages.allowlistHeading}</h4>
+                      <p className="mt-1">{allowlistSummary}</p>
+                      {allowlistStats && <p className="mt-1 text-slate-300">{allowlistStats}</p>}
+                      {allowlistDetails.length > 0 && (
+                        <ul className="mt-2 space-y-1 list-inside list-disc text-amber-300">
+                          {allowlistDetails.map((item, index) => (
+                            <li key={`${item}-${index}`}>{item}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
 
-                  <div>
-                    <h4 className="font-semibold text-slate-100">{trustMessages.translationHeading}</h4>
-                    <p className="mt-1">{translationSummary}</p>
-                    {translationWarnings.length > 0 && (
-                      <ul className="mt-2 space-y-1 list-inside list-disc text-amber-200">
-                        {translationWarnings.map((warning, index) => (
-                          <li key={`${warning}-${index}`}>{warning}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                    <div>
+                      <h4 className="font-semibold text-slate-100">{trustMessages.translationHeading}</h4>
+                      <p className="mt-1">{translationSummary}</p>
+                      {translationWarnings.length > 0 && (
+                        <ul className="mt-2 space-y-1 list-inside list-disc text-amber-200">
+                          {translationWarnings.map((warning, index) => (
+                            <li key={`${warning}-${index}`}>{warning}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
 
-                  <div>
-                    <h4 className="font-semibold text-slate-100">{trustMessages.complianceHeading}</h4>
-                    {trustCompliance ? (
-                      <>
-                        {complianceIssues.length === 0 ? (
-                          <>
-                            <p className="mt-1 text-slate-200">{trustMessages.complianceResolved}</p>
-                            <p className="mt-1 text-slate-300">{trustMessages.complianceResolvedDetail}</p>
-                          </>
-                        ) : (
-                          <ul className="mt-2 space-y-1 list-inside list-disc text-amber-200">
-                            {complianceIssues.map((issue) => (
-                              <li key={issue}>{issue}</li>
-                            ))}
-                          </ul>
-                        )}
-                        {complianceStatusMessages.length > 0 && (
-                          <ul className="mt-3 space-y-1 list-inside list-disc text-slate-300">
-                            {complianceStatusMessages.map((status) => (
-                              <li key={status}>{status}</li>
-                            ))}
-                          </ul>
-                        )}
-                        {trustCompliance.friaArtifacts.length > 0 ? (
-                          <div className="mt-3 space-y-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                              {trustMessages.complianceFriaEvidence}
-                            </p>
-                            <ul className="space-y-1 text-sm text-slate-300">
-                              {trustCompliance.friaArtifacts.map((artifact) => (
-                                <li key={artifact.id}>
-                                  {artifact.evidenceUrl ? (
-                                    <a
-                                      href={artifact.evidenceUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="underline decoration-slate-500/70 hover:decoration-slate-200"
-                                    >
-                                      {artifact.title}
-                                    </a>
-                                  ) : (
-                                    artifact.title
-                                  )}
-                                  {artifact.releaseTag ? ` — ${artifact.releaseTag}` : ''}
-                                  <span
-                                    className={cn(
-                                      'ml-2 rounded-full px-2 py-0.5 text-xs uppercase tracking-wide',
-                                      artifact.validated
-                                        ? 'bg-teal-500/20 text-teal-100'
-                                        : 'bg-amber-500/20 text-amber-100',
-                                    )}
-                                  >
-                                    {artifact.validated
-                                      ? trustMessages.complianceFriaEvidenceValidated
-                                      : trustMessages.complianceFriaEvidencePending}
-                                  </span>
+                    <div>
+                      <h4 className="font-semibold text-slate-100">{trustMessages.bindingHeading}</h4>
+                      <p className="mt-1">{bindingSummary}</p>
+                      {bindingCountsMessage && <p className="mt-1 text-slate-300">{bindingCountsMessage}</p>}
+                      {nonBindingRules.length > 0 && (
+                        <ul className="mt-2 space-y-1 list-inside list-disc text-amber-200">
+                          {nonBindingRules.map((rule) => (
+                            <li key={`${rule.citation}-binding`}>{rule.citation}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    {trustProvenance && (
+                      <div>
+                        <h4 className="font-semibold text-slate-100">{trustMessages.provenanceHeading}</h4>
+                        <p className="mt-1">
+                          {trustMessages.provenanceSummary.replace(
+                            '{count}',
+                            trustProvenance.totalSources.toString(),
+                          )}
+                        </p>
+                        <div className="mt-2 space-y-1 text-slate-300">
+                          <p>
+                            {trustMessages.provenanceEli.replace(
+                              '{count}',
+                              trustProvenance.withEli.toString(),
+                            )}
+                          </p>
+                          <p>
+                            {trustMessages.provenanceEcli.replace(
+                              '{count}',
+                              trustProvenance.withEcli.toString(),
+                            )}
+                          </p>
+                          <p>
+                            {trustMessages.provenanceAkoma.replace(
+                              '{count}',
+                              trustProvenance.akomaArticles.toString(),
+                            )}
+                          </p>
+                        </div>
+                        <div className="mt-3">
+                          <p className="font-medium text-slate-200">{trustMessages.provenanceResidencyHeading}</p>
+                          {trustProvenance.residencyBreakdown.length > 0 ? (
+                            <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
+                              {trustProvenance.residencyBreakdown.map(({ zone, count }) => (
+                                <li key={`${zone}-${count}`}>
+                                  {trustMessages.provenanceResidencyItem
+                                    .replace('{zone}', zone.toUpperCase())
+                                    .replace('{count}', count.toString())}
                                 </li>
                               ))}
                             </ul>
-                          </div>
-                        ) : null}
-                      </>
-                    ) : (
-                      <p className="mt-1 text-slate-400">{trustMessages.complianceUnavailable}</p>
+                          ) : (
+                            <p className="mt-1 text-slate-400">{trustMessages.provenanceEmptyResidency}</p>
+                          )}
+                        </div>
+                        <div className="mt-3">
+                          <p className="font-medium text-slate-200">{trustMessages.provenanceBindingHeading}</p>
+                          {trustProvenance.bindingLanguages.length > 0 ? (
+                            <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
+                              {trustProvenance.bindingLanguages.map(({ language, count }) => (
+                                <li key={`${language}-${count}`}>
+                                  {trustMessages.provenanceBindingItem
+                                    .replace('{language}', language.toUpperCase())
+                                    .replace('{count}', count.toString())}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-1 text-slate-400">{trustMessages.provenanceEmptyBinding}</p>
+                          )}
+                        </div>
+                      </div>
                     )}
-                  </div>
 
-                  <div>
-                    <h4 className="font-semibold text-slate-100">{trustMessages.bindingHeading}</h4>
-                    <p className="mt-1">{bindingSummary}</p>
-                    {bindingCountsMessage && <p className="mt-1 text-slate-300">{bindingCountsMessage}</p>}
-                    {nonBindingRules.length > 0 && (
-                      <ul className="mt-2 space-y-1 list-inside list-disc text-amber-200">
-                        {nonBindingRules.map((rule) => (
-                          <li key={`${rule.citation}-binding`}>{rule.citation}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  {trustProvenance && (
                     <div>
-                      <h4 className="font-semibold text-slate-100">{trustMessages.provenanceHeading}</h4>
-                      <p className="mt-1">
-                        {trustMessages.provenanceSummary.replace(
-                          '{count}',
-                          trustProvenance.totalSources.toString(),
-                        )}
-                      </p>
-                      <div className="mt-2 space-y-1 text-slate-300">
-                        <p>
-                          {trustMessages.provenanceEli.replace(
-                            '{count}',
-                            trustProvenance.withEli.toString(),
-                          )}
-                        </p>
-                        <p>
-                          {trustMessages.provenanceEcli.replace(
-                            '{count}',
-                            trustProvenance.withEcli.toString(),
-                          )}
-                        </p>
-                        <p>
-                          {trustMessages.provenanceAkoma.replace(
-                            '{count}',
-                            trustProvenance.akomaArticles.toString(),
-                          )}
-                        </p>
-                      </div>
-                      <div className="mt-3">
-                        <p className="font-medium text-slate-200">{trustMessages.provenanceResidencyHeading}</p>
-                        {trustProvenance.residencyBreakdown.length > 0 ? (
-                          <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
-                            {trustProvenance.residencyBreakdown.map(({ zone, count }) => (
-                              <li key={`${zone}-${count}`}>
-                                {trustMessages.provenanceResidencyItem
-                                  .replace('{zone}', zone.toUpperCase())
-                                  .replace('{count}', count.toString())}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="mt-1 text-slate-400">{trustMessages.provenanceEmptyResidency}</p>
-                        )}
-                      </div>
-                      <div className="mt-3">
-                        <p className="font-medium text-slate-200">{trustMessages.provenanceBindingHeading}</p>
-                        {trustProvenance.bindingLanguages.length > 0 ? (
-                          <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
-                            {trustProvenance.bindingLanguages.map(({ language, count }) => (
-                              <li key={`${language}-${count}`}>
-                                {trustMessages.provenanceBindingItem
-                                  .replace('{language}', language.toUpperCase())
-                                  .replace('{count}', count.toString())}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="mt-1 text-slate-400">{trustMessages.provenanceEmptyBinding}</p>
-                        )}
-                      </div>
+                      <h4 className="font-semibold text-slate-100">{trustMessages.sourcesHeading}</h4>
+                      {citationHosts.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-slate-300">
+                          {citationHosts.map(({ host, count }) => {
+                            const template =
+                              count === 1 ? trustMessages.sourceHostSingle : trustMessages.sourceHostMultiple;
+                            const label = template
+                              .replace('{host}', host)
+                              .replace('{count}', count.toString());
+                            return <li key={`${host}-${count}`}>{label}</li>;
+                          })}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-slate-400">{trustMessages.sourcesEmpty}</p>
+                      )}
                     </div>
-                  )}
 
-                  <div>
-                    <h4 className="font-semibold text-slate-100">{trustMessages.sourcesHeading}</h4>
-                    {citationHosts.length > 0 ? (
-                      <ul className="mt-2 space-y-1 text-slate-300">
-                        {citationHosts.map(({ host, count }) => {
-                          const template = count === 1 ? trustMessages.sourceHostSingle : trustMessages.sourceHostMultiple;
-                          const label = template
-                            .replace('{host}', host)
-                            .replace('{count}', count.toString());
-                          return <li key={`${host}-${count}`}>{label}</li>;
-                        })}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-slate-400">{trustMessages.sourcesEmpty}</p>
-                    )}
-                  </div>
+                    <div>
+                      <h4 className="font-semibold text-slate-100">{trustMessages.planHeading}</h4>
+                      {planSummary && <p className="mt-1">{planSummary}</p>}
+                      {riskLabelSummary && <p className="mt-1">{riskLabelSummary}</p>}
+                      {hitlSummary && (
+                        <p className={`mt-1 ${payload?.risk.hitl_required ? 'text-amber-300' : ''}`}>{hitlSummary}</p>
+                      )}
+                    </div>
 
-                  <div>
-                    <h4 className="font-semibold text-slate-100">{trustMessages.planHeading}</h4>
-                    {planSummary && <p className="mt-1">{planSummary}</p>}
-                    {riskLabelSummary && <p className="mt-1">{riskLabelSummary}</p>}
-                    {hitlSummary && (
-                      <p className={`mt-1 ${payload?.risk.hitl_required ? 'text-amber-300' : ''}`}>{hitlSummary}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <h4 className="font-semibold text-slate-100">{trustMessages.noticesHeading}</h4>
-                    {noticeMessages.length > 0 ? (
-                      <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
-                        {noticeMessages.map((message) => (
-                          <li key={message}>{message}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-1 text-slate-400">{trustMessages.noticesEmpty}</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                    <div>
+                      <h4 className="font-semibold text-slate-100">{trustMessages.noticesHeading}</h4>
+                      {noticeMessages.length > 0 ? (
+                        <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
+                          {noticeMessages.map((message) => (
+                            <li key={message}>{message}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-slate-400">{trustMessages.noticesEmpty}</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
             </div>
           ) : (
             <Card>
@@ -1081,22 +1102,6 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
               <CardTitle>{messages.research.evidence}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {residencyBreakdown.length > 0 ? (
-                <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4 text-xs text-slate-300">
-                  <p className="mb-2 font-semibold uppercase tracking-wide text-slate-400">
-                    {trustMessages.provenanceResidencyHeading}
-                  </p>
-                  <ul className="space-y-1">
-                    {residencyBreakdown.map((entry) => (
-                      <li key={`${entry.zone}-${entry.count}`}>
-                        {trustMessages.provenanceResidencyItem
-                          .replace('{zone}', entry.zone)
-                          .replace('{count}', entry.count.toString())}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
               {payload?.citations?.length ? (
                 payload.citations.map((citation) => {
                   const stale = isCitationStale(citation.date ?? '');

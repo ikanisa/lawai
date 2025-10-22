@@ -1,7 +1,6 @@
 import type { NextWebVitalsMetric } from 'next/app';
-import { DEMO_ORG_ID, DEMO_USER_ID } from './src/lib/api';
-
 import { clientEnv } from './src/env.client';
+import { getCachedSession, waitForSession, type SessionValue } from './src/components/session-provider';
 
 const API_BASE = clientEnv.NEXT_PUBLIC_API_BASE_URL;
 
@@ -24,27 +23,54 @@ function sendTelemetry(body: Record<string, unknown>) {
   });
 }
 
-export function reportWebVitals(metric: NextWebVitalsMetric) {
-  const navigationEntry =
-    typeof performance !== 'undefined'
-      ? (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)
-      : undefined;
-  const connection = (navigator as unknown as { connection?: Record<string, unknown> } | undefined)?.connection ?? null;
-  const delta = 'delta' in metric ? (metric as { delta: number }).delta : null;
-  const rating = 'rating' in metric ? (metric as { rating: string }).rating : null;
+let cachedSession: SessionValue | null | undefined;
 
-  sendTelemetry({
-    orgId: DEMO_ORG_ID,
-    userId: DEMO_USER_ID,
-    eventName: 'web_vital',
-    payload: {
-      metric: metric.name,
-      id: metric.id,
-      value: metric.value,
-      delta,
-      rating,
-      navigationType: navigationEntry?.type ?? null,
-      connection,
-    },
-  });
+async function ensureSession(): Promise<SessionValue | null> {
+  if (cachedSession !== undefined) {
+    return cachedSession;
+  }
+  const existing = getCachedSession();
+  if (existing && existing.orgId && existing.userId) {
+    cachedSession = existing;
+    return existing;
+  }
+  const resolved = await waitForSession();
+  if (resolved && resolved.orgId && resolved.userId) {
+    cachedSession = resolved;
+    return resolved;
+  }
+  cachedSession = null;
+  return null;
+}
+
+export function reportWebVitals(metric: NextWebVitalsMetric) {
+  void (async () => {
+    const session = await ensureSession();
+    if (!session) {
+      return;
+    }
+    const navigationEntry =
+      typeof performance !== 'undefined'
+        ? (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)
+        : undefined;
+    const connection =
+      (navigator as unknown as { connection?: Record<string, unknown> } | undefined)?.connection ?? null;
+    const delta = 'delta' in metric ? (metric as { delta: number }).delta : null;
+    const rating = 'rating' in metric ? (metric as { rating: string }).rating : null;
+
+    sendTelemetry({
+      orgId: session.orgId,
+      userId: session.userId,
+      eventName: 'web_vital',
+      payload: {
+        metric: metric.name,
+        id: metric.id,
+        value: metric.value,
+        delta,
+        rating,
+        navigationType: navigationEntry?.type ?? null,
+        connection,
+      },
+    });
+  })();
 }

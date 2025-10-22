@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import type { Locale, Messages } from '../../lib/i18n';
-import { DEMO_ORG_ID, fetchCitations, fetchCorpus, fetchSnapshotDiff } from '../../lib/api';
+import { fetchCitations, fetchCorpus, fetchSnapshotDiff } from '../../lib/api';
+import { useRequiredSession } from '../session-provider';
 
 interface CitationsBrowserProps {
   messages: Messages;
@@ -35,12 +36,19 @@ interface SnapshotSummary {
 export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
   const [search, setSearch] = useState('');
   const [jurisdictionFilter, setJurisdictionFilter] = useState<string | null>(null);
+  const session = useRequiredSession();
+  const hasSession = Boolean(session.orgId && session.userId);
 
   const citationsQuery = useQuery({
-    queryKey: ['citations'],
-    queryFn: () => fetchCitations(DEMO_ORG_ID),
+    queryKey: ['citations', session.orgId, session.userId],
+    queryFn: () => fetchCitations(session.orgId, session.userId),
+    enabled: hasSession,
   });
-  const corpusQuery = useQuery({ queryKey: ['corpus'], queryFn: () => fetchCorpus(DEMO_ORG_ID) });
+  const corpusQuery = useQuery({
+    queryKey: ['corpus', session.orgId, session.userId],
+    queryFn: () => fetchCorpus(session.orgId, session.userId),
+    enabled: hasSession,
+  });
 
   const entries = useMemo<CitationEntry[]>(() => {
     const list = (citationsQuery.data?.entries ?? []) as CitationEntry[];
@@ -71,10 +79,15 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
   }, [snapshots, baseSnapshot, compareSnapshot]);
 
   const diffQuery = useQuery({
-    queryKey: ['snapshot-diff', baseSnapshot, compareSnapshot],
-    queryFn: () => fetchSnapshotDiff(DEMO_ORG_ID, baseSnapshot as string, compareSnapshot as string),
-    enabled: Boolean(baseSnapshot && compareSnapshot),
+    queryKey: ['snapshot-diff', session.orgId, session.userId, baseSnapshot, compareSnapshot],
+    queryFn: () =>
+      fetchSnapshotDiff(session.orgId, session.userId, baseSnapshot as string, compareSnapshot as string),
+    enabled: hasSession && Boolean(baseSnapshot && compareSnapshot),
   });
+
+  if (!hasSession) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">

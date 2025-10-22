@@ -18,7 +18,6 @@ import {
   Menu,
   Globe2,
   X,
-  Download,
   Shield,
   ShieldOff,
   Inbox,
@@ -29,7 +28,6 @@ import { cn } from '../lib/utils';
 import type { Messages, Locale } from '../lib/i18n';
 import { CommandPalette, type CommandPaletteAction } from './command-palette';
 import { sendTelemetryEvent } from '../lib/api';
-import { usePwaInstall } from '../hooks/use-pwa-install';
 import { toast } from 'sonner';
 import { ConfidentialModeBanner } from './confidential-mode-banner';
 import { ComplianceBanner } from './compliance-banner';
@@ -37,6 +35,8 @@ import { useConfidentialMode } from '../state/confidential-mode';
 import { useShallow } from 'zustand/react/shallow';
 import { useOutbox } from '../hooks/use-outbox';
 import { useOnlineStatus } from '../hooks/use-online-status';
+import { PwaInstallPrompt } from './pwa-install-prompt';
+import { useRequiredSession } from './session-provider';
 
 interface AppShellProps {
   children: ReactNode;
@@ -66,7 +66,6 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   const [commandOpen, setCommandOpen] = useState(false);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggered = useRef(false);
-  const { shouldPrompt, promptInstall, dismissPrompt, isAvailable } = usePwaInstall();
   const { enabled: confidentialMode, setEnabled: setConfidentialMode } = useConfidentialMode(
     useShallow((state) => ({ enabled: state.enabled, setEnabled: state.setEnabled })),
   );
@@ -76,6 +75,16 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   const { pendingCount: outboxCount, hasItems: hasOutbox, stalenessMs } = useOutbox();
   const online = useOnlineStatus();
   const statusBarMessages = messages.app.statusBar;
+  const session = useRequiredSession();
+  const sendUserTelemetry = useCallback(
+    (eventName: string, payload?: Record<string, unknown>) => {
+      if (!session.orgId || !session.userId) {
+        return;
+      }
+      void sendTelemetryEvent(eventName, session.orgId, session.userId, payload);
+    },
+    [session.orgId, session.userId],
+  );
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -93,8 +102,8 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
     if (toastMessage) {
       toast.info(toastMessage);
     }
-    void sendTelemetryEvent('confidential_mode_toggled', { enabled: next });
-  }, [confidentialMode, setConfidentialMode, statusMessages]);
+    sendUserTelemetry('confidential_mode_toggled', { enabled: next });
+  }, [confidentialMode, setConfidentialMode, statusMessages, sendUserTelemetry]);
 
   const confidentialToggleLabel = confidentialMode
     ? confidentialActions?.disable?.label ?? confidentialMessages?.cta ?? 'Disable confidential mode'
@@ -196,7 +205,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
 
   const handleCommandButton = () => {
     setCommandOpen(true);
-    void sendTelemetryEvent('command_palette_button');
+    sendUserTelemetry('command_palette_button');
   };
 
   const handleFabPointerDown = (event: ReactPointerEvent<HTMLAnchorElement>) => {
@@ -230,22 +239,6 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
     }
     return formatOutboxAge(stalenessMs, locale, statusBarMessages);
   }, [statusBarMessages, hasOutbox, stalenessMs, locale]);
-
-  const handleInstallNow = async () => {
-    const outcome = await promptInstall();
-    if (outcome === 'accepted') {
-      toast.success(installMessages.success);
-    } else if (outcome === 'dismissed') {
-      toast.info(installMessages.snoozed);
-    } else {
-      toast.error(installMessages.unavailable);
-    }
-  };
-
-  const handleInstallLater = () => {
-    dismissPrompt();
-    toast.info(installMessages.snoozed);
-  };
 
   return (
     <div className="relative flex min-h-screen bg-slate-950 text-slate-100">
@@ -452,34 +445,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
           cta={confidentialMessages.cta}
         />
       ) : null}
-      {shouldPrompt ? (
-        <div
-          className="fixed bottom-28 right-6 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-200"
-          aria-live="polite"
-        >
-          <div className="glass-card border border-slate-800/60 p-5 shadow-2xl">
-            <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-grad-1/30 p-2">
-                <Download className="h-5 w-5 text-teal-200" aria-hidden />
-              </div>
-              <div className="flex-1 space-y-3 text-sm text-slate-200">
-                <div>
-                  <p className="text-sm font-semibold text-white">{installMessages.title}</p>
-                  <p className="mt-1 text-slate-300">{installMessages.body}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={handleInstallNow} disabled={!isAvailable}>
-                    {installMessages.cta}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={handleInstallLater}>
-                    {installMessages.dismiss}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <PwaInstallPrompt messages={installMessages} locale={locale} />
     </div>
   );
 }
