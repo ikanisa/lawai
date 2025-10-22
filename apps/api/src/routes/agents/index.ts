@@ -46,7 +46,8 @@ export async function registerAgentsRoutes(app: FastifyInstance, _ctx: AppContex
       updatedAt: now,
       input: body.input,
       jurisdiction: body.jurisdiction ?? null,
-      policyFlags: body.policy_flags ?? []
+      policyFlags: body.policy_flags ?? [],
+      webSearchMode: body.web_search_mode ?? 'allowlist'
     });
 
     const events = createResearchStream(body.input, body.tools_enabled ?? []);
