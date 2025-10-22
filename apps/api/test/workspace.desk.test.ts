@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from '../src/workspace.ts';
+import {
+  buildPhaseCProcessNavigator,
+  buildPhaseCWorkspaceDesk,
+} from '../src/domain/workspace/index.ts';
 
 describe('buildPhaseCWorkspaceDesk', () => {
   it('returns the phase C multi-agent desk scaffolding', () => {
