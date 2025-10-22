@@ -1,11 +1,11 @@
 # Vercel Deployment Plan
 
 ## Monorepo overview
-- **Root directory:** `/` (npm workspaces)
-- **Package manager:** npm 11.4.2 (respect `package-lock.json`)
+- **Root directory:** `/` (pnpm workspaces)
+- **Package manager:** pnpm 8.15.4 (respect `pnpm-lock.yaml`)
 - **Node runtime:** 20.x (`.nvmrc` pins 20.11.0, engines `>=20 <21`)
-- **Install command:** `npm ci`
-- **Corepack:** enabled automatically by Vercel for npm >= 7
+- **Install command:** `pnpm install --frozen-lockfile`
+- **Corepack:** `corepack pnpm <command>` ensures the pinned version is used
 
 ## Apps
 
@@ -13,9 +13,9 @@
 - **Vercel project:** `apps/web`
 - **rootDirectory:** `apps/web`
 - **framework:** Next.js 14 (App Router + custom PWA scripts)
-- **installCommand:** `npm install`
+- **installCommand:** `pnpm install --frozen-lockfile`
   - Needs workspace hoisting for shared packages.
-- **buildCommand:** `npm run build --workspace @avocat-ai/web`
+- **buildCommand:** `pnpm --filter @avocat-ai/web build`
 - **outputDirectory:** `.next`
 - **nodeVersion:** 20.x
 - **env requirements:** see `apps/web/.env.example`
@@ -26,8 +26,8 @@
 ### @apps/api (Fastify)
 - **rootDirectory:** `apps/api`
 - **framework preset:** `other`
-- **installCommand:** `npm install`
-- **buildCommand:** `npm run build --workspace @apps/api`
+- **installCommand:** `pnpm install --frozen-lockfile`
+- **buildCommand:** `pnpm --filter @apps/api build`
 - **outputDirectory:** `dist`
 - **deployment target:** Vercel Serverless Functions (Node 20)
 - **notes:**
@@ -49,7 +49,7 @@
 
 ## Global configuration recommendations
 - Add `apps/web/vercel.json` to pin build/route config for the primary Next.js project.
-- Configure Vercel project to use root `package.json` (npm) with `rootDirectory=apps/web`.
-- Provide CI job (`.github/workflows/vercel-preview-build.yml`) to mirror `vercel build` using Node 20.
+- Configure Vercel project to use root `package.json` (pnpm) with `rootDirectory=apps/web`.
+- Provide CI job (`.github/workflows/vercel-preview-build.yml`) to mirror `vercel build` using pnpm on Node 20.
 - Enforce environment schema validation via app-specific `env` modules.
 - Use `scripts/vercel-preflight.mjs` before releases to confirm environment parity.
