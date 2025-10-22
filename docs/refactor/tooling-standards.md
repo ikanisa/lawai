@@ -5,7 +5,7 @@ _Phase 2 deliverable • Updated 2025-02-07_
 ## Supported Toolchain
 - **Node**: 20.x (minimum)  
 - **Package manager**: `pnpm@8.15.4` (pinned via `package.json#packageManager`)  
-- **TypeScript**: 5.4.x across all packages (shared via `tsconfig.base.json` and `tsconfig.node.json`)  
+- **TypeScript**: 5.4.x across all packages (shared via `@avocat-ai/tsconfig` presets)
 - **Testing**: `vitest` for unit/integration, `cypress` for PWA E2E  
 - **Linting**: ESLint 8.57 with shared config (`packages/config/eslint/node.cjs`) and Next.js defaults for web surfaces  
 - **Formatting**: Rely on ESLint + project conventions (Prettier optional; re-evaluate once formatting rules consolidated)
@@ -20,23 +20,24 @@ _Phase 2 deliverable • Updated 2025-02-07_
 Teams should prefer the workspace scripts above when gating CI or local commits. Individual package scripts remain available for focused iteration.
 
 ## TypeScript Configuration
-- `tsconfig.node.json` standardises compiler options (`outDir`, `rootDir`, declarations, composite) for all Node-based services and libraries.  
-- Each package-specific `tsconfig.json` **only** declares includes/excludes, reducing duplication.  
-- Next.js apps still extend `tsconfig.base.json` directly to honour framework defaults, but should avoid overriding shared compiler options unless required.
+- `@avocat-ai/tsconfig/node.json` standardises compiler options (`outDir`, `rootDir`, declarations, composite) for all Node-based services and libraries.
+- Each package-specific `tsconfig.json` **only** declares includes/excludes, reducing duplication.
+- Next.js apps extend `@avocat-ai/tsconfig/next.json`, adding local includes or overrides sparingly.
 
 ## ESLint Configuration
-- `packages/config/eslint/node.cjs` exports the canonical Node/TypeScript config.  
-- Server and library packages (`apps/api`, `apps/ops`, `packages/*`) consume it via `.eslintrc.cjs`, ensuring identical rules and ignore patterns.  
-- Web surfaces continue to extend `next/core-web-vitals`; convert configs to CommonJS when custom rules or overrides are required.
+- `@avocat-ai/eslint-config/node` exports the canonical Node/TypeScript config.
+- Server and library packages (`apps/api`, `apps/ops`, `packages/*`) consume it via `.eslintrc.cjs`, ensuring identical rules and ignore patterns.
+- Web surfaces extend `@avocat-ai/eslint-config/next`, layering Next.js defaults with shared rules.
 
 ### Adding a New Package
-1. Create `tsconfig.json` extending `../../tsconfig.node.json` (or the appropriate Next template).  
+1. Create `tsconfig.json` extending `@avocat-ai/tsconfig/node.json` (or the appropriate Next preset).
 2. Add `lint`, `typecheck`, and `test` scripts to `package.json`.  
 3. Consume the shared ESLint factory:  
    ```js
    // .eslintrc.cjs
-   const createNodeConfig = require('../config/eslint/node.cjs');
-   module.exports = createNodeConfig({ tsconfigPath: __dirname + '/tsconfig.json' });
+   const path = require('node:path');
+   const createNodeConfig = require('@avocat-ai/eslint-config/node');
+   module.exports = createNodeConfig({ tsconfigPath: path.join(__dirname, 'tsconfig.json') });
    ```
 4. Verify `pnpm lint`, `pnpm typecheck`, and `pnpm test` succeed from the repo root.
 

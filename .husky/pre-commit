@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+mkdir -p .turbo
+pnpm turbo run lint typecheck test --filter=...[HEAD] --cache-dir .turbo --concurrency=1

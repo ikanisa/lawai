@@ -177,7 +177,7 @@ async function run(): Promise<void> {
     console.log(formatRegulatorDigest(new Date(), dispatches));
     if (parity) {
       console.log(
-        `> Parité file d'attente : ${parity.queued} en file / ${parity.dispatched} expédiés (Δ ${parity.delta >= 0 ? '+' : ''}${parity.delta}).`,
+        `> Parité file d'attente : ${parity.queued} en file / ${parity.dispatched} expédiés (Δ ${parity.delta >= 0 ? '+' : ''}${parity.delta}).`,
       );
       if (!parity.inSync) {
         console.warn(

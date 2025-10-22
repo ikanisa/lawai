@@ -1,22 +1,10 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "@avocat-ai/tsconfig/next.json",
   "compilerOptions": {
-    "jsx": "preserve",
-    "module": "esnext",
-    "moduleResolution": "bundler",
     "types": [
       "node",
       "vitest",
       "vitest/globals"
-    ],
-    "allowJs": true,
-    "noEmit": true,
-    "incremental": true,
-    "isolatedModules": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
     ]
   },
   "include": [

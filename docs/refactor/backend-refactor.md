@@ -16,7 +16,7 @@ _Updated: 2025-02-07_
    - Orchestrator command/connector/job endpoints now live in `registerOrchestratorRoutes` (`src/http/routes/orchestrator.ts`) with shared Zod schemas under `http/schemas`.
    - `server.ts` simply wires the Fastify instance and delegates route binding.
 3. **Configuration hygiene**
-   - Shared TypeScript config split (`tsconfig.node.json`) while packages own their `rootDir/outDir`.
+  - Shared TypeScript config split (`@avocat-ai/tsconfig/node.json`) while packages own their `rootDir/outDir`.
    - Added `typecheck` scripts across packages and documented tooling expectations (`docs/refactor/tooling-standards.md`).
 
 ## Next Steps

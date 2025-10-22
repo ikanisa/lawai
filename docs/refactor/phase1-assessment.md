@@ -3,7 +3,7 @@
 _Date: 2025-02-07 • Owner: Codex CLI agent_
 
 ## Monorepo Snapshot
-- **Workspace tooling**: `pnpm@8.15.4` (declared in `package.json`), Node 20+, TypeScript 5.4 baseline (`tsconfig.base.json`).
+- **Workspace tooling**: `pnpm@8.15.4` (declared in `package.json`), Node 20+, TypeScript 5.4 baseline (`@avocat-ai/tsconfig`).
 - **Top-level scripts**: build/lint/test fan out via `pnpm -r`; additional ops flows under `apps/ops`.
 - **CI status**: `.github/workflows` contains at least one untracked workflow (`export-agent.yml`), signalling incomplete automation coverage.
 - **Generated artefacts**: `apps/dist` stores exported manifests and should remain build-only output.
