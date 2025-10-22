@@ -179,7 +179,11 @@ describe('workspace domain routes', () => {
     const { createApp } = await import('../../src/app.js');
     const domainCreated = await createApp();
     await domainCreated.app.ready();
-    const domainResponse = await domainCreated.app.inject({ method: 'GET', url: `/workspace?orgId=${ORG_ID}` });
+    const domainResponse = await domainCreated.app.inject({
+      method: 'GET',
+      url: `/workspace?orgId=${ORG_ID}`,
+      headers: { 'x-user-id': 'user-domain' },
+    });
     expect(domainResponse.statusCode).toBe(200);
     const domainPayload = domainResponse.json();
     await domainCreated.app.close();
@@ -245,7 +249,11 @@ describe('workspace domain routes', () => {
     });
     await scopedApp.app.ready();
 
-    const response = await scopedApp.app.inject({ method: 'GET', url: `/workspace?orgId=${ORG_ID}` });
+    const response = await scopedApp.app.inject({
+      method: 'GET',
+      url: `/workspace?orgId=${ORG_ID}`,
+      headers: { 'x-user-id': 'user-domain' },
+    });
     expect(response.statusCode).toBe(200);
     const payload = response.json();
     expect(payload.complianceWatch).toHaveLength(1);
@@ -260,5 +268,16 @@ describe('workspace domain routes', () => {
     );
 
     await scopedApp.app.close();
+  });
+  it('rejects requests without a user identifier', async () => {
+    const { createApp } = await import('../../src/app.js');
+    const { app } = await createApp();
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: `/workspace?orgId=${ORG_ID}` });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'x-user-id header is required' });
+
+    await app.close();
   });
 });

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../../types/context.js';
+import { authorizeRequestWithGuards } from '../../http/authorization.js';
 import { buildPhaseCProcessNavigator } from '../../workspace.js';
 import { fetchWorkspaceOverview } from './services.js';
 
@@ -16,9 +17,14 @@ export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppCont
     }
 
     const { orgId } = parse.data;
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
     const { supabase } = ctx;
 
     try {
+      await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
       const { data, errors } = await fetchWorkspaceOverview(supabase, orgId);
 
       if (errors.jurisdictions) {
