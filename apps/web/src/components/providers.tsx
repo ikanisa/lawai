@@ -4,7 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode, useEffect, useState } from 'react';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
-import { hasPwaConsent, isPwaFeatureEnabled, registerPwa } from '@/lib/pwa';
+import {
+  canRegisterPwaWithoutStoredConsent,
+  hasPwaConsent,
+  isPwaFeatureEnabled,
+  registerPwa,
+} from '@/lib/pwa';
 import { PwaInstallProvider } from '@/hooks/use-pwa-install';
 
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -24,7 +29,10 @@ export function AppProviders({ children }: { children: ReactNode }) {
   );
   useEffect(() => {
     setMounted(true);
-    if (isPwaFeatureEnabled() && hasPwaConsent()) {
+    if (
+      isPwaFeatureEnabled() &&
+      (hasPwaConsent() || canRegisterPwaWithoutStoredConsent())
+    ) {
       void registerPwa();
     }
   }, []);

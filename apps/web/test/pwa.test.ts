@@ -29,9 +29,13 @@ const {
   };
 });
 
-vi.mock('workbox-window', () => ({
-  Workbox: workboxConstructorMock,
-}));
+vi.mock(
+  'workbox-window',
+  () => ({
+    Workbox: workboxConstructorMock,
+  }),
+  { virtual: true },
+);
 
 describe('pwa utilities', () => {
   const originalEnv = { ...process.env };
@@ -127,6 +131,26 @@ describe('pwa utilities', () => {
 
     expect(workboxConstructorMock).not.toHaveBeenCalled();
     expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('registers the service worker when notifications are unavailable but service workers are supported', async () => {
+    const {
+      registerPwa,
+      hasPwaConsent,
+      canRegisterPwaWithoutStoredConsent,
+    } = await import('../src/lib/pwa');
+
+    expect(hasPwaConsent()).toBe(false);
+
+    Reflect.deleteProperty(globalThis as Record<string, unknown>, 'Notification');
+    Reflect.deleteProperty(window as Record<string, unknown>, 'Notification');
+
+    expect(canRegisterPwaWithoutStoredConsent()).toBe(true);
+
+    await registerPwa();
+
+    expect(registerMock).toHaveBeenCalledTimes(1);
+    expect(hasPwaConsent()).toBe(true);
   });
 
   it('warns when the browser does not support service workers', async () => {
