@@ -12,6 +12,10 @@ const clientSchema = z.object({
   NEXT_PUBLIC_EVAL_MAGHREB_OK: z.coerce.number().default(0.8),
   NEXT_PUBLIC_TOOL_FAILURE_WARN: z.coerce.number().default(0.02),
   NEXT_PUBLIC_TOOL_FAILURE_CRIT: z.coerce.number().default(0.05),
+  NEXT_PUBLIC_ENABLE_PWA: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 export const clientEnv = clientSchema.parse({
@@ -26,4 +30,5 @@ export const clientEnv = clientSchema.parse({
   NEXT_PUBLIC_EVAL_MAGHREB_OK: process.env.NEXT_PUBLIC_EVAL_MAGHREB_OK,
   NEXT_PUBLIC_TOOL_FAILURE_WARN: process.env.NEXT_PUBLIC_TOOL_FAILURE_WARN,
   NEXT_PUBLIC_TOOL_FAILURE_CRIT: process.env.NEXT_PUBLIC_TOOL_FAILURE_CRIT,
+  NEXT_PUBLIC_ENABLE_PWA: process.env.NEXT_PUBLIC_ENABLE_PWA,
 });

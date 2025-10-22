@@ -1,24 +1,39 @@
 'use client';
 
-import { Workbox } from 'workbox-window';
-
 const DIGEST_KEY = 'avocat-ai-digest-enabled';
 let registrationPromise: Promise<ServiceWorkerRegistration> | null = null;
 
-export function registerPwa() {
+export const PWA_REGISTRATION_EVENT = 'pwa:register';
+
+async function loadWorkbox(): Promise<typeof import('workbox-window')> {
+  return import('workbox-window');
+}
+
+export async function registerPwa(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
-    return;
+    return null;
   }
 
   if (!registrationPromise) {
-    const wb = new Workbox('/sw.js', { scope: '/' });
-    wb.addEventListener('waiting', () => {
-      wb.messageSW({ type: 'SKIP_WAITING' }).catch(() => undefined);
-    });
-    registrationPromise = wb.register().catch((error) => {
-      console.error('sw_register_failed', error);
-      throw error;
-    });
+    registrationPromise = loadWorkbox()
+      .then(({ Workbox }) => {
+        const wb = new Workbox('/sw.js', { scope: '/' });
+        wb.addEventListener('waiting', () => {
+          wb.messageSW({ type: 'SKIP_WAITING' }).catch(() => undefined);
+        });
+        return wb.register();
+      })
+      .catch((error) => {
+        console.error('sw_register_failed', error);
+        registrationPromise = null;
+        throw error;
+      });
+  }
+
+  try {
+    return await registrationPromise;
+  } catch (error) {
+    return null;
   }
 }
 
@@ -37,9 +52,7 @@ export async function enableDigestNotifications(): Promise<boolean> {
     return false;
   }
 
-  if (!registrationPromise) {
-    registerPwa();
-  }
+  await registerPwa();
 
   try {
     const registration = await (registrationPromise ?? navigator.serviceWorker.ready);

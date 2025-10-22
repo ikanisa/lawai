@@ -12,6 +12,8 @@
 
 ## Environment readiness
 - `.env.example` files added for `apps/web`, `apps/api`, and `apps/ops` with safe defaults and guidance.
+- New `NEXT_PUBLIC_ENABLE_PWA` toggle documented for `apps/web`; defaults to `false` so service workers register only after
+  explicit opt-in.
 - Runtime validators:
   - `apps/web/src/env.server.ts` + `apps/web/src/env.client.ts` enforce Supabase + public threshold configuration.
   - `apps/api/src/env.server.ts` re-exports the existing Zod schema (tightened by exporting the `Env` type).

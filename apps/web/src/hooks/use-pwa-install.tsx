@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { PWA_REGISTRATION_EVENT } from '../lib/pwa';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -82,7 +83,12 @@ function isStandaloneDisplay(): boolean {
   return false;
 }
 
-export function PwaInstallProvider({ children }: { children: ReactNode }) {
+interface PwaInstallProviderProps {
+  children: ReactNode;
+  enablePwa?: boolean;
+}
+
+export function PwaInstallProvider({ children, enablePwa = true }: PwaInstallProviderProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [shouldPrompt, setShouldPrompt] = useState(false);
   const [isAvailable, setIsAvailable] = useState(false);
@@ -97,8 +103,24 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
     }
   }, [installedFlag]);
 
+  const dispatchPwaRegistration = useCallback(() => {
+    if (!enablePwa) return;
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new Event(PWA_REGISTRATION_EVENT));
+  }, [enablePwa]);
+
+  useEffect(() => {
+    if (enablePwa) {
+      return;
+    }
+    setDeferredPrompt(null);
+    setShouldPrompt(false);
+    setIsAvailable(false);
+  }, [enablePwa]);
+
   const maybeShowPrompt = useCallback(
     (promptEvent: BeforeInstallPromptEvent | null = deferredPrompt) => {
+      if (!enablePwa) return;
       if (!promptEvent) return;
       if (installed) return;
       const snoozeUntil = readNumber(STORAGE_KEYS.snoozeUntil);
@@ -110,10 +132,14 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
         setShouldPrompt(true);
       }
     },
-    [deferredPrompt, installed],
+    [deferredPrompt, enablePwa, installed],
   );
 
   useEffect(() => {
+    if (!enablePwa) {
+      return;
+    }
+
     const handleBeforeInstallPrompt = (event: Event) => {
       const promptEvent = event as BeforeInstallPromptEvent;
       promptEvent.preventDefault();
@@ -143,20 +169,22 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
         window.removeEventListener('appinstalled', handleAppInstalled);
       }
     };
-  }, [maybeShowPrompt]);
+  }, [enablePwa, maybeShowPrompt]);
 
   useEffect(() => {
     maybeShowPrompt();
   }, [maybeShowPrompt]);
 
   const registerSuccess = useCallback(() => {
+    if (!enablePwa) return;
     if (installed) return;
+    dispatchPwaRegistration();
     const next = readNumber(STORAGE_KEYS.count) + 1;
     writeNumber(STORAGE_KEYS.count, next);
     if (deferredPrompt) {
       maybeShowPrompt(deferredPrompt);
     }
-  }, [deferredPrompt, installed, maybeShowPrompt]);
+  }, [deferredPrompt, dispatchPwaRegistration, enablePwa, installed, maybeShowPrompt]);
 
   const dismissPrompt = useCallback(() => {
     setShouldPrompt(false);
@@ -164,9 +192,15 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const promptInstall = useCallback(async (): Promise<InstallOutcome> => {
+    if (!enablePwa) {
+      return 'unavailable';
+    }
+
     if (!deferredPrompt) {
       return 'unavailable';
     }
+
+    dispatchPwaRegistration();
 
     try {
       await deferredPrompt.prompt();
@@ -194,7 +228,7 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
 
     writeNumber(STORAGE_KEYS.snoozeUntil, Date.now() + SNOOZE_MS);
     return 'dismissed';
-  }, [deferredPrompt]);
+  }, [deferredPrompt, dispatchPwaRegistration, enablePwa]);
 
   const value = useMemo<PwaInstallContextValue>(
     () => ({
