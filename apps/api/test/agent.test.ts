@@ -134,6 +134,8 @@ const defaultAccessContext = {
     ipAllowlistEnforced: false,
     consentRequirement: null,
     councilOfEuropeRequirement: null,
+    residencyZone: null,
+    residencyZones: null,
   },
   rawPolicies: {},
   entitlements: new Map<string, { canRead: boolean; canWrite: boolean }>([
@@ -157,6 +159,14 @@ function makeContext(
       ? new Map(overrides.entitlements)
       : new Map(defaultAccessContext.entitlements),
   };
+}
+
+function extractRunKeyFromCalls(): string {
+  const runKeyCalls = agentRunsSelectBuilder.eq.mock.calls.filter(
+    ([column]) => column === 'run_key',
+  );
+  const lastCall = runKeyCalls[runKeyCalls.length - 1];
+  return (lastCall?.[1] as string) ?? '';
 }
 
 const runMock = vi.fn();
@@ -598,6 +608,106 @@ describe('runLegalAgent', () => {
     expect(runInsertMock).not.toHaveBeenCalled();
     expect(result.verification?.status).toBe('passed');
     expect(result.trustPanel?.caseQuality.items[0]?.score).toBeGreaterThan(0);
+  });
+
+  it('generates distinct cache keys when the residency override changes', async () => {
+    runMock.mockResolvedValue({
+      finalOutput: validPayload,
+    });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
+
+    await runLegalAgent(
+      {
+        question: 'Analyse en France',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext({
+        rawPolicies: { residency_zone: { zone: 'maghreb' } },
+        policies: {
+          ...defaultAccessContext.policies,
+          residencyZone: 'maghreb',
+          residencyZones: ['maghreb', 'eu'],
+        },
+      }),
+    );
+
+    const firstKey = extractRunKeyFromCalls();
+    expect(firstKey).toBeTruthy();
+
+    agentRunsSelectBuilder.eq.mockClear();
+
+    await runLegalAgent(
+      {
+        question: 'Analyse en France',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext({
+        rawPolicies: { residency_zone: { zone: 'ca' } },
+        policies: {
+          ...defaultAccessContext.policies,
+          residencyZone: 'ca',
+          residencyZones: ['ca'],
+        },
+      }),
+    );
+
+    const secondKey = extractRunKeyFromCalls();
+    expect(secondKey).toBeTruthy();
+
+    expect(firstKey).not.toBe(secondKey);
+  });
+
+  it('generates distinct cache keys when residency mappings differ', async () => {
+    runMock.mockResolvedValue({
+      finalOutput: validPayload,
+    });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
+
+    await runLegalAgent(
+      {
+        question: 'Analyse en France',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext({
+        rawPolicies: { residency_zone: { zone: 'maghreb', allowed: ['maghreb', 'eu'] } },
+        policies: {
+          ...defaultAccessContext.policies,
+          residencyZone: 'maghreb',
+          residencyZones: ['maghreb', 'eu'],
+        },
+      }),
+    );
+
+    const firstKey = extractRunKeyFromCalls();
+    expect(firstKey).toBeTruthy();
+
+    agentRunsSelectBuilder.eq.mockClear();
+
+    await runLegalAgent(
+      {
+        question: 'Analyse en France',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext({
+        rawPolicies: { residency_zone: { zone: 'maghreb', allowed: ['maghreb', 'ca'] } },
+        policies: {
+          ...defaultAccessContext.policies,
+          residencyZone: 'maghreb',
+          residencyZones: ['maghreb', 'ca'],
+        },
+      }),
+    );
+
+    const secondKey = extractRunKeyFromCalls();
+    expect(secondKey).toBeTruthy();
+
+    expect(firstKey).not.toBe(secondKey);
   });
 
   it('disables web search when confidential mode is active', async () => {
