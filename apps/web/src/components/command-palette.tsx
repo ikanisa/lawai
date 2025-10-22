@@ -4,12 +4,12 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Search, ArrowUpRight, Command as CommandIcon } from 'lucide-react';
-import { Input } from './ui/input';
-import { Button } from './ui/button';
-import { cn } from '../lib/utils';
-import type { Messages, Locale } from '../lib/i18n';
-import { sendTelemetryEvent } from '../lib/api';
-import { useCommandPalette } from '../state/command-palette';
+import { Input } from '@/ui/input';
+import { Button } from '@/ui/button';
+import { cn } from '@/lib/utils';
+import type { Messages, Locale } from '@/lib/i18n';
+import { sendTelemetryEvent } from '@/lib/api';
+import { useCommandPalette } from @/state/command-palette';
 
 export interface CommandPaletteAction {
   id: string;
