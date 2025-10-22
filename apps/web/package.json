@@ -13,6 +13,8 @@
     "lint": "eslint --max-warnings=0 app src",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run",
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "test:e2e:ui": "playwright test --ui --config tests/e2e/playwright.config.ts",
     "icons:generate": "node ./scripts/generate-icons.mjs"
   },
   "dependencies": {
@@ -48,6 +50,7 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@testing-library/jest-dom": "6.4.5",
     "@testing-library/react": "14.2.1",
     "@testing-library/user-event": "14.5.2",
@@ -55,6 +58,7 @@
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
     "autoprefixer": "10.4.19",
+    "dotenv": "^16.6.1",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.5",
     "happy-dom": "^13.10.1",

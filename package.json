@@ -39,6 +39,7 @@
     "ops:rls-smoke": "npm run rls-smoke --workspace @apps/ops",
     "ops:phase": "npm run phase --workspace @apps/ops",
     "seed": "npm run start --workspace @db/seed",
+    "seed:compliance-test": "node ./scripts/seed-compliance-test-data.mjs",
     "check:binaries": "node ./scripts/check-binaries.mjs"
   },
   "dependencies": {
