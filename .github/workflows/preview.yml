@@ -31,6 +31,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: SQL lint
+        run: pnpm lint:sql
+
+      - name: Check migrations
+        run: pnpm check:migrations
+
       - name: Build Next.js preview
         run: pnpm --filter @apps/pwa build
         env:

@@ -1,11 +1,7 @@
 -- Ensure profiles sync keeps legacy user_id populated and tighten default grants.
-
-create or replace function public.sync_profile_from_auth()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
+CREATE OR REPLACE FUNCTION public.sync_profile_from_auth () returns trigger language plpgsql security definer
+SET
+  search_path = public AS $$
 begin
   insert into public.profiles (
     id,
@@ -42,21 +38,42 @@ end;
 $$;
 
 -- Harden default privileges so new tables do not become world-readable by default.
-alter default privileges in schema public
-  revoke select on tables from anon;
+ALTER DEFAULT PRIVILEGES IN schema public
+REVOKE
+SELECT
+  ON tables
+FROM
+  anon;
 
-alter default privileges in schema public
-  revoke select, insert, update, delete on tables from authenticated;
+ALTER DEFAULT PRIVILEGES IN schema public
+REVOKE
+SELECT
+,
+  insert,
+UPDATE,
+delete ON tables
+FROM
+  authenticated;
 
-alter default privileges in schema public
-  revoke usage, select on sequences from authenticated;
+ALTER DEFAULT PRIVILEGES IN schema public
+REVOKE usage,
+SELECT
+  ON sequences
+FROM
+  authenticated;
 
-alter default privileges in schema public
-  revoke usage, select on sequences from anon;
+ALTER DEFAULT PRIVILEGES IN schema public
+REVOKE usage,
+SELECT
+  ON sequences
+FROM
+  anon;
 
 -- Keep elevated access for internal automation.
-alter default privileges in schema public
-  grant all on tables to service_role;
+ALTER DEFAULT PRIVILEGES IN schema public
+GRANT ALL ON tables TO service_role;
 
-alter default privileges in schema public
-  grant usage, select on sequences to service_role;
+ALTER DEFAULT PRIVILEGES IN schema public
+GRANT usage,
+SELECT
+  ON sequences TO service_role;

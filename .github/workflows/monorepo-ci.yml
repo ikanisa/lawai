@@ -25,6 +25,12 @@ jobs:
       - name: Install (workspaces, root only)
         run: npm ci --workspaces --include-workspace-root
 
+      - name: Check migrations
+        run: npm run check:migrations
+
+      - name: SQL lint
+        run: npm run lint:sql
+
       - name: Build
         run: npm run build
 
