@@ -294,10 +294,12 @@ describe('workspace domain routes', () => {
           modelRef: 'gpt',
           notes: 'ok',
           computedAt: '2024-01-07T00:00:00.000Z',
-          sourceTitle: 'Decree 123',
-          sourceUrl: 'https://example.com/decree',
-          trustTier: 'gold',
-          courtRank: 'supreme',
+          source: {
+            title: 'Decree 123',
+            url: 'https://example.com/decree',
+            trustTier: 'gold',
+            courtRank: 'supreme',
+          },
         },
       ],
     });
