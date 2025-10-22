@@ -1,7 +1,7 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { ServiceSupabaseClient } from './supabase';
 
 export interface AppContext {
-  supabase: SupabaseClient;
+  supabase: ServiceSupabaseClient;
   config: {
     openai: {
       apiKey: string;

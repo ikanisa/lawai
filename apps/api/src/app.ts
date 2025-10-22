@@ -1,4 +1,3 @@
-// @ts-nocheck
 import Fastify from 'fastify';
 import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
@@ -14,8 +13,9 @@ import { registerVoiceRoutes } from './routes/voice/index.js';
 import type { AppContext } from './types/context';
 import { env } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
+import type { CreateAppResult } from './types/app';
 
-export async function createApp() {
+export async function createApp(): Promise<CreateAppResult> {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',

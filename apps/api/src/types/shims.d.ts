@@ -21,5 +21,10 @@ declare module '@avocat-ai/shared/pwa' {
 }
 
 declare module '@avocat-ai/supabase' {
-  export function createServiceClient(env: { SUPABASE_URL: string; SUPABASE_SERVICE_ROLE_KEY: string }): any;
+  import type { ServiceSupabaseClient } from './supabase';
+
+  export function createServiceClient(env: {
+    SUPABASE_URL: string;
+    SUPABASE_SERVICE_ROLE_KEY: string;
+  }): ServiceSupabaseClient;
 }
