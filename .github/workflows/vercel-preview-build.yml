@@ -11,8 +11,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.4
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       - name: Derive Supabase preview branch
         run: |
           BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
@@ -23,18 +27,18 @@ jobs:
           echo "### Supabase preview branch" >> $GITHUB_STEP_SUMMARY
           echo "Using branch \`${SUPABASE_BRANCH}\` for Supabase preview resources." >> $GITHUB_STEP_SUMMARY
       - name: Check migrations
-        run: npm run check:migrations
+        run: pnpm check:migrations
       - name: SQL lint
-        run: npm run lint:sql
+        run: pnpm lint:sql
       - name: Pull Vercel environment (preview)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: npx vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+        run: pnpm dlx vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
       - name: Build Vercel preview
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          npx vercel build \
+          pnpm dlx vercel build \
             --token="$VERCEL_TOKEN" \
             --env SUPABASE_BRANCH="$SUPABASE_BRANCH" \
             --env NEXT_PUBLIC_SUPABASE_BRANCH="$NEXT_PUBLIC_SUPABASE_BRANCH"

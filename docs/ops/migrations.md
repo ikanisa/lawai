@@ -9,7 +9,7 @@ Canonical location: `db/migrations`
 ## Conventions
 
 - File naming: strictly `YYYYMMDDHHMMSS_slug.sql`. CI generates [`db/migrations/manifest.json`](../../db/migrations/manifest.json) which captures ordering, checksums, and rollback strategy hints.
-- Use `pnpm lint:sql` (or `npm run lint:sql`) to enforce formatting across `db/` and `supabase/` SQL files. The command runs in CI and via `.lefthook.yml`.
+- Use `pnpm lint:sql` to enforce formatting across `db/` and `supabase/` SQL files. The command runs in CI and via `.lefthook.yml`.
 - Regenerate the manifest after editing SQL with `node scripts/generate-migration-manifest.mjs` and commit the result.
 - Migrations should be idempotent and safe to run on empty databases.
 - RLS policies must be present for multi‑tenant tables; add an RLS smoke entry to the ops scripts when changing table access.
