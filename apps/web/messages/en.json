@@ -365,6 +365,25 @@
     "publicationsEmpty": "No publications are available yet.",
     "publishedOn": "Published {date}",
     "viewDocument": "View document",
+    "compliance": {
+      "title": "Compliance dashboard",
+      "description": "Monitor Maghreb banner enforcement, allowlist precision, and HITL routing coverage.",
+      "loading": "Collecting compliance signals…",
+      "metrics": {
+        "hitlCoverage": "HITL coverage",
+        "hitlDescription": "High-risk runs escalated to human reviewers.",
+        "allowlistHealth": "Allowlist health",
+        "allowlistDescription": "Share of citations sourced from vetted domains.",
+        "maghrebBanner": "Maghreb banner enforcement",
+        "maghrebDescription": "Answers showing Maghreb language warnings when required."
+      },
+      "status": {
+        "good": "On track",
+        "warning": "Monitor",
+        "critical": "Action needed"
+      },
+      "notAvailable": "No data available"
+    },
     "categories": {
       "general": "Documentation",
       "policy": "Policies & compliance",

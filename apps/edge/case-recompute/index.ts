@@ -1,8 +1,10 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
-Deno.serve(async () => {
+Deno.serve(
+  instrumentEdgeHandler('case-recompute', async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !supabaseKey) {
@@ -29,4 +31,5 @@ Deno.serve(async () => {
     results.push({ orgId, status: res.status, updated: res.ok ? (await res.json()).updated ?? 0 : 0 });
   }
   return new Response(JSON.stringify({ results }), { headers: { 'Content-Type': 'application/json' } });
-});
+  }),
+);

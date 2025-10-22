@@ -10,6 +10,7 @@ import {
 } from '../lib/akoma.ts';
 import { createOpenAIDenoClient, type OpenAIDenoClient } from '../lib/openai.ts';
 import { EdgeSupabaseClient, createEdgeClient, rowAs } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
 type SourceType = 'statute' | 'case' | 'gazette' | 'regulation';
 
@@ -1852,7 +1853,8 @@ async function finalizeIngestionRun(
   }
 }
 
-Deno.serve(async (req) => {
+Deno.serve(
+  instrumentEdgeHandler('crawl-authorities', async (req) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
@@ -1884,4 +1886,5 @@ Deno.serve(async (req) => {
   }
 
   return new Response(JSON.stringify({ summaries }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-});
+  }),
+);

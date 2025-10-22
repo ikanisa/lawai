@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import ora from 'ora';
 import { requireEnv } from './lib/env.js';
+import { createSupabaseService } from './lib/supabase.js';
+import { recordOpsAuditEvent } from './lib/audit.js';
 
-interface CliOptions {
+export interface CliOptions {
   orgId: string;
   userId: string;
   apiBaseUrl: string;
@@ -99,7 +101,18 @@ async function listSnapshots(options: CliOptions): Promise<unknown> {
   return options.exportCsv ? response.text() : response.json();
 }
 
-async function createSnapshot(options: CliOptions): Promise<unknown> {
+interface SloSnapshotResponse {
+  id: string;
+  org_id: string;
+  captured_at: string;
+  api_uptime_percent: number;
+  hitl_response_p95_seconds: number;
+  retrieval_latency_p95_seconds: number;
+  citation_precision_p95: number | null;
+  notes: string | null;
+}
+
+export async function createSnapshot(options: CliOptions): Promise<SloSnapshotResponse> {
   const payload = {
     orgId: options.orgId,
     apiUptimePercent: options.apiUptime,
@@ -123,13 +136,14 @@ async function createSnapshot(options: CliOptions): Promise<unknown> {
     throw new Error(`Echec enregistrement SLO (${response.status}): ${body}`);
   }
 
-  return response.json();
+  return (await response.json()) as SloSnapshotResponse;
 }
 
 async function run(): Promise<void> {
   const options = parseArgs();
   requireEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
 
+  const supabase = options.listOnly ? null : createSupabaseService(process.env as Record<string, string>);
   if (!options.listOnly && (options.apiUptime === null || options.hitlP95 === null || options.retrievalP95 === null)) {
     console.error('Les indicateurs --uptime, --hitl-p95 et --retrieval-p95 sont requis pour créer un snapshot.');
     process.exitCode = 1;
@@ -145,10 +159,27 @@ async function run(): Promise<void> {
     } else {
       console.dir(result, { depth: 4 });
     }
+    if (!options.listOnly && supabase) {
+      const snapshot = result as SloSnapshotResponse;
+      await recordOpsAuditEvent(supabase, {
+        orgId: options.orgId,
+        actorId: options.userId,
+        kind: 'report.slo.snapshot',
+        object: `slo:${snapshot.id}`,
+        metadata: {
+          captured_at: snapshot.captured_at,
+          api_uptime_percent: snapshot.api_uptime_percent,
+          hitl_response_p95_seconds: snapshot.hitl_response_p95_seconds,
+          retrieval_latency_p95_seconds: snapshot.retrieval_latency_p95_seconds,
+        },
+      });
+    }
   } catch (error) {
     spinner.fail(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 }
 
-run();
+if (import.meta.main) {
+  run();
+}

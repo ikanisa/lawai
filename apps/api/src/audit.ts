@@ -1,4 +1,5 @@
 import { createServiceClient } from '@avocat-ai/supabase';
+import { standardiseAuditEvent } from '@avocat-ai/shared';
 import { env } from './config.js';
 
 const supabase = createServiceClient({
@@ -14,6 +15,8 @@ export type AuditPayload = {
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
+  residencyZone?: string | null;
+  orgResidency?: string | null;
 };
 
 export async function logAuditEvent({
@@ -24,19 +27,34 @@ export async function logAuditEvent({
   before,
   after,
   metadata,
+  residencyZone,
+  orgResidency,
 }: AuditPayload): Promise<void> {
   const mergedMetadata = {
     ...(metadata ?? {}),
     ...(env as { POLICY_VERSION?: string }).POLICY_VERSION ? { policy_version: (env as any).POLICY_VERSION } : {},
-  };
-  const { error } = await supabase.from('audit_events').insert({
-    org_id: orgId,
-    actor_user_id: actorId ?? null,
+  } as Record<string, unknown>;
+
+  const event = standardiseAuditEvent({
+    orgId,
+    actorId,
     kind,
     object,
-    before_state: before ?? null,
-    after_state: after ?? null,
+    before,
+    after,
     metadata: mergedMetadata,
+    residencyZone: residencyZone ?? (mergedMetadata.residency_zone as string | null | undefined) ?? null,
+    orgResidency: orgResidency ?? (mergedMetadata.org_residency as string | null | undefined) ?? null,
+  });
+
+  const { error } = await supabase.from('audit_events').insert({
+    org_id: event.orgId,
+    actor_user_id: event.actorId,
+    kind: event.kind,
+    object: event.object,
+    before_state: event.before,
+    after_state: event.after,
+    metadata: event.metadata,
   });
 
   if (error) {

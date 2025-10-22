@@ -3,8 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ora from 'ora';
 import { requireEnv } from './lib/env.js';
+import { createSupabaseService } from './lib/supabase.js';
+import { recordOpsAuditEvent } from './lib/audit.js';
 
-interface CliOptions {
+export interface CliOptions {
   orgId: string;
   userId: string;
   apiBaseUrl: string;
@@ -62,7 +64,21 @@ function parseArgs(): CliOptions {
   return options;
 }
 
-async function generateReport(options: CliOptions): Promise<unknown> {
+interface TransparencyReportResponse {
+  report?: {
+    id: string;
+    org_id: string;
+    period_start: string;
+    period_end: string;
+    generated_at: string;
+    distribution_status?: string | null;
+    metrics?: Record<string, unknown>;
+    cepej_summary?: Record<string, unknown> | null;
+  };
+  dryRun?: boolean;
+}
+
+export async function generateReport(options: CliOptions): Promise<TransparencyReportResponse> {
   const payload = {
     orgId: options.orgId,
     periodStart: options.start,
@@ -84,7 +100,7 @@ async function generateReport(options: CliOptions): Promise<unknown> {
     throw new Error(`Echec génération rapport (${response.status}): ${body}`);
   }
 
-  return response.json();
+  return (await response.json()) as TransparencyReportResponse;
 }
 
 function writeOutput(report: unknown, options: CliOptions): void {
@@ -103,15 +119,31 @@ async function run(): Promise<void> {
     requireEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
   }
 
+  const supabase = options.dryRun ? null : createSupabaseService(process.env as Record<string, string>);
   const spinner = ora('Génération du rapport de transparence...').start();
   try {
     const report = await generateReport(options);
     spinner.succeed('Rapport généré');
     writeOutput(report, options);
+    if (!options.dryRun && supabase && report?.report) {
+      await recordOpsAuditEvent(supabase, {
+        orgId: options.orgId,
+        actorId: options.userId,
+        kind: 'report.transparency.generated',
+        object: `transparency:${report.report.id}`,
+        metadata: {
+          period_start: report.report.period_start,
+          period_end: report.report.period_end,
+          distribution_status: report.report.distribution_status ?? 'unknown',
+        },
+      });
+    }
   } catch (error) {
     spinner.fail(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 }
 
-run();
+if (import.meta.main) {
+  run();
+}

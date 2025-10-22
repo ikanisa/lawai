@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
 type Env = {
   supabaseUrl?: string;
@@ -50,7 +51,8 @@ function buildSlackText(orgId: string, row: ProvenanceRow, thresholds: { staleRa
   return lines.join('\n');
 }
 
-Deno.serve(async (req) => {
+Deno.serve(
+  instrumentEdgeHandler('provenance-alerts', async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -149,4 +151,5 @@ Deno.serve(async (req) => {
     status: 200,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
-});
+  }),
+);

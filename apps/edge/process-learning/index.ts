@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, EdgeSupabaseClient, rowsAs, rowAs } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
 type LearningJob = {
   id: string;
@@ -660,7 +661,8 @@ async function processJob(client: EdgeSupabaseClient, job: LearningJob) {
   }
 }
 
-Deno.serve(async (req) => {
+Deno.serve(
+  instrumentEdgeHandler('process-learning', async (req) => {
   const payload: Env = {};
   if (req.method === 'POST') {
     const body = await req.json().catch(() => ({}));
@@ -718,4 +720,5 @@ Deno.serve(async (req) => {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
-});
+  }),
+);

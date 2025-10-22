@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
 const WINDOW_MINUTES = 10;
 
@@ -41,7 +42,8 @@ type HitlRow = {
   updated_at: string | null;
 };
 
-Deno.serve(async () => {
+Deno.serve(
+  instrumentEdgeHandler('learning-collector', async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceKey) {
@@ -154,4 +156,5 @@ Deno.serve(async () => {
   return new Response(JSON.stringify({ inserted: signals.length }), {
     headers: { 'Content-Type': 'application/json' },
   });
-});
+  }),
+);

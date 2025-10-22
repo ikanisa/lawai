@@ -365,6 +365,25 @@
     "publicationsEmpty": "Aucun document publié pour le moment.",
     "publishedOn": "Publié le {date}",
     "viewDocument": "Consulter le document",
+    "compliance": {
+      "title": "Tableau de bord conformité",
+      "description": "Surveillez les bannières Maghreb, la précision de l’allowlist et la couverture des escalades HITL.",
+      "loading": "Collecte des signaux de conformité…",
+      "metrics": {
+        "hitlCoverage": "Couverture HITL",
+        "hitlDescription": "Exécutions à risque élevé escaladées vers les réviseurs.",
+        "allowlistHealth": "Santé de l’allowlist",
+        "allowlistDescription": "Part des citations issues des domaines approuvés.",
+        "maghrebBanner": "Application bannière Maghreb",
+        "maghrebDescription": "Réponses affichant l’avertissement linguistique Maghreb lorsque requis."
+      },
+      "status": {
+        "good": "Conforme",
+        "warning": "Surveiller",
+        "critical": "Action requise"
+      },
+      "notAvailable": "Données indisponibles"
+    },
     "categories": {
       "general": "Documentation",
       "policy": "Politiques & conformité",

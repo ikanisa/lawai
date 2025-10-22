@@ -17,6 +17,7 @@
     "slo": "tsx src/slo-report.ts",
     "learning": "tsx src/learning-worker.ts",
     "regulator-digest": "tsx src/regulator-digest.ts",
+    "schedule-reports": "tsx src/schedule-reports.ts",
     "rotate-secrets": "tsx src/rotate-secrets.ts",
     "check": "tsx src/check.ts",
     "rls-smoke": "tsx src/rls-smoke.ts",

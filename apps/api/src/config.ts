@@ -1,5 +1,6 @@
 import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
+import type { DiagLogLevel } from '@opentelemetry/api';
 
 if (process.env.NODE_ENV !== 'production') {
   loadEnv();
@@ -34,6 +35,15 @@ const envSchema = z.object({
   C2PA_SIGNING_KEY_ID: z.string().optional(),
   // Governance / policy tagging
   POLICY_VERSION: z.string().optional(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: z.string().url().optional(),
+  OTEL_EXPORTER_OTLP_HEADERS: z.string().optional(),
+  TELEMETRY_ENABLED: z
+    .union([z.literal('true'), z.literal('false')])
+    .optional(),
+  OTEL_LOG_LEVEL: z
+    .enum(['none', 'error', 'warn', 'info', 'debug', 'verbose'])
+    .optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -86,4 +96,42 @@ export function loadAllowlistOverride(): string[] | null {
   } catch (error) {
     return null;
   }
+}
+
+export function telemetryConfig(): {
+  otlpEndpoint?: string;
+  metricsEndpoint?: string;
+  headers: Record<string, string>;
+  enabled: boolean;
+  logLevel?: DiagLogLevel;
+} {
+  const enabled = parsed.TELEMETRY_ENABLED ? parsed.TELEMETRY_ENABLED === 'true' : true;
+  const headers: Record<string, string> = {};
+  if (parsed.OTEL_EXPORTER_OTLP_HEADERS) {
+    for (const entry of parsed.OTEL_EXPORTER_OTLP_HEADERS.split(',')) {
+      const [key, value] = entry.split('=').map((part) => part.trim());
+      if (key && value) {
+        headers[key] = value;
+      }
+    }
+  }
+
+  const levelMap: Record<string, DiagLogLevel> = {
+    none: 0,
+    error: 1,
+    warn: 2,
+    info: 3,
+    debug: 4,
+    verbose: 5,
+  } as const;
+
+  const logLevel = parsed.OTEL_LOG_LEVEL ? levelMap[parsed.OTEL_LOG_LEVEL] : undefined;
+
+  return {
+    otlpEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT,
+    metricsEndpoint: parsed.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
+    headers,
+    enabled,
+    logLevel,
+  };
 }

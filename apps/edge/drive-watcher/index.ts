@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
 type ManifestEntry = {
   file_id: string;
@@ -148,7 +149,8 @@ async function fetchManifestFromUrl(url: string | undefined): Promise<string | n
   }
 }
 
-Deno.serve(async (request) => {
+Deno.serve(
+  instrumentEdgeHandler('drive-watcher', async (request) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -434,4 +436,5 @@ Deno.serve(async (request) => {
     }),
     { headers: { 'Content-Type': 'application/json', ...corsHeaders } },
   );
-});
+  }),
+);

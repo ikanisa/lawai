@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient } from '../lib/supabase.ts';
+import { instrumentEdgeHandler } from '../lib/telemetry.ts';
 
 async function head(url: string): Promise<{ ok: boolean; status: number }> {
   try {
@@ -11,7 +12,8 @@ async function head(url: string): Promise<{ ok: boolean; status: number }> {
   }
 }
 
-Deno.serve(async () => {
+Deno.serve(
+  instrumentEdgeHandler('link-health', async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !supabaseKey) {
@@ -51,4 +53,5 @@ Deno.serve(async () => {
       .eq('id', row.id);
   }
   return new Response(JSON.stringify({ checked: data?.length ?? 0, failed }), { headers: { 'Content-Type': 'application/json' } });
-});
+  }),
+);
