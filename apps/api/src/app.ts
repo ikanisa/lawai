@@ -48,6 +48,7 @@ export async function createApp() {
         baseUrl: process.env.OPENAI_BASE_URL,
       },
     },
+    rateLimits: {},
   };
 
   await app.register(async (instance) => {
@@ -62,8 +63,6 @@ export async function createApp() {
     await registerVoiceRoutes(instance, context);
     await registerRealtimeRoutes(instance, context);
   }, { prefix: '/api' });
-
-  await registerWorkspaceRoutes(app, context);
 
   return { app, context };
 }
