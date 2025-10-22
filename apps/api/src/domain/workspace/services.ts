@@ -1,20 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildPhaseCWorkspaceDesk } from '../../workspace.js';
-
-const extractCountry = (value: unknown): string | null => {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-  if ('country' in value && typeof (value as { country?: unknown }).country === 'string') {
-    const candidate = (value as { country?: string }).country;
-    return candidate && candidate.trim().length > 0 ? candidate : null;
-  }
-  if ('country_code' in value && typeof (value as { country_code?: unknown }).country_code === 'string') {
-    const candidate = (value as { country_code?: string }).country_code;
-    return candidate && candidate.trim().length > 0 ? candidate : null;
-  }
-  return null;
-};
+import { extractCountry } from '../../utils/jurisdictions.js';
 
 export interface WorkspaceOverview {
   jurisdictions: Array<{ code: string; name: string; eu: boolean; ohada: boolean; matterCount: number }>;
