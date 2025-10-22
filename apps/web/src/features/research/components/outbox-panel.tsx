@@ -1,6 +1,6 @@
 import { formatDistanceToNow } from 'date-fns';
 import { enUS, fr as frLocale } from 'date-fns/locale';
-import { OutboxItem } from '@/hooks/use-outbox';
+import { OutboxItem } from '@/features/platform/hooks/use-outbox';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 

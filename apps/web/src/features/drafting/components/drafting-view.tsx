@@ -9,6 +9,7 @@ import { Input } from '@/ui/input';
 import { Textarea } from '@/ui/textarea';
 import { Badge } from '@/ui/badge';
 import type { Locale, Messages } from '@/lib/i18n';
+import { queryKeys } from '@/lib/query';
 import { DEMO_ORG_ID, fetchDraftingTemplates } from '@/lib/api';
 import { RedlineDiff, type RedlineEntry } from './redline-diff';
 
@@ -89,7 +90,7 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
   const [fileName, setFileName] = useState<string | null>(null);
 
   const templatesQuery = useQuery({
-    queryKey: ['drafting-templates', DEMO_ORG_ID],
+    queryKey: queryKeys.drafting.list(DEMO_ORG_ID),
     queryFn: () => fetchDraftingTemplates(DEMO_ORG_ID),
   });
 
@@ -146,26 +147,26 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
         {Object.entries(messages.drafting.templateCategories).map(([key, label]) => {
           const templatesForCategory = templatesByCategory.get(key) ?? [];
           return (
-            <Card key={key} className="glass-card border border-slate-800/60">
+            <Card key={key} className="glass-card border border-border/70">
               <CardHeader>
-                <CardTitle className="flex items-center justify-between text-base uppercase tracking-wide text-slate-200">
+                <CardTitle className="flex items-center justify-between text-base uppercase tracking-wide text-muted-foreground">
                   {label}
-                  <Badge variant="outline" className="bg-slate-900/40 text-xs uppercase text-teal-200">
+                  <Badge variant="outline" className="bg-muted/40 text-xs uppercase text-primary">
                     {templatesForCategory.length}
                   </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {isTemplatesLoading ? (
-                  <p className="text-sm text-slate-500">{messages.drafting.loading}</p>
+                  <p className="text-sm text-muted-foreground/80">{messages.drafting.loading}</p>
                 ) : templatesForCategory.length === 0 ? (
-                  <p className="text-sm text-slate-500">{messages.drafting.empty}</p>
+                  <p className="text-sm text-muted-foreground/80">{messages.drafting.empty}</p>
                 ) : (
                   templatesForCategory.map((template) => (
                     <button
                       key={template.id}
                       type="button"
-                      className="focus-ring w-full rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4 text-left transition hover:border-teal-400/80 hover:text-teal-100"
+                      className="focus-ring w-full rounded-2xl border border-border/70 bg-muted/60 p-4 text-left transition hover:border-primary/80 hover:text-primary/80"
                       onClick={() =>
                         toast.info(template.title, {
                           description: template.summary ?? messages.drafting.templateSummaryFallback,
@@ -173,12 +174,12 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
                       }
                     >
                       <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-slate-100">{template.title}</p>
-                        <Badge variant="outline" className="text-[10px] uppercase text-slate-300">
+                        <p className="text-sm font-semibold text-foreground">{template.title}</p>
+                        <Badge variant="outline" className="text-[10px] uppercase text-muted-foreground">
                           {template.jurisdiction}
                         </Badge>
                       </div>
-                      <p className="mt-1 text-xs text-slate-400">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {template.summary ?? messages.drafting.templateSummaryFallback}
                       </p>
                       {template.fillIns && template.fillIns.length > 0 ? (
@@ -186,7 +187,7 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
                           {template.fillIns.slice(0, 3).map((fill) => (
                             <span
                               key={`${template.id}-${fill}`}
-                              className="rounded-full border border-teal-400/30 bg-slate-900/80 px-2 py-1 text-[10px] uppercase tracking-wide text-teal-200"
+                              className="rounded-full border border-primary/40 bg-muted/80 px-2 py-1 text-[10px] uppercase tracking-wide text-primary"
                             >
                               {fill}
                             </span>
@@ -206,14 +207,14 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.drafting.smartDraft}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.drafting.smartDraftDescription}</p>
+            <CardTitle className="text-foreground">{messages.drafting.smartDraft}</CardTitle>
+            <p className="text-sm text-muted-foreground">{messages.drafting.smartDraftDescription}</p>
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={handleSmartDraft}>
-              <label className="block text-sm font-medium text-slate-300" htmlFor="draft-upload">
+              <label className="block text-sm font-medium text-muted-foreground" htmlFor="draft-upload">
                 {messages.drafting.uploadLabel}
               </label>
               <Input
@@ -225,7 +226,7 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
                   setFileName(file ? file.name : null);
                 }}
               />
-              <p className="text-xs text-slate-500">{messages.drafting.or}</p>
+              <p className="text-xs text-muted-foreground/80">{messages.drafting.or}</p>
               <Textarea
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
@@ -233,7 +234,7 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
                 placeholder={messages.drafting.promptPlaceholder}
               />
               <div className="flex items-center justify-between">
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-muted-foreground/80">
                   {fileName ? `${locale === 'fr' ? 'Document sélectionné' : 'Selected file'}: ${fileName}` : null}
                 </div>
                 <Button type="submit" disabled={mutation.isPending}>
@@ -244,16 +245,16 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
           </CardContent>
         </Card>
 
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.drafting.clauseLibrary}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.drafting.clauseBenchmark}</p>
+            <CardTitle className="text-foreground">{messages.drafting.clauseLibrary}</CardTitle>
+            <p className="text-sm text-muted-foreground">{messages.drafting.clauseBenchmark}</p>
           </CardHeader>
           <CardContent className="space-y-4">
             {CLAUSE_LIBRARY.map((clause) => (
-              <div key={clause.id} className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
-                <p className="text-sm font-semibold text-slate-100">{clause.title}</p>
-                <p className="mt-2 text-xs text-slate-400">{clause.rationale}</p>
+              <div key={clause.id} className="rounded-2xl border border-border/70 bg-slate-900/50 p-4">
+                <p className="text-sm font-semibold text-foreground">{clause.title}</p>
+                <p className="mt-2 text-xs text-muted-foreground">{clause.rationale}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {clause.citations.map((citation) => (
                     <a
@@ -261,7 +262,7 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
                       href={citation}
                       target="_blank"
                       rel="noreferrer"
-                      className="focus-ring inline-flex items-center rounded-full border border-teal-400/40 bg-slate-900/80 px-3 py-1 text-xs text-teal-200"
+                      className="focus-ring inline-flex items-center rounded-full border border-teal-400/40 bg-muted/80 px-3 py-1 text-xs text-primary"
                     >
                       {messages.citationsBrowser.open}
                     </a>
@@ -276,8 +277,8 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
       <section className="space-y-4">
         <header className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-100">{messages.drafting.redline}</h2>
-            <p className="text-sm text-slate-400">{messages.drafting.redlineDescription}</p>
+            <h2 className="text-lg font-semibold text-foreground">{messages.drafting.redline}</h2>
+            <p className="text-sm text-muted-foreground">{messages.drafting.redlineDescription}</p>
           </div>
           <Button variant="outline">{messages.drafting.export}</Button>
         </header>

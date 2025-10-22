@@ -8,7 +8,7 @@ import messagesFr from '../messages/fr.json';
 import type { Messages } from '@/lib/i18n';
 import type { AgentRunResponse } from '../src/lib/api';
 import { ResearchView } from '@/features/research/components/research-view';
-import { PwaInstallProvider } from '../src/hooks/use-pwa-install';
+import { PwaInstallProvider } from '../src/features/platform/hooks/use-pwa-install';
 
 vi.mock('sonner', () => ({
   toast: {

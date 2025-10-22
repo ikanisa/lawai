@@ -9,7 +9,7 @@ import { Button } from '@/ui/button';
 import { cn } from '@/lib/utils';
 import type { Messages, Locale } from '@/lib/i18n';
 import { sendTelemetryEvent } from '@/lib/api';
-import { useCommandPalette } from @/state/command-palette';
+import { useCommandPalette } from '@/state/command-palette';
 
 export interface CommandPaletteAction {
   id: string;

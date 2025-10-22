@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import type { Locale, Messages } from '@/lib/i18n';
+import { queryKeys } from '@/lib/query';
 import { DEMO_ORG_ID, fetchCitations, fetchCorpus, fetchSnapshotDiff } from '@/lib/api';
 
 interface CitationsBrowserProps {
@@ -37,10 +38,13 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
   const [jurisdictionFilter, setJurisdictionFilter] = useState<string | null>(null);
 
   const citationsQuery = useQuery({
-    queryKey: ['citations'],
+    queryKey: queryKeys.citations.list(DEMO_ORG_ID),
     queryFn: () => fetchCitations(DEMO_ORG_ID),
   });
-  const corpusQuery = useQuery({ queryKey: ['corpus'], queryFn: () => fetchCorpus(DEMO_ORG_ID) });
+  const corpusQuery = useQuery({
+    queryKey: queryKeys.corpus.all(DEMO_ORG_ID),
+    queryFn: () => fetchCorpus(DEMO_ORG_ID),
+  });
 
   const entries = useMemo<CitationEntry[]>(() => {
     const list = (citationsQuery.data?.entries ?? []) as CitationEntry[];
@@ -71,7 +75,11 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
   }, [snapshots, baseSnapshot, compareSnapshot]);
 
   const diffQuery = useQuery({
-    queryKey: ['snapshot-diff', baseSnapshot, compareSnapshot],
+    queryKey: [
+      ...queryKeys.citations.detail(DEMO_ORG_ID, 'diff'),
+      baseSnapshot ?? 'base',
+      compareSnapshot ?? 'compare',
+    ],
     queryFn: () => fetchSnapshotDiff(DEMO_ORG_ID, baseSnapshot as string, compareSnapshot as string),
     enabled: Boolean(baseSnapshot && compareSnapshot),
   });
@@ -80,8 +88,8 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
     <div className="space-y-6">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-100">{messages.citationsBrowser.title}</h1>
-          <p className="text-sm text-slate-400">{messages.citationsBrowser.filters}</p>
+          <h1 className="text-2xl font-semibold text-foreground">{messages.citationsBrowser.title}</h1>
+          <p className="text-sm text-muted-foreground">{messages.citationsBrowser.filters}</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Input
@@ -91,7 +99,7 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
             onChange={(event) => setSearch(event.target.value)}
           />
           <select
-            className="focus-ring rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200"
+            className="focus-ring rounded-full border border-border/70 bg-card px-4 py-2 text-sm text-foreground"
             value={jurisdictionFilter ?? ''}
             onChange={(event) => setJurisdictionFilter(event.target.value || null)}
           >
@@ -109,9 +117,9 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
       </header>
       <section className="grid gap-4 lg:grid-cols-2">
         {entries.map((entry) => (
-          <Card key={entry.id} className="glass-card border border-slate-800/60">
+          <Card key={entry.id} className="glass-card border border-border/70">
             <CardHeader className="space-y-2">
-              <CardTitle className="text-slate-100">{entry.title}</CardTitle>
+              <CardTitle className="text-foreground">{entry.title}</CardTitle>
               <div className="flex flex-wrap gap-2">
                 <Badge>{entry.jurisdiction}</Badge>
                 {entry.consolidated ? <Badge variant="success">{messages.citationsBrowser.consolidated}</Badge> : null}
@@ -123,38 +131,38 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
                 ) : null}
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-200">
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p>{entry.publisher ?? '—'}</p>
-              <p className="text-xs text-slate-400">{entry.url}</p>
+              <p className="text-xs text-muted-foreground">{entry.url}</p>
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{messages.citationsBrowser.metadata}</Badge>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-muted-foreground">
                   {messages.citationsBrowser.effectiveDate}: {entry.effectiveDate ?? '—'}
                 </span>
               </div>
-              <a className="focus-ring inline-flex text-xs text-teal-200" href={entry.url} target="_blank" rel="noreferrer">
+              <a className="focus-ring inline-flex text-xs text-primary" href={entry.url} target="_blank" rel="noreferrer">
                 {messages.citationsBrowser.open}
               </a>
             </CardContent>
           </Card>
         ))}
         {entries.length === 0 ? (
-          <Card className="glass-card border border-slate-800/60">
-            <CardContent className="p-6 text-sm text-slate-500">{messages.citationsBrowser.empty}</CardContent>
+          <Card className="glass-card border border-border/70">
+            <CardContent className="p-6 text-sm text-muted-foreground/80">{messages.citationsBrowser.empty}</CardContent>
           </Card>
         ) : null}
       </section>
-      <Card className="glass-card border border-slate-800/60">
+      <Card className="glass-card border border-border/70">
         <CardHeader className="space-y-2">
-          <CardTitle className="text-slate-100">{messages.citationsBrowser.diffTitle}</CardTitle>
-          <p className="text-sm text-slate-400">{messages.citationsBrowser.diffInstructions}</p>
+          <CardTitle className="text-foreground">{messages.citationsBrowser.diffTitle}</CardTitle>
+          <p className="text-sm text-muted-foreground">{messages.citationsBrowser.diffInstructions}</p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-            <label className="flex flex-col text-xs text-slate-400">
+            <label className="flex flex-col text-xs text-muted-foreground">
               {messages.citationsBrowser.baseLabel}
               <select
-                className="focus-ring mt-1 rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200"
+                className="focus-ring mt-1 rounded-full border border-border/70 bg-card px-4 py-2 text-sm text-foreground"
                 value={baseSnapshot ?? ''}
                 onChange={(event) => setBaseSnapshot(event.target.value || null)}
               >
@@ -166,10 +174,10 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col text-xs text-slate-400">
+            <label className="flex flex-col text-xs text-muted-foreground">
               {messages.citationsBrowser.compareLabel}
               <select
-                className="focus-ring mt-1 rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200"
+                className="focus-ring mt-1 rounded-full border border-border/70 bg-card px-4 py-2 text-sm text-foreground"
                 value={compareSnapshot ?? ''}
                 onChange={(event) => setCompareSnapshot(event.target.value || null)}
               >
@@ -189,13 +197,13 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
             <Badge variant="warning">{diffQuery.data.compare.warning}</Badge>
           ) : null}
           {!baseSnapshot || !compareSnapshot ? (
-            <p className="text-sm text-slate-500">{messages.citationsBrowser.noDiff}</p>
+            <p className="text-sm text-muted-foreground/80">{messages.citationsBrowser.noDiff}</p>
           ) : diffQuery.isLoading ? (
-            <p className="text-sm text-slate-500">{messages.citationsBrowser.loadingDiff}</p>
+            <p className="text-sm text-muted-foreground/80">{messages.citationsBrowser.loadingDiff}</p>
           ) : diffQuery.isError ? (
             <p className="text-sm text-rose-400">{messages.citationsBrowser.diffError}</p>
           ) : diffQuery.data?.diff?.length ? (
-            <div className="rounded-2xl bg-slate-900/60 p-4 text-sm leading-relaxed">
+            <div className="rounded-2xl bg-card/60 p-4 text-sm leading-relaxed">
               {diffQuery.data.diff.map((segment: { value: string; added?: boolean; removed?: boolean }, index: number) => (
                 <span
                   // eslint-disable-next-line react/no-array-index-key
@@ -205,7 +213,7 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
                       ? 'rounded bg-emerald-500/20 px-1 text-emerald-200'
                       : segment.removed
                       ? 'rounded bg-rose-500/20 px-1 text-rose-200 line-through'
-                      : 'text-slate-100'
+                      : 'text-foreground'
                   }
                 >
                   {segment.value}
@@ -213,7 +221,7 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-slate-500">{messages.citationsBrowser.noDiff}</p>
+            <p className="text-sm text-muted-foreground/80">{messages.citationsBrowser.noDiff}</p>
           )}
         </CardContent>
       </Card>

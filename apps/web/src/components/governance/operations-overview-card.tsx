@@ -1,8 +1,8 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '.@/ui/card';
-import type { Messages } from '../@/lib/i18n';
-import type { OperationsOverviewResponse } from '../@/lib/api';
+import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import type { Messages } from '@/lib/i18n';
+import type { OperationsOverviewResponse } from '@/lib/api';
 
 interface OperationsOverviewCardProps {
   messages: Messages;

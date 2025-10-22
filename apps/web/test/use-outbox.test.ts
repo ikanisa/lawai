@@ -1,7 +1,7 @@
 import { webcrypto } from 'node:crypto';
 import { renderHook, act } from '@testing-library/react';
 import { vi } from 'vitest';
-import { useOutbox } from '../src/hooks/use-outbox';
+import { useOutbox } from '../src/features/platform/hooks/use-outbox';
 
 describe('useOutbox', () => {
   let uuidSpy: ReturnType<typeof vi.spyOn> | undefined;

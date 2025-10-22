@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Messages } from '@/lib/i18n';
-import { PwaInstallPrompt } from '@/components/pwa-install-prompt';
+import { PwaInstallPrompt } from '@/features/shell/components/pwa-install-prompt';
 
 const promptInstallMock = vi.fn(async () => 'accepted' as const);
 const dismissPromptMock = vi.fn();
 const enableDigestMock = vi.fn(async () => true);
 
-vi.mock('../src/hooks/use-pwa-install', () => ({
+vi.mock('../src/features/platform/hooks/use-pwa-install', () => ({
   usePwaInstall: () => ({
     shouldPrompt: true,
     isAvailable: true,
@@ -17,7 +17,7 @@ vi.mock('../src/hooks/use-pwa-install', () => ({
   }),
 }));
 
-vi.mock('../src/hooks/use-digest', () => ({
+vi.mock('../src/features/platform/hooks/use-digest', () => ({
   useDigest: () => ({
     enabled: false,
     loading: false,
@@ -25,7 +25,7 @@ vi.mock('../src/hooks/use-digest', () => ({
   }),
 }));
 
-vi.mock('../src/hooks/use-outbox', () => ({
+vi.mock('../src/features/platform/hooks/use-outbox', () => ({
   useOutbox: () => ({
     pendingCount: 2,
     hasItems: true,

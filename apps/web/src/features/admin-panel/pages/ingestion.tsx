@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Pause, Play, RotateCcw } from 'lucide-react';
-import { Button } from '../@/ui/button';
+import { Button } from '@/ui/button';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';

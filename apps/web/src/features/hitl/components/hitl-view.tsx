@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Textarea } from '@/ui/textarea';
 import { Badge } from '@/ui/badge';
 import type { Locale, Messages } from '@/lib/i18n';
+import { queryKeys } from '@/lib/query';
 import {
   DEMO_ORG_ID,
   fetchHitlAuditTrail,
@@ -107,14 +108,17 @@ export function HitlView({ messages, locale }: HitlViewProps) {
   const [comment, setComment] = useState('');
   const queryClient = useQueryClient();
 
-  const queueQuery = useQuery({ queryKey: ['hitl'], queryFn: () => fetchHitlQueue(DEMO_ORG_ID) });
+  const queueQuery = useQuery({
+    queryKey: queryKeys.hitl.list(DEMO_ORG_ID),
+    queryFn: () => fetchHitlQueue(DEMO_ORG_ID),
+  });
   const detailQuery = useQuery<HitlDetailResponse>({
-    queryKey: ['hitl-detail', selectedHitlId],
+    queryKey: queryKeys.hitl.detail(DEMO_ORG_ID, selectedHitlId ?? 'unselected'),
     enabled: Boolean(selectedHitlId),
     queryFn: () => fetchHitlDetail(DEMO_ORG_ID, selectedHitlId ?? ''),
   });
   const metricsQuery = useQuery({
-    queryKey: ['hitl-metrics'],
+    queryKey: queryKeys.hitl.detail(DEMO_ORG_ID, 'metrics'),
     queryFn: () => fetchHitlMetrics(DEMO_ORG_ID),
   });
 
@@ -124,9 +128,16 @@ export function HitlView({ messages, locale }: HitlViewProps) {
     onSuccess: () => {
       toast.success(locale === 'fr' ? 'Revue enregistrée' : 'Review saved');
       setComment('');
-      queryClient.invalidateQueries({ queryKey: ['hitl'] });
-      queryClient.invalidateQueries({ queryKey: ['hitl-detail'] });
-      queryClient.invalidateQueries({ queryKey: ['hitl-audit'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.hitl.list(DEMO_ORG_ID) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.hitl.detail(DEMO_ORG_ID, selectedHitlId ?? 'unselected') });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.hitl.detail(
+          DEMO_ORG_ID,
+          'audit',
+          selectedItem?.runId ?? 'none',
+          selectedHitlId ?? 'none',
+        ),
+      });
     },
     onError: () => {
       toast.error(locale === 'fr' ? 'Échec de la revue' : 'Review failed');
@@ -143,7 +154,12 @@ export function HitlView({ messages, locale }: HitlViewProps) {
   }, [selectedHitlId, queue]);
 
   const auditQuery = useQuery({
-    queryKey: ['hitl-audit', selectedItem?.runId ?? null, selectedHitlId],
+    queryKey: queryKeys.hitl.detail(
+      DEMO_ORG_ID,
+      'audit',
+      selectedItem?.runId ?? 'none',
+      selectedHitlId ?? 'none',
+    ),
     enabled: Boolean(selectedHitlId),
     queryFn: () =>
       fetchHitlAuditTrail(DEMO_ORG_ID, {
@@ -205,11 +221,11 @@ export function HitlView({ messages, locale }: HitlViewProps) {
             className={`focus-ring w-full rounded-3xl border px-4 py-3 text-left transition ${
               selectedHitlId === item.id
                 ? 'border-legal-amber/80 bg-legal-amber/10 text-amber-100'
-                : 'border-slate-800/60 bg-slate-900/60 text-slate-200 hover:border-legal-amber/60'
+                : 'border-border/70 bg-muted/60 text-muted-foreground hover:border-legal-amber/60'
             }`}
           >
             <p className="text-sm font-semibold">{item.reason}</p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted-foreground">
               {messages.hitl.submitted}: {formatDateTime(item.createdAt ?? null, locale)}
             </p>
             <Badge variant={item.status === 'pending' ? 'warning' : 'outline'} className="mt-2">
@@ -217,25 +233,25 @@ export function HitlView({ messages, locale }: HitlViewProps) {
             </Badge>
           </button>
         ))}
-        {queue.length === 0 ? <p className="text-sm text-slate-500">{messages.hitl.empty}</p> : null}
+        {queue.length === 0 ? <p className="text-sm text-muted-foreground/80">{messages.hitl.empty}</p> : null}
       </aside>
       <section className="space-y-5">
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.hitl.title}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.hitl.auditTrail}</p>
+            <CardTitle className="text-foreground">{messages.hitl.title}</CardTitle>
+            <p className="text-sm text-muted-foreground">{messages.hitl.auditTrail}</p>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-200">
+          <CardContent className="space-y-4 text-sm text-muted-foreground">
             {run ? (
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-white">{run.question}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-muted-foreground">
                     {run.jurisdiction
                       ? messages.hitl.jurisdictionLabel.replace('{jurisdiction}', run.jurisdiction)
                       : messages.hitl.jurisdictionUnknown}
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground/80">
                     {messages.hitl.submitted}: {formatDateTime(run.startedAt ?? run.finishedAt ?? null, locale)}
                   </p>
                 </div>
@@ -251,9 +267,9 @@ export function HitlView({ messages, locale }: HitlViewProps) {
             )}
             <div className="space-y-2">
               {citations.map((citation) => (
-                <div key={citation.url} className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
-                  <p className="text-sm font-semibold text-slate-100">{citation.title ?? citation.url}</p>
-                  <p className="text-xs text-slate-400">{citation.publisher ?? '—'}</p>
+                <div key={citation.url} className="rounded-2xl border border-border/70 bg-muted/50 p-4">
+                  <p className="text-sm font-semibold text-foreground">{citation.title ?? citation.url}</p>
+                  <p className="text-xs text-muted-foreground">{citation.publisher ?? '—'}</p>
                   <div className="mt-2 flex flex-wrap gap-2 text-xs">
                     {typeof citation.domainOk === 'boolean' ? (
                       <Badge variant={citation.domainOk ? 'success' : 'warning'}>
@@ -267,14 +283,14 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                 </div>
               ))}
               {citations.length === 0 ? (
-                <p className="text-xs text-slate-500">{messages.hitl.noCitations}</p>
+                <p className="text-xs text-muted-foreground/80">{messages.hitl.noCitations}</p>
               ) : null}
             </div>
           </CardContent>
         </Card>
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.hitl.review}</CardTitle>
+            <CardTitle className="text-foreground">{messages.hitl.review}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <Textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={4} placeholder={messages.hitl.comment} />
@@ -302,16 +318,16 @@ export function HitlView({ messages, locale }: HitlViewProps) {
             </div>
           </CardContent>
         </Card>
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.hitl.timelineTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.hitl.timelineSubtitle}</p>
+            <CardTitle className="text-foreground">{messages.hitl.timelineTitle}</CardTitle>
+            <p className="text-sm text-muted-foreground">{messages.hitl.timelineSubtitle}</p>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-200">
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
             {auditQuery.isLoading ? (
-              <p className="text-slate-400">{messages.hitl.timelineLoading}</p>
+              <p className="text-muted-foreground">{messages.hitl.timelineLoading}</p>
             ) : auditEvents.length === 0 ? (
-              <p className="text-slate-400">{messages.hitl.timelineEmpty}</p>
+              <p className="text-muted-foreground">{messages.hitl.timelineEmpty}</p>
             ) : (
               <ol className="space-y-3">
                 {auditEvents.map((event) => {
@@ -321,15 +337,15 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                       ? messages.hitl.timelineActor.replace('{actor}', event.actor_user_id)
                       : null;
                   return (
-                    <li key={event.id} className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
+                    <li key={event.id} className="rounded-2xl border border-border/70 bg-muted/50 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <Badge variant="outline">{getAuditLabel(event.kind, messages)}</Badge>
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-muted-foreground">
                           {formatDateTime(event.created_at ?? null, locale)}
                         </span>
                       </div>
-                      {description ? <p className="mt-2 text-sm text-slate-200">{description}</p> : null}
-                      {actor ? <p className="mt-1 text-xs text-slate-500">{actor}</p> : null}
+                      {description ? <p className="mt-2 text-sm text-muted-foreground">{description}</p> : null}
+                      {actor ? <p className="mt-1 text-xs text-muted-foreground/80">{actor}</p> : null}
                     </li>
                   );
                 })}
@@ -337,36 +353,36 @@ export function HitlView({ messages, locale }: HitlViewProps) {
             )}
           </CardContent>
         </Card>
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.hitl.metricsTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.hitl.metricsSubtitle}</p>
+            <CardTitle className="text-foreground">{messages.hitl.metricsTitle}</CardTitle>
+            <p className="text-sm text-muted-foreground">{messages.hitl.metricsSubtitle}</p>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-200">
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
             {metricsQuery.isLoading ? (
-              <p className="text-slate-400">{messages.hitl.metricsLoading}</p>
+              <p className="text-muted-foreground">{messages.hitl.metricsLoading}</p>
             ) : metrics ? (
               <div className="space-y-3">
-                <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                <div className="rounded-2xl border border-border/70 bg-muted/50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     {messages.hitl.metricsQueueLabel}
                   </p>
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-slate-200">
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
                     <span>{messages.hitl.metricsQueuePending}</span>
                     <span className="font-semibold">{metrics.queue?.pending ?? '—'}</span>
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-slate-400">
+                  <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
                     <span>{messages.hitl.metricsQueueOldest}</span>
                     <span>{metrics.queue?.oldestCreatedAt ?? '—'}</span>
                   </div>
                   {hasQueueBreakdown ? (
                     <div className="mt-3 space-y-1">
-                      <p className="text-xs text-slate-400">{messages.hitl.metricsQueueBreakdown}</p>
+                      <p className="text-xs text-muted-foreground">{messages.hitl.metricsQueueBreakdown}</p>
                       <div className="flex flex-wrap gap-2">
                         {Object.entries(queueBreakdown).map(([type, count]) => (
                           <Badge key={type} variant="outline" className="gap-1 text-xs">
-                            <span className="font-semibold text-slate-100">{count ?? 0}</span>
-                            <span className="uppercase tracking-wide text-slate-400">
+                            <span className="font-semibold text-foreground">{count ?? 0}</span>
+                            <span className="uppercase tracking-wide text-muted-foreground">
                               {type.replace(/_/g, ' ')}
                             </span>
                           </Badge>
@@ -375,25 +391,25 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                     </div>
                   ) : null}
                 </div>
-                <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                <div className="rounded-2xl border border-border/70 bg-muted/50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     {messages.hitl.metricsDriftLabel}
                   </p>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-slate-200">
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-muted-foreground">
                     <div>
-                      <p className="text-xs text-slate-400">{messages.hitl.metricsRuns24h}</p>
+                      <p className="text-xs text-muted-foreground">{messages.hitl.metricsRuns24h}</p>
                       <p className="font-semibold">{metrics.drift?.totalRuns ?? 0}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-400">{messages.hitl.metricsEscalations}</p>
+                      <p className="text-xs text-muted-foreground">{messages.hitl.metricsEscalations}</p>
                       <p className="font-semibold">{metrics.drift?.hitlEscalations ?? 0}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-400">{messages.hitl.metricsHighRisk}</p>
+                      <p className="text-xs text-muted-foreground">{messages.hitl.metricsHighRisk}</p>
                       <p className="font-semibold">{metrics.drift?.highRiskRuns ?? 0}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-400">{messages.hitl.metricsAllowlisted}</p>
+                      <p className="text-xs text-muted-foreground">{messages.hitl.metricsAllowlisted}</p>
                       <p className="font-semibold">
                         {metrics.drift?.allowlistedRatio !== null
                           ? `${Math.round((metrics.drift?.allowlistedRatio ?? 0) * 100)}%`
@@ -402,32 +418,32 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                     </div>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                <div className="rounded-2xl border border-border/70 bg-muted/50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     {messages.hitl.metricsFairnessLabel}
                   </p>
                   <div className="mt-2 space-y-2">
                     <div>
-                      <p className="text-xs text-slate-400">{messages.hitl.metricsCaptured}</p>
+                      <p className="text-xs text-muted-foreground">{messages.hitl.metricsCaptured}</p>
                       <p>{fairness?.capturedAt ?? '—'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-400">{messages.hitl.metricsFairnessOverall}</p>
+                      <p className="text-xs text-muted-foreground">{messages.hitl.metricsFairnessOverall}</p>
                       {fairnessTotalRuns !== null || fairnessHitlRate !== null ? (
-                        <div className="mt-1 space-y-2 rounded-2xl border border-slate-800/60 bg-slate-900/60 p-3">
-                          <div className="flex items-center justify-between text-xs text-slate-300">
+                        <div className="mt-1 space-y-2 rounded-2xl border border-border/70 bg-muted/60 p-3">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span>{messages.hitl.metricsFairnessTotalRuns}</span>
-                            <span className="font-semibold text-slate-100">{fairnessTotalRuns ?? '—'}</span>
+                            <span className="font-semibold text-foreground">{fairnessTotalRuns ?? '—'}</span>
                           </div>
                           <div>
-                            <div className="flex items-center justify-between text-xs text-slate-300">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
                               <span>{messages.hitl.metricsFairnessHitlRate}</span>
-                              <span className="font-semibold text-slate-100">
+                              <span className="font-semibold text-foreground">
                                 {fairnessHitlRate !== null ? `${Math.round(Math.min(Math.max(fairnessHitlRate, 0), 1) * 100)}%` : '—'}
                               </span>
                             </div>
                             {fairnessHitlRate !== null ? (
-                              <div className="mt-1 h-2 rounded-full bg-slate-800/80" role="presentation">
+                              <div className="mt-1 h-2 rounded-full bg-muted/80" role="presentation">
                                 <div
                                   className="h-2 rounded-full bg-legal-amber/80"
                                   style={{ width: `${Math.round(Math.min(Math.max(fairnessHitlRate, 0), 1) * 100)}%` }}
@@ -435,17 +451,17 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                               </div>
                             ) : null}
                           </div>
-                          <div className="flex items-center justify-between text-xs text-slate-300">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span>{messages.hitl.metricsFairnessHighRisk}</span>
-                            <span className="font-semibold text-slate-100">
+                            <span className="font-semibold text-foreground">
                               {fairnessHighRiskShare !== null
                                 ? `${Math.round(Math.min(Math.max(fairnessHighRiskShare, 0), 1) * 100)}%`
                                 : '—'}
                             </span>
                           </div>
-                          <div className="flex items-center justify-between text-xs text-slate-300">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span>{messages.hitl.metricsFairnessBenchmarkRate}</span>
-                            <span className="font-semibold text-slate-100">
+                            <span className="font-semibold text-foreground">
                               {fairnessBenchmarkRate !== null
                                 ? `${Math.round(Math.min(Math.max(fairnessBenchmarkRate, 0), 1) * 100)}%`
                                 : '—'}
@@ -453,11 +469,11 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                           </div>
                         </div>
                       ) : (
-                        <p className="text-xs text-slate-500">{messages.hitl.metricsFairnessOverallMissing}</p>
+                        <p className="text-xs text-muted-foreground/80">{messages.hitl.metricsFairnessOverallMissing}</p>
                       )}
                     </div>
                     <div>
-                      <p className="text-xs text-slate-400">{messages.hitl.metricsFairnessFlagged}</p>
+                      <p className="text-xs text-muted-foreground">{messages.hitl.metricsFairnessFlagged}</p>
                       <div className="mt-1 flex flex-wrap gap-2">
                         {flaggedJurisdictions.length > 0 ? (
                           flaggedJurisdictions.map((code) => (
@@ -466,12 +482,12 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                             </Badge>
                           ))
                         ) : (
-                          <span className="text-slate-400">{messages.hitl.metricsNoneFlagged}</span>
+                          <span className="text-muted-foreground">{messages.hitl.metricsNoneFlagged}</span>
                         )}
                       </div>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-400">{messages.hitl.metricsBenchmarksFlagged}</p>
+                      <p className="text-xs text-muted-foreground">{messages.hitl.metricsBenchmarksFlagged}</p>
                       <div className="mt-1 flex flex-wrap gap-2">
                         {flaggedBenchmarks.length > 0 ? (
                           flaggedBenchmarks.map((name) => (
@@ -480,13 +496,13 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                             </Badge>
                           ))
                         ) : (
-                          <span className="text-slate-400">{messages.hitl.metricsBenchmarksNone}</span>
+                          <span className="text-muted-foreground">{messages.hitl.metricsBenchmarksNone}</span>
                         )}
                       </div>
                     </div>
                     {fairnessJurisdictions.length > 0 ? (
                       <div className="mt-2 space-y-2">
-                        <p className="text-xs text-slate-400">{messages.hitl.metricsFairnessJurisdictions}</p>
+                        <p className="text-xs text-muted-foreground">{messages.hitl.metricsFairnessJurisdictions}</p>
                         <div className="space-y-2">
                           {fairnessJurisdictions.map((entry) => {
                             const code = typeof entry.code === 'string' ? entry.code : '—';
@@ -501,17 +517,17 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                                 className={`rounded-2xl border p-3 text-xs transition ${
                                   isFlagged
                                     ? 'border-legal-amber/70 bg-legal-amber/10 text-amber-100'
-                                    : 'border-slate-800/60 bg-slate-900/60 text-slate-200'
+                                    : 'border-border/70 bg-muted/60 text-muted-foreground'
                                 }`}
                               >
                                 <div className="flex items-center justify-between">
                                   <span className="font-semibold uppercase tracking-wide">{code}</span>
-                                  <span className="text-slate-400">{messages.hitl.metricsFairnessTotalRuns}: {total}</span>
+                                  <span className="text-muted-foreground">{messages.hitl.metricsFairnessTotalRuns}: {total}</span>
                                 </div>
-                                <div className="mt-2 grid grid-cols-2 gap-2 text-slate-300">
+                                <div className="mt-2 grid grid-cols-2 gap-2 text-muted-foreground">
                                   <div>
                                     <p>{messages.hitl.metricsFairnessJurisdictionHitlRate}</p>
-                                    <p className="font-semibold text-slate-100">
+                                    <p className="font-semibold text-foreground">
                                       {hitlRateValue !== null
                                         ? `${Math.round(Math.min(Math.max(hitlRateValue, 0), 1) * 100)}%`
                                         : '—'}
@@ -519,14 +535,14 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                                   </div>
                                   <div>
                                     <p>{messages.hitl.metricsFairnessJurisdictionHighRisk}</p>
-                                    <p className="font-semibold text-slate-100">
+                                    <p className="font-semibold text-foreground">
                                       {highRiskValue !== null
                                         ? `${Math.round(Math.min(Math.max(highRiskValue, 0), 1) * 100)}%`
                                         : '—'}
                                     </p>
                                   </div>
                                 </div>
-                                <p className="mt-2 text-slate-400">
+                                <p className="mt-2 text-muted-foreground">
                                   {messages.hitl.metricsFairnessEscalations.replace(
                                     '{count}',
                                     hitlEscalations.toString(),
@@ -539,7 +555,7 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                       </div>
                     ) : null}
                     <div className="mt-2">
-                      <p className="text-xs text-slate-400">{messages.hitl.metricsFairnessTrend}</p>
+                      <p className="text-xs text-muted-foreground">{messages.hitl.metricsFairnessTrend}</p>
                       {fairnessTrend.length > 0 ? (
                         <ol className="mt-2 space-y-2">
                           {fairnessTrend.map((entry, index) => {
@@ -577,9 +593,9 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                             return (
                               <li
                                 key={entry.reportDate ?? `${capturedAt}-${index}`}
-                                className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-3 text-xs text-slate-200"
+                                className="rounded-2xl border border-border/70 bg-muted/60 p-3 text-xs text-muted-foreground"
                               >
-                                <div className="flex flex-wrap items-center justify-between gap-2 text-slate-400">
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
                                   <span>{capturedAt}</span>
                                   {windowStart && windowEnd ? (
                                     <span>
@@ -589,14 +605,14 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                                     </span>
                                   ) : null}
                                 </div>
-                                <div className="mt-2 grid grid-cols-2 gap-2 text-slate-300">
+                                <div className="mt-2 grid grid-cols-2 gap-2 text-muted-foreground">
                                   <div>
                                     <p>{messages.hitl.metricsFairnessTotalRuns}</p>
-                                    <p className="font-semibold text-slate-100">{trendTotal ?? '—'}</p>
+                                    <p className="font-semibold text-foreground">{trendTotal ?? '—'}</p>
                                   </div>
                                   <div>
                                     <p>{messages.hitl.metricsFairnessHitlRate}</p>
-                                    <p className="font-semibold text-slate-100">
+                                    <p className="font-semibold text-foreground">
                                       {trendHitl !== null
                                         ? `${Math.round(Math.min(Math.max(trendHitl, 0), 1) * 100)}%`
                                         : '—'}
@@ -604,7 +620,7 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                                   </div>
                                   <div>
                                     <p>{messages.hitl.metricsFairnessHighRisk}</p>
-                                    <p className="font-semibold text-slate-100">
+                                    <p className="font-semibold text-foreground">
                                       {trendHighRisk !== null
                                         ? `${Math.round(Math.min(Math.max(trendHighRisk, 0), 1) * 100)}%`
                                         : '—'}
@@ -612,14 +628,14 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                                   </div>
                                   <div>
                                     <p>{messages.hitl.metricsFairnessBenchmarkRate}</p>
-                                    <p className="font-semibold text-slate-100">
+                                    <p className="font-semibold text-foreground">
                                       {trendBenchmark !== null
                                         ? `${Math.round(Math.min(Math.max(trendBenchmark, 0), 1) * 100)}%`
                                         : '—'}
                                     </p>
                                   </div>
                                 </div>
-                                <div className="mt-2 flex flex-wrap gap-2 text-slate-400">
+                                <div className="mt-2 flex flex-wrap gap-2 text-muted-foreground">
                                   {flaggedCodes.length > 0 ? (
                                     <>
                                       <span>{messages.hitl.metricsFairnessTrendFlagged}</span>
@@ -638,14 +654,14 @@ export function HitlView({ messages, locale }: HitlViewProps) {
                           })}
                         </ol>
                       ) : (
-                        <p className="mt-2 text-xs text-slate-500">{messages.hitl.metricsFairnessTrendEmpty}</p>
+                        <p className="mt-2 text-xs text-muted-foreground/80">{messages.hitl.metricsFairnessTrendEmpty}</p>
                       )}
                     </div>
                   </div>
                 </div>
               </div>
             ) : (
-              <p className="text-slate-400">{messages.hitl.metricsNone}</p>
+              <p className="text-muted-foreground">{messages.hitl.metricsNone}</p>
             )}
           </CardContent>
         </Card>

@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Download, BellRing, History } from 'lucide-react';
 import { Button } from '@/ui/button';
 import type { Locale, Messages } from '@/lib/i18n';
-import { usePwaInstall } from '@/hooks/use-pwa-install';
-import { useDigest } from '@/hooks/use-digest';
-import { useOutbox } from '@/hooks/use-outbox';
+import { usePwaInstall } from '@/features/platform/hooks/use-pwa-install';
+import { useDigest } from '@/features/platform/hooks/use-digest';
+import { useOutbox } from '@/features/platform/hooks/use-outbox';
 import { toast } from 'sonner';
 import { sendTelemetryEvent } from '@/lib/api';
 
@@ -118,25 +118,25 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
 
   return (
     <div className="fixed bottom-28 right-6 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-200">
-      <div className="glass-card border border-slate-800/60 p-5 shadow-2xl">
+      <div className="glass-card border border-border/70 p-5 shadow-2xl">
         <div className="flex items-start gap-3">
-          <div className="rounded-2xl bg-grad-1/30 p-2">
-            <Download className="h-5 w-5 text-teal-200" aria-hidden />
+          <div className="rounded-2xl bg-primary/15 p-2">
+            <Download className="h-5 w-5 text-primary" aria-hidden />
           </div>
-          <div className="flex-1 space-y-4 text-sm text-slate-200">
+          <div className="flex-1 space-y-4 text-sm text-muted-foreground">
             <div>
-              <p className="text-sm font-semibold text-white">{messages.title}</p>
-              <p className="mt-1 text-slate-300">{messages.body}</p>
+              <p className="text-sm font-semibold text-foreground">{messages.title}</p>
+              <p className="mt-1 text-muted-foreground">{messages.body}</p>
             </div>
             {releaseNotes ? (
-              <div className="rounded-2xl bg-slate-900/50 p-3">
+              <div className="rounded-2xl bg-muted/50 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-200">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-foreground">
                     {releaseNotes.title}
                   </span>
                   {releaseNotes.items && releaseNotes.items.length > 0 ? (
                     <button
-                      className="text-[11px] font-semibold uppercase tracking-wide text-teal-200 hover:text-teal-100"
+                      className="text-[11px] font-semibold uppercase tracking-wide text-primary hover:text-primary/80"
                       onClick={() => setNotesOpen((prev) => !prev)}
                       type="button"
                     >
@@ -145,7 +145,7 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
                   ) : null}
                 </div>
                 {notesOpen && releaseNotes.items && releaseNotes.items.length > 0 ? (
-                  <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-300">
+                  <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
                     {releaseNotes.items.map((item) => (
                       <li key={item}>{item}</li>
                     ))}
@@ -162,13 +162,13 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
               </Button>
             </div>
             {releaseNotes ? (
-              <div className="rounded-2xl bg-slate-900/50 p-3 text-xs text-slate-300">
-                <div className="flex items-center gap-2 font-semibold text-slate-100">
-                  <BellRing className="h-4 w-4 text-teal-200" aria-hidden />
+              <div className="rounded-2xl bg-muted/50 p-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 font-semibold text-foreground">
+                  <BellRing className="h-4 w-4 text-primary" aria-hidden />
                   <span>{releaseNotes.digestTitle}</span>
                 </div>
                 {releaseNotes.digestDescription ? (
-                  <p className="mt-1 text-slate-300">{releaseNotes.digestDescription}</p>
+                  <p className="mt-1 text-muted-foreground">{releaseNotes.digestDescription}</p>
                 ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
@@ -182,11 +182,11 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
                       : releaseNotes.digestCta}
                   </Button>
                   {digestEnabled ? (
-                    <span className="text-[11px] text-teal-200">✓</span>
+                    <span className="text-[11px] text-primary">✓</span>
                   ) : null}
                 </div>
                 {outboxMessage ? (
-                  <div className="mt-3 flex items-center gap-2 text-[11px] uppercase tracking-wide text-slate-400">
+                  <div className="mt-3 flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
                     <History className="h-3.5 w-3.5" aria-hidden />
                     <span className="truncate" title={outboxMessage}>
                       {outboxMessage}

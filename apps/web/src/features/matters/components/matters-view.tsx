@@ -9,6 +9,7 @@ import { Badge } from '@/ui/badge';
 import { Separator } from '@/ui/separator';
 import { Input } from '@/ui/input';
 import type { Locale, Messages } from '@/lib/i18n';
+import { queryKeys } from '@/lib/query';
 import { DEMO_ORG_ID, fetchMatters, fetchMatterDetail } from '@/lib/api';
 
 interface MattersViewProps {
@@ -42,12 +43,12 @@ export function MattersView({ messages, locale }: MattersViewProps) {
   const [filter, setFilter] = useState('');
 
   const mattersQuery = useQuery({
-    queryKey: ['matters'],
+    queryKey: queryKeys.matters.list(DEMO_ORG_ID),
     queryFn: () => fetchMatters(DEMO_ORG_ID),
   });
 
   const detailQuery = useQuery({
-    queryKey: ['matter', selectedId],
+    queryKey: queryKeys.matters.detail(DEMO_ORG_ID, selectedId ?? 'unselected'),
     enabled: Boolean(selectedId),
     queryFn: () => fetchMatterDetail(DEMO_ORG_ID, selectedId ?? ''),
   });
@@ -104,8 +105,8 @@ export function MattersView({ messages, locale }: MattersViewProps) {
   return (
     <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
       <aside className="space-y-4">
-        <div className="glass-card rounded-3xl border border-slate-800/60 p-4">
-          <label className="text-xs font-semibold uppercase text-slate-400" htmlFor="matter-search">
+        <div className="glass-card rounded-3xl border border-border/70 p-4">
+          <label className="text-xs font-semibold uppercase text-muted-foreground" htmlFor="matter-search">
             {messages.research.filters}
           </label>
           <Input
@@ -123,16 +124,16 @@ export function MattersView({ messages, locale }: MattersViewProps) {
               onClick={() => setSelectedId(matter.id)}
               className={`focus-ring w-full rounded-3xl border px-4 py-3 text-left transition ${
                 matter.id === selectedId
-                  ? 'border-teal-400/80 bg-teal-400/10 text-teal-100'
-                  : 'border-slate-800/60 bg-slate-900/60 text-slate-200 hover:border-teal-400/50'
+                  ? 'border-primary/80 bg-primary/10 text-primary/80'
+                  : 'border-border/70 bg-muted/60 text-muted-foreground hover:border-primary/60'
               }`}
             >
               <p className="text-sm font-semibold">{matter.question}</p>
-              <p className="text-xs text-slate-400">{matter.jurisdiction ?? '—'}</p>
+              <p className="text-xs text-muted-foreground">{matter.jurisdiction ?? '—'}</p>
               <div className="mt-2 flex items-center gap-2">
                 {statusChip(matter.status)}
                 {matter.hitlRequired ? (
-                  <Badge variant="outline" className="border-amber-300/60 text-amber-200">
+                  <Badge variant="outline" className="border-warning/60 text-warning-foreground">
                     {messages.workspace.requiresHitl}
                   </Badge>
                 ) : null}
@@ -140,40 +141,40 @@ export function MattersView({ messages, locale }: MattersViewProps) {
             </button>
           ))}
           {matters.length === 0 ? (
-            <p className="text-sm text-slate-500">{messages.matters.empty}</p>
+            <p className="text-sm text-muted-foreground/80">{messages.matters.empty}</p>
           ) : null}
         </div>
       </aside>
       <section className="space-y-6">
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="flex items-center justify-between text-slate-100">
+            <CardTitle className="flex items-center justify-between text-foreground">
               {messages.matters.overview}
               {detailQuery.data?.matter ? statusChip(detailQuery.data.matter.status) : null}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-200">
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>{detailQuery.data?.matter?.question ?? messages.matters.empty}</p>
-            <Separator className="bg-slate-800/60" />
+            <Separator className="bg-muted/60" />
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <p className="text-xs uppercase text-slate-400">{messages.matters.parties}</p>
-                <p className="text-sm text-slate-200">—</p>
+                <p className="text-xs uppercase text-muted-foreground">{messages.matters.parties}</p>
+                <p className="text-sm text-muted-foreground">—</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-400">{messages.matters.governingLaw}</p>
-                <p className="text-sm text-slate-200">{detailQuery.data?.matter?.jurisdiction ?? '—'}</p>
+                <p className="text-xs uppercase text-muted-foreground">{messages.matters.governingLaw}</p>
+                <p className="text-sm text-muted-foreground">{detailQuery.data?.matter?.jurisdiction ?? '—'}</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-400">{messages.matters.risk}</p>
-                <p className="text-sm text-slate-200">{detailQuery.data?.matter?.riskLevel ?? '—'}</p>
+                <p className="text-xs uppercase text-muted-foreground">{messages.matters.risk}</p>
+                <p className="text-sm text-muted-foreground">{detailQuery.data?.matter?.riskLevel ?? '—'}</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-400">{messages.matters.timeline}</p>
-                <ul className="space-y-1 text-xs text-slate-400">
+                <p className="text-xs uppercase text-muted-foreground">{messages.matters.timeline}</p>
+                <ul className="space-y-1 text-xs text-muted-foreground">
                   {timeline.map((item) => (
                     <li key={item.label}>
-                      <span className="font-semibold text-slate-300">{item.label}</span>: {item.date ?? '—'}
+                      <span className="font-semibold text-muted-foreground">{item.label}</span>: {item.date ?? '—'}
                     </li>
                   ))}
                 </ul>
@@ -182,10 +183,10 @@ export function MattersView({ messages, locale }: MattersViewProps) {
           </CardContent>
         </Card>
 
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.matters.deadlineWizard}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.matters.deadlineNotes}</p>
+            <CardTitle className="text-foreground">{messages.matters.deadlineWizard}</CardTitle>
+            <p className="text-sm text-muted-foreground">{messages.matters.deadlineNotes}</p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-3">
@@ -198,17 +199,17 @@ export function MattersView({ messages, locale }: MattersViewProps) {
           </CardContent>
         </Card>
 
-        <Card className="glass-card border border-slate-800/60">
+        <Card className="glass-card border border-border/70">
           <CardHeader>
-            <CardTitle className="text-slate-100">{messages.matters.documents}</CardTitle>
+            <CardTitle className="text-foreground">{messages.matters.documents}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-200">
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
             {(detailQuery.data?.matter?.citations as MatterDetail['citations'] | undefined)?.map((citation) => (
-              <div key={citation.url} className="rounded-2xl border border-slate-800/60 bg-slate-900/50 p-4">
-                <p className="font-semibold text-slate-100">{citation.title ?? citation.url}</p>
-                <p className="text-xs text-slate-400">{citation.publisher ?? '—'}</p>
+              <div key={citation.url} className="rounded-2xl border border-border/70 bg-muted/50 p-4">
+                <p className="font-semibold text-foreground">{citation.title ?? citation.url}</p>
+                <p className="text-xs text-muted-foreground">{citation.publisher ?? '—'}</p>
                 <a
-                  className="focus-ring mt-2 inline-flex text-xs text-teal-200"
+                  className="focus-ring mt-2 inline-flex text-xs text-primary"
                   href={citation.url}
                   target="_blank"
                   rel="noreferrer"
@@ -218,7 +219,7 @@ export function MattersView({ messages, locale }: MattersViewProps) {
               </div>
             ))}
             {!(detailQuery.data?.matter?.citations?.length ?? 0) ? (
-              <p className="text-sm text-slate-500">{messages.matters.citeCheck}</p>
+              <p className="text-sm text-muted-foreground/80">{messages.matters.citeCheck}</p>
             ) : null}
           </CardContent>
         </Card>

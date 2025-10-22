@@ -37,7 +37,7 @@ import {
   type DeviceSession,
 } from '@/lib/api';
 import type { Messages } from '@/lib/i18n';
-import { clientEnv } from '../../env.client';
+import { clientEnv } from '@/env.client';
 
 interface AdminViewProps {
   messages: Messages;
@@ -226,17 +226,17 @@ export function AdminView({ messages }: AdminViewProps) {
   );
   const policyDocuments = useMemo(
     () => [
-      { href:@/components/governance/responsible_ai_policy.md', label: messages.admin.policyResponsible },
-      { href:@/components/governance/dpia_commitments.md', label: messages.admin.policyDpia },
-      { href:@/components/governance/coe_ai_alignment.md', label: messages.admin.policyCoe },
-      { href:@/components/governance/cepej_charter_mapping.md', label: messages.admin.policyCepej },
-      { href:@/components/governance/incident_response_plan.md', label: messages.admin.policyIncident },
-      { href:@/components/governance/change_management_playbook.md', label: messages.admin.policyChange },
-      { href:@/components/governance/support_runbook.md', label: messages.admin.policySupport },
-      { href:@/components/governance/slo_and_support.md', label: messages.admin.policySlo },
-      { href:@/components/governance/pilot_onboarding_playbook.md', label: messages.admin.policyOnboarding },
-      { href:@/components/governance/pricing_collateral.md', label: messages.admin.policyPricing },
-      { href:@/components/governance/regulator_outreach_plan.md', label: messages.admin.policyRegulator },
+      { href: '@/components/governance/responsible_ai_policy.md', label: messages.admin.policyResponsible },
+      { href: '@/components/governance/dpia_commitments.md', label: messages.admin.policyDpia },
+      { href: '@/components/governance/coe_ai_alignment.md', label: messages.admin.policyCoe },
+      { href: '@/components/governance/cepej_charter_mapping.md', label: messages.admin.policyCepej },
+      { href: '@/components/governance/incident_response_plan.md', label: messages.admin.policyIncident },
+      { href: '@/components/governance/change_management_playbook.md', label: messages.admin.policyChange },
+      { href: '@/components/governance/support_runbook.md', label: messages.admin.policySupport },
+      { href: '@/components/governance/slo_and_support.md', label: messages.admin.policySlo },
+      { href: '@/components/governance/pilot_onboarding_playbook.md', label: messages.admin.policyOnboarding },
+      { href: '@/components/governance/pricing_collateral.md', label: messages.admin.policyPricing },
+      { href: '@/components/governance/regulator_outreach_plan.md', label: messages.admin.policyRegulator },
     ],
     [
       messages.admin.policyResponsible,
