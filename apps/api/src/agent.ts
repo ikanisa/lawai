@@ -17,6 +17,7 @@ import {
   IRACPayload,
   IRACSchema,
   OFFICIAL_DOMAIN_ALLOWLIST,
+  WebSearchMode,
 } from '@avocat-ai/shared';
 import { diffWordsWithSpace } from 'diff';
 import { createServiceClient } from '@avocat-ai/supabase';
@@ -87,6 +88,7 @@ export interface AgentRunInput {
   orgId: string;
   userId: string;
   confidentialMode?: boolean;
+  webSearchMode?: WebSearchMode;
 }
 
 export interface AgentRunResult {
@@ -124,6 +126,7 @@ interface AgentExecutionContext {
   initialRouting: RoutingResult;
   lastJurisdiction: JurisdictionHint | null;
   confidentialMode: boolean;
+  webSearchMode: WebSearchMode;
   allowedJurisdictions: string[];
   toolUsage: Record<string, number>;
   toolBudgets: Record<string, number>;
@@ -390,7 +393,12 @@ function summariseHybridSnippets(snippets: HybridSnippet[]): Record<string, unkn
   };
 }
 
-function createRunKey(input: AgentRunInput, routing: RoutingResult, confidentialMode: boolean): string {
+function createRunKey(
+  input: AgentRunInput,
+  routing: RoutingResult,
+  confidentialMode: boolean,
+  webSearchMode: WebSearchMode,
+): string {
   const hash = createHash('sha256');
   hash.update(input.orgId);
   hash.update('|');
@@ -401,6 +409,8 @@ function createRunKey(input: AgentRunInput, routing: RoutingResult, confidential
   hash.update((input.context ?? '').trim());
   hash.update('|');
   hash.update(confidentialMode ? 'confidential' : 'standard');
+  hash.update('|');
+  hash.update(webSearchMode);
   if (routing.primary?.country) {
     hash.update('|');
     hash.update(routing.primary.country);
@@ -683,6 +693,11 @@ async function planRun(
     synonymRecord[term] = expansions;
   }
 
+  const requestedWebSearchMode = input.webSearchMode ?? 'allowlist';
+  const effectiveWebSearchMode: WebSearchMode = enforcedConfidentialMode
+    ? 'disabled'
+    : requestedWebSearchMode;
+
   const context: AgentExecutionContext = {
     orgId: input.orgId,
     userId: input.userId,
@@ -692,6 +707,7 @@ async function planRun(
     initialRouting,
     lastJurisdiction: initialRouting.primary,
     confidentialMode: enforcedConfidentialMode,
+    webSearchMode: effectiveWebSearchMode,
     allowedJurisdictions,
     toolUsage: {},
     toolBudgets: { ...TOOL_BUDGET_DEFAULTS },
@@ -699,7 +715,7 @@ async function planRun(
     policyVersion,
   };
 
-  if (enforcedConfidentialMode) {
+  if (enforcedConfidentialMode || effectiveWebSearchMode === 'disabled') {
     context.toolBudgets.web_search = 0;
   }
 
@@ -3955,10 +3971,12 @@ function buildAgent(
 
   const hostedTools = [budgetedFileSearch];
 
-  if (!context.confidentialMode) {
+  if (!context.confidentialMode && context.webSearchMode !== 'disabled') {
     const baseWebSearch = webSearchTool({
-      filters: { allowedDomains: DOMAIN_ALLOWLIST },
-      searchContextSize: 'medium',
+      ...(context.webSearchMode === 'allowlist'
+        ? { filters: { allowedDomains: DOMAIN_ALLOWLIST } }
+        : {}),
+      searchContextSize: context.webSearchMode === 'broad' ? 'large' : 'medium',
     });
     const budgetedWebSearch = {
       ...baseWebSearch,
@@ -4013,7 +4031,12 @@ export async function runLegalAgent(
   const useStub = shouldUseStubAgent();
   const planner = await planRun(input, accessContext ?? null, useStub, toolLogs);
 
-  const runKey = createRunKey(input, planner.initialRouting, planner.context.confidentialMode);
+  const runKey = createRunKey(
+    input,
+    planner.initialRouting,
+    planner.context.confidentialMode,
+    planner.context.webSearchMode,
+  );
   const existing = await findExistingRun(runKey, input.orgId);
   if (existing) {
     const payload: IRACPayload = {
