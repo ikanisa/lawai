@@ -59,7 +59,10 @@ function cloneAndSanitise(input: Record<string, unknown> | null | undefined): Re
   return output;
 }
 
-function filterMetadata(metadata: Record<string, unknown> | null, allowList?: string[]): Record<string, unknown> | null {
+function filterMetadata(
+  metadata: Record<string, unknown> | null,
+  allowList?: string[],
+): Record<string, unknown> | null {
   if (!metadata) return null;
   const safe = cloneAndSanitise(metadata);
   if (!safe) return null;
@@ -93,32 +96,56 @@ export class AuditLogger {
     });
   }
 
-  private applyRedaction(input: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  private applyRedaction(
+    input: Record<string, unknown> | null | undefined,
+    rootPath?: 'before' | 'after' | 'metadata',
+  ): Record<string, unknown> | null {
     if (!input) return null;
     const clone = cloneAndSanitise(input);
     if (!clone) return null;
-    return this.redact(clone) as Record<string, unknown>;
+
+    const directRedacted = this.redact(clone) as Record<string, unknown>;
+
+    if (!rootPath) {
+      return directRedacted;
+    }
+
+    const wrapper = { [rootPath]: directRedacted } as Record<string, unknown>;
+    this.redact(wrapper);
+    const extracted = wrapper[rootPath];
+
+    if (!extracted || typeof extracted !== 'object') {
+      return null;
+    }
+
+    return extracted as Record<string, unknown>;
   }
 
   async log(record: AuditRecord): Promise<void> {
+    const redactedMetadata = this.applyRedaction(record.metadata, 'metadata');
+
     const payload: AuditRecord = {
       ...record,
       residency: record.residency ?? this.options.defaultResidency ?? null,
-      before: this.applyRedaction(record.before),
-      after: this.applyRedaction(record.after),
-      metadata: filterMetadata(record.metadata ?? null, this.options.metadataAllowList),
+      before: this.applyRedaction(record.before, 'before'),
+      after: this.applyRedaction(record.after, 'after'),
+      metadata: filterMetadata(redactedMetadata, this.options.metadataAllowList),
     };
 
-    const { error } = await this.supabase.from('audit_events').insert({
-      org_id: payload.orgId,
-      actor_user_id: payload.actorId ?? null,
-      kind: payload.kind,
-      object: payload.object,
-      before_state: payload.before ?? null,
-      after_state: payload.after ?? null,
-      metadata: payload.metadata ?? null,
-      residency_zone: payload.residency ?? null,
-    });
+    const { error } = await this.supabase
+      .from('audit_events')
+      .insert({
+        org_id: payload.orgId,
+        actor_user_id: payload.actorId ?? null,
+        kind: payload.kind,
+        object: payload.object,
+        before_state: payload.before ?? null,
+        after_state: payload.after ?? null,
+        metadata: payload.metadata ?? null,
+        residency_zone: payload.residency ?? null,
+      })
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       throw new Error(`audit_event_failed:${error.message}`);

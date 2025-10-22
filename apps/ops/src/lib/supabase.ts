@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createServiceClient } from '@avocat-ai/supabase';
+import { AuditLogger } from '@avocat-ai/compliance';
 import ora from 'ora';
 import { OFFICIAL_DOMAIN_ALLOWLIST, getJurisdictionsForDomain } from '@avocat-ai/shared';
 
@@ -159,4 +160,8 @@ export async function validateResidencyGuards(supabase: SupabaseClient): Promise
   }
 
   return issues;
+}
+
+export function createOpsAuditLogger(supabase: SupabaseClient) {
+  return new AuditLogger(supabase);
 }
