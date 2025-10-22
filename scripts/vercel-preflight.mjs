@@ -67,7 +67,8 @@ async function main() {
     checkEnv();
     run('npm --version');
     run('npm ci --prefer-offline');
-    const token = process.env.VERCEL_TOKEN ? ` --token=${process.env.VERCEL_TOKEN}` : '';
+    const previewToken = process.env.DEPLOY_PREVIEW_TOKEN;
+    const token = previewToken ? ` --token=${previewToken}` : '';
     run(`npx vercel pull --yes --environment=preview${token}`);
     run(`npx vercel build${token}`);
     console.log('Preflight PASS');
