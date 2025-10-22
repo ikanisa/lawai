@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const embeddingsCreateMock = vi.fn();
 const responsesCreateMock = vi.fn();
 const logOpenAIDebugMock = vi.fn();
+
+const originalFunction = Function;
 
 vi.mock('../src/openai.ts', () => ({
   getOpenAI: () => ({
@@ -12,6 +14,55 @@ vi.mock('../src/openai.ts', () => ({
   logOpenAIDebug: logOpenAIDebugMock,
   setOpenAILogger: vi.fn(),
 }));
+
+describe('agent wrapper', () => {
+  afterEach(() => {
+    vi.resetModules();
+    globalThis.Function = originalFunction;
+  });
+
+  it('forwards userLocationOverride to the underlying agent', async () => {
+    vi.resetModules();
+    const runLegalAgentMock = vi.fn(async () => ({
+      runId: 'wrapper-run',
+      payload: null,
+      allowlistViolations: [],
+      toolLogs: [],
+    }));
+
+    const dynamicImportStub = vi.fn(async (specifier: string) => {
+      if (specifier !== './agent.js') {
+        throw new Error(`unexpected dynamic import for ${specifier}`);
+      }
+      return { runLegalAgent: runLegalAgentMock };
+    });
+
+    const functionFactory = vi.fn((...args: unknown[]) => {
+      if (args.length === 2 && args[0] === 'p' && args[1] === 'return import(p)') {
+        return dynamicImportStub;
+      }
+      return originalFunction(...(args as [unknown, ...unknown[]]));
+    });
+
+    globalThis.Function = functionFactory as unknown as typeof Function;
+
+    const { runLegalAgent } = await import('../src/agent-wrapper.ts');
+
+    const input = {
+      question: 'Test question',
+      orgId: 'org',
+      userId: 'user',
+      userLocationOverride: 'Paris',
+    };
+    const access = { role: 'tester' };
+
+    await runLegalAgent(input, access);
+
+    expect(functionFactory).toHaveBeenCalledWith('p', 'return import(p)');
+    expect(dynamicImportStub).toHaveBeenCalledWith('./agent.js');
+    expect(runLegalAgentMock).toHaveBeenCalledWith(input, access);
+  });
+});
 
 const validPayload = {
   jurisdiction: { country: 'FR', eu: true, ohada: false },
