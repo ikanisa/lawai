@@ -44,6 +44,7 @@
 3. Draft ChatKit session schema and lifecycle (creation, resume, cancel) ahead of implementation.
 4. Identify evaluation scenarios per finance agent (taxonomy for later automation).
 5. Establish environment variables and secret mappings for organisation/project-specific deployments.
+6. Roll out the finance PDF ingestion pipeline using the [PDF file inputs rollout guide](./pdf-file-inputs.md); success requires ≥95% parse fidelity on the pilot corpus with no outstanding P0 compliance issues, owned by the Data Platform & Ingestion team.
 
 ## Prototype Artifacts
 - `apps/api/scripts/export-agent-definition.ts` – generates a JSON stub (`apps/dist/platform/avocat-francophone.json`) for ingestion into Agent Builder.
