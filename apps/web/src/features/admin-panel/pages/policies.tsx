@@ -32,10 +32,10 @@ export function AdminPoliciesPage() {
     },
   });
 
-  const policies = policyQuery.data?.policies ?? [];
+  const policies = policyQuery.data?.policies;
   const featureFlags = useMemo(
     () =>
-      policies.filter((policy) => policy.key.startsWith('feature:')).map((policy) => ({
+      (policies ?? []).filter((policy) => policy.key.startsWith('feature:')).map((policy) => ({
         key: policy.key,
         enabled: Boolean(policy.value === true || policy.value === 'on'),
       })),
@@ -83,7 +83,7 @@ export function AdminPoliciesPage() {
       </section>
 
       <AdminDataTable
-        data={policies}
+        data={policies ?? []}
         columns={[
           { key: 'key', header: 'Key' },
           { key: 'value', header: 'Value' },

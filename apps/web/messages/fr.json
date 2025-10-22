@@ -143,7 +143,26 @@
     "hitl": "Revue humaine",
     "corpus": "Corpus & Sources",
     "admin": "Administration",
+    "knowledgeBase": "Base de connaissances",
     "trust": "Centre de confiance"
+  },
+  "knowledgeBase": {
+    "title": "Base de connaissances",
+    "subtitle": "Déployez des guides d'intégration multimodale et des playbooks opérationnels.",
+    "viewDoc": "Ouvrir le guide",
+    "cards": {
+      "pdfFileInputs": {
+        "title": "Entrées PDF et recherche hybride",
+        "description": "Préparez les agents multimodaux à exploiter les décisions signées et les scans tout en respectant les garde-fous de conformité.",
+        "badge": "Multimodal",
+        "features": [
+          "Ingestion respectueuse de la résidence et journalisation de la provenance",
+          "Fallback OCR avec rafraîchissement des segments File Search",
+          "Télémetrie Workspace sur l'état d'ingestion et les garde-fous",
+          "Checklist pour aligner exports et divulgations"
+        ]
+      }
+    }
   },
   "actions": {
     "newResearch": "Nouvelle recherche",

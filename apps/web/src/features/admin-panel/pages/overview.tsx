@@ -24,12 +24,12 @@ export function AdminOverviewPage() {
   const jobsQuery = useQuery(adminQueries.jobs(activeOrg.id));
 
   const stats = overviewQuery.data?.stats ?? FALLBACK_STATS;
-  const charts = overviewQuery.data?.charts ?? [];
+  const charts = overviewQuery.data?.charts;
   const alerts = overviewQuery.data?.alerts ?? [];
   const jobs = jobsQuery.data?.jobs ?? [];
 
   const chartPlaceholders = useMemo(() => {
-    if (charts.length > 0) return charts;
+    if (charts && charts.length > 0) return charts;
     return [
       {
         id: 'runs',

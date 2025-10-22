@@ -10,6 +10,7 @@ import {
   FileText,
   Briefcase,
   BookMarked,
+  Notebook,
   ShieldCheck,
   Database,
   Settings,
@@ -53,6 +54,7 @@ const NAVIGATION = [
   { key: 'citations', href: '/citations', icon: BookMarked },
   { key: 'hitl', href: '/hitl', icon: ShieldCheck },
   { key: 'corpus', href: '/corpus', icon: Database },
+  { key: 'knowledgeBase', href: '/knowledge-base', icon: Notebook },
   { key: 'trust', href: '/trust', icon: Shield },
   { key: 'admin', href: '/admin', icon: Settings },
 ];

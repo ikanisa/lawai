@@ -143,7 +143,26 @@
     "hitl": "HITL Review",
     "corpus": "Corpus & Sources",
     "admin": "Admin",
+    "knowledgeBase": "Knowledge base",
     "trust": "Trust Center"
+  },
+  "knowledgeBase": {
+    "title": "Knowledge base",
+    "subtitle": "Launch playbooks and integration guides for multimodal agent operations.",
+    "viewDoc": "Open guide",
+    "cards": {
+      "pdfFileInputs": {
+        "title": "PDF file inputs & hybrid retrieval",
+        "description": "Prepare multimodal agents to reason over scanned filings and signed rulings without leaving compliance boundaries.",
+        "badge": "Multimodal",
+        "features": [
+          "Residency-aware ingestion and provenance logging",
+          "OCR fallbacks with File Search chunk refresh",
+          "Workspace telemetry for ingestion status and guardrails",
+          "Checklist for aligning exports and disclosures"
+        ]
+      }
+    }
   },
   "actions": {
     "newResearch": "New research",

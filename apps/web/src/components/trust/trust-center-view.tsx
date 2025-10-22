@@ -34,11 +34,13 @@ export function TrustCenterView({ messages }: TrustCenterViewProps) {
 
   const trustMessages = messages.trust;
   const loadingText = messages.admin.loadingShort;
-  const publications = publicationsQuery.data?.publications ?? [];
+  const publications = publicationsQuery.data?.publications;
+  const publicationCount = publications?.length ?? 0;
 
   const publicationsByCategory = useMemo(() => {
-    const groups = new Map<string, typeof publications>();
-    for (const publication of publications) {
+    const source = publications ?? [];
+    const groups = new Map<string, typeof source>();
+    for (const publication of source) {
       const key = publication.category ?? 'general';
       const bucket = groups.get(key);
       if (bucket) {
@@ -76,9 +78,9 @@ export function TrustCenterView({ messages }: TrustCenterViewProps) {
           <p className="text-sm text-slate-400">{trustMessages.publicationsDescription}</p>
         </CardHeader>
         <CardContent className="space-y-5">
-          {publicationsQuery.isLoading && publications.length === 0 ? (
+          {publicationsQuery.isLoading && publicationCount === 0 ? (
             <p className="text-sm text-slate-400">{loadingText}</p>
-          ) : publications.length === 0 ? (
+          ) : publicationCount === 0 ? (
             <p className="text-sm text-slate-400">{trustMessages.publicationsEmpty}</p>
           ) : (
             publicationsByCategory.map(({ category, items }) => {

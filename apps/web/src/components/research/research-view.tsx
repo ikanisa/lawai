@@ -409,8 +409,6 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     trustMessages.hitlRequestFailed,
     locale,
     hitlMessage,
-    requestHitlReview,
-    sendTelemetryEvent,
     online,
   ]);
 
@@ -459,18 +457,20 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
   const verificationNotes = verification?.notes ?? [];
   const verificationStatus = verification?.status ?? null;
 
+  const latestRunId = latestRun?.runId ?? null;
+  const latestRunHitlRequired = Boolean(
+    latestRun?.data?.risk.hitl_required ?? latestRun?.trustPanel?.risk?.hitlRequired ?? false,
+  );
+
   useEffect(() => {
-    if (!latestRun?.runId) {
+    if (!latestRunId) {
       setHitlQueued(false);
       setHitlRequestPending(false);
       return;
     }
-    const requiresHitl = Boolean(
-      latestRun.data?.risk.hitl_required ?? latestRun.trustPanel?.risk?.hitlRequired ?? false,
-    );
-    setHitlQueued(requiresHitl);
+    setHitlQueued(latestRunHitlRequired);
     setHitlRequestPending(false);
-  }, [latestRun?.runId]);
+  }, [latestRunId, latestRunHitlRequired]);
 
   const fallbackViolationHosts = useMemo(() => {
     if (allowlistViolations.length === 0) return [] as string[];
