@@ -1,5 +1,5 @@
 import { createApp } from './app.js';
-import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
 import type { IRACPayload } from '@avocat-ai/shared';
 import { z } from 'zod';
@@ -8,11 +8,12 @@ import { IRACPayloadSchema } from './schemas/irac.js';
 import { getOpenAI, logOpenAIDebug, setOpenAILogger } from './openai.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent-wrapper.js';
 import { summariseDocumentFromPayload } from './summarization.js';
+import { registerComplianceRoutes } from './domain/compliance/routes.js';
 // Defer finance workers to runtime without affecting typecheck
 try {
   const dyn = new Function('p', 'return import(p)');
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  (dyn as any)('./finance-workers.js');
+  void Promise.resolve((dyn as any)('./finance-workers.js')).catch(() => undefined);
 } catch {}
 import { z as zod } from 'zod';
 import {
@@ -61,7 +62,7 @@ import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
 import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
-import { InMemoryRateLimiter } from './rate-limit.js';
+import { InMemoryRateLimiter, SupabaseRateLimiter, createRateLimitPreHandler } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
@@ -72,6 +73,73 @@ setOpenAILogger(app.log);
 
 // Basic rate limits for public-ish endpoints
 const telemetryLimiter = new InMemoryRateLimiter({ limit: 60, windowMs: 60_000 });
+
+const sensitiveRateLimiter = new SupabaseRateLimiter({
+  supabase,
+  limit: 30,
+  windowSeconds: 60,
+  prefix: 'sensitive',
+});
+
+const complianceAcknowledgementsRateLimit = createRateLimitPreHandler({
+  limiter: sensitiveRateLimiter,
+  keyGenerator: (request) => {
+    const userHeader = request.headers['x-user-id'];
+    const orgHeader = request.headers['x-org-id'];
+    if (typeof userHeader === 'string' && typeof orgHeader === 'string') {
+      return `${orgHeader}:${userHeader}:compliance`;
+    }
+    return null;
+  },
+});
+
+const complianceStatusRateLimit = createRateLimitPreHandler({
+  limiter: sensitiveRateLimiter,
+  keyGenerator: (request) => {
+    const userHeader = request.headers['x-user-id'];
+    const orgHeader = request.headers['x-org-id'];
+    if (typeof userHeader === 'string' && typeof orgHeader === 'string') {
+      return `${orgHeader}:${userHeader}:compliance-status`;
+    }
+    return null;
+  },
+});
+
+const runExecutionRateLimit = createRateLimitPreHandler({
+  limiter: sensitiveRateLimiter,
+  keyGenerator: (request) => {
+    const body = request.body as { orgId?: unknown; userId?: unknown } | undefined;
+    const bodyOrg = typeof body?.orgId === 'string' ? body.orgId : undefined;
+    const bodyUser = typeof body?.userId === 'string' ? body.userId : undefined;
+    const orgHeader = typeof request.headers['x-org-id'] === 'string' ? (request.headers['x-org-id'] as string) : undefined;
+    const userHeader = typeof request.headers['x-user-id'] === 'string' ? (request.headers['x-user-id'] as string) : undefined;
+    const orgId = bodyOrg ?? orgHeader ?? null;
+    const userId = bodyUser ?? userHeader ?? null;
+    if (orgId && userId) {
+      return `${orgId}:${userId}:runs`;
+    }
+    return request.ip ? `${request.ip}:runs` : null;
+  },
+});
+
+const securityRateLimit = createRateLimitPreHandler({
+  limiter: sensitiveRateLimiter,
+  keyGenerator: (request) => {
+    const userHeader = request.headers['x-user-id'];
+    const orgHeader = request.headers['x-org-id'];
+    if (typeof userHeader === 'string' && typeof orgHeader === 'string') {
+      return `${orgHeader}:${userHeader}:security`;
+    }
+    return request.ip ? `${request.ip}:security` : null;
+  },
+});
+
+await registerComplianceRoutes(app, context, {
+  rateLimiters: {
+    acknowledgements: complianceAcknowledgementsRateLimit,
+    status: complianceStatusRateLimit,
+  },
+});
 
 async function embedQuery(text: string): Promise<number[]> {
   const openai = getOpenAI();
@@ -94,265 +162,6 @@ async function embedQuery(text: string): Promise<number[]> {
     throw new Error(message);
   }
 }
-
-const COMPLIANCE_ACK_TYPES = {
-  consent: 'ai_assist',
-  councilOfEurope: 'council_of_europe_disclosure',
-} as const;
-
-type AcknowledgementEvent = {
-  type: string;
-  version: string;
-  created_at: string | null;
-};
-
-const toStringArray = (input: unknown): string[] =>
-  Array.isArray(input) ? input.filter((value): value is string => typeof value === 'string') : [];
-
-async function fetchAcknowledgementEvents(orgId: string, userId: string): Promise<AcknowledgementEvent[]> {
-  const { data, error } = await supabase
-    .from('consent_events')
-    .select('consent_type, version, created_at, org_id')
-    .eq('user_id', userId)
-    .or(`org_id.eq.${orgId},org_id.is.null`)
-    .in('consent_type', [COMPLIANCE_ACK_TYPES.consent, COMPLIANCE_ACK_TYPES.councilOfEurope])
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    throw error;
-  }
-
-  const rows = (data ?? []) as Array<{ consent_type?: unknown; version?: unknown; created_at?: string | null }>;
-  const events: AcknowledgementEvent[] = [];
-  for (const row of rows) {
-    if (typeof row.consent_type !== 'string' || typeof row.version !== 'string') {
-      continue;
-    }
-    events.push({ type: row.consent_type, version: row.version, created_at: row.created_at ?? null });
-  }
-  return events;
-}
-
-type ConsentEventInsert = {
-  org_id: string | null;
-  user_id: string;
-  consent_type: string;
-  version: string;
-};
-
-async function recordAcknowledgementEvents(
-  request: FastifyRequest,
-  orgId: string,
-  userId: string,
-  records: ConsentEventInsert[],
-) {
-  if (records.length === 0) {
-    return;
-  }
-
-  await withRequestSpan(
-    request,
-    {
-      name: 'compliance.acknowledgements.persist',
-      attributes: { orgId, userId, recordCount: records.length },
-    },
-    async ({ logger, setAttribute }) => {
-      const payload = records.map((record) => ({
-        org_id: record.org_id,
-        user_id: record.user_id,
-        consent_type: record.consent_type,
-        version: record.version,
-      }));
-
-      const { error } = await supabase.rpc('record_consent_events', { events: payload });
-
-      if (error) {
-        setAttribute('errorCode', error.code ?? 'unknown');
-        logger.error({ err: error }, 'compliance_ack_persist_failed');
-        throw error;
-      }
-
-      setAttribute('persisted', true);
-      incrementCounter('compliance_acknowledgements.recorded', {
-        consent_types: records
-          .map((record) => record.consent_type)
-          .sort()
-          .join(',') || 'none',
-      });
-    },
-  );
-}
-
-function summariseAcknowledgements(
-  access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>,
-  events: AcknowledgementEvent[],
-) {
-  const latestByType = new Map<string, { version: string; created_at: string | null }>();
-  for (const event of events) {
-    if (!latestByType.has(event.type)) {
-      latestByType.set(event.type, { version: event.version, created_at: event.created_at });
-    }
-  }
-
-  const consentRequirement = access.consent.requirement;
-  const councilRequirement = access.councilOfEurope.requirement;
-  const consentAck = latestByType.get(COMPLIANCE_ACK_TYPES.consent);
-  const councilAck = latestByType.get(COMPLIANCE_ACK_TYPES.councilOfEurope);
-
-  const consentSatisfied =
-    !consentRequirement || consentAck?.version === consentRequirement.version || access.consent.latest?.version === consentRequirement.version;
-  const councilSatisfied =
-    !councilRequirement?.version || councilAck?.version === councilRequirement.version || access.councilOfEurope.acknowledgedVersion === councilRequirement.version;
-
-  return {
-    consent: {
-      requiredVersion: consentRequirement?.version ?? null,
-      acknowledgedVersion: consentAck?.version ?? access.consent.latest?.version ?? null,
-      acknowledgedAt: consentAck?.created_at ?? null,
-      satisfied: consentSatisfied,
-    },
-    councilOfEurope: {
-      requiredVersion: councilRequirement?.version ?? null,
-      acknowledgedVersion: councilAck?.version ?? access.councilOfEurope.acknowledgedVersion ?? null,
-      acknowledgedAt: councilAck?.created_at ?? null,
-      satisfied: councilSatisfied,
-    },
-  };
-}
-
-type ComplianceAssessment = {
-  fria: { required: boolean; reasons: string[] };
-  cepej: { passed: boolean; violations: string[] };
-  statute: { passed: boolean; violations: string[] };
-  disclosures: {
-    consentSatisfied: boolean;
-    councilSatisfied: boolean;
-    missing: string[];
-    requiredConsentVersion: string | null;
-    acknowledgedConsentVersion: string | null;
-    requiredCoeVersion: string | null;
-    acknowledgedCoeVersion: string | null;
-  };
-};
-
-function mergeDisclosuresWithAcknowledgements(
-  assessment: ComplianceAssessment,
-  acknowledgements: ReturnType<typeof summariseAcknowledgements>,
-): ComplianceAssessment['disclosures'] {
-  const missing = new Set(assessment.disclosures.missing);
-  if (!acknowledgements.consent.satisfied) {
-    missing.add('consent');
-  }
-  if (!acknowledgements.councilOfEurope.satisfied) {
-    missing.add('council_of_europe');
-  }
-
-  return {
-    ...assessment.disclosures,
-    consentSatisfied: acknowledgements.consent.satisfied,
-    councilSatisfied: acknowledgements.councilOfEurope.satisfied,
-    missing: Array.from(missing),
-    requiredConsentVersion: acknowledgements.consent.requiredVersion,
-    acknowledgedConsentVersion: acknowledgements.consent.acknowledgedVersion,
-    requiredCoeVersion: acknowledgements.councilOfEurope.requiredVersion,
-    acknowledgedCoeVersion: acknowledgements.councilOfEurope.acknowledgedVersion,
-  };
-}
-
-class ResidencyError extends Error {
-  statusCode: number;
-
-  constructor(message: string, statusCode: number) {
-    super(message);
-    this.statusCode = statusCode;
-  }
-}
-
-function extractResidencyFromPath(path?: string | null): string | null {
-  if (!path) {
-    return null;
-  }
-  const segments = path.split('/');
-  return segments.length > 1 ? segments[1] ?? null : null;
-}
-
-function collectAllowedResidencyZones(
-  access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>,
-): string[] {
-  const zones = new Set<string>();
-
-  const append = (value: string | null | undefined) => {
-    if (!value) return;
-    const normalized = value.trim().toLowerCase();
-    if (normalized) {
-      zones.add(normalized);
-    }
-  };
-
-  if (Array.isArray(access.policies.residencyZones)) {
-    for (const zone of access.policies.residencyZones) {
-      append(zone);
-    }
-  }
-  append(access.policies.residencyZone ?? null);
-
-  return zones.size > 0 ? Array.from(zones) : [];
-}
-
-async function determineResidencyZone(
-  orgId: string,
-  access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>,
-  requestedZone?: string | null,
-): Promise<string> {
-  const requested = typeof requestedZone === 'string' ? requestedZone.trim().toLowerCase() : '';
-  const candidates = [
-    requested,
-    ...collectAllowedResidencyZones(access),
-  ].filter((value, index, array) => value && array.indexOf(value) === index);
-
-  const zone = (candidates[0] ?? 'eu').trim().toLowerCase();
-
-  const { data: isAllowedZone, error: allowedError } = await supabase.rpc('storage_residency_allowed', { code: zone });
-  if (allowedError) {
-    throw new ResidencyError('residency_validation_failed', 500);
-  }
-  if (isAllowedZone !== true) {
-    throw new ResidencyError('residency_zone_invalid', 400);
-  }
-
-  const { data: orgAllowed, error: orgAllowedError } = await supabase.rpc('org_residency_allows', {
-    org_uuid: orgId,
-    zone,
-  });
-  if (orgAllowedError) {
-    throw new ResidencyError('residency_validation_failed', 500);
-  }
-  if (orgAllowed !== true) {
-    throw new ResidencyError('residency_zone_restricted', 428);
-  }
-
-  return zone;
-}
-
-const complianceAckSchema = z
-  .object({
-    consent: z
-      .object({
-        type: z.string().min(1),
-        version: z.string().min(1),
-      })
-      .nullable()
-      .optional(),
-    councilOfEurope: z
-      .object({
-        version: z.string().min(1),
-      })
-      .nullable()
-      .optional(),
-  })
-  .refine((value) => Boolean(value.consent || value.councilOfEurope), {
-    message: 'At least one acknowledgement must be provided.',
-  });
 
 const regulatorDigestSchema = z
   .object({
@@ -722,286 +531,6 @@ function resolveDateRange(startParam?: string, endParam?: string): { start: stri
   return { start: startIso, end: endIso };
 }
 
-app.get('/compliance/acknowledgements', async (request, reply) => {
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(401).send({ error: 'unauthorized' });
-  }
-  const orgHeader = request.headers['x-org-id'];
-  if (!orgHeader || typeof orgHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-org-id header is required' });
-  }
-
-  let access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>;
-  try {
-    access = await withRequestSpan(
-      request,
-      {
-        name: 'compliance.acknowledgements.authorize',
-        attributes: { orgId: orgHeader, userId: userHeader },
-      },
-      async () => authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request),
-    );
-  } catch (error) {
-    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
-    return reply.code(status).send({ error: 'forbidden' });
-  }
-
-  try {
-    const events = await withRequestSpan(
-      request,
-      {
-        name: 'compliance.acknowledgements.fetch',
-        attributes: { orgId: orgHeader, userId: userHeader },
-      },
-      async ({ setAttribute }) => {
-        const result = await fetchAcknowledgementEvents(orgHeader, userHeader);
-        setAttribute('eventCount', result.length);
-        return result;
-      },
-    );
-
-    const acknowledgements = summariseAcknowledgements(access, events);
-    return reply.send({ orgId: orgHeader, userId: userHeader, acknowledgements });
-  } catch (error) {
-    request.log.error({ err: error }, 'compliance_ack_fetch_failed');
-    return reply.code(500).send({ error: 'compliance_ack_fetch_failed' });
-  }
-});
-
-app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledgements', async (request, reply) => {
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(401).send({ error: 'unauthorized' });
-  }
-  const orgHeader = request.headers['x-org-id'];
-  if (!orgHeader || typeof orgHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-org-id header is required' });
-  }
-
-  const parsed = complianceAckSchema.safeParse(request.body ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
-  }
-
-  let access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>;
-  try {
-    access = await withRequestSpan(
-      request,
-      {
-        name: 'compliance.acknowledgements.authorize',
-        attributes: { orgId: orgHeader, userId: userHeader },
-      },
-      async () => authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request),
-    );
-  } catch (error) {
-    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
-    return reply.code(status).send({ error: 'forbidden' });
-  }
-
-  const records: ConsentEventInsert[] = [];
-  if (parsed.data.consent) {
-    records.push({
-      user_id: userHeader,
-      org_id: orgHeader,
-      consent_type: parsed.data.consent.type,
-      version: parsed.data.consent.version,
-    });
-  }
-  if (parsed.data.councilOfEurope) {
-    records.push({
-      user_id: userHeader,
-      org_id: orgHeader,
-      consent_type: COMPLIANCE_ACK_TYPES.councilOfEurope,
-      version: parsed.data.councilOfEurope.version,
-    });
-  }
-
-  try {
-    await recordAcknowledgementEvents(request, orgHeader, userHeader, records);
-  } catch (error) {
-    return reply.code(500).send({ error: 'compliance_ack_insert_failed' });
-  }
-
-  const events = await withRequestSpan(
-    request,
-    {
-      name: 'compliance.acknowledgements.refresh',
-      attributes: { orgId: orgHeader, userId: userHeader },
-    },
-    async ({ setAttribute }) => {
-      const result = await fetchAcknowledgementEvents(orgHeader, userHeader);
-      setAttribute('eventCount', result.length);
-      return result;
-    },
-  );
-
-  const acknowledgements = summariseAcknowledgements(access, events);
-  return reply.send({ orgId: orgHeader, userId: userHeader, acknowledgements });
-});
-
-app.get<{
-  Querystring: { limit?: string };
-}>('/compliance/status', async (request, reply) => {
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(401).send({ error: 'unauthorized' });
-  }
-  const orgHeader = request.headers['x-org-id'];
-  if (!orgHeader || typeof orgHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-org-id header is required' });
-  }
-
-  let access;
-  try {
-    access = await authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request);
-  } catch (error) {
-    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
-    return reply.code(status).send({ error: 'forbidden' });
-  }
-
-  const rawLimit = (request.query?.limit ?? '5') as string;
-  const parsedLimit = Number.parseInt(rawLimit, 10);
-  const limit = Number.isFinite(parsedLimit) ? Math.min(25, Math.max(1, Math.floor(parsedLimit))) : 5;
-
-  const [assessmentsResult, events] = await Promise.all([
-    supabase
-      .from('compliance_assessments')
-      .select(
-        'run_id, created_at, fria_required, fria_reasons, cepej_passed, cepej_violations, statute_passed, statute_violations, disclosures_missing',
-      )
-      .eq('org_id', orgHeader)
-      .order('created_at', { ascending: false })
-      .limit(limit),
-    fetchAcknowledgementEvents(orgHeader, userHeader),
-  ]);
-
-  if (assessmentsResult.error) {
-    request.log.error({ err: assessmentsResult.error }, 'compliance_status_query_failed');
-    return reply.code(500).send({ error: 'compliance_status_query_failed' });
-  }
-
-  const acknowledgements = summariseAcknowledgements(access, events);
-
-  const history = (assessmentsResult.data ?? []).map((row) => {
-    const missing = toStringArray((row as { disclosures_missing?: unknown }).disclosures_missing);
-    const assessment: ComplianceAssessment = {
-      fria: {
-        required: Boolean((row as { fria_required?: boolean | null }).fria_required),
-        reasons: toStringArray((row as { fria_reasons?: unknown }).fria_reasons),
-      },
-      cepej: {
-        passed: (row as { cepej_passed?: boolean | null }).cepej_passed ?? true,
-        violations: toStringArray((row as { cepej_violations?: unknown }).cepej_violations),
-      },
-      statute: {
-        passed: (row as { statute_passed?: boolean | null }).statute_passed ?? true,
-        violations: toStringArray((row as { statute_violations?: unknown }).statute_violations),
-      },
-      disclosures: {
-        consentSatisfied: !missing.includes('consent'),
-        councilSatisfied: !missing.includes('council_of_europe'),
-        missing,
-        requiredConsentVersion: null,
-        acknowledgedConsentVersion: null,
-        requiredCoeVersion: null,
-        acknowledgedCoeVersion: null,
-      },
-    };
-
-    return {
-      runId: (row as { run_id?: string | null }).run_id ?? null,
-      createdAt: (row as { created_at?: string | null }).created_at ?? null,
-      assessment,
-    };
-  });
-
-  if (history.length > 0) {
-    history[0].assessment = {
-      ...history[0].assessment,
-      disclosures: mergeDisclosuresWithAcknowledgements(history[0].assessment, acknowledgements),
-    };
-  }
-
-  const totals = history.reduce(
-    (acc, entry) => {
-      if (entry.assessment.fria.required) acc.friaRequired += 1;
-      if (!entry.assessment.cepej.passed) acc.cepejViolations += 1;
-      if (!entry.assessment.statute.passed) acc.statuteViolations += 1;
-      if (entry.assessment.disclosures.missing.length > 0) acc.disclosureGaps += 1;
-      return acc;
-    },
-    { total: history.length, friaRequired: 0, cepejViolations: 0, statuteViolations: 0, disclosureGaps: 0 },
-  );
-
-  return reply.send({
-    orgId: orgHeader,
-    userId: userHeader,
-    acknowledgements,
-    latest: history[0] ?? null,
-    history,
-    totals,
-  });
-});
-
-app.post<{ Body: z.infer<typeof regulatorDigestSchema> }>('/launch/digests', async (request, reply) => {
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(401).send({ error: 'unauthorized' });
-  }
-  const orgHeader = request.headers['x-org-id'];
-  if (!orgHeader || typeof orgHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-org-id header is required' });
-  }
-
-  const parsed = regulatorDigestSchema.safeParse(request.body ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
-  }
-
-  try {
-    await authorizeRequestWithGuards('governance:dispatch', orgHeader, userHeader, request);
-  } catch (error) {
-    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
-    return reply.code(status).send({ error: 'forbidden' });
-  }
-
-  try {
-    const digest = await withRequestSpan(
-      request,
-      {
-        name: 'launch.regulator_digests.enqueue',
-        attributes: {
-          orgId: orgHeader,
-          userId: userHeader,
-          channel: parsed.data.channel,
-          frequency: parsed.data.frequency,
-        },
-      },
-      async ({ setAttribute }) => {
-        const entry = enqueueRegulatorDigest({
-          ...parsed.data,
-          orgId: orgHeader,
-          requestedBy: userHeader,
-        });
-        setAttribute('digestId', entry.id);
-        setAttribute('recipientCount', entry.recipients.length);
-        return entry;
-      },
-    );
-
-    incrementCounter('launch.regulator_digest.queued', {
-      channel: digest.channel,
-      frequency: digest.frequency,
-    });
-
-    return reply.code(201).send({ digest });
-  } catch (error) {
-    request.log.error({ err: error }, 'regulator_digest_enqueue_failed');
-    return reply.code(500).send({ error: 'regulator_digest_enqueue_failed' });
-  }
-});
-
 app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/digests', async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
@@ -1051,7 +580,7 @@ app.get('/healthz', async () => ({ status: 'ok' }));
 
 app.post<{
   Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
-}>('/runs', async (request, reply) => {
+}>('/runs', { preHandler: [runExecutionRateLimit] }, async (request, reply) => {
   const bodySchema = z.object({
     question: z.string().min(1),
     context: z.string().optional(),
@@ -5530,6 +5059,7 @@ app.get<{
       },
       headers: { type: 'object', properties: { 'x-user-id': { type: 'string' } }, required: ['x-user-id'] },
     },
+    preHandler: [securityRateLimit],
   },
   async (request, reply) => {
   const { orgId, userId, includeRevoked, limit } = request.query;
@@ -5604,7 +5134,7 @@ app.get<{
 app.post<{
   Body: { orgId?: string; sessionId?: string; reason?: string | null };
 }>('/security/devices/revoke',
-  { schema: { headers: { type: 'object', properties: { 'x-user-id': { type: 'string' } }, required: ['x-user-id'] } } },
+  { schema: { headers: { type: 'object', properties: { 'x-user-id': { type: 'string' } }, required: ['x-user-id'] } }, preHandler: [securityRateLimit] },
   async (request, reply) => {
   const bodySchema = z.object({
     orgId: z.string().uuid(),
