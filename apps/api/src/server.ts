@@ -3,7 +3,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
 import type { IRACPayload } from '@avocat-ai/shared';
 import { z } from 'zod';
-import { env } from './config.js';
+import { env, rateLimitConfig } from './config.js';
 import { IRACPayloadSchema } from './schemas/irac.js';
 import { getOpenAI, logOpenAIDebug, setOpenAILogger } from './openai.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent-wrapper.js';
@@ -61,7 +61,7 @@ import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
 import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
-import { InMemoryRateLimiter } from './rate-limit.js';
+import { enforceRateLimit } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
@@ -71,7 +71,11 @@ const { app, context } = await createApp();
 setOpenAILogger(app.log);
 
 // Basic rate limits for public-ish endpoints
-const telemetryLimiter = new InMemoryRateLimiter({ limit: 60, windowMs: 60_000 });
+const limiterFactory = context.rateLimiter.factory;
+const telemetryLimiter = limiterFactory(rateLimitConfig.buckets.telemetry);
+const runsLimiter = limiterFactory(rateLimitConfig.buckets.runs);
+const complianceLimiter = limiterFactory(rateLimitConfig.buckets.compliance);
+const workspaceLimiter = context.rateLimiter.workspace;
 
 async function embedQuery(text: string): Promise<number[]> {
   const openai = getOpenAI();
@@ -732,6 +736,11 @@ app.get('/compliance/acknowledgements', async (request, reply) => {
     return reply.code(400).send({ error: 'x-org-id header is required' });
   }
 
+  const allowed = await enforceRateLimit(complianceLimiter, request, reply, `compliance:${orgHeader}:${userHeader}`);
+  if (!allowed) {
+    return;
+  }
+
   let access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>;
   try {
     access = await withRequestSpan(
@@ -777,6 +786,11 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
   const orgHeader = request.headers['x-org-id'];
   if (!orgHeader || typeof orgHeader !== 'string') {
     return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+
+  const allowed = await enforceRateLimit(complianceLimiter, request, reply, `compliance:${orgHeader}:${userHeader}`);
+  if (!allowed) {
+    return;
   }
 
   const parsed = complianceAckSchema.safeParse(request.body ?? {});
@@ -850,6 +864,11 @@ app.get<{
   const orgHeader = request.headers['x-org-id'];
   if (!orgHeader || typeof orgHeader !== 'string') {
     return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+
+  const allowed = await enforceRateLimit(complianceLimiter, request, reply, `compliance:${orgHeader}:${userHeader}`);
+  if (!allowed) {
+    return;
   }
 
   let access;
@@ -1065,6 +1084,11 @@ app.post<{
   }
   const { question, context, orgId, userId, confidentialMode } = parsed.data;
 
+  const allowed = await enforceRateLimit(runsLimiter, request, reply, `runs:${orgId}:${userId}`);
+  if (!allowed) {
+    return;
+  }
+
   try {
     const access = await authorizeRequestWithGuards('runs:execute', orgId, userId, request);
     const effectiveConfidential = access.policies.confidentialMode || Boolean(confidentialMode);
@@ -1117,6 +1141,11 @@ app.get<{ Querystring: { orgId?: string } }>(
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  const allowed = await enforceRateLimit(workspaceLimiter, request, reply, `workspace:${orgId}:${userHeader}`);
+  if (!allowed) {
+    return;
   }
 
   try {
@@ -3825,17 +3854,11 @@ app.post<{
     },
   },
   async (request, reply) => {
-    // Rate-limit by IP (or x-forwarded-for fallback)
-    try {
-      const ipHeader = (request.headers['x-forwarded-for'] ?? request.ip ?? '').toString();
-      const ip = ipHeader.split(',')[0].trim();
-      const hit = telemetryLimiter.hit(ip || 'unknown');
-      if (!hit.allowed) {
-        reply.header('Retry-After', Math.ceil((hit.resetAt - Date.now()) / 1000));
-        return reply.code(429).send({ error: 'rate_limited' });
-      }
-    } catch (_err) {
-      // ignore limiter failures
+    const ipHeader = (request.headers['x-forwarded-for'] ?? request.ip ?? '').toString();
+    const ip = ipHeader.split(',')[0]?.trim() || 'unknown';
+    const allowed = await enforceRateLimit(telemetryLimiter, request, reply, `telemetry:${ip}`);
+    if (!allowed) {
+      return;
     }
     const { orgId, userId, eventName, payload } = request.body ?? {};
 
@@ -3879,6 +3902,11 @@ app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  const allowed = await enforceRateLimit(workspaceLimiter, request, reply, `workspace:${orgId}:${userHeader}`);
+  if (!allowed) {
+    return;
   }
 
   try {

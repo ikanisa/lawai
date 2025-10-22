@@ -34,6 +34,18 @@ const envSchema = z.object({
   C2PA_SIGNING_KEY_ID: z.string().optional(),
   // Governance / policy tagging
   POLICY_VERSION: z.string().optional(),
+  // Rate limiter configuration
+  RATE_LIMITER_DRIVER: z.enum(['memory', 'supabase']).default('memory'),
+  RATE_LIMITER_NAMESPACE: z.string().default('api'),
+  RATE_LIMITER_SUPABASE_FUNCTION: z.string().default('increment_rate_limit'),
+  RATE_LIMIT_RUNS_LIMIT: z.coerce.number().default(30),
+  RATE_LIMIT_RUNS_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_COMPLIANCE_LIMIT: z.coerce.number().default(120),
+  RATE_LIMIT_COMPLIANCE_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_WORKSPACE_LIMIT: z.coerce.number().default(60),
+  RATE_LIMIT_WORKSPACE_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_TELEMETRY_LIMIT: z.coerce.number().default(60),
+  RATE_LIMIT_TELEMETRY_WINDOW_MS: z.coerce.number().default(60_000),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -87,3 +99,15 @@ export function loadAllowlistOverride(): string[] | null {
     return null;
   }
 }
+
+export const rateLimitConfig = {
+  driver: env.RATE_LIMITER_DRIVER,
+  namespace: env.RATE_LIMITER_NAMESPACE,
+  functionName: env.RATE_LIMITER_SUPABASE_FUNCTION,
+  buckets: {
+    runs: { limit: env.RATE_LIMIT_RUNS_LIMIT, windowMs: env.RATE_LIMIT_RUNS_WINDOW_MS },
+    compliance: { limit: env.RATE_LIMIT_COMPLIANCE_LIMIT, windowMs: env.RATE_LIMIT_COMPLIANCE_WINDOW_MS },
+    workspace: { limit: env.RATE_LIMIT_WORKSPACE_LIMIT, windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_MS },
+    telemetry: { limit: env.RATE_LIMIT_TELEMETRY_LIMIT, windowMs: env.RATE_LIMIT_TELEMETRY_WINDOW_MS },
+  },
+};

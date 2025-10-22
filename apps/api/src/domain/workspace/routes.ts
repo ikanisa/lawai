@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../../types/context';
+import { enforceRateLimit } from '../../rate-limit';
 
 const workspaceQuerySchema = z.object({
   orgId: z.string().uuid(),
@@ -14,7 +15,14 @@ export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppCont
     }
 
     const { orgId } = parse.data;
-    const { supabase } = ctx;
+    const { supabase, rateLimiter } = ctx;
+
+    const userHeader = request.headers['x-user-id'];
+    const limiterKey = `${orgId}:${typeof userHeader === 'string' ? userHeader : request.ip ?? 'anonymous'}`;
+    const allowed = await enforceRateLimit(rateLimiter.workspace, request, reply, limiterKey);
+    if (!allowed) {
+      return;
+    }
 
     // TODO: move existing implementation from server.ts here.
     const { data, error } = await supabase

@@ -12,8 +12,9 @@ import { registerResearchRoutes } from './routes/research/index.js';
 import { registerUploadRoutes } from './routes/upload/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
 import type { AppContext } from './types/context';
-import { env } from './config.js';
+import { env, rateLimitConfig } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
+import { createRateLimiterFactory } from './rate-limit.js';
 
 export async function createApp() {
   const app = Fastify({
@@ -40,6 +41,14 @@ export async function createApp() {
 
   const supabase = serviceClient;
 
+  const rateLimiterFactory = createRateLimiterFactory({
+    driver: rateLimitConfig.driver,
+    namespace: rateLimitConfig.namespace,
+    functionName: rateLimitConfig.functionName,
+    supabase: rateLimitConfig.driver === 'supabase' ? supabase : undefined,
+    logger: app.log,
+  });
+
   const context: AppContext = {
     supabase,
     config: {
@@ -47,6 +56,10 @@ export async function createApp() {
         apiKey: env.OPENAI_API_KEY ?? '',
         baseUrl: process.env.OPENAI_BASE_URL,
       },
+    },
+    rateLimiter: {
+      factory: rateLimiterFactory,
+      workspace: rateLimiterFactory(rateLimitConfig.buckets.workspace),
     },
   };
 
