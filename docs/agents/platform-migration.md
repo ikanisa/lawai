@@ -27,3 +27,4 @@
 - [ ] Update `docs/runbooks/openai-foundation.md` with finance-specific guardrail mapping once Platform resources are applied.
 - [ ] Create Agent Builder walkthrough (screenshots/config steps) for onboarding new team members.
 - [ ] Publish ChatKit session contract (API + data schema) for frontend consumers.
+- [ ] Review [File Inputs workflow](./pdf-inputs.md) alongside `/apps/api/src/routes/upload/` + `/apps/api/src/routes/corpus/data.ts` to confirm PDF intake parity and Supabase telemetry visibility after Agent Platform migration.

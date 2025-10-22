@@ -287,6 +287,17 @@ export const SnapshotEntrySchema = z
     sizeMb: z.number(),
 })
     .strict();
+export const UploadDocumentEntrySchema = z
+    .object({
+    id: z.string(),
+    name: z.string(),
+    createdAt: z.string(),
+    residencyZone: z.string().nullable().optional(),
+    status: z
+        .enum(['queued', 'processing', 'indexed', 'quarantined', 'failed'])
+        .optional(),
+})
+    .strict();
 export const IngestionJobSchema = z
     .object({
     id: z.string(),
@@ -298,12 +309,20 @@ export const IngestionJobSchema = z
     note: z.string().optional(),
 })
     .strict();
+export const ResidencySummarySchema = z
+    .object({
+    activeZone: z.string().nullable(),
+    allowedZones: z.array(z.string()).nullable(),
+})
+    .strict();
 export const CorpusDashboardDataSchema = z
     .object({
     allowlist: z.array(AllowlistSourceSchema),
     integrations: z.array(IntegrationStatusSchema),
     snapshots: z.array(SnapshotEntrySchema),
     ingestionJobs: z.array(IngestionJobSchema),
+    uploads: z.array(UploadDocumentEntrySchema),
+    residency: ResidencySummarySchema.optional(),
 })
     .strict();
 export const PolicyConfigurationSchema = z
@@ -315,11 +334,27 @@ export const PolicyConfigurationSchema = z
     confidential_mode: z.boolean(),
 })
     .strict();
+export const UploadContractSchema = z
+    .object({
+    bucket: z.string(),
+    path: z.string(),
+    url: z.string().url(),
+    token: z.string(),
+    expiresAt: z.string(),
+})
+    .strict();
 export const UploadResponseSchema = z
     .object({
     uploadId: z.string(),
     status: z.enum(['queued', 'processing', 'indexed']),
     receivedAt: z.string(),
+    upload: UploadContractSchema,
+    quarantine: z
+        .object({
+        reason: z.string(),
+        status: z.enum(['pending', 'resolved']).default('pending'),
+    })
+        .optional(),
 })
     .strict();
 export const VoiceToolIntentStatusSchema = z.enum([

@@ -50,6 +50,9 @@
 - `apps/api/src/agent.ts` – exports `TOOL_NAMES`, a single source of truth for custom tool identifiers consumed by both runtime handlers and the manifest export; extend this map when introducing a new tool to avoid name drift.
 - `apps/api/src/chatkit.ts` – initial in-memory session scaffold outlining the future ChatKit integration surface.
 
+## Workflow Guides
+- [File Inputs](./pdf-inputs.md) – PDF intake and tagging workflow with implementation pointers to `/apps/api/src/routes/upload/` and Supabase ingestion tables so migrations keep File Search parity across environments.
+
 ## Shared Resources & Guardrail Roadmap
 
 | Resource / Guardrail | Status | Notes |
