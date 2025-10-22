@@ -390,7 +390,64 @@ function summariseHybridSnippets(snippets: HybridSnippet[]): Record<string, unkn
   };
 }
 
-function createRunKey(input: AgentRunInput, routing: RoutingResult, confidentialMode: boolean): string {
+function normaliseLocation(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.toLowerCase();
+}
+
+function normaliseJurisdiction(code: string | null | undefined): string | null {
+  if (typeof code !== 'string') {
+    return null;
+  }
+  const trimmed = code.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.toUpperCase();
+}
+
+function normaliseConfidence(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null;
+  }
+  return Number(value.toFixed(3));
+}
+
+function serialiseRoutingHints(routing: RoutingResult): string {
+  const summary = {
+    primary: routing.primary
+      ? {
+          country: normaliseJurisdiction(routing.primary.country),
+          eu: Boolean(routing.primary.eu),
+          ohada: Boolean(routing.primary.ohada),
+          confidence: normaliseConfidence(routing.primary.confidence),
+          rationale: routing.primary.rationale ?? null,
+        }
+      : null,
+    candidates: routing.candidates.map((candidate) => ({
+      country: normaliseJurisdiction(candidate.country),
+      eu: Boolean(candidate.eu),
+      ohada: Boolean(candidate.ohada),
+      confidence: normaliseConfidence(candidate.confidence),
+      rationale: candidate.rationale ?? null,
+    })),
+    warnings: [...routing.warnings].sort(),
+  };
+  return JSON.stringify(summary);
+}
+
+function createRunKey(
+  input: AgentRunInput,
+  routing: RoutingResult,
+  confidentialMode: boolean,
+  options: { residencyOverride?: string | null; effectiveLocation?: string | null } = {},
+): string {
   const hash = createHash('sha256');
   hash.update(input.orgId);
   hash.update('|');
@@ -401,10 +458,14 @@ function createRunKey(input: AgentRunInput, routing: RoutingResult, confidential
   hash.update((input.context ?? '').trim());
   hash.update('|');
   hash.update(confidentialMode ? 'confidential' : 'standard');
-  if (routing.primary?.country) {
-    hash.update('|');
-    hash.update(routing.primary.country);
-  }
+  const override = normaliseLocation(options.residencyOverride ?? null) ?? 'none';
+  const effective = normaliseLocation(options.effectiveLocation ?? null) ?? 'none';
+  hash.update('|residency_override:');
+  hash.update(override);
+  hash.update('|effective_location:');
+  hash.update(effective);
+  hash.update('|routing_hints:');
+  hash.update(serialiseRoutingHints(routing));
   return hash.digest('hex');
 }
 
@@ -4013,7 +4074,15 @@ export async function runLegalAgent(
   const useStub = shouldUseStubAgent();
   const planner = await planRun(input, accessContext ?? null, useStub, toolLogs);
 
-  const runKey = createRunKey(input, planner.initialRouting, planner.context.confidentialMode);
+  const residencyOverride =
+    resolveResidencyZone(accessContext ?? null) ?? accessContext?.policies.residencyZone ?? null;
+  const derivedLocation = planner.initialRouting.primary?.country ?? null;
+  const effectiveLocation = residencyOverride ?? derivedLocation;
+
+  const runKey = createRunKey(input, planner.initialRouting, planner.context.confidentialMode, {
+    residencyOverride,
+    effectiveLocation,
+  });
   const existing = await findExistingRun(runKey, input.orgId);
   if (existing) {
     const payload: IRACPayload = {

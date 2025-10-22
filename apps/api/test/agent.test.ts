@@ -134,6 +134,9 @@ const defaultAccessContext = {
     ipAllowlistEnforced: false,
     consentRequirement: null,
     councilOfEuropeRequirement: null,
+    sensitiveTopicHitl: false,
+    residencyZone: null,
+    residencyZones: null,
   },
   rawPolicies: {},
   entitlements: new Map<string, { canRead: boolean; canWrite: boolean }>([
@@ -598,6 +601,49 @@ describe('runLegalAgent', () => {
     expect(runInsertMock).not.toHaveBeenCalled();
     expect(result.verification?.status).toBe('passed');
     expect(result.trustPanel?.caseQuality.items[0]?.score).toBeGreaterThan(0);
+  });
+
+  it('generates distinct cache keys for different residency overrides', async () => {
+    runMock.mockResolvedValue({
+      finalOutput: validPayload,
+    });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
+
+    const euContext = makeContext({
+      rawPolicies: { residency_zone: 'eu' },
+      policies: { ...defaultAccessContext.policies, residencyZone: 'eu', residencyZones: ['eu'] },
+    });
+
+    await runLegalAgent(
+      {
+        question: 'Analyse en France',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      euContext,
+    );
+
+    const firstKey = runInsertMock.mock.calls[0]?.[0]?.run_key;
+    expect(typeof firstKey).toBe('string');
+
+    const caContext = makeContext({
+      rawPolicies: { residency_zone: 'ca' },
+      policies: { ...defaultAccessContext.policies, residencyZone: 'ca', residencyZones: ['ca'] },
+    });
+
+    await runLegalAgent(
+      {
+        question: 'Analyse en France',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      caContext,
+    );
+
+    const secondKey = runInsertMock.mock.calls[1]?.[0]?.run_key;
+    expect(typeof secondKey).toBe('string');
+    expect(secondKey).not.toBe(firstKey);
   });
 
   it('disables web search when confidential mode is active', async () => {
