@@ -1409,7 +1409,7 @@ async function queryFileSearchResults(
   question: string,
   maxResults: number,
 ): Promise<Array<{ content: string; score: number; fileId: string | null }>> {
-  if (!env.OPENAI_VECTOR_STORE_AUTHORITIES_ID || env.OPENAI_VECTOR_STORE_AUTHORITIES_ID === 'vs_test') {
+  if (env.OPENAI_VECTOR_STORE_AUTHORITIES_ID === 'vs_test') {
     return [];
   }
 

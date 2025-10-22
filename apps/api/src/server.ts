@@ -12,7 +12,7 @@ import { summariseDocumentFromPayload } from './summarization.js';
 try {
   const dyn = new Function('p', 'return import(p)');
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  (dyn as any)('./finance-workers.js');
+  (dyn as any)('./finance-workers.js').catch(() => {});
 } catch {}
 import { z as zod } from 'zod';
 import {
@@ -3869,7 +3869,8 @@ app.post<{
   },
 );
 
-app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply) => {
+if (!app.hasRoute({ method: 'GET', url: '/workspace' })) {
+  app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply) => {
   const { orgId } = request.query;
 
   if (!orgId) {
@@ -3988,7 +3989,8 @@ app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply
     request.log.error({ err: error }, 'workspace overview failed');
     return reply.code(500).send({ error: 'workspace_failed' });
   }
-});
+  });
+}
 
 app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply) => {
   const { orgId } = request.query;
