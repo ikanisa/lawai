@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode, useEffect, useState } from 'react';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
-import { registerPwa } from '@/lib/pwa';
-import { PwaInstallProvider } from @/hooks/use-pwa-install';
+import { hasPwaConsent, isPwaFeatureEnabled, registerPwa } from '@/lib/pwa';
+import { PwaInstallProvider } from '@/hooks/use-pwa-install';
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -24,7 +24,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
   );
   useEffect(() => {
     setMounted(true);
-    registerPwa();
+    if (isPwaFeatureEnabled() && hasPwaConsent()) {
+      void registerPwa();
+    }
   }, []);
 
   return (
