@@ -38,7 +38,7 @@ describe('summariseDocumentFromPayload', () => {
       responses: { create: openAIResponsesCreateMock },
       embeddings: { create: openAIEmbeddingsCreateMock },
     });
-    openAIResponsesCreateMock.mockResolvedValue({ output: [] });
+    openAIResponsesCreateMock.mockResolvedValue({ output: [], output_text: '' });
     openAIEmbeddingsCreateMock.mockResolvedValue({ data: [] });
     fetchOpenAIDebugDetailsMock.mockResolvedValue(null);
     isOpenAIDebugEnabledMock.mockReturnValue(false);
@@ -68,22 +68,24 @@ describe('summariseDocumentFromPayload', () => {
 
   it('returns ready when OpenAI summary and embeddings succeed', async () => {
     const text = 'Article 12 — Les dispositions relatives aux sûretés sont applicables. '.repeat(5);
+    const structured = JSON.stringify({
+      summary: 'Synthèse',
+      highlights: [
+        { heading: 'Objet', detail: 'Dispositions applicables.' },
+        { heading: 'Dates', detail: 'Entrée en vigueur immédiate.' },
+      ],
+    });
     const responsesReply = {
       output: [
         {
           content: [
             {
-              text: JSON.stringify({
-                summary: 'Synthèse',
-                highlights: [
-                  { heading: 'Objet', detail: 'Dispositions applicables.' },
-                  { heading: 'Dates', detail: 'Entrée en vigueur immédiate.' },
-                ],
-              }),
+              text: structured,
             },
           ],
         },
       ],
+      output_text: structured,
     };
 
     const embeddingsReply = {
