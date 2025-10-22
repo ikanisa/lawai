@@ -23,6 +23,57 @@ export const OFFICIAL_DOMAIN_REGISTRY = {
     'cima-afrique.org': ['CIMA'],
 };
 export const OFFICIAL_DOMAIN_ALLOWLIST = Object.keys(OFFICIAL_DOMAIN_REGISTRY);
+export const DEFAULT_WEB_SEARCH_ALLOWLIST_MAX = 20;
+const normalizeDomains = (domains) => {
+    if (!domains || domains.length === 0) {
+        return [];
+    }
+    const normalized = [];
+    const seen = new Set();
+    for (const entry of domains) {
+        if (typeof entry !== 'string') {
+            continue;
+        }
+        const trimmed = entry.trim().toLowerCase();
+        if (!trimmed || seen.has(trimmed)) {
+            continue;
+        }
+        seen.add(trimmed);
+        normalized.push(trimmed);
+    }
+    return normalized;
+};
+export function buildWebSearchAllowlist(options) {
+    const fallback = normalizeDomains(options.fallback);
+    const override = normalizeDomains(options.override);
+    const source = override.length > 0 ? 'override' : 'fallback';
+    const candidate = source === 'override' ? override : fallback;
+    const maxDomains = options.maxDomains ?? DEFAULT_WEB_SEARCH_ALLOWLIST_MAX;
+    if (candidate.length <= maxDomains) {
+        return {
+            allowlist: candidate,
+            truncated: false,
+            truncatedCount: 0,
+            totalDomains: candidate.length,
+            source,
+        };
+    }
+    const allowlist = candidate.slice(0, maxDomains);
+    const truncatedCount = candidate.length - allowlist.length;
+    options.onTruncate?.({
+        truncatedCount,
+        totalDomains: candidate.length,
+        maxDomains,
+        source,
+    });
+    return {
+        allowlist,
+        truncated: true,
+        truncatedCount,
+        totalDomains: candidate.length,
+        source,
+    };
+}
 export function isDomainAllowlisted(url) {
     try {
         const { hostname } = new URL(url);
