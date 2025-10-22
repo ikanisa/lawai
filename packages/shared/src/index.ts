@@ -10,4 +10,3 @@ export * from './orchestrator-capabilities.js';
 export * from './orchestrator-mcp.js';
 export * from './pwa.js';
 export * from './workspace.js';
-export * from './config/env.js';
