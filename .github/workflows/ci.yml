@@ -23,6 +23,8 @@ jobs:
         run: pnpm -v
       - name: Lint (workspace)
         run: pnpm -r lint
+      - name: Lint documentation
+        run: pnpm run lint:docs
 
   typecheck:
     runs-on: ubuntu-latest
