@@ -1,10 +1,10 @@
 -- Historical performance baselines for latency and quality metrics
-create table if not exists public.performance_snapshots (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  window_label text not null,
-  collected_at timestamptz not null default now(),
-  total_runs bigint not null default 0,
+CREATE TABLE IF NOT EXISTS public.performance_snapshots (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  window_label text NOT NULL,
+  collected_at timestamptz NOT NULL DEFAULT now(),
+  total_runs bigint NOT NULL DEFAULT 0,
   avg_latency_ms numeric,
   p95_latency_ms numeric,
   allowlisted_ratio numeric,
@@ -17,5 +17,6 @@ create table if not exists public.performance_snapshots (
   metadata jsonb
 );
 
-create index if not exists performance_snapshots_org_idx on public.performance_snapshots(org_id);
-create index if not exists performance_snapshots_window_idx on public.performance_snapshots(window_label);
+CREATE INDEX if NOT EXISTS performance_snapshots_org_idx ON public.performance_snapshots (org_id);
+
+CREATE INDEX if NOT EXISTS performance_snapshots_window_idx ON public.performance_snapshots (window_label);
