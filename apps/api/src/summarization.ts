@@ -1,4 +1,6 @@
 import {
+  LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA,
+  SUMMARISATION_CLIENT_TAGS,
   fetchOpenAIDebugDetails,
   getOpenAIClient,
   isOpenAIDebugEnabled,
@@ -13,12 +15,6 @@ const textDecoder = new TextDecoder('utf-8', { fatal: false });
 const DEFAULT_SUMMARISER_MODEL = 'gpt-4o-mini';
 const DEFAULT_MAX_SUMMARY_CHARS = 12000;
 const MAX_CHUNKS = 40;
-
-const SUMMARISATION_CLIENT_TAGS = {
-  cacheKeySuffix: 'summaries',
-  requestTags:
-    process.env.OPENAI_REQUEST_TAGS_SUMMARIES ?? process.env.OPENAI_REQUEST_TAGS ?? 'service=api,component=summarisation',
-} as const;
 
 export type TextChunk = { seq: number; content: string; marker: string | null };
 
@@ -49,6 +45,53 @@ async function logOpenAIDebugSummary(
   } else {
     console.error(`[openai-debug] ${operation}`, info);
   }
+}
+
+type OpenAIResponsesResult = {
+  output_text?: unknown;
+  output?: Array<{ content?: Array<{ text?: unknown }> }>;
+  output_json?: unknown;
+};
+
+function extractStructuredOutputText(result: OpenAIResponsesResult | null | undefined): string {
+  const direct = typeof result?.output_text === 'string' ? result.output_text.trim() : '';
+  if (direct) {
+    return direct;
+  }
+
+  if (Array.isArray(result?.output)) {
+    for (const item of result.output) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const content = Array.isArray(item.content) ? item.content : [];
+      for (const part of content) {
+        if (part && typeof part === 'object' && typeof part.text === 'string') {
+          const text = part.text.trim();
+          if (text) {
+            return text;
+          }
+        }
+      }
+    }
+  }
+
+  const jsonPayload = result?.output_json;
+  if (typeof jsonPayload === 'string' && jsonPayload.trim()) {
+    return jsonPayload.trim();
+  }
+  if (jsonPayload && typeof jsonPayload === 'object') {
+    try {
+      const stringified = JSON.stringify(jsonPayload);
+      if (stringified.trim()) {
+        return stringified.trim();
+      }
+    } catch {
+      // ignore serialization errors
+    }
+  }
+
+  return '';
 }
 
 function stripHtml(html: string): string {

@@ -11,6 +11,7 @@ This plan sequences the remaining scope required to satisfy the Avocat-AI launch
 
 ## Phase 2 – Provenance Expansion & Retrieval Trust (Week 1–3)
 - **ELI/ECLI/Akoma Ntoso enrichment:** Finish automated identifier extraction during ingestion, persist structured metadata, and expose diff views for operator validation.
+- **PDF ingestion enablement milestone:** [Document Ingestion Guild](../agents/pdf-file-inputs.md) to ship finance corpus PDF ingestion with ≥99% pipeline success, residency/compliance telemetry, and post-rollout evaluation suite pass marks.
 - **Maghreb/Rwanda live feeds:** Operationalise the polling workers, quarantine dashboards, and language-binding banners for these sources, ensuring cite-or-refuse enforcement in the agent pipeline.
 - **Trust dashboards:** Deliver jurisdiction dashboards that combine link health, identifier coverage, Maghreb banner coverage, and case reliability scores with drill-down charts.
 - **Benchmark coverage:** Broaden LegalBench/LexGLUE suites, add temporal validity checks, and wire precision/recall thresholds into CI gates with nightly fairness trend analytics.

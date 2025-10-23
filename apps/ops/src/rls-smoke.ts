@@ -44,6 +44,21 @@ async function assertExtensionInstalled(client: Client, extension: string): Prom
   }
 }
 
+async function assertColumnExists(client: Client, table: `${string}.${string}`, column: string): Promise<void> {
+  const [schema, name] = table.split('.');
+  const { rows } = await client.query<{ exists: boolean }>(
+    `select exists(
+       select 1
+         from information_schema.columns
+        where table_schema = $1 and table_name = $2 and column_name = $3
+     ) as exists`,
+    [schema, name, column],
+  );
+  if (!rows[0]?.exists) {
+    throw new Error(`Expected column ${table}.${column} to exist.`);
+  }
+}
+
 async function assertDocumentChunksEmbedding(client: Client): Promise<void> {
   const { rows } = await client.query<{ exists: boolean }>(
     `select exists(
@@ -74,6 +89,7 @@ async function main(): Promise<void> {
   const orgId = randomUUID();
   const memberId = randomUUID();
   const outsiderId = randomUUID();
+  const agentRunId = randomUUID();
 
   try {
     await client.query('begin');
@@ -90,6 +106,13 @@ async function main(): Promise<void> {
     await assertRlsEnabled(client, 'public.admin_jobs');
     await assertTableExists(client, 'public.document_chunks');
     await assertDocumentChunksEmbedding(client);
+    await assertColumnExists(client, 'public.documents', 'vector_store_status');
+    await assertColumnExists(client, 'public.documents', 'vector_store_synced_at');
+    await assertColumnExists(client, 'public.documents', 'vector_store_error');
+    await assertTableExists(client, 'public.run_retrieval_sets');
+    await assertRlsEnabled(client, 'public.run_retrieval_sets');
+    await assertTableExists(client, 'public.regulator_dispatches');
+    await assertRlsEnabled(client, 'public.regulator_dispatches');
     await assertExtensionInstalled(client, 'vector');
     await assertMatchChunksCallable(client);
     console.log('✓ Core admin tables and vector extension present.');
@@ -97,6 +120,11 @@ async function main(): Promise<void> {
     await client.query("select set_config('request.jwt.claims', $1, true)", [
       JSON.stringify({ org_id: orgId, sub: memberId }),
     ]);
+    await client.query(
+      `insert into public.agent_runs (id, org_id, user_id, question)
+         values ($1, $2, $3, $4)`,
+      [agentRunId, orgId, memberId, 'RLS smoke regression harness'],
+    );
     const { rows: allowedRows } = await client.query<{ allowed: boolean }>('select public.is_org_member($1) as allowed', [
       orgId,
     ]);
@@ -141,6 +169,58 @@ async function main(): Promise<void> {
     }
     if (!outsiderBlocked) {
       throw new Error('Expected outsider policy insert to fail RLS.');
+    }
+
+    await client.query("select set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ org_id: orgId, sub: memberId }),
+    ]);
+    await client.query(
+      `insert into public.run_retrieval_sets (run_id, org_id, origin, snippet, metadata)
+         values ($1, $2, 'local', $3, $4::jsonb)`,
+      [agentRunId, orgId, 'Vecteur de contexte smoke test', JSON.stringify({ source: 'smoke' })],
+    );
+    await client.query(
+      `insert into public.regulator_dispatches (org_id, report_type, period_start, period_end, status, created_by)
+         values ($1, $2, $3, $4, 'draft', $5)`,
+      [orgId, 'smoke', '2024-01-01', '2024-01-31', memberId],
+    );
+    console.log('✓ Member inserts allowed for regulator_dispatches and run_retrieval_sets.');
+
+    await client.query("select set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ org_id: outsiderId, sub: outsiderId }),
+    ]);
+    let outsiderRetrievalBlocked = false;
+    try {
+      await client.query(
+        `insert into public.run_retrieval_sets (run_id, org_id, origin, snippet)
+           values ($1, $2, 'local', $3)`,
+        [agentRunId, orgId, 'Outsider vector write should fail'],
+      );
+    } catch (retrievalError) {
+      outsiderRetrievalBlocked = true;
+      if (retrievalError instanceof Error) {
+        console.log(`✓ Outsider run_retrieval_sets insert blocked by RLS: ${retrievalError.message}`);
+      }
+    }
+    if (!outsiderRetrievalBlocked) {
+      throw new Error('Expected outsider run_retrieval_sets insert to fail RLS.');
+    }
+
+    let outsiderDispatchBlocked = false;
+    try {
+      await client.query(
+        `insert into public.regulator_dispatches (org_id, report_type, period_start, period_end, status, created_by)
+           values ($1, $2, $3, $4, 'submitted', $5)`,
+        [orgId, 'outsider', '2024-02-01', '2024-02-29', outsiderId],
+      );
+    } catch (dispatchError) {
+      outsiderDispatchBlocked = true;
+      if (dispatchError instanceof Error) {
+        console.log(`✓ Outsider regulator_dispatches insert blocked by RLS: ${dispatchError.message}`);
+      }
+    }
+    if (!outsiderDispatchBlocked) {
+      throw new Error('Expected outsider regulator_dispatches insert to fail RLS.');
     }
 
     await client.query('rollback');

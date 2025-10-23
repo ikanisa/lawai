@@ -1,157 +1,139 @@
-# PDF File Inputs via the Responses API
+# PDF File Inputs Streaming Guardrails
 
-The API server accepts PDF evidence from two entry points:
-
-* A direct URL pointing to an external document.
-* Binary uploads that land in Supabase storage first.
-
-Both flows share the same OpenAI client configuration so request tagging, retry
-policies, and optional organisation/project headers remain consistent with
-`apps/api/src/openai.ts`.
-
-## 1. Instantiate the shared OpenAI client
+This example shows how we stream a `responses.create` call that ingests a PDF
+file, and how we harden the loop so it can safely run inside production
+workers. The instrumentation mirrors the monitoring hooks we attach in
+Avocat AI's agents service.
 
 ```ts
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
-const apiKey = process.env.OPENAI_API_KEY;
-if (!apiKey) {
-  throw new Error('OPENAI_API_KEY is required');
-}
+const client = new OpenAI();
 
-const requestTags =
-  process.env.OPENAI_REQUEST_TAGS_API ??
-  process.env.OPENAI_REQUEST_TAGS ??
-  'service=api,component=backend';
+export async function streamPdfSummary(fileId: string) {
+  const abortController = new AbortController();
+  const abortOnTimeout = setTimeout(() => {
+    abortController.abort();
+  }, 60_000);
 
-const defaultHeaders: Record<string, string> = {
-  'OpenAI-Beta': 'assistants=v2',
-};
+  const functionArguments = new Map<string, string>();
 
-if (requestTags) {
-  // Tag requests so observability dashboards stay segmented per component.
-  defaultHeaders['OpenAI-Request-Tags'] = requestTags;
-}
-if (process.env.OPENAI_ORGANIZATION) {
-  // Forward optional organisation scoping for billing or access control.
-  defaultHeaders['OpenAI-Organization'] = process.env.OPENAI_ORGANIZATION;
-}
-if (process.env.OPENAI_PROJECT) {
-  // Attach the project header when the workspace enforces project budgets.
-  defaultHeaders['OpenAI-Project'] = process.env.OPENAI_PROJECT;
-}
-
-export const openai = new OpenAI({
-  apiKey,
-  maxRetries: 2,
-  timeout: 45_000,
-  defaultHeaders,
-  organization: process.env.OPENAI_ORGANIZATION,
-  project: process.env.OPENAI_PROJECT,
-});
-```
-
-> ℹ️ Keep the client singleton in module scope so URL uploads and streamed file
-> uploads reuse sockets and share retry budgeting.
-
-## 2. URL ingestion flow
-
-```ts
-export async function runPdfFromUrl({
-  url,
-  displayName,
-  prompt,
-  model,
-}: {
-  url: string;
-  displayName?: string;
-  prompt: string;
-  model: string;
-}) {
-  const stream = await openai.responses.stream({
-    model,
-    input: [
-      {
-        role: 'user',
-        content: [
-          { type: 'input_text', text: prompt },
-          {
-            type: 'input_file',
-            file_url: url,
-            display_name: displayName ?? 'uploaded.pdf',
+  const stream = await client.responses.stream(
+    {
+      model: "gpt-4.1",
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "Summarise the uploaded PDF" },
+            { type: "input_file", file_id: fileId },
+          ],
+        },
+      ],
+      tools: [
+        {
+          type: "function",
+          name: "index_case_law",
+          description: "Persist extracted citations into the legal search index.",
+          parameters: {
+            type: "object",
+            properties: {
+              citations: { type: "array", items: { type: "string" } },
+            },
+            required: ["citations"],
           },
-        ],
-      },
-    ],
-    metadata: { purpose: 'pdf_ingestion_url' },
-  });
+        },
+      ],
+    },
+    { signal: abortController.signal },
+  );
 
-  return stream; // Caller should relay stream events to the SSE channel.
+  const cleanup = () => {
+    clearTimeout(abortOnTimeout);
+    abortController.abort();
+  };
+
+  try {
+    for await (const event of stream) {
+      switch (event.type) {
+        case "response.created": {
+          console.info("response created", { responseId: event.response.id });
+          break;
+        }
+        case "response.output_text.delta": {
+          process.stdout.write(event.delta);
+          break;
+        }
+        case "response.output_text.done": {
+          process.stdout.write("\n");
+          break;
+        }
+        case "response.function_call_arguments.delta": {
+          const next = (functionArguments.get(event.id) ?? "") + event.delta;
+          functionArguments.set(event.id, next);
+          break;
+        }
+        case "response.function_call_arguments.done": {
+          const args = functionArguments.get(event.id) ?? "{}";
+          console.info("tool call ready", {
+            toolCallId: event.id,
+            argumentsJson: args,
+          });
+          break;
+        }
+        case "response.completed": {
+          console.info("response completed", { responseId: event.response.id });
+          break;
+        }
+        case "response.error": {
+          console.error("response stream error", event.error ?? event);
+          cleanup();
+          throw new Error(event.error?.message ?? "Unknown streaming error");
+        }
+        case "error": {
+          console.error("legacy response stream error", event);
+          cleanup();
+          throw new Error(event.message ?? "Unknown streaming error");
+        }
+        default: {
+          // In production we forward other events to observability sinks.
+          break;
+        }
+      }
+    }
+
+    const final = await stream.finalResponse();
+    const usage = final.usage ?? {
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+    };
+    console.info("token usage", {
+      input: usage.input_tokens,
+      output: usage.output_tokens,
+      total: usage.total_tokens,
+    });
+
+    return final;
+  } catch (error) {
+    throw error;
+  } finally {
+    cleanup();
+  }
 }
 ```
 
-## 3. Upload flow (Supabase backed)
+Token accounting happens *after* `finalResponse()` resolves so that we capture
+usage from `response.completed` as well as any tool invocations emitted between
+the last text delta and the completion event. Handling `response.error` (and its
+`error` alias) means we surface infrastructure failures immediately instead of
+waiting for a timeout. `response.completed` tells us when the model stops
+producing events—production dashboards mark that boundary to detect hung
+sessions. Tool-call deltas (`response.function_call_arguments.delta` /
+`response.function_call_arguments.done`) feed audit logs that show which
+arguments were sent to internal systems.
 
-```ts
-import type { Readable } from 'node:stream';
-
-export async function runPdfUpload({
-  file,
-  filename,
-  prompt,
-  model,
-}: {
-  file: Readable | Blob;
-  filename: string;
-  prompt: string;
-  model: string;
-}) {
-  const created = await openai.files.create({
-    file,
-    file_name: filename,
-    purpose: 'assistants',
-  });
-
-  const stream = await openai.responses.stream({
-    model,
-    input: [
-      {
-        role: 'user',
-        content: [
-          { type: 'input_text', text: prompt },
-          {
-            type: 'input_file',
-            file_id: created.id,
-            display_name: filename,
-          },
-        ],
-      },
-    ],
-    metadata: { purpose: 'pdf_ingestion_upload' },
-  });
-
-  return stream;
-}
-```
-
-> ✅ Do not instantiate a second client in the upload helper—the same `openai`
-> instance handles both the file upload and the follow-up `responses.stream`
-> call.
-
-## Streaming & token accounting
-
-* Always stream responses so the frontend can surface interim thinking. The Node
-  SDK exposes an async iterator, so relay each `event.data` payload to the SSE
-  client.
-* Call `const final = await stream.finalResponse();` once streaming completes.
-  The `final.usage.total_tokens` field powers our Datadog dashboards and quota
-  reconciliation.
-* Persist `final.response_id`, request tags, and `final.usage` alongside the run
-  record so we can audit expensive PDFs later.
-* When a stream fails, forward the error to `logOpenAIDebug(...)` with the shared
-  client to capture the debugging payload from OpenAI before surfacing a
-  user-friendly retry message.
-
-These patterns keep the documentation aligned with the production wiring in
-`apps/api/src/openai.ts` while making the example self-contained for agent
-builders.
+Finally, we use an `AbortController` both to time out long-running calls and to
+coordinate cancellation when upstream services drop the request. Production
+runtimes should replace the example timeout with their own SLA budget and ensure
+`cleanup()` executes from every early exit path.

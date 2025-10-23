@@ -27,6 +27,53 @@ function createOpenAIClient(apiKey: string): OpenAI {
 
 export type TextChunk = { seq: number; content: string; marker: string | null };
 
+type OpenAIResponsesResult = {
+  output_text?: unknown;
+  output?: Array<{ content?: Array<{ text?: unknown }> }>;
+  output_json?: unknown;
+};
+
+function extractStructuredOutputText(result: OpenAIResponsesResult | null | undefined): string {
+  const direct = typeof result?.output_text === 'string' ? result.output_text.trim() : '';
+  if (direct) {
+    return direct;
+  }
+
+  if (Array.isArray(result?.output)) {
+    for (const item of result.output) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const content = Array.isArray(item.content) ? item.content : [];
+      for (const part of content) {
+        if (part && typeof part === 'object' && typeof part.text === 'string') {
+          const text = part.text.trim();
+          if (text) {
+            return text;
+          }
+        }
+      }
+    }
+  }
+
+  const jsonPayload = result?.output_json;
+  if (typeof jsonPayload === 'string' && jsonPayload.trim()) {
+    return jsonPayload.trim();
+  }
+  if (jsonPayload && typeof jsonPayload === 'object') {
+    try {
+      const stringified = JSON.stringify(jsonPayload);
+      if (stringified.trim()) {
+        return stringified.trim();
+      }
+    } catch {
+      // ignore serialization errors
+    }
+  }
+
+  return '';
+}
+
 function stripHtml(html: string): string {
   return html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -198,6 +245,7 @@ async function generateEmbeddings(
 ): Promise<number[][]> {
   const embeddings: number[][] = [];
   const batchSize = 16;
+  const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
 
   const openai = createOpenAIClient(openaiApiKey);
 
@@ -213,6 +261,9 @@ async function generateEmbeddings(
       if (Array.isArray(entry.embedding)) {
         embeddings.push(entry.embedding as number[]);
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Échec de génération des embeddings';
+      throw new Error(message);
     }
   }
 

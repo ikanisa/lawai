@@ -4,6 +4,7 @@ export interface AcceptanceThresholds {
   maghrebBindingBannerCoverage: number;
   rwandaLanguageNoticeCoverage: number;
   linkHealthFailureRatioMax: number;
+  hitlRecallHighRisk: number;
 }
 
 export const ACCEPTANCE_THRESHOLDS: AcceptanceThresholds = {
@@ -12,4 +13,5 @@ export const ACCEPTANCE_THRESHOLDS: AcceptanceThresholds = {
   maghrebBindingBannerCoverage: 1,
   rwandaLanguageNoticeCoverage: 1,
   linkHealthFailureRatioMax: 0.05,
+  hitlRecallHighRisk: 0.98,
 };

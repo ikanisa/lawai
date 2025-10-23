@@ -35,6 +35,8 @@ import {
   fetchDeviceSessions,
   revokeDeviceSession,
   type DeviceSession,
+  fetchComplianceDashboard,
+  type ComplianceDashboardResponse,
 } from '@/lib/api';
 import type { Messages } from '@/lib/i18n';
 import { clientEnv } from '../../env.client';
@@ -192,6 +194,15 @@ export function AdminView({ messages }: AdminViewProps) {
     staleTime: 30_000,
   });
   const deviceSessions = (deviceSessionsQuery.data?.sessions ?? []) as DeviceSession[];
+  const complianceDashboardQuery = useQuery<ComplianceDashboardResponse>({
+    queryKey: ['compliance-dashboard', DEMO_ORG_ID],
+    queryFn: () => fetchComplianceDashboard(DEMO_ORG_ID),
+    staleTime: 60_000,
+  });
+  const complianceDashboard = complianceDashboardQuery.data ?? null;
+  const complianceLoading = complianceDashboardQuery.isLoading && !complianceDashboard;
+  const complianceRefreshing = complianceDashboardQuery.isRefetching && !!complianceDashboard;
+  const complianceError = complianceDashboardQuery.isError;
 
   const [ssoProvider, setSsoProvider] = useState<'saml' | 'oidc'>('saml');
   const [ssoLabel, setSsoLabel] = useState('');
@@ -787,6 +798,106 @@ export function AdminView({ messages }: AdminViewProps) {
             data={operationsOverview}
             loading={operationsQuery.isLoading && !operationsOverview}
           />
+
+          <Card className="glass-card border border-slate-800/60">
+            <CardHeader>
+              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <CardTitle className="text-slate-100">{messages.admin.complianceDashboardTitle}</CardTitle>
+                  <p className="text-sm text-slate-400">{messages.admin.complianceDashboardDescription}</p>
+                </div>
+                {complianceRefreshing ? (
+                  <p className="text-xs text-slate-500 md:text-right">
+                    {messages.admin.complianceDashboardRefreshing}
+                  </p>
+                ) : null}
+              </div>
+              <p className="text-xs text-slate-500">{messages.admin.complianceTimeframeLabel}</p>
+            </CardHeader>
+            <CardContent>
+              {complianceLoading ? (
+                <div className="grid gap-4 md:grid-cols-3" role="status" aria-live="polite">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <div
+                      // eslint-disable-next-line react/no-array-index-key
+                      key={index}
+                      className="space-y-3 rounded-2xl border border-slate-800/60 bg-slate-950/40 p-4 animate-pulse"
+                    >
+                      <div className="h-3 w-24 rounded-full bg-slate-700/60" />
+                      <div className="h-8 w-32 rounded-full bg-slate-600/60" />
+                      <div className="h-3 w-full rounded-full bg-slate-700/40" />
+                      <div className="h-3 w-3/4 rounded-full bg-slate-700/40" />
+                    </div>
+                  ))}
+                  <span className="sr-only">{messages.admin.complianceDashboardLoading}</span>
+                </div>
+              ) : complianceDashboard ? (
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2 rounded-2xl border border-slate-800/60 bg-slate-950/40 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      {messages.admin.complianceHitlPending}
+                    </p>
+                    <p className="text-3xl font-semibold text-slate-50">
+                      {numberFormatter.format(complianceDashboard.hitl.pending)}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {messages.admin.complianceHitlResolved.replace(
+                        '{count}',
+                        numberFormatter.format(complianceDashboard.hitl.resolved),
+                      )}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {messages.admin.complianceHitlMedian}:{' '}
+                      {formatMinutes(complianceDashboard.hitl.medianResponseMinutes)}
+                    </p>
+                  </div>
+                  <div className="space-y-2 rounded-2xl border border-slate-800/60 bg-slate-950/40 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      {messages.admin.complianceAllowlistedRatio}
+                    </p>
+                    <p className="text-3xl font-semibold text-slate-50">
+                      {formatPercent(complianceDashboard.allowlist.allowlistedRatio)}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {messages.admin.complianceAllowlistedWarnings.replace(
+                        '{count}',
+                        numberFormatter.format(complianceDashboard.allowlist.translationWarnings),
+                      )}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {messages.admin.complianceAllowlistedRuns.replace(
+                        '{count}',
+                        numberFormatter.format(complianceDashboard.allowlist.runsWithoutCitations),
+                      )}
+                    </p>
+                  </div>
+                  <div className="space-y-2 rounded-2xl border border-slate-800/60 bg-slate-950/40 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      {messages.admin.complianceMaghrebCoverage}
+                    </p>
+                    <p className="text-3xl font-semibold text-slate-50">
+                      {formatPercent(complianceDashboard.maghreb.bannerCoverage)}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {messages.admin.complianceMaghrebPrecision}:{' '}
+                      {formatPercent(complianceDashboard.maghreb.citationPrecisionP95)}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {messages.admin.complianceMaghrebTemporal}:{' '}
+                      {formatPercent(complianceDashboard.maghreb.temporalValidityP95)}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-slate-400">{messages.admin.complianceDashboardUnavailable}</p>
+                  {complianceError ? (
+                    <p className="text-xs text-slate-500">{messages.admin.complianceDashboardLoading}</p>
+                  ) : null}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <Card className="glass-card border border-slate-800/60">
             <CardHeader>

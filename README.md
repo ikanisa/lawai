@@ -26,7 +26,14 @@ packages/
    ```bash
    pnpm install
    ```
-2. Copy `.env.example` to `.env.local` and fill in required secrets. The `.env.local` file is gitignored so credentials stay local-only.
+2. Copy `.env.example` to `.env` and fill in required secrets.
+   The API now refuses to boot with placeholder defaults for production-critical
+   values – you must provide concrete credentials for `OPENAI_API_KEY`,
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
+   `OPENAI_VECTOR_STORE_AUTHORITIES_ID` in every deployed environment.
+   Placeholder strings such as `test-openai-key`, `vs_test`, or
+   `https://example.supabase.co` trigger a hard failure when `NODE_ENV` is set to
+   `production`.
 3. Apply database migrations directly against your Supabase instance (requires `SUPABASE_DB_URL`):
    ```bash
    pnpm db:migrate
@@ -52,29 +59,14 @@ packages/
    pnpm dev:web
    ```
 
-For a full MacBook playbook (including production-style builds), consult [`docs/local-hosting.md`](docs/local-hosting.md).
+## Deployment checklist (Vercel)
 
-### Environment configuration (local-first)
+Avant de fusionner une branche dans `main` ou de promouvoir un déploiement Vercel en production, vérifiez :
 
-- Store shared secrets in the repository root `.env.local`.
-- Each application (`apps/api`, `apps/web`, `apps/ops`) exposes its own `.env.example`; copy them to `.env.local` alongside the service when overrides are required.
-- Supply Supabase credentials everywhere they are referenced:
-  - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-  - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- Populate the OpenAI keys (`OPENAI_API_KEY`, `OPENAI_VECTOR_STORE_AUTHORITIES_ID`, etc.) to unlock ingestion, evaluations, and transparency tooling.
-
-### Supabase usage recap
-
-- `pnpm db:migrate` applies SQL migrations to the configured Supabase project.
-- `pnpm --filter @apps/ops bootstrap` provisions buckets and allowlists.
-- `pnpm ops:foundation` performs a complete provisioning run (migrations, vector store creation, guardrail validation).
-- `pnpm ops:check` validates Supabase extensions, buckets, vector stores, and allowlists on demand.
-
-### Local-first replacements for legacy Vercel tooling
-
-- Environment examples now expose only Supabase and local hosting variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, etc.); all `VERCEL_*` placeholders were removed.
-- Scheduled tasks should be orchestrated locally following [`scripts/cron.md`](scripts/cron.md) (via `node-cron`, `launchd`, or your preferred scheduler).
-- Deployment metadata is derived from `APP_ENV`/`.env.local`; there are no implicit dependencies on Vercel-provided environment variables.
+- [ ] Le workflow **CI** GitHub Actions est passé (lint, typecheck, tests et builds). Vous pouvez reproduire localement via `pnpm -r lint`, `pnpm -r test`, `pnpm --filter @apps/api typecheck`, `pnpm --filter @avocat-ai/web typecheck`, puis les commandes `build` et `bundle:check`.
+- [ ] L'ensemble des variables d'environnement (OpenAI, Supabase, OTP, alertes) sont saisies dans Vercel conformément au [guide de déploiement détaillé](docs/deployment/vercel.md).
+- [ ] Les migrations Supabase et les buckets obligatoires sont en place (`pnpm ops:foundation`) et les données de référence ont été chargées (`pnpm seed`).
+- [ ] Les drapeaux de fonctionnalités critiques (ex. `FEAT_ADMIN_PANEL`) sont positionnés selon la stratégie d'exposition souhaitée.
 
 ### Assembler les fondations en une étape
 
@@ -192,14 +184,24 @@ Afin de démontrer la robustesse (latence, précision des citations, couverture 
 pnpm ops:perf-snapshot --org 00000000-0000-0000-0000-000000000000 --user 00000000-0000-0000-0000-000000000000 --notes "post-red-team"
 ```
 
+### Planifier les rapports de conformité
+
+Les rapports de transparence, SLO et régulateur peuvent être programmés depuis Supabase en une seule commande :
+
+```bash
+pnpm --filter @apps/ops schedule-reports --org <org-id> --user <service-user> --api https://api.avocat.ai
+```
+
+Le CLI vérifie les garde-fous de résidence avant d’archiver les rapports dans `ops_report_runs`, journalise chaque succès dans `audit_events` et signale les échecs partiels (avec message d’erreur) dans la sortie standard.
+
 ## Panneau d'administration (feature flag FEAT_ADMIN_PANEL)
 
 Un nouveau panneau d'administration Next.js est livré derrière le flag `FEAT_ADMIN_PANEL`. Le flag est activé par défaut en
 développement et en préproduction, et reste désactivé en production tant que `FEAT_ADMIN_PANEL=1` n'est pas fourni.
 
 - **Activer localement** : ajoutez `FEAT_ADMIN_PANEL=1` à votre `.env.local`.
-- **Prévisualisation (staging, recettes)** : définissez `APP_ENV=preview` ou exportez `FEAT_ADMIN_PANEL=1` dans votre orchestrateur (Docker Compose, Kubernetes, etc.).
-- **Production** : activez explicitement le flag via les variables d'environnement de votre plateforme de déploiement.
+- **Prévisualisation** : les environnements avec `APP_ENV=preview` ou `APP_ENV=staging` héritent d'un comportement activé par défaut.
+- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans vos variables d'environnement de production.
 
 Les routes `/api/admin/*` valident systématiquement la présence des en-têtes `x-admin-actor` et `x-admin-org` (ou retombent sur
 les valeurs de configuration `ADMIN_PANEL_ACTOR`/`ADMIN_PANEL_ORG`).
@@ -366,6 +368,7 @@ curl -X POST http://localhost:3000/runs \
 Le workflow GitHub Actions `.github/workflows/ci.yml` installe les dépendances PNPM, exécute `pnpm lint`, applique les migrations contre une instance Postgres de test et lance la suite de tests (`pnpm test`). Ajoutez vos étapes de déploiement selon vos environnements cibles pour garantir la conformité du plan de mise en production.
 
 Consult `docs/avocat_ai_bell_system_plan.md` for the full BELL analysis and delivery roadmap.
+Review [`docs/vector-embeddings.md`](docs/vector-embeddings.md) for guidance on selecting, generating, and scaling semantic embeddings with the latest OpenAI models.
 
 ## Troubleshooting
 

@@ -1,6 +1,7 @@
 # Agent Platform Migration Checklist
 
 ## CI / Automation
+- [ ] Wire `pnpm ops:evaluate -- --ci` into nightly pipelines with `OPENAI_EVAL_AGENT_ID`, `OPENAI_EVAL_DATASET_MAP`, `EVAL_ORG_ID`, and `EVAL_USER_ID` so OpenAI Evals jobs gate releases and persist metrics back to Supabase (`agent_learning_jobs`).
 - [ ] Run `pnpm --filter @apps/api export:agent` in CI and store `apps/dist/platform/avocat-francophone.json` as build artefact.
 - [ ] Upload artefacts to S3/GCS or attach to release tags for Agent Builder import.
 - [ ] Wire OpenAI request-tag metrics into Datadog dashboards (API/OPS/EDGE components) using `OpenAI-Request-Tags` headers.
@@ -28,3 +29,4 @@
 - [ ] Update `docs/runbooks/openai-foundation.md` with finance-specific guardrail mapping once Platform resources are applied.
 - [ ] Create Agent Builder walkthrough (screenshots/config steps) for onboarding new team members.
 - [ ] Publish ChatKit session contract (API + data schema) for frontend consumers.
+- [ ] Review [File Inputs workflow](./pdf-inputs.md) alongside `/apps/api/src/routes/upload/` + `/apps/api/src/routes/corpus/data.ts` to confirm PDF intake parity and Supabase telemetry visibility after Agent Platform migration.

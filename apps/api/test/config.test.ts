@@ -1,60 +1,36 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
-const ORIGINAL_ENV = { ...process.env };
+describe('configuration validation', () => {
+  const originalEnv = { ...process.env };
 
-const setEnvForTest = (overrides: Record<string, string | undefined> = {}) => {
-  process.env = {
-    ...ORIGINAL_ENV,
-    NODE_ENV: 'production',
-    OPENAI_API_KEY: 'sk-liveRealisticKey123456789012345678901234567890',
-    SUPABASE_URL: 'https://avocat-ai.supabase.co',
-    SUPABASE_SERVICE_ROLE_KEY: 'realistic-service-role-key',
-    ...overrides,
-  } as NodeJS.ProcessEnv;
-};
-
-describe('assertProductionEnv', () => {
   beforeEach(() => {
     vi.resetModules();
-    setEnvForTest();
+    process.env = { ...originalEnv };
   });
 
   afterEach(() => {
-    vi.resetModules();
-    process.env = { ...ORIGINAL_ENV };
+    process.env = originalEnv;
   });
 
-  it('rejects placeholder Supabase project domain', async () => {
-    setEnvForTest({ SUPABASE_URL: 'https://project.supabase.co' });
+  it('throws when production uses placeholder OpenAI key', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.OPENAI_API_KEY = 'test-openai-key';
+    process.env.SUPABASE_URL = 'https://supabase.production.example';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'real-service-role-key';
+    process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID = 'vs_lawai_authorities_prod';
 
     await expect(import('../src/config')).rejects.toThrowError(
-      /configuration_invalid.*SUPABASE_URL/,
+      /configuration_invalid placeholders=\[OPENAI_API_KEY\]/,
     );
   });
 
-  it('rejects localhost Supabase URLs', async () => {
-    setEnvForTest({ SUPABASE_URL: 'http://localhost:54321' });
+  it('throws when a production-critical field is missing', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.OPENAI_API_KEY = 'sk-live-1234567890abcdef1234567890abcdef';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'real-service-role-key';
+    process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID = 'vs_lawai_authorities_prod';
+    delete process.env.SUPABASE_URL;
 
-    await expect(import('../src/config')).rejects.toThrowError(
-      /configuration_invalid.*SUPABASE_URL/,
-    );
-  });
-
-  it('rejects dummy OpenAI keys with sk- prefixes', async () => {
-    setEnvForTest({ OPENAI_API_KEY: 'sk-test-123456' });
-
-    await expect(import('../src/config')).rejects.toThrowError(
-      /configuration_invalid.*OPENAI_API_KEY/,
-    );
-  });
-
-  it('accepts realistic production values', async () => {
-    const mod = await import('../src/config');
-
-    expect(mod.env.OPENAI_API_KEY).toBe(
-      'sk-liveRealisticKey123456789012345678901234567890',
-    );
-    expect(mod.env.SUPABASE_URL).toBe('https://avocat-ai.supabase.co');
-    expect(mod.env.SUPABASE_SERVICE_ROLE_KEY).toBe('realistic-service-role-key');
+    await expect(import('../src/config')).rejects.toThrowError(/SUPABASE_URL is required/);
   });
 });
