@@ -18,7 +18,6 @@ import {
 import { PlanDrawer, type ToolLogEntry } from "@/components/agent/PlanDrawer";
 import { ToolChip } from "@/components/agent/ToolChip";
 import { EvidencePane } from "@/components/evidence/EvidencePane";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,6 +28,7 @@ import {
   type ResearchPlan,
   type ResearchPlanStep,
   type ResearchStreamEvent,
+  type WebSearchMode,
   startResearchRun
 } from "@/lib/data/research";
 import { researchDeskContextQueryOptions } from "@/lib/queries/research";
@@ -62,12 +62,14 @@ export function ResearchView() {
   const [activeToolIds, setActiveToolIds] = useState<string[]>([]);
   const [composer, setComposer] = useState("");
   const [confidentialMode, setConfidentialMode] = useState(false);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(true);
+  const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>("allowlist");
   const [fileSearchEnabled, setFileSearchEnabled] = useState(true);
   const [activeDateFilter, setActiveDateFilter] = useState<string | null>(null);
   const [activeVersionFilter, setActiveVersionFilter] = useState<string | null>("current");
   const [isStreaming, setIsStreaming] = useState(false);
   const streamingMessageIdRef = useRef<string | null>(null);
+  const webSearchModeHistoryRef = useRef<WebSearchMode>("allowlist");
+  const forcedWebSearchDisableRef = useRef(false);
   const cleanupRef = useRef<() => void>();
 
   useEffect(() => {
@@ -98,6 +100,22 @@ export function ResearchView() {
     const retrieved = plan.steps.filter((step: ResearchPlanStep) => step.status === "done").length;
     telemetry.emit("retrieval_recall_scored", { expected, retrieved });
   }, [plan, telemetry]);
+
+  useEffect(() => {
+    if (webSearchMode !== "disabled") {
+      webSearchModeHistoryRef.current = webSearchMode;
+    }
+  }, [webSearchMode]);
+
+  useEffect(() => {
+    if (confidentialMode) {
+      forcedWebSearchDisableRef.current = true;
+      setWebSearchMode("disabled");
+    } else if (forcedWebSearchDisableRef.current) {
+      forcedWebSearchDisableRef.current = false;
+      setWebSearchMode(webSearchModeHistoryRef.current);
+    }
+  }, [confidentialMode]);
 
   const suggestions = data?.suggestions ?? [];
 
@@ -224,9 +242,10 @@ export function ResearchView() {
       ]);
 
       cleanupRef.current?.();
+      const effectiveWebSearchMode: WebSearchMode = confidentialMode ? "disabled" : webSearchMode;
       const toolsEnabled = [
         "lookupCodeArticle",
-        ...(webSearchEnabled && !confidentialMode ? ["web_search"] : []),
+        ...(effectiveWebSearchMode !== "disabled" ? ["web_search"] : []),
         ...(fileSearchEnabled ? ["file_search"] : []),
         "limitationCheck"
       ];
@@ -244,7 +263,8 @@ export function ResearchView() {
           agentId: "research",
           toolsEnabled,
           jurisdiction: normalizedJurisdiction,
-          policyFlags
+          policyFlags,
+          webSearchMode: effectiveWebSearchMode
         }
       );
     },
@@ -253,8 +273,8 @@ export function ResearchView() {
       handleStreamEvent,
       setPlanDrawerOpen,
       telemetry,
-      webSearchEnabled,
       confidentialMode,
+      webSearchMode,
       fileSearchEnabled,
       jurisdiction
     ]
@@ -266,7 +286,8 @@ export function ResearchView() {
     return toolLogs.filter((tool) => activeToolIds.includes(tool.id));
   }, [toolLogs, activeToolIds]);
 
-  const transcriptDisabled = confidentialMode && !fileSearchEnabled && !webSearchEnabled;
+  const webSearchDisabled = (confidentialMode ? "disabled" : webSearchMode) === "disabled";
+  const transcriptDisabled = confidentialMode && !fileSearchEnabled && webSearchDisabled;
 
   if (isLoading || !plan || !data) {
     return <ResearchSkeleton />;
@@ -283,8 +304,8 @@ export function ResearchView() {
         <ToolToggles
           confidentialMode={confidentialMode}
           onConfidentialModeChange={setConfidentialMode}
-          webSearchEnabled={webSearchEnabled}
-          onWebSearchChange={setWebSearchEnabled}
+          webSearchMode={webSearchMode}
+          onWebSearchModeChange={setWebSearchMode}
           fileSearchEnabled={fileSearchEnabled}
           onFileSearchChange={setFileSearchEnabled}
           disabled={confidentialMode}
@@ -448,16 +469,16 @@ function JurisdictionRouter({
 function ToolToggles({
   confidentialMode,
   onConfidentialModeChange,
-  webSearchEnabled,
-  onWebSearchChange,
+  webSearchMode,
+  onWebSearchModeChange,
   fileSearchEnabled,
   onFileSearchChange,
   disabled
 }: {
   confidentialMode: boolean;
   onConfidentialModeChange: (value: boolean) => void;
-  webSearchEnabled: boolean;
-  onWebSearchChange: (value: boolean) => void;
+  webSearchMode: WebSearchMode;
+  onWebSearchModeChange: (mode: WebSearchMode) => void;
   fileSearchEnabled: boolean;
   onFileSearchChange: (value: boolean) => void;
   disabled: boolean;
@@ -468,12 +489,10 @@ function ToolToggles({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-white/80">Outils</h2>
         <HelpCircle className="h-4 w-4 text-white/50" aria-hidden />
       </div>
-      <ToggleRow
-        label="Web Search"
-        description="Recherche autorisée sur la sélection de domaines conformes."
-        checked={webSearchEnabled}
-        onChange={(value) => onWebSearchChange(value)}
-        disabled={confidentialMode}
+      <WebSearchModeSelector
+        value={webSearchMode}
+        onChange={onWebSearchModeChange}
+        disabled={disabled}
       />
       <ToggleRow
         label="File Search"
@@ -488,17 +507,76 @@ function ToolToggles({
         onChange={(value) => {
           onConfidentialModeChange(value);
           if (value) {
-            onWebSearchChange(false);
+            onWebSearchModeChange("disabled");
           }
         }}
       />
       {confidentialMode ? (
         <div className="flex items-center gap-2 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-100">
           <ShieldAlert className="h-4 w-4" aria-hidden />
-          Mode strict activé. Les requêtes resteront dans le périmètre autorisé.
+          Mode strict activé. La recherche web est suspendue et les journaux sont masqués.
         </div>
       ) : null}
     </section>
+  );
+}
+
+function WebSearchModeSelector({
+  value,
+  onChange,
+  disabled
+}: {
+  value: WebSearchMode;
+  onChange: (mode: WebSearchMode) => void;
+  disabled: boolean;
+}) {
+  const options: Array<{ value: WebSearchMode; label: string; description: string }> = [
+    {
+      value: "allowlist",
+      label: "Conforme",
+      description: "Limité aux domaines officiels approuvés."
+    },
+    {
+      value: "broad",
+      label: "Exploratoire",
+      description: "Autorise des sources publiques élargies."
+    },
+    {
+      value: "disabled",
+      label: "Désactivé",
+      description: "Ignorer complètement la recherche web."
+    }
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-semibold text-white">Web Search</p>
+        <p className="text-xs text-white/60">
+          Ajustez la portée de la recherche externe selon le contexte du dossier.
+        </p>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+            className={cn(
+              "rounded-2xl border px-3 py-2 text-left text-xs transition",
+              value === option.value
+                ? "border-sky-300 bg-white/20 text-white shadow-[0_0_0_1px_rgba(125,211,252,0.35)]"
+                : "border-white/10 bg-white/5 text-white/70 hover:border-white/25",
+              disabled && "cursor-not-allowed opacity-60"
+            )}
+          >
+            <span className="block text-sm font-medium text-white">{option.label}</span>
+            <span className="mt-1 block text-[11px] text-white/60">{option.description}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chunkText } from '../src/lib/embeddings.js';
 import { validateVectorStore } from '../src/lib/vector-store.js';
+import { getOpenAIClient } from '@avocat-ai/shared';
+
+vi.mock('@avocat-ai/shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@avocat-ai/shared')>();
+  return {
+    ...actual,
+    getOpenAIClient: vi.fn(),
+  };
+});
 
 describe('validateVectorStore', () => {
   afterEach(() => {
@@ -12,32 +21,46 @@ describe('validateVectorStore', () => {
     expect(result).toBe(false);
   });
 
+  const mockedClient = vi.mocked(getOpenAIClient);
+
   it('returns true when OpenAI responds with 200', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ id: 'vs_123' }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-    );
+    mockedClient.mockReturnValue({
+      beta: {
+        vectorStores: {
+          retrieve: vi.fn(async () => ({ id: 'vs_123' })),
+        },
+      },
+    } as unknown as ReturnType<typeof getOpenAIClient>);
 
     await expect(validateVectorStore('sk-test', 'vs_123')).resolves.toBe(true);
   });
 
   it('returns false when OpenAI returns 404', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ error: { message: 'Not found' } }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
+    mockedClient.mockReturnValue({
+      beta: {
+        vectorStores: {
+          retrieve: vi.fn(async () => {
+            const error = new Error('Not found');
+            (error as { status?: number }).status = 404;
+            throw error;
+          }),
+        },
+      },
+    } as unknown as ReturnType<typeof getOpenAIClient>);
 
     await expect(validateVectorStore('sk-test', 'vs_missing')).resolves.toBe(false);
   });
 
   it('throws on other OpenAI errors', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ error: { message: 'Upstream failure' } }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
+    mockedClient.mockReturnValue({
+      beta: {
+        vectorStores: {
+          retrieve: vi.fn(async () => {
+            throw new Error('Upstream failure');
+          }),
+        },
+      },
+    } as unknown as ReturnType<typeof getOpenAIClient>);
 
     await expect(validateVectorStore('sk-test', 'vs_fail')).rejects.toThrow('Upstream failure');
   });
