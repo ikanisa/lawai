@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, type ReactNode } from 'react';
-import type { Locale, Messages } from '../../lib/i18n';
+import type { Locale, Messages } from '@/lib/i18n';
 
 type AdminMessages = NonNullable<Messages['admin']> & {
   panel?: {

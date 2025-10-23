@@ -1,10 +1,17 @@
 import 'server-only';
 import { z } from 'zod';
 
+const APP_ENV_VALUES = ['local', 'development', 'preview', 'staging', 'production', 'test'] as const;
+
 const serverSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']),
-  APP_ENV: z.string().optional(),
-  VERCEL_ENV: z.enum(['development', 'preview', 'production']).optional(),
+  APP_ENV: z
+    .preprocess((value) => {
+      if (typeof value !== 'string') return undefined;
+      const normalized = value.trim().toLowerCase();
+      return normalized.length === 0 ? undefined : normalized;
+    }, z.enum(APP_ENV_VALUES))
+    .catch('local'),
   SUPABASE_URL: z
     .string()
     .url({ message: 'SUPABASE_URL must be a valid URL' }),
@@ -19,7 +26,6 @@ const serverSchema = z.object({
 export const serverEnv = serverSchema.parse({
   NODE_ENV: process.env.NODE_ENV,
   APP_ENV: process.env.APP_ENV,
-  VERCEL_ENV: process.env.VERCEL_ENV,
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   ADMIN_PANEL_ACTOR: process.env.ADMIN_PANEL_ACTOR,

@@ -8,6 +8,7 @@ This guide translates the BELL implementation plan and the accompanying Codex pr
 - **Backend Codex Prompt** – `prompts/francophone_lawyer_agent_prompt.yaml` for Agents SDK, ingestion, and guardrails.
 - **Frontend Codex Prompt** – Appendix A in the system plan ("Build the Francophone Lawyer AI SaaS UI/UX").
 - **Schema & Tool Manifest** – `docs/SUPABASE_AND_AGENT_MANIFEST.yaml` enumerating the canonical Supabase tables, RPCs, and Agents SDK tool contracts.
+- **Retrieval API Integration** – `docs/integrations/retrieval_api.md` documents how to create OpenAI vector stores, run semantic search, and synthesise grounded responses.
 - **Go / No-Go Release Checklist** – `ops/reports/GO_NO_GO_CHECKLIST.md` to be completed before pilot graduation or production releases.
 
 ## 2. Workstream Breakdown
