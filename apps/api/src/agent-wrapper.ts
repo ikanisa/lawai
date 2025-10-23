@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import type { WebSearchMode } from '@avocat-ai/shared';
 import { IRACPayloadSchema } from './schemas/irac.js';
 import { ToolInvocationLogsSchema } from './schemas/tools.js';
 
@@ -22,7 +23,7 @@ export async function runLegalAgent(
     orgId: string;
     userId: string;
     confidentialMode?: boolean;
-    userLocationOverride?: string | null;
+    webSearchMode?: WebSearchMode;
   },
   access: unknown,
 ): Promise<AgentRunResultLike> {
