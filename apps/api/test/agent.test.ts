@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const embeddingsCreateMock = vi.fn();
 const responsesCreateMock = vi.fn();
@@ -123,6 +123,11 @@ const templateQuery = {
   then: (resolve: (value: unknown) => unknown) => resolve({ data: templateRows, error: null }),
 };
 
+async function importAgentModule() {
+  vi.resetModules();
+  return import('../src/agent.ts');
+}
+
 const defaultAccessContext = {
   orgId: '00000000-0000-0000-0000-000000000000',
   userId: '00000000-0000-0000-0000-000000000000',
@@ -160,8 +165,11 @@ function makeContext(
 }
 
 const runMock = vi.fn();
+const ORIGINAL_ENV = { ...process.env };
 
 beforeEach(() => {
+  process.env = { ...ORIGINAL_ENV };
+  delete process.env.JURIS_ALLOWLIST_JSON;
   runMock.mockReset();
   runInsertMock.mockClear();
   runInsertSelectMock.mockClear();
@@ -298,6 +306,7 @@ beforeEach(() => {
   process.env.SUPABASE_URL = 'https://example.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
   process.env.AGENT_STUB_MODE = 'never';
+  delete process.env.JURIS_ALLOWLIST_JSON;
 
   vi.doMock('@openai/agents', () => ({
     Agent: class {
@@ -391,6 +400,42 @@ beforeEach(() => {
   }));
 });
 
+describe('web search allowlist configuration', () => {
+  afterEach(() => {
+    vi.resetModules();
+    process.env = { ...ORIGINAL_ENV };
+    delete process.env.JURIS_ALLOWLIST_JSON;
+  });
+
+  it('truncates overrides beyond 20 domains and logs telemetry', async () => {
+    vi.resetModules();
+    process.env = { ...ORIGINAL_ENV };
+    process.env.JURIS_ALLOWLIST_JSON = JSON.stringify(
+      Array.from({ length: 25 }, (_, index) => `override-${index}.example.test`),
+    );
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    const { __TESTING__ } = await import('../src/agent.ts');
+
+    expect(__TESTING__.webSearchAllowlist.allowlist).toHaveLength(20);
+    expect(__TESTING__.webSearchAllowlist.truncatedDomains).toHaveLength(5);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'web_search_allowlist_truncated',
+      expect.objectContaining({ limit: 20, truncatedCount: 5, total: 25 }),
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      'web_search_allowlist_config',
+      expect.objectContaining({ total: 25, chunks: expect.any(Array) }),
+    );
+
+    warnSpy.mockRestore();
+    infoSpy.mockRestore();
+  });
+});
+
 describe('runLegalAgent', () => {
   it('returns a parsed IRAC payload for allowlisted citations', async () => {
     runMock.mockResolvedValue({
@@ -419,7 +464,7 @@ describe('runLegalAgent', () => {
       error: null,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
     const result = await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -460,7 +505,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
     const result = await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -490,7 +535,7 @@ describe('runLegalAgent', () => {
       finalOutput: payload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
 
     await expect(
       runLegalAgent(
@@ -512,7 +557,7 @@ describe('runLegalAgent', () => {
       },
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
     await runLegalAgent(
       {
         question: 'Analyse pénale complexe',
@@ -530,7 +575,7 @@ describe('runLegalAgent', () => {
       finalOutput: { ...validPayload, citations: [] },
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
     await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -581,7 +626,7 @@ describe('runLegalAgent', () => {
       error: null,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
     const result = await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -605,7 +650,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
     const agentsModule = await import('@openai/agents');
     const webSearchToolMock = agentsModule.webSearchTool as unknown as vi.Mock;
     webSearchToolMock.mockClear();
@@ -630,7 +675,14 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const overrideDomains = [
+      'legifrance.gouv.fr',
+      ...Array.from({ length: DEFAULT_WEB_SEARCH_ALLOWLIST_MAX + 5 }, (_, index) => `domain${index}.example`),
+    ];
+    process.env.JURIS_ALLOWLIST_JSON = JSON.stringify(overrideDomains);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { runLegalAgent } = await importAgentModule();
     await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -646,7 +698,21 @@ describe('runLegalAgent', () => {
       | undefined;
     expect(webSearchConfig).toBeDefined();
     expect(webSearchConfig?.__options).toMatchObject({ searchContextSize: 'medium' });
-    expect((webSearchConfig?.__options as Record<string, unknown>)?.filters).toBeDefined();
+    const filters = (webSearchConfig?.__options as { filters?: { allowedDomains?: string[] } })?.filters;
+    expect(filters?.allowedDomains).toBeDefined();
+    expect(filters?.allowedDomains).toHaveLength(DEFAULT_WEB_SEARCH_ALLOWLIST_MAX);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'web_search_allowlist_truncated',
+      expect.objectContaining({
+        truncatedCount: 6,
+        totalDomains: DEFAULT_WEB_SEARCH_ALLOWLIST_MAX + 6,
+        maxDomains: DEFAULT_WEB_SEARCH_ALLOWLIST_MAX,
+        source: 'override',
+      }),
+    );
+
+    warnSpy.mockRestore();
+    delete process.env.JURIS_ALLOWLIST_JSON;
   });
 
   it('expands web search scope when broad mode is requested', async () => {
@@ -654,7 +720,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
     await runLegalAgent(
       {
         question: 'Analyse élargie',
@@ -679,7 +745,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
     const agentsModule = await import('@openai/agents');
     const webSearchToolMock = agentsModule.webSearchTool as unknown as vi.Mock;
     webSearchToolMock.mockClear();
@@ -718,7 +784,7 @@ describe('runLegalAgent', () => {
       error: null,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
 
     await runLegalAgent(
       {
@@ -762,6 +828,62 @@ describe('runLegalAgent', () => {
     expect(telemetryInsertMock).not.toHaveBeenCalled();
   });
 
+  it('records web search allowlist truncation telemetry when hosted web search filters domains', async () => {
+    telemetryInsertMock.mockClear();
+
+    runMock.mockResolvedValueOnce({
+      finalOutput: validPayload,
+      newItems: [
+        {
+          rawItem: {
+            type: 'hosted_tool_call',
+            name: 'web_search_call',
+            providerData: {
+              results: [
+                {
+                  url: validPayload.citations[0]?.url,
+                },
+              ],
+              filtered_results: [
+                {
+                  url: 'https://example.com/analyse',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
+
+    await runLegalAgent(
+      {
+        question: 'Analyse avec citations mixtes',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext(),
+    );
+
+    expect(telemetryInsertMock).toHaveBeenCalled();
+    const telemetryPayload = telemetryInsertMock.mock.calls[0]?.[0] as Array<Record<string, unknown>>;
+    const truncationEvent = telemetryPayload.find(
+      (record) => record?.tool_name === 'web_search_allowlist_truncation',
+    ) as Record<string, unknown> | undefined;
+
+    expect(truncationEvent).toBeTruthy();
+    const metadata = truncationEvent?.metadata as Record<string, unknown>;
+    expect(metadata).toMatchObject({
+      allowlisted_results: 1,
+      filtered_results: 1,
+      mode: 'allowlist',
+    });
+    expect(metadata?.total_results).toBe(
+      (metadata?.allowlisted_results as number) + (metadata?.filtered_results as number),
+    );
+  });
+
   it('augments hybrid retrieval queries with learned synonyms', async () => {
     runMock.mockResolvedValue({
       finalOutput: validPayload,
@@ -782,7 +904,7 @@ describe('runLegalAgent', () => {
 
     supabaseRpcMock.mockResolvedValueOnce({ data: [], error: null });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
 
     await runLegalAgent(
       {
@@ -805,7 +927,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
     const result = await runLegalAgent(
       {
         question:
@@ -829,7 +951,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.ts');
+    const { runLegalAgent } = await importAgentModule();
     await runLegalAgent(
       {
         question:
@@ -854,7 +976,7 @@ describe('runLegalAgent', () => {
 
 describe('manifest alignment', () => {
   it('keeps manifest tool names aligned with runtime registry', async () => {
-    const { getAgentPlatformDefinition, TOOL_NAMES } = await import('../src/agent.ts');
+    const { getAgentPlatformDefinition, TOOL_NAMES } = await importAgentModule();
     const manifestTools = getAgentPlatformDefinition()
       .tools.map((entry) => entry.name)
       .sort();
