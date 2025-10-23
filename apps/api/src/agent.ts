@@ -20,6 +20,7 @@ import {
   OFFICIAL_DOMAIN_ALLOWLIST,
   type WebSearchAllowlistResult,
   WebSearchMode,
+  getJurisdictionsForDomain,
 } from '@avocat-ai/shared';
 import { diffWordsWithSpace } from 'diff';
 import { createServiceClient } from '@avocat-ai/supabase';
@@ -260,50 +261,165 @@ const supabase = createServiceClient({
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
 });
 
-const WEB_SEARCH_ALLOWLIST = buildWebSearchAllowlist({
-  base: OFFICIAL_DOMAIN_ALLOWLIST,
-  override: loadAllowlistOverride(),
-  limit: 20,
-});
+const DOMAIN_PRIORITY_SCORES: Record<string, number> = { OHADA: 0, EU: 1 };
+const DEFAULT_DOMAIN_PRIORITY = 2;
 
-function chunkDomains(domains: readonly string[], chunkSize = 5): string[][] {
-  if (chunkSize <= 0) {
-    return [domains.slice()];
-  }
-
-  const chunks: string[][] = [];
-  for (let index = 0; index < domains.length; index += chunkSize) {
-    chunks.push(domains.slice(index, index + chunkSize));
-  }
-  return chunks;
-}
-
-function logWebSearchAllowlist(agent: string, result: WebSearchAllowlistResult): void {
-  const payload = {
-    agent,
-    source: result.source,
-    total: result.total,
-    limit: result.limit,
-    truncated: result.truncated,
-    truncatedCount: result.truncatedDomains.length,
-    truncatedDomains: result.truncatedDomains,
-    chunks: chunkDomains(result.allowlist),
-  };
-
-  console.info('web_search_allowlist_config', payload);
-
-  if (result.truncated) {
-    console.warn('web_search_allowlist_truncated', payload);
-  }
-}
-
-logWebSearchAllowlist('avocat-api', WEB_SEARCH_ALLOWLIST);
-
-export const __TESTING__ = {
-  webSearchAllowlist: WEB_SEARCH_ALLOWLIST,
+type WebSearchAllowlistOptions = {
+  /**
+   * Maximum number of domains per chunk. Values <= 0 disable chunking and
+   * return a single chunk containing the full allowlist.
+   */
+  chunkSize?: number;
 };
 
-const DOMAIN_ALLOWLIST = WEB_SEARCH_ALLOWLIST.allowlist;
+type WebSearchAllowlistResult = {
+  /**
+   * Deterministically ordered allowlist ready to be injected in prompts or
+   * tool filters.
+   */
+  allowlist: string[];
+  /**
+   * Consecutive slices of `allowlist`. Each chunk respects `chunkSize` (20 by
+   * default) so callers can send multiple requests when downstream APIs impose
+   * per-call limits.
+   */
+  chunks: string[][];
+  /**
+   * Resolved chunk size used to compute `chunks`. Exposed for debugging and to
+   * document deterministic behaviour.
+   */
+  chunkSize: number;
+};
+
+/**
+ * Orders and normalises the web search allowlist.
+ *
+ * - Input collections are flattened and non-string/falsy values are ignored.
+ * - Strings are lowercased, stripped of protocols/paths and deduplicated.
+ * - Domains are ranked with an explicit jurisdiction priority map
+ *   (OHADA → 0, EU → 1, other → 2). The first appearance order is preserved as
+ *   the primary tiebreaker and the domain name alphabetical order as a
+ *   secondary fallback, ensuring deterministic output.
+ * - When `chunkSize` is positive, the sorted allowlist is split into
+ *   consecutive chunks capped at that size (20 domains by default).
+ */
+function buildWebSearchAllowlist(
+  raw: Iterable<unknown> | null | undefined,
+  options: WebSearchAllowlistOptions = {},
+): WebSearchAllowlistResult {
+  const resolvedChunkSize = Number.isFinite(options.chunkSize)
+    ? Math.trunc(options.chunkSize ?? 20)
+    : 20;
+  const chunkSize = resolvedChunkSize > 0 ? resolvedChunkSize : 0;
+
+  let order = 0;
+  const collected = new Map<string, { index: number; score: number }>();
+
+  const normaliseDomain = (value: string): string | null => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    let candidate = trimmed;
+    if (candidate.startsWith('//')) {
+      candidate = `https:${candidate}`;
+    }
+
+    if (candidate.includes('://')) {
+      try {
+        candidate = new URL(candidate).hostname;
+      } catch (error) {
+        const [, rest] = candidate.split('://');
+        candidate = rest ? rest.split('/')[0] : candidate;
+      }
+    }
+
+    candidate = candidate.replace(/^\*\./, '');
+    candidate = candidate.replace(/^\.+/, '');
+    candidate = candidate.replace(/\/.+$/, '');
+    candidate = candidate.replace(/:+\d+$/, '');
+    candidate = candidate.replace(/\.+$/, '');
+
+    const lower = candidate.toLowerCase();
+    return lower ? lower : null;
+  };
+
+  const register = (value: unknown): void => {
+    if (!value) {
+      return;
+    }
+
+    if (typeof value === 'string') {
+      const domain = normaliseDomain(value);
+      if (!domain || collected.has(domain)) {
+        return;
+      }
+
+      const jurisdictions = getJurisdictionsForDomain(domain);
+      const score = jurisdictions.reduce<number>(
+        (current, jurisdiction) =>
+          Math.min(current, DOMAIN_PRIORITY_SCORES[jurisdiction] ?? DEFAULT_DOMAIN_PRIORITY),
+        DEFAULT_DOMAIN_PRIORITY,
+      );
+
+      collected.set(domain, { index: order, score });
+      order += 1;
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        register(entry);
+      }
+      return;
+    }
+
+    if (typeof value === 'object') {
+      const iterable = (value as Iterable<unknown>)[Symbol.iterator];
+      if (typeof iterable === 'function') {
+        for (const entry of value as Iterable<unknown>) {
+          register(entry);
+        }
+      }
+    }
+  };
+
+  register(raw);
+
+  const ordered = Array.from(collected.entries())
+    .map(([domain, meta]) => ({ domain, score: meta.score, index: meta.index }))
+    .sort((a, b) => {
+      if (a.score !== b.score) {
+        return a.score - b.score;
+      }
+      if (a.index !== b.index) {
+        return a.index - b.index;
+      }
+      return a.domain.localeCompare(b.domain);
+    });
+
+  const allowlist = ordered.map((entry) => entry.domain);
+  const chunks: string[][] = [];
+
+  if (chunkSize > 0) {
+    for (let start = 0; start < allowlist.length; start += chunkSize) {
+      chunks.push(allowlist.slice(start, start + chunkSize));
+    }
+  } else if (allowlist.length > 0) {
+    chunks.push([...allowlist]);
+  }
+
+  return { allowlist, chunks, chunkSize: chunkSize > 0 ? chunkSize : allowlist.length };
+}
+
+const resolvedAllowlist = buildWebSearchAllowlist(
+  loadAllowlistOverride() ?? OFFICIAL_DOMAIN_ALLOWLIST,
+  { chunkSize: 20 },
+);
+
+const DOMAIN_ALLOWLIST = resolvedAllowlist.allowlist;
+const DOMAIN_ALLOWLIST_CHUNKS = resolvedAllowlist.chunks;
 
 const stubMode = env.AGENT_STUB_MODE;
 
@@ -4269,20 +4385,44 @@ function buildAgent(
   const hostedTools = [budgetedFileSearch];
 
   if (!context.confidentialMode && context.webSearchMode !== 'disabled') {
-    const baseWebSearch = webSearchTool({
-      ...(context.webSearchMode === 'allowlist'
-        ? { filters: { allowedDomains: DOMAIN_ALLOWLIST } }
-        : {}),
-      searchContextSize: context.webSearchMode === 'broad' ? 'large' : 'medium',
-    });
-    const budgetedWebSearch = {
-      ...baseWebSearch,
-      execute: async (input: unknown, runContext: { context: AgentExecutionContext }) => {
-        consumeToolBudget(runContext.context, 'web_search');
-        return baseWebSearch.execute(input, runContext);
-      },
-    };
-    hostedTools.unshift(budgetedWebSearch);
+    const searchContextSize = context.webSearchMode === 'broad' ? 'large' : 'medium';
+
+    if (context.webSearchMode === 'allowlist') {
+      const allowlistChunks = (DOMAIN_ALLOWLIST_CHUNKS.length > 0 ? DOMAIN_ALLOWLIST_CHUNKS : [DOMAIN_ALLOWLIST]).filter(
+        (chunk) => chunk.length > 0,
+      );
+      if (allowlistChunks.length === 0) {
+        allowlistChunks.push([]);
+      }
+      const webSearchTools = allowlistChunks.map((chunk, index) => {
+        const baseWebSearch = webSearchTool({
+          name: index === 0 ? 'web_search' : `web_search_allowlist_${index + 1}`,
+          filters: { allowedDomains: chunk },
+          searchContextSize,
+        });
+        return {
+          ...baseWebSearch,
+          execute: async (input: unknown, runContext: { context: AgentExecutionContext }) => {
+            consumeToolBudget(runContext.context, 'web_search');
+            return baseWebSearch.execute(input, runContext);
+          },
+        };
+      });
+
+      for (let i = webSearchTools.length - 1; i >= 0; i -= 1) {
+        hostedTools.unshift(webSearchTools[i]);
+      }
+    } else {
+      const baseWebSearch = webSearchTool({ searchContextSize });
+      const budgetedWebSearch = {
+        ...baseWebSearch,
+        execute: async (input: unknown, runContext: { context: AgentExecutionContext }) => {
+          consumeToolBudget(runContext.context, 'web_search');
+          return baseWebSearch.execute(input, runContext);
+        },
+      };
+      hostedTools.unshift(budgetedWebSearch);
+    }
   }
 
   return new Agent<AgentExecutionContext, typeof IRACSchema>({
