@@ -1,20 +1,20 @@
 -- Incident reports captured for operational readiness
-create table if not exists public.incident_reports (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  occurred_at timestamptz not null,
+CREATE TABLE IF NOT EXISTS public.incident_reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  occurred_at timestamptz NOT NULL,
   detected_at timestamptz,
   resolved_at timestamptz,
-  severity text not null check (severity in ('low','medium','high','critical')),
-  status text not null check (status in ('open','mitigated','closed')),
-  title text not null,
+  severity text NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  status text NOT NULL CHECK (status IN ('open', 'mitigated', 'closed')),
+  title text NOT NULL,
   summary text,
   impact text,
   resolution text,
   follow_up text,
   evidence_url text,
-  recorded_by uuid not null,
-  recorded_at timestamptz not null default now()
+  recorded_by uuid NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists incident_reports_org_idx on public.incident_reports(org_id, occurred_at desc);
+CREATE INDEX if NOT EXISTS incident_reports_org_idx ON public.incident_reports (org_id, occurred_at DESC);
