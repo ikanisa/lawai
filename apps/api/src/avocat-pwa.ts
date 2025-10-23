@@ -22,6 +22,8 @@ import {
   policyConfiguration,
   voiceConsoleContext,
   buildVoiceRunResponse,
+  defaultWebSearchMode,
+  webSearchModes,
 } from './avocat-pwa-data.js';
 
 interface StreamEvent {
@@ -31,6 +33,14 @@ interface StreamEvent {
     citation?: ResearchStreamPayload['citation'];
   };
 }
+
+const WebSearchModeSchema = z.enum(webSearchModes);
+const RunRequestSchema = AgentRunRequestSchema.extend({
+  web_search_mode: WebSearchModeSchema.optional(),
+});
+const StreamRequestSchema = AgentStreamRequestSchema.extend({
+  web_search_mode: WebSearchModeSchema.optional(),
+});
 
 function sendEvent(reply: FastifyReply, event: StreamEvent) {
   reply.raw.write(`${JSON.stringify(event)}\n`);
@@ -50,6 +60,7 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
             input: { type: 'string' },
             jurisdiction: { type: ['string', 'null'] },
             policy_flags: { type: 'array', items: { type: 'string' } },
+            web_search_mode: { type: 'string', enum: [...webSearchModes] },
           },
           required: ['agent_id', 'input'],
           additionalProperties: true,
@@ -89,6 +100,7 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
             input: { type: 'string' },
             jurisdiction: { type: ['string', 'null'] },
             policy_flags: { type: 'array', items: { type: 'string' } },
+            web_search_mode: { type: 'string', enum: [...webSearchModes] },
           },
           required: ['tools_enabled', 'input'],
           additionalProperties: true,
