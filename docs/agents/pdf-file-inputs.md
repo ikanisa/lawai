@@ -1,157 +1,119 @@
-# PDF File Inputs via the Responses API
+# Using PDF File Inputs with the OpenAI API
 
-The API server accepts PDF evidence from two entry points:
+OpenAI multimodal models can ingest PDF documents alongside text instructions. This guide covers the supported delivery methods, sample API calls, and operational limits to consider before rolling out PDF-powered workflows.
 
-* A direct URL pointing to an external document.
-* Binary uploads that land in Supabase storage first.
+## How PDF Ingestion Works
 
-Both flows share the same OpenAI client configuration so request tagging, retry
-policies, and optional organisation/project headers remain consistent with
-`apps/api/src/openai.ts`.
+For every PDF you submit, OpenAI extracts machine-readable text and captures an image of each page. Both the extracted text and the rendered page images are placed into the model context so that the model can reason over structured content, diagrams, and annotations simultaneously.
 
-## 1. Instantiate the shared OpenAI client
+## Supplying PDFs via URL
 
-```ts
-import OpenAI from 'openai';
+You can link an externally hosted PDF directly in a response request by referencing the URL in an `input_file` content block.
 
-const apiKey = process.env.OPENAI_API_KEY;
-if (!apiKey) {
-  throw new Error('OPENAI_API_KEY is required');
-}
-
-const requestTags =
-  process.env.OPENAI_REQUEST_TAGS_API ??
-  process.env.OPENAI_REQUEST_TAGS ??
-  'service=api,component=backend';
-
-const defaultHeaders: Record<string, string> = {
-  'OpenAI-Beta': 'assistants=v2',
-};
-
-if (requestTags) {
-  // Tag requests so observability dashboards stay segmented per component.
-  defaultHeaders['OpenAI-Request-Tags'] = requestTags;
-}
-if (process.env.OPENAI_ORGANIZATION) {
-  // Forward optional organisation scoping for billing or access control.
-  defaultHeaders['OpenAI-Organization'] = process.env.OPENAI_ORGANIZATION;
-}
-if (process.env.OPENAI_PROJECT) {
-  // Attach the project header when the workspace enforces project budgets.
-  defaultHeaders['OpenAI-Project'] = process.env.OPENAI_PROJECT;
-}
-
-export const openai = new OpenAI({
-  apiKey,
-  maxRetries: 2,
-  timeout: 45_000,
-  defaultHeaders,
-  organization: process.env.OPENAI_ORGANIZATION,
-  project: process.env.OPENAI_PROJECT,
-});
+```bash
+curl "https://api.openai.com/v1/responses" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -d '{
+        "model": "gpt-5",
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "Analyze the letter and provide a summary of the key points."
+                    },
+                    {
+                        "type": "input_file",
+                        "file_url": "https://www.berkshirehathaway.com/letters/2024ltr.pdf"
+                    }
+                ]
+            }
+        ]
+    }'
 ```
 
-> ℹ️ Keep the client singleton in module scope so URL uploads and streamed file
-> uploads reuse sockets and share retry budgeting.
+## Uploading PDFs with the Files API
 
-## 2. URL ingestion flow
+Upload a PDF to OpenAI's file storage first, then reference the returned `file_id` in your response request. Use the `user_data` purpose for files you plan to reuse as inputs.
 
-```ts
-export async function runPdfFromUrl({
-  url,
-  displayName,
-  prompt,
-  model,
-}: {
-  url: string;
-  displayName?: string;
-  prompt: string;
-  model: string;
-}) {
-  const stream = await openai.responses.stream({
-    model,
-    input: [
-      {
-        role: 'user',
-        content: [
-          { type: 'input_text', text: prompt },
-          {
-            type: 'input_file',
-            file_url: url,
-            display_name: displayName ?? 'uploaded.pdf',
-          },
-        ],
-      },
-    ],
-    metadata: { purpose: 'pdf_ingestion_url' },
-  });
+```bash
+curl https://api.openai.com/v1/files \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -F purpose="user_data" \
+    -F file="@draconomicon.pdf"
 
-  return stream; // Caller should relay stream events to the SSE channel.
-}
+curl "https://api.openai.com/v1/responses" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -d '{
+        "model": "gpt-5",
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_file",
+                        "file_id": "file-6F2ksmvXxt4VdoqmHRw6kL"
+                    },
+                    {
+                        "type": "input_text",
+                        "text": "What is the first dragon in the book?"
+                    }
+                ]
+            }
+        ]
+    }'
 ```
 
-## 3. Upload flow (Supabase backed)
+## Sending Base64-Encoded PDFs
 
-```ts
-import type { Readable } from 'node:stream';
+For environments where direct file uploads are not possible, embed the PDF data as a Base64 string inside the request payload.
 
-export async function runPdfUpload({
-  file,
-  filename,
-  prompt,
-  model,
-}: {
-  file: Readable | Blob;
-  filename: string;
-  prompt: string;
-  model: string;
-}) {
-  const created = await openai.files.create({
-    file,
-    file_name: filename,
-    purpose: 'assistants',
-  });
-
-  const stream = await openai.responses.stream({
-    model,
-    input: [
-      {
-        role: 'user',
-        content: [
-          { type: 'input_text', text: prompt },
-          {
-            type: 'input_file',
-            file_id: created.id,
-            display_name: filename,
-          },
-        ],
-      },
-    ],
-    metadata: { purpose: 'pdf_ingestion_upload' },
-  });
-
-  return stream;
-}
+```bash
+curl "https://api.openai.com/v1/responses" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -d '{
+        "model": "gpt-5",
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_file",
+                        "filename": "draconomicon.pdf",
+                        "file_data": "...base64 encoded PDF bytes here..."
+                    },
+                    {
+                        "type": "input_text",
+                        "text": "What is the first dragon in the book?"
+                    }
+                ]
+            }
+        ]
+    }'
 ```
 
-> ✅ Do not instantiate a second client in the upload helper—the same `openai`
-> instance handles both the file upload and the follow-up `responses.stream`
-> call.
+## Usage Considerations
 
-## Streaming & token accounting
+- **Token usage** – Each PDF contributes both extracted text and rendered page images to the context window. Evaluate model pricing and context limits before sending large or numerous PDFs.
+- **File size** – Individual files must be smaller than 10 MB. The total content size across all files included in a single request cannot exceed 32 MB.
+- **Supported models** – Only multimodal models (e.g. `gpt-4o`, `gpt-4o-mini`, `o1`) accept PDF inputs.
+- **File purposes** – While any Files API purpose is allowed, using `user_data` keeps your intent clear for recurring inputs.
 
-* Always stream responses so the frontend can surface interim thinking. The Node
-  SDK exposes an async iterator, so relay each `event.data` payload to the SSE
-  client.
-* Call `const final = await stream.finalResponse();` once streaming completes.
-  The `final.usage.total_tokens` field powers our Datadog dashboards and quota
-  reconciliation.
-* Persist `final.response_id`, request tags, and `final.usage` alongside the run
-  record so we can audit expensive PDFs later.
-* When a stream fails, forward the error to `logOpenAIDebug(...)` with the shared
-  client to capture the debugging payload from OpenAI before surfacing a
-  user-friendly retry message.
+## Next Steps
 
-These patterns keep the documentation aligned with the production wiring in
-`apps/api/src/openai.ts` while making the example self-contained for agent
-builders.
+- Prototype prompts with PDF attachments in the Playground to validate the UX before automating calls.
+- Review the [Responses API reference](https://api.openai.com/v1/responses) for additional request options, streaming, and output handling patterns.
+
+## Follow-Up Tasks
+
+| Task | Start |
+| --- | --- |
+| Link this guide from `docs/agents/inventory.md` so migration checklists surface the PDF workflow. | [Start task](../../issues/new?title=Add%20PDF%20inputs%20guide%20to%20agent%20inventory&body=Document%20the%20PDF%20workflow%20in%20docs%2Fagents%2Finventory.md%20and%20other%20navigation%20indices.) |
+| Add a TypeScript example that uses the `openai` SDK to upload and send PDFs through the Responses API. | [Start task](../../issues/new?title=Add%20TypeScript%20PDF%20upload%20example&body=Expand%20docs%2Fagents%2Fpdf-file-inputs.md%20with%20an%20SDK-based%20example%20aligned%20with%20apps%2Fapi%20integration%20patterns.) |
+| Audit duplicate workspaces (`JB/`, `francophone-lex/`) and merge or remove them to prevent drift. | [Start task](../../issues/new?title=Rationalize%20duplicate%20workspaces&body=Evaluate%20the%20JB%20and%20francophone-lex%20directories%20and%20consolidate%20them%20into%20the%20primary%20workspace.) |
+| Track a PDF ingestion rollout milestone in `docs/agents/inventory.md` immediate work items. | [Start task](../../issues/new?title=Track%20PDF%20ingestion%20rollout&body=Add%20a%20checklist%20item%20for%20the%20PDF%20ingestion%20launch%20and%20link%20back%20to%20this%20guide.) |
+| Surface a knowledge-base CTA in `apps/web` directing operators to this PDF workflow documentation. | [Start task](../../issues/new?title=Add%20PDF%20CTA%20to%20operator%20console&body=Add%20a%20knowledge-base%20card%20in%20apps%2Fweb%20highlighting%20the%20PDF%20ingestion%20guide%20for%20operators.) |
