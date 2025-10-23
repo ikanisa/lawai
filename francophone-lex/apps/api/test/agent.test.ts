@@ -110,6 +110,11 @@ const templateQuery = {
   then: (resolve: (value: unknown) => unknown) => resolve({ data: templateRows, error: null }),
 };
 
+async function importAgentModule() {
+  vi.resetModules();
+  return import('../src/agent.js');
+}
+
 const complianceAssessmentsQuery = createAsyncQuery();
 complianceAssessmentsQuery.setResponse(null, null);
 
@@ -310,6 +315,7 @@ beforeEach(() => {
   process.env.SUPABASE_URL = 'https://example.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
   process.env.AGENT_STUB_MODE = 'never';
+  delete process.env.JURIS_ALLOWLIST_JSON;
 
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -479,7 +485,7 @@ describe('runLegalAgent', () => {
       error: null,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
     const result = await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -522,7 +528,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
     const result = await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -590,7 +596,7 @@ describe('runLegalAgent', () => {
       },
     ]);
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
 
     await runLegalAgent(
       {
@@ -626,7 +632,7 @@ describe('runLegalAgent', () => {
       finalOutput: payload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
 
     await expect(
       runLegalAgent(
@@ -648,7 +654,7 @@ describe('runLegalAgent', () => {
       },
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
     await runLegalAgent(
       {
         question: 'Analyse pénale complexe',
@@ -666,7 +672,7 @@ describe('runLegalAgent', () => {
       finalOutput: { ...validPayload, citations: [] },
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
     await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -717,7 +723,7 @@ describe('runLegalAgent', () => {
       error: null,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
     const result = await runLegalAgent(
       {
         question: 'Analyse en France',
@@ -741,7 +747,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
     await runLegalAgent(
       {
         question: 'Analyse confidentielle',
@@ -755,6 +761,50 @@ describe('runLegalAgent', () => {
     const agentInstance = runMock.mock.calls[0]?.[0] as { config?: { tools?: Array<{ name?: string }> } } | undefined;
     const toolNames = agentInstance?.config?.tools?.map((tool) => tool?.name) ?? [];
     expect(toolNames).not.toContain('web_search');
+  });
+
+  it('configures allowlist web search by default', async () => {
+    runMock.mockResolvedValue({
+      finalOutput: validPayload,
+    });
+
+    const overrideDomains = [
+      'legifrance.gouv.fr',
+      ...Array.from({ length: DEFAULT_WEB_SEARCH_ALLOWLIST_MAX + 5 }, (_, index) => `domain${index}.example`),
+    ];
+    process.env.JURIS_ALLOWLIST_JSON = JSON.stringify(overrideDomains);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { runLegalAgent } = await importAgentModule();
+    await runLegalAgent(
+      {
+        question: 'Analyse en France',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      makeContext(),
+    );
+
+    const agentsModule = await import('@openai/agents');
+    const webSearchToolMock = agentsModule.webSearchTool as unknown as vi.Mock;
+    expect(webSearchToolMock).toHaveBeenCalled();
+    const options = webSearchToolMock.mock.calls[0]?.[0] as
+      | { filters?: { allowedDomains?: string[] }; searchContextSize?: string }
+      | undefined;
+    expect(options?.searchContextSize).toBe('medium');
+    expect(options?.filters?.allowedDomains).toHaveLength(DEFAULT_WEB_SEARCH_ALLOWLIST_MAX);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'web_search_allowlist_truncated',
+      expect.objectContaining({
+        truncatedCount: 6,
+        totalDomains: DEFAULT_WEB_SEARCH_ALLOWLIST_MAX + 6,
+        maxDomains: DEFAULT_WEB_SEARCH_ALLOWLIST_MAX,
+        source: 'override',
+      }),
+    );
+
+    warnSpy.mockRestore();
+    delete process.env.JURIS_ALLOWLIST_JSON;
   });
 
   it('avoids caching telemetry and hybrid retrieval data when confidential mode is active', async () => {
@@ -776,7 +826,7 @@ describe('runLegalAgent', () => {
       error: null,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
 
     await runLegalAgent(
       {
@@ -840,7 +890,7 @@ describe('runLegalAgent', () => {
 
     supabaseRpcMock.mockResolvedValueOnce({ data: [], error: null });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
 
     await runLegalAgent(
       {
@@ -865,7 +915,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
     const result = await runLegalAgent(
       {
         question:
@@ -920,7 +970,7 @@ describe('runLegalAgent', () => {
       },
     ]);
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
 
     const result = await runLegalAgent(
       {
@@ -944,7 +994,7 @@ describe('runLegalAgent', () => {
   it('escalates to HITL when the structured IRAC guardrail blocks the output', async () => {
     runMock.mockRejectedValue(new Error('Output rejected by guardrail structured-irac-guardrail.'));
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
 
     const result = await runLegalAgent(
       {
@@ -965,7 +1015,7 @@ describe('runLegalAgent', () => {
   it('escalates to HITL when the sensitive topic guardrail blocks the output', async () => {
     runMock.mockRejectedValue(new Error('Output rejected by guardrail sensitive-topic-hitl-guardrail.'));
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
 
     const result = await runLegalAgent(
       {
@@ -986,7 +1036,7 @@ describe('runLegalAgent', () => {
   it('blocks execution when jurisdiction entitlement is missing', async () => {
     runMock.mockResolvedValue({ finalOutput: validPayload });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
 
     await expect(
       runLegalAgent(
@@ -1007,7 +1057,7 @@ describe('runLegalAgent', () => {
   it('disables web search when confidential mode is enforced via policy', async () => {
     runMock.mockResolvedValue({ finalOutput: validPayload });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
 
     await runLegalAgent(
       {
@@ -1040,7 +1090,7 @@ describe('runLegalAgent', () => {
       finalOutput: validPayload,
     });
 
-    const { runLegalAgent } = await import('../src/agent.js');
+    const { runLegalAgent } = await importAgentModule();
     await runLegalAgent(
       {
         question:

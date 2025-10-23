@@ -270,3 +270,7 @@ export function getResearchPlan(): ResearchPlan {
 export function getResearchCitations(): ResearchCitation[] {
   return JSON.parse(JSON.stringify(researchCitations)) as ResearchCitation[];
 }
+
+export function getResearchFilters() {
+  return JSON.parse(JSON.stringify(researchFilters));
+}
