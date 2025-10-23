@@ -1,5 +1,4 @@
-do
-$do$
+DO $do$
 begin
   if exists (
     select 1

@@ -1,5 +1,7 @@
-import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { authorizeRequestWithGuards } from '../../http/authorization.js';
+import { withRequestSpan } from '../../observability/spans.js';
+import { InMemoryRateLimiter } from '../../rate-limit.js';
 import type { AppContext } from '../../types/context';
 import {
   fetchWorkspaceOverview as defaultFetchWorkspaceOverview,
@@ -14,9 +16,9 @@ const defaultServices: WorkspaceServices = {
   fetchWorkspaceOverview: defaultFetchWorkspaceOverview,
 };
 
-const workspaceQuerySchema = z.object({
-  orgId: z.string().uuid(),
-});
+const workspaceLimiter = new InMemoryRateLimiter({ limit: 20, windowMs: 60_000 });
+const complianceStatusLimiter = new InMemoryRateLimiter({ limit: 30, windowMs: 60_000 });
+const complianceAckLimiter = new InMemoryRateLimiter({ limit: 15, windowMs: 60_000 });
 
 const WORKSPACE_SECTIONS: Array<keyof WorkspaceFetchErrors> = [
   'jurisdictions',
@@ -65,9 +67,34 @@ export async function registerWorkspaceRoutes(
         details: parse.error.flatten(),
       });
     }
+  } catch (error) {
+    request.log.warn({ err: error }, 'workspace_rate_limit_failed');
+  }
+  return true;
+}
 
-    const { orgId } = parse.data;
-    const { supabase } = ctx;
+export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
+  app.get<{ Querystring: WorkspaceQuery }>(
+    '/workspace',
+    {
+      schema: {
+        headers: {
+          type: 'object',
+          properties: { 'x-user-id': { type: 'string' } },
+          required: ['x-user-id'],
+        },
+        querystring: {
+          type: 'object',
+          properties: { orgId: { type: 'string' } },
+          required: ['orgId'],
+        },
+        response: { 200: { type: 'object', additionalProperties: true } },
+      },
+    },
+    async (request, reply) => {
+      if (!enforceRateLimit(workspaceLimiter, request, reply)) {
+        return;
+      }
 
     try {
       const { data, errors } = await services.fetchWorkspaceOverview(supabase, orgId);

@@ -1,9 +1,11 @@
 import { createApp } from './app.js';
-import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
-import type { IRACPayload } from '@avocat-ai/shared';
+import { WebSearchModeSchema } from '@avocat-ai/shared';
+import type { IRACPayload, WebSearchMode } from '@avocat-ai/shared';
 import { z } from 'zod';
 import { env } from './config.js';
+import type Redis from 'ioredis';
 import { IRACPayloadSchema } from './schemas/irac.js';
 import { getOpenAI, logOpenAIDebug, setOpenAILogger } from './openai.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent-wrapper.js';
@@ -12,7 +14,7 @@ import { summariseDocumentFromPayload } from './summarization.js';
 try {
   const dyn = new Function('p', 'return import(p)');
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  (dyn as any)('./finance-workers.js');
+  Promise.resolve((dyn as any)('./finance-workers.js')).catch(() => {});
 } catch {}
 import { z as zod } from 'zod';
 import {
@@ -60,18 +62,101 @@ import { authorizeRequestWithGuards } from './http/authorization.js';
 import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
-import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
 import { InMemoryRateLimiter } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
+import { extractCountry } from './utils/jurisdictions.js';
 
+const telemetry = await ensureTelemetryRuntime();
 const { app, context } = await createApp();
+registerGracefulShutdown(app, {
+  cleanup: () => context.container.dispose(),
+});
+
+app.addHook('onClose', async () => {
+  try {
+    await telemetry.shutdown();
+  } catch (error) {
+    app.log.error({ err: error }, 'telemetry_shutdown_failed');
+  }
+});
 
 setOpenAILogger(app.log);
 
-// Basic rate limits for public-ish endpoints
-const telemetryLimiter = new InMemoryRateLimiter({ limit: 60, windowMs: 60_000 });
+const limiterFactory = createRateLimiterFactory({
+  enabled: env.RATE_LIMIT_ENABLED,
+  provider: env.RATE_LIMIT_PROVIDER,
+  redis:
+    env.RATE_LIMIT_PROVIDER === 'redis'
+      ? {
+          url: env.RATE_LIMIT_REDIS_URL,
+        }
+      : undefined,
+  supabase:
+    env.RATE_LIMIT_PROVIDER === 'supabase'
+      ? {
+          client: supabase,
+          functionName: env.RATE_LIMIT_SUPABASE_FUNCTION,
+        }
+      : undefined,
+  logger: app.log,
+});
+
+const telemetryLimiter = limiterFactory.create('telemetry', {
+  limit: env.RATE_LIMIT_TELEMETRY_LIMIT,
+  windowMs: env.RATE_LIMIT_TELEMETRY_WINDOW_SECONDS * 1000,
+});
+
+const telemetryRateLimitGuard = createRateLimitGuard(telemetryLimiter, {
+  name: 'telemetry',
+  limit: env.RATE_LIMIT_TELEMETRY_LIMIT,
+  windowMs: env.RATE_LIMIT_TELEMETRY_WINDOW_SECONDS * 1000,
+  logger: app.log,
+});
+
+const runsRateLimitGuard = createRateLimitGuard(
+  limiterFactory.create('runs', {
+    limit: env.RATE_LIMIT_RUNS_LIMIT,
+    windowMs: env.RATE_LIMIT_RUNS_WINDOW_SECONDS * 1000,
+  }),
+  {
+    name: 'runs',
+    limit: env.RATE_LIMIT_RUNS_LIMIT,
+    windowMs: env.RATE_LIMIT_RUNS_WINDOW_SECONDS * 1000,
+    logger: app.log,
+  },
+);
+
+const workspaceRateLimitGuard = createRateLimitGuard(
+  limiterFactory.create('workspace', {
+    limit: env.RATE_LIMIT_WORKSPACE_LIMIT,
+    windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_SECONDS * 1000,
+  }),
+  {
+    name: 'workspace',
+    limit: env.RATE_LIMIT_WORKSPACE_LIMIT,
+    windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_SECONDS * 1000,
+    logger: app.log,
+  },
+);
+
+const complianceRateLimitGuard = createRateLimitGuard(
+  limiterFactory.create('compliance', {
+    limit: env.RATE_LIMIT_COMPLIANCE_LIMIT,
+    windowMs: env.RATE_LIMIT_COMPLIANCE_WINDOW_SECONDS * 1000,
+  }),
+  {
+    name: 'compliance',
+    limit: env.RATE_LIMIT_COMPLIANCE_LIMIT,
+    windowMs: env.RATE_LIMIT_COMPLIANCE_WINDOW_SECONDS * 1000,
+    logger: app.log,
+  },
+);
+
+context.rateLimits.workspace = workspaceRateLimitGuard;
+
+await registerWorkspaceRoutes(app, context);
 
 async function embedQuery(text: string): Promise<number[]> {
   const openai = getOpenAI();
@@ -80,6 +165,7 @@ async function embedQuery(text: string): Promise<number[]> {
     const response = await openai.embeddings.create({
       model: env.EMBEDDING_MODEL,
       input: text,
+      ...(env.EMBEDDING_DIMENSION ? { dimensions: env.EMBEDDING_DIMENSION } : {}),
     });
 
     const embedding = response.data?.[0]?.embedding;
@@ -94,265 +180,6 @@ async function embedQuery(text: string): Promise<number[]> {
     throw new Error(message);
   }
 }
-
-const COMPLIANCE_ACK_TYPES = {
-  consent: 'ai_assist',
-  councilOfEurope: 'council_of_europe_disclosure',
-} as const;
-
-type AcknowledgementEvent = {
-  type: string;
-  version: string;
-  created_at: string | null;
-};
-
-const toStringArray = (input: unknown): string[] =>
-  Array.isArray(input) ? input.filter((value): value is string => typeof value === 'string') : [];
-
-async function fetchAcknowledgementEvents(orgId: string, userId: string): Promise<AcknowledgementEvent[]> {
-  const { data, error } = await supabase
-    .from('consent_events')
-    .select('consent_type, version, created_at, org_id')
-    .eq('user_id', userId)
-    .or(`org_id.eq.${orgId},org_id.is.null`)
-    .in('consent_type', [COMPLIANCE_ACK_TYPES.consent, COMPLIANCE_ACK_TYPES.councilOfEurope])
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    throw error;
-  }
-
-  const rows = (data ?? []) as Array<{ consent_type?: unknown; version?: unknown; created_at?: string | null }>;
-  const events: AcknowledgementEvent[] = [];
-  for (const row of rows) {
-    if (typeof row.consent_type !== 'string' || typeof row.version !== 'string') {
-      continue;
-    }
-    events.push({ type: row.consent_type, version: row.version, created_at: row.created_at ?? null });
-  }
-  return events;
-}
-
-type ConsentEventInsert = {
-  org_id: string | null;
-  user_id: string;
-  consent_type: string;
-  version: string;
-};
-
-async function recordAcknowledgementEvents(
-  request: FastifyRequest,
-  orgId: string,
-  userId: string,
-  records: ConsentEventInsert[],
-) {
-  if (records.length === 0) {
-    return;
-  }
-
-  await withRequestSpan(
-    request,
-    {
-      name: 'compliance.acknowledgements.persist',
-      attributes: { orgId, userId, recordCount: records.length },
-    },
-    async ({ logger, setAttribute }) => {
-      const payload = records.map((record) => ({
-        org_id: record.org_id,
-        user_id: record.user_id,
-        consent_type: record.consent_type,
-        version: record.version,
-      }));
-
-      const { error } = await supabase.rpc('record_consent_events', { events: payload });
-
-      if (error) {
-        setAttribute('errorCode', error.code ?? 'unknown');
-        logger.error({ err: error }, 'compliance_ack_persist_failed');
-        throw error;
-      }
-
-      setAttribute('persisted', true);
-      incrementCounter('compliance_acknowledgements.recorded', {
-        consent_types: records
-          .map((record) => record.consent_type)
-          .sort()
-          .join(',') || 'none',
-      });
-    },
-  );
-}
-
-function summariseAcknowledgements(
-  access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>,
-  events: AcknowledgementEvent[],
-) {
-  const latestByType = new Map<string, { version: string; created_at: string | null }>();
-  for (const event of events) {
-    if (!latestByType.has(event.type)) {
-      latestByType.set(event.type, { version: event.version, created_at: event.created_at });
-    }
-  }
-
-  const consentRequirement = access.consent.requirement;
-  const councilRequirement = access.councilOfEurope.requirement;
-  const consentAck = latestByType.get(COMPLIANCE_ACK_TYPES.consent);
-  const councilAck = latestByType.get(COMPLIANCE_ACK_TYPES.councilOfEurope);
-
-  const consentSatisfied =
-    !consentRequirement || consentAck?.version === consentRequirement.version || access.consent.latest?.version === consentRequirement.version;
-  const councilSatisfied =
-    !councilRequirement?.version || councilAck?.version === councilRequirement.version || access.councilOfEurope.acknowledgedVersion === councilRequirement.version;
-
-  return {
-    consent: {
-      requiredVersion: consentRequirement?.version ?? null,
-      acknowledgedVersion: consentAck?.version ?? access.consent.latest?.version ?? null,
-      acknowledgedAt: consentAck?.created_at ?? null,
-      satisfied: consentSatisfied,
-    },
-    councilOfEurope: {
-      requiredVersion: councilRequirement?.version ?? null,
-      acknowledgedVersion: councilAck?.version ?? access.councilOfEurope.acknowledgedVersion ?? null,
-      acknowledgedAt: councilAck?.created_at ?? null,
-      satisfied: councilSatisfied,
-    },
-  };
-}
-
-type ComplianceAssessment = {
-  fria: { required: boolean; reasons: string[] };
-  cepej: { passed: boolean; violations: string[] };
-  statute: { passed: boolean; violations: string[] };
-  disclosures: {
-    consentSatisfied: boolean;
-    councilSatisfied: boolean;
-    missing: string[];
-    requiredConsentVersion: string | null;
-    acknowledgedConsentVersion: string | null;
-    requiredCoeVersion: string | null;
-    acknowledgedCoeVersion: string | null;
-  };
-};
-
-function mergeDisclosuresWithAcknowledgements(
-  assessment: ComplianceAssessment,
-  acknowledgements: ReturnType<typeof summariseAcknowledgements>,
-): ComplianceAssessment['disclosures'] {
-  const missing = new Set(assessment.disclosures.missing);
-  if (!acknowledgements.consent.satisfied) {
-    missing.add('consent');
-  }
-  if (!acknowledgements.councilOfEurope.satisfied) {
-    missing.add('council_of_europe');
-  }
-
-  return {
-    ...assessment.disclosures,
-    consentSatisfied: acknowledgements.consent.satisfied,
-    councilSatisfied: acknowledgements.councilOfEurope.satisfied,
-    missing: Array.from(missing),
-    requiredConsentVersion: acknowledgements.consent.requiredVersion,
-    acknowledgedConsentVersion: acknowledgements.consent.acknowledgedVersion,
-    requiredCoeVersion: acknowledgements.councilOfEurope.requiredVersion,
-    acknowledgedCoeVersion: acknowledgements.councilOfEurope.acknowledgedVersion,
-  };
-}
-
-class ResidencyError extends Error {
-  statusCode: number;
-
-  constructor(message: string, statusCode: number) {
-    super(message);
-    this.statusCode = statusCode;
-  }
-}
-
-function extractResidencyFromPath(path?: string | null): string | null {
-  if (!path) {
-    return null;
-  }
-  const segments = path.split('/');
-  return segments.length > 1 ? segments[1] ?? null : null;
-}
-
-function collectAllowedResidencyZones(
-  access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>,
-): string[] {
-  const zones = new Set<string>();
-
-  const append = (value: string | null | undefined) => {
-    if (!value) return;
-    const normalized = value.trim().toLowerCase();
-    if (normalized) {
-      zones.add(normalized);
-    }
-  };
-
-  if (Array.isArray(access.policies.residencyZones)) {
-    for (const zone of access.policies.residencyZones) {
-      append(zone);
-    }
-  }
-  append(access.policies.residencyZone ?? null);
-
-  return zones.size > 0 ? Array.from(zones) : [];
-}
-
-async function determineResidencyZone(
-  orgId: string,
-  access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>,
-  requestedZone?: string | null,
-): Promise<string> {
-  const requested = typeof requestedZone === 'string' ? requestedZone.trim().toLowerCase() : '';
-  const candidates = [
-    requested,
-    ...collectAllowedResidencyZones(access),
-  ].filter((value, index, array) => value && array.indexOf(value) === index);
-
-  const zone = (candidates[0] ?? 'eu').trim().toLowerCase();
-
-  const { data: isAllowedZone, error: allowedError } = await supabase.rpc('storage_residency_allowed', { code: zone });
-  if (allowedError) {
-    throw new ResidencyError('residency_validation_failed', 500);
-  }
-  if (isAllowedZone !== true) {
-    throw new ResidencyError('residency_zone_invalid', 400);
-  }
-
-  const { data: orgAllowed, error: orgAllowedError } = await supabase.rpc('org_residency_allows', {
-    org_uuid: orgId,
-    zone,
-  });
-  if (orgAllowedError) {
-    throw new ResidencyError('residency_validation_failed', 500);
-  }
-  if (orgAllowed !== true) {
-    throw new ResidencyError('residency_zone_restricted', 428);
-  }
-
-  return zone;
-}
-
-const complianceAckSchema = z
-  .object({
-    consent: z
-      .object({
-        type: z.string().min(1),
-        version: z.string().min(1),
-      })
-      .nullable()
-      .optional(),
-    councilOfEurope: z
-      .object({
-        version: z.string().min(1),
-      })
-      .nullable()
-      .optional(),
-  })
-  .refine((value) => Boolean(value.consent || value.councilOfEurope), {
-    message: 'At least one acknowledgement must be provided.',
-  });
 
 const regulatorDigestSchema = z
   .object({
@@ -401,7 +228,7 @@ interface ChangeLogRow {
 }
 
 registerChatkitRoutes(app, { supabase });
-registerOrchestratorRoutes(app, { supabase });
+registerOrchestratorRoutes(app, context);
 
 const GO_NO_GO_SECTIONS = new Set(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
 const GO_NO_GO_STATUSES = new Set(['pending', 'satisfied']);
@@ -695,14 +522,6 @@ async function refreshFriaEvidence(orgId: string, actorId: string): Promise<void
   }
 }
 
-const extractCountry = (value: unknown): string | null => {
-  if (value && typeof value === 'object' && 'country' in (value as Record<string, unknown>)) {
-    const country = (value as { country?: unknown }).country;
-    return typeof country === 'string' ? country : null;
-  }
-  return null;
-};
-
 function resolveDateRange(startParam?: string, endParam?: string): { start: string; end: string } {
   const now = new Date();
   const end = endParam ? new Date(endParam) : now;
@@ -721,228 +540,6 @@ function resolveDateRange(startParam?: string, endParam?: string): { start: stri
   const endIso = new Date(end).toISOString();
   return { start: startIso, end: endIso };
 }
-
-app.get('/compliance/acknowledgements', async (request, reply) => {
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(401).send({ error: 'unauthorized' });
-  }
-  const orgHeader = request.headers['x-org-id'];
-  if (!orgHeader || typeof orgHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-org-id header is required' });
-  }
-
-  let access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>;
-  try {
-    access = await withRequestSpan(
-      request,
-      {
-        name: 'compliance.acknowledgements.authorize',
-        attributes: { orgId: orgHeader, userId: userHeader },
-      },
-      async () => authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request),
-    );
-  } catch (error) {
-    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
-    return reply.code(status).send({ error: 'forbidden' });
-  }
-
-  try {
-    const events = await withRequestSpan(
-      request,
-      {
-        name: 'compliance.acknowledgements.fetch',
-        attributes: { orgId: orgHeader, userId: userHeader },
-      },
-      async ({ setAttribute }) => {
-        const result = await fetchAcknowledgementEvents(orgHeader, userHeader);
-        setAttribute('eventCount', result.length);
-        return result;
-      },
-    );
-
-    const acknowledgements = summariseAcknowledgements(access, events);
-    return reply.send({ orgId: orgHeader, userId: userHeader, acknowledgements });
-  } catch (error) {
-    request.log.error({ err: error }, 'compliance_ack_fetch_failed');
-    return reply.code(500).send({ error: 'compliance_ack_fetch_failed' });
-  }
-});
-
-app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledgements', async (request, reply) => {
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(401).send({ error: 'unauthorized' });
-  }
-  const orgHeader = request.headers['x-org-id'];
-  if (!orgHeader || typeof orgHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-org-id header is required' });
-  }
-
-  const parsed = complianceAckSchema.safeParse(request.body ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
-  }
-
-  let access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>;
-  try {
-    access = await withRequestSpan(
-      request,
-      {
-        name: 'compliance.acknowledgements.authorize',
-        attributes: { orgId: orgHeader, userId: userHeader },
-      },
-      async () => authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request),
-    );
-  } catch (error) {
-    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
-    return reply.code(status).send({ error: 'forbidden' });
-  }
-
-  const records: ConsentEventInsert[] = [];
-  if (parsed.data.consent) {
-    records.push({
-      user_id: userHeader,
-      org_id: orgHeader,
-      consent_type: parsed.data.consent.type,
-      version: parsed.data.consent.version,
-    });
-  }
-  if (parsed.data.councilOfEurope) {
-    records.push({
-      user_id: userHeader,
-      org_id: orgHeader,
-      consent_type: COMPLIANCE_ACK_TYPES.councilOfEurope,
-      version: parsed.data.councilOfEurope.version,
-    });
-  }
-
-  try {
-    await recordAcknowledgementEvents(request, orgHeader, userHeader, records);
-  } catch (error) {
-    return reply.code(500).send({ error: 'compliance_ack_insert_failed' });
-  }
-
-  const events = await withRequestSpan(
-    request,
-    {
-      name: 'compliance.acknowledgements.refresh',
-      attributes: { orgId: orgHeader, userId: userHeader },
-    },
-    async ({ setAttribute }) => {
-      const result = await fetchAcknowledgementEvents(orgHeader, userHeader);
-      setAttribute('eventCount', result.length);
-      return result;
-    },
-  );
-
-  const acknowledgements = summariseAcknowledgements(access, events);
-  return reply.send({ orgId: orgHeader, userId: userHeader, acknowledgements });
-});
-
-app.get<{
-  Querystring: { limit?: string };
-}>('/compliance/status', async (request, reply) => {
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(401).send({ error: 'unauthorized' });
-  }
-  const orgHeader = request.headers['x-org-id'];
-  if (!orgHeader || typeof orgHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-org-id header is required' });
-  }
-
-  let access;
-  try {
-    access = await authorizeRequestWithGuards('workspace:view', orgHeader, userHeader, request);
-  } catch (error) {
-    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
-    return reply.code(status).send({ error: 'forbidden' });
-  }
-
-  const rawLimit = (request.query?.limit ?? '5') as string;
-  const parsedLimit = Number.parseInt(rawLimit, 10);
-  const limit = Number.isFinite(parsedLimit) ? Math.min(25, Math.max(1, Math.floor(parsedLimit))) : 5;
-
-  const [assessmentsResult, events] = await Promise.all([
-    supabase
-      .from('compliance_assessments')
-      .select(
-        'run_id, created_at, fria_required, fria_reasons, cepej_passed, cepej_violations, statute_passed, statute_violations, disclosures_missing',
-      )
-      .eq('org_id', orgHeader)
-      .order('created_at', { ascending: false })
-      .limit(limit),
-    fetchAcknowledgementEvents(orgHeader, userHeader),
-  ]);
-
-  if (assessmentsResult.error) {
-    request.log.error({ err: assessmentsResult.error }, 'compliance_status_query_failed');
-    return reply.code(500).send({ error: 'compliance_status_query_failed' });
-  }
-
-  const acknowledgements = summariseAcknowledgements(access, events);
-
-  const history = (assessmentsResult.data ?? []).map((row) => {
-    const missing = toStringArray((row as { disclosures_missing?: unknown }).disclosures_missing);
-    const assessment: ComplianceAssessment = {
-      fria: {
-        required: Boolean((row as { fria_required?: boolean | null }).fria_required),
-        reasons: toStringArray((row as { fria_reasons?: unknown }).fria_reasons),
-      },
-      cepej: {
-        passed: (row as { cepej_passed?: boolean | null }).cepej_passed ?? true,
-        violations: toStringArray((row as { cepej_violations?: unknown }).cepej_violations),
-      },
-      statute: {
-        passed: (row as { statute_passed?: boolean | null }).statute_passed ?? true,
-        violations: toStringArray((row as { statute_violations?: unknown }).statute_violations),
-      },
-      disclosures: {
-        consentSatisfied: !missing.includes('consent'),
-        councilSatisfied: !missing.includes('council_of_europe'),
-        missing,
-        requiredConsentVersion: null,
-        acknowledgedConsentVersion: null,
-        requiredCoeVersion: null,
-        acknowledgedCoeVersion: null,
-      },
-    };
-
-    return {
-      runId: (row as { run_id?: string | null }).run_id ?? null,
-      createdAt: (row as { created_at?: string | null }).created_at ?? null,
-      assessment,
-    };
-  });
-
-  if (history.length > 0) {
-    history[0].assessment = {
-      ...history[0].assessment,
-      disclosures: mergeDisclosuresWithAcknowledgements(history[0].assessment, acknowledgements),
-    };
-  }
-
-  const totals = history.reduce(
-    (acc, entry) => {
-      if (entry.assessment.fria.required) acc.friaRequired += 1;
-      if (!entry.assessment.cepej.passed) acc.cepejViolations += 1;
-      if (!entry.assessment.statute.passed) acc.statuteViolations += 1;
-      if (entry.assessment.disclosures.missing.length > 0) acc.disclosureGaps += 1;
-      return acc;
-    },
-    { total: history.length, friaRequired: 0, cepejViolations: 0, statuteViolations: 0, disclosureGaps: 0 },
-  );
-
-  return reply.send({
-    orgId: orgHeader,
-    userId: userHeader,
-    acknowledgements,
-    latest: history[0] ?? null,
-    history,
-    totals,
-  });
-});
 
 app.post<{ Body: z.infer<typeof regulatorDigestSchema> }>('/launch/digests', async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
@@ -1000,9 +597,13 @@ app.post<{ Body: z.infer<typeof regulatorDigestSchema> }>('/launch/digests', asy
     request.log.error({ err: error }, 'regulator_digest_enqueue_failed');
     return reply.code(500).send({ error: 'regulator_digest_enqueue_failed' });
   }
-});
+  },
+);
 
-app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/digests', async (request, reply) => {
+app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>(
+  '/launch/digests',
+  { preHandler: launchRateLimitGuard },
+  async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -1045,30 +646,51 @@ app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/di
   );
 
   return reply.send({ orgId: parsed.data.orgId, digests });
-});
+  },
+);
 
 app.get('/healthz', async () => ({ status: 'ok' }));
 
 app.post<{
   Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
-}>('/runs', async (request, reply) => {
+}>('/runs', { preHandler: runsRateLimitGuard }, async (request, reply) => {
   const bodySchema = z.object({
     question: z.string().min(1),
     context: z.string().optional(),
     orgId: z.string().uuid(),
     userId: z.string().uuid(),
     confidentialMode: z.coerce.boolean().optional(),
+    userLocation: z.string().optional(),
   });
   const parsed = bodySchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
   }
-  const { question, context, orgId, userId, confidentialMode } = parsed.data;
+  const { question, context, orgId, userId, confidentialMode, userLocation } = parsed.data;
+
+  const allowed = await enforceRateLimit(runsLimiter, request, reply, `runs:${orgId}:${userId}`);
+  if (!allowed) {
+    return;
+  }
+
+  if (await runsRateLimitGuard(request, reply, [orgId, userId])) {
+    return;
+  }
 
   try {
     const access = await authorizeRequestWithGuards('runs:execute', orgId, userId, request);
     const effectiveConfidential = access.policies.confidentialMode || Boolean(confidentialMode);
-    const result = await runLegalAgent({ question, context, orgId, userId, confidentialMode: effectiveConfidential }, access);
+    const result = await runLegalAgent(
+      {
+        question,
+        context,
+        orgId,
+        userId,
+        confidentialMode: effectiveConfidential,
+        userLocationOverride: userLocation?.trim() ?? null,
+      },
+      access,
+    );
     // Validate payload at the boundary with a conservative schema
     const safePayload = IRACPayloadSchema.safeParse(result.payload);
 
@@ -1105,6 +727,7 @@ app.get<{ Querystring: { orgId?: string } }>(
       querystring: { type: 'object', properties: { orgId: { type: 'string' } }, required: ['orgId'] },
       headers: { type: 'object', properties: { 'x-user-id': { type: 'string' } }, required: ['x-user-id'] },
     },
+    preHandler: complianceRateLimitGuard,
   },
   async (request, reply) => {
   const querySchema = z.object({ orgId: z.string().uuid() });
@@ -1117,6 +740,11 @@ app.get<{ Querystring: { orgId?: string } }>(
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  const allowed = await enforceRateLimit(workspaceLimiter, request, reply, `workspace:${orgId}:${userHeader}`);
+  if (!allowed) {
+    return;
   }
 
   try {
@@ -3825,17 +3453,10 @@ app.post<{
     },
   },
   async (request, reply) => {
-    // Rate-limit by IP (or x-forwarded-for fallback)
-    try {
-      const ipHeader = (request.headers['x-forwarded-for'] ?? request.ip ?? '').toString();
-      const ip = ipHeader.split(',')[0].trim();
-      const hit = telemetryLimiter.hit(ip || 'unknown');
-      if (!hit.allowed) {
-        reply.header('Retry-After', Math.ceil((hit.resetAt - Date.now()) / 1000));
-        return reply.code(429).send({ error: 'rate_limited' });
-      }
-    } catch (_err) {
-      // ignore limiter failures
+    const ipHeader = (request.headers['x-forwarded-for'] ?? request.ip ?? '').toString();
+    const ip = ipHeader.split(',')[0].trim() || 'unknown';
+    if (await telemetryRateLimitGuard(request, reply, ['ip', ip])) {
+      return;
     }
     const { orgId, userId, eventName, payload } = request.body ?? {};
 
@@ -3868,127 +3489,6 @@ app.post<{
   return reply.code(204).send();
   },
 );
-
-app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply) => {
-  const { orgId } = request.query;
-
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
-    const [jurisdictionsResult, mattersResult, complianceResult, hitlResult] = await Promise.all([
-      supabase.from('jurisdictions').select('code, name, eu, ohada').order('name', { ascending: true }),
-      supabase
-        .from('agent_runs')
-        .select('id, question, risk_level, hitl_required, status, started_at, finished_at, jurisdiction_json')
-        .eq('org_id', orgId)
-        .order('started_at', { ascending: false })
-        .limit(8),
-      supabase
-        .from('sources')
-        .select('id, title, publisher, source_url, jurisdiction_code, consolidated, effective_date, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(8),
-      supabase
-        .from('hitl_queue')
-        .select('id, run_id, reason, status, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(8),
-    ]);
-
-    const jurisdictionRows = jurisdictionsResult.data ?? [];
-    const matterRows = mattersResult.data ?? [];
-    const complianceRows = complianceResult.data ?? [];
-    const hitlRows = hitlResult.data ?? [];
-
-    if (jurisdictionsResult.error) {
-      request.log.error({ err: jurisdictionsResult.error }, 'workspace jurisdictions query failed');
-    }
-    if (mattersResult.error) {
-      request.log.error({ err: mattersResult.error }, 'workspace matters query failed');
-    }
-    if (complianceResult.error) {
-      request.log.error({ err: complianceResult.error }, 'workspace compliance query failed');
-    }
-    if (hitlResult.error) {
-      request.log.error({ err: hitlResult.error }, 'workspace hitl query failed');
-    }
-
-    const matterCounts = new Map<string, number>();
-    for (const row of matterRows) {
-      const jurisdiction = extractCountry(row.jurisdiction_json);
-      const key = jurisdiction ?? 'UNK';
-      matterCounts.set(key, (matterCounts.get(key) ?? 0) + 1);
-    }
-
-    const jurisdictions = jurisdictionRows.map((row) => ({
-      code: row.code,
-      name: row.name,
-      eu: row.eu,
-      ohada: row.ohada,
-      matterCount: matterCounts.get(row.code) ?? 0,
-    }));
-
-    const matters = matterRows.map((row) => ({
-      id: row.id,
-      question: row.question,
-      status: row.status,
-      riskLevel: row.risk_level,
-      hitlRequired: row.hitl_required,
-      startedAt: row.started_at,
-      finishedAt: row.finished_at,
-      jurisdiction: extractCountry(row.jurisdiction_json),
-    }));
-
-    const complianceWatch = complianceRows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      publisher: row.publisher,
-      url: row.source_url,
-      jurisdiction: row.jurisdiction_code,
-      consolidated: row.consolidated,
-      effectiveDate: row.effective_date,
-      createdAt: row.created_at,
-    }));
-
-    const hitlInbox = hitlRows.map((row) => ({
-      id: row.id,
-      runId: row.run_id,
-      reason: row.reason,
-      status: row.status,
-      createdAt: row.created_at,
-    }));
-
-    const pendingCount = hitlInbox.filter((item) => item.status === 'pending').length;
-
-    return {
-      jurisdictions,
-      matters,
-      complianceWatch,
-      hitlInbox: {
-        items: hitlInbox,
-        pendingCount,
-      },
-      desk: buildPhaseCWorkspaceDesk(),
-      navigator: buildPhaseCProcessNavigator(),
-    };
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error }, 'workspace overview failed');
-    return reply.code(500).send({ error: 'workspace_failed' });
-  }
-});
 
 app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply) => {
   const { orgId } = request.query;

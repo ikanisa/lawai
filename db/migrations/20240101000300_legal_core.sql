@@ -1,54 +1,54 @@
-create table if not exists public.jurisdictions (
-  id uuid primary key default gen_random_uuid(),
-  code text unique not null,
-  name text not null,
-  eu boolean not null default false,
-  ohada boolean not null default false,
-  created_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.jurisdictions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  code text UNIQUE NOT NULL,
+  name text NOT NULL,
+  eu boolean NOT NULL DEFAULT FALSE,
+  ohada boolean NOT NULL DEFAULT FALSE,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-create table if not exists public.authority_domains (
-  id uuid primary key default gen_random_uuid(),
-  jurisdiction_code text not null,
-  host text not null,
-  unique (jurisdiction_code, host)
+CREATE TABLE IF NOT EXISTS public.authority_domains (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  jurisdiction_code text NOT NULL,
+  host text NOT NULL,
+  UNIQUE (jurisdiction_code, host)
 );
 
-create table if not exists public.sources (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  jurisdiction_code text not null,
-  source_type text not null,
-  title text not null,
+CREATE TABLE IF NOT EXISTS public.sources (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  jurisdiction_code text NOT NULL,
+  source_type text NOT NULL,
+  title text NOT NULL,
   publisher text,
-  source_url text not null,
-  binding_lang text default 'fr',
-  consolidated boolean default false,
+  source_url text NOT NULL,
+  binding_lang text DEFAULT 'fr',
+  consolidated boolean DEFAULT FALSE,
   adopted_date date,
   effective_date date,
   capture_sha256 text,
-  created_at timestamptz not null default now()
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-create table if not exists public.documents (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  source_id uuid references public.sources(id) on delete set null,
-  name text not null,
-  storage_path text not null,
+CREATE TABLE IF NOT EXISTS public.documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  source_id uuid REFERENCES public.sources (id) ON DELETE SET NULL,
+  name text NOT NULL,
+  storage_path text NOT NULL,
   openai_file_id text,
   mime_type text,
   bytes bigint,
-  created_at timestamptz not null default now()
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-create table if not exists public.document_chunks (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  document_id uuid not null references public.documents(id) on delete cascade,
-  jurisdiction_code text not null,
-  content text not null,
-  embedding vector(1536) not null,
-  seq integer not null,
-  created_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.document_chunks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  document_id uuid NOT NULL REFERENCES public.documents (id) ON DELETE CASCADE,
+  jurisdiction_code text NOT NULL,
+  content text NOT NULL,
+  embedding vector (1536) NOT NULL,
+  seq integer NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
