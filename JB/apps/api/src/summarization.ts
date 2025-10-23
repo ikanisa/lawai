@@ -1,3 +1,11 @@
+import {
+  LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA,
+  SUMMARISATION_CLIENT_TAGS,
+  fetchOpenAIDebugDetails,
+  getOpenAIClient,
+  isOpenAIDebugEnabled,
+  parseLegalDocumentSummaryPayload,
+} from '@avocat-ai/shared';
 import { env } from './config.js';
 
 const textDecoder = new TextDecoder('utf-8', { fatal: false });
@@ -7,6 +15,35 @@ const DEFAULT_MAX_SUMMARY_CHARS = 12000;
 const MAX_CHUNKS = 40;
 
 export type TextChunk = { seq: number; content: string; marker: string | null };
+
+type SummarisationLogger = {
+  error: (data: Record<string, unknown>, message: string) => void;
+  warn?: (data: Record<string, unknown>, message: string) => void;
+};
+
+async function logOpenAIDebugSummary(
+  client: ReturnType<typeof getOpenAIClient>,
+  operation: string,
+  error: unknown,
+  logger?: SummarisationLogger,
+) {
+  if (!isOpenAIDebugEnabled()) {
+    return;
+  }
+  const info = await fetchOpenAIDebugDetails(client, error);
+  if (!info) {
+    return;
+  }
+  if (logger?.error) {
+    logger.error({
+      openaiRequestId: info.requestId,
+      debug: 'details' in info ? info.details : undefined,
+      debugError: 'debugError' in info ? info.debugError : undefined,
+    }, `${operation}_openai_debug`);
+  } else {
+    console.error(`[openai-debug] ${operation}`, info);
+  }
+}
 
 function stripHtml(html: string): string {
   return html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -99,45 +136,15 @@ async function generateStructuredSummary(
   openaiApiKey: string,
   model: string,
   maxSummaryChars: number,
+  logger?: SummarisationLogger,
 ): Promise<{ summary: string; highlights: Array<{ heading: string; detail: string }> }> {
   const truncated = text.slice(0, maxSummaryChars);
-  const schema = {
-    name: 'LegalDocumentSummary',
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['summary', 'highlights'],
-      properties: {
-        summary: {
-          type: 'string',
-          description:
-            "Résumé exécutif en français (3 à 5 phrases) mettant en avant l’objet, la portée et les dates clés du document.",
-        },
-        highlights: {
-          type: 'array',
-          minItems: 1,
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['heading', 'detail'],
-            properties: {
-              heading: { type: 'string' },
-              detail: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-    strict: true,
-  } as const;
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${openaiApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
+
+  let json;
+  try {
+    json = await openai.responses.create({
       model,
       input: [
         {
@@ -160,37 +167,22 @@ async function generateStructuredSummary(
           ],
         },
       ],
-      response_format: { type: 'json_schema', json_schema: schema },
+      response_format: { type: 'json_schema', json_schema: LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA },
       max_output_tokens: 800,
-    }),
-  });
-
-  const json = await response.json();
-  if (!response.ok) {
-    const message = json?.error?.message ?? 'Synthèse indisponible';
+    });
+  } catch (error) {
+    await logOpenAIDebugSummary(openai, 'structured_summary', error, logger);
+    const message = error instanceof Error ? error.message : 'Synthèse indisponible';
     throw new Error(message);
   }
 
-  const output = Array.isArray(json?.output) ? json.output : [];
-  const first = output[0]?.content?.[0]?.text ?? json?.output_text ?? '';
-  if (!first) {
+  const outputText = (json?.output_text ?? '').trim();
+  if (!outputText) {
     throw new Error('Réponse vide du modèle de synthèse');
   }
 
-  const parsed = JSON.parse(first) as { summary?: string; highlights?: Array<{ heading?: string; detail?: string }> };
-  const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
-  const highlights = Array.isArray(parsed.highlights)
-    ? parsed.highlights.filter(
-        (entry): entry is { heading: string; detail: string } =>
-          typeof entry?.heading === 'string' && typeof entry?.detail === 'string',
-      )
-    : [];
-
-  if (!summary) {
-    throw new Error('Synthèse JSON invalide');
-  }
-
-  return { summary, highlights };
+  const parsed = parseLegalDocumentSummaryPayload(outputText);
+  return { summary: parsed.summary, highlights: parsed.highlights };
 }
 
 async function generateEmbeddings(
@@ -198,34 +190,29 @@ async function generateEmbeddings(
   openaiApiKey: string,
   model: string,
   dimensions: number | undefined,
+  logger?: SummarisationLogger,
 ): Promise<number[][]> {
   const embeddings: number[][] = [];
   const batchSize = 16;
+  const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
 
   for (let index = 0; index < texts.length; index += batchSize) {
     const slice = texts.slice(index, index + batchSize);
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    let response;
+    try {
+      response = await openai.embeddings.create({
         model,
         input: slice,
         ...(dimensions ? { dimensions } : {}),
-      }),
-    });
-
-    const json = await response.json();
-    if (!response.ok) {
-      const message = json?.error?.message ?? 'Échec de génération des embeddings';
+      });
+    } catch (error) {
+      await logOpenAIDebugSummary(openai, 'document_embedding_batch', error, logger);
+      const message = error instanceof Error ? error.message : 'Échec de génération des embeddings';
       throw new Error(message);
     }
 
-    const data = Array.isArray(json?.data) ? json.data : [];
-    for (const entry of data) {
-      if (Array.isArray(entry?.embedding)) {
+    for (const entry of response.data ?? []) {
+      if (Array.isArray(entry.embedding)) {
         embeddings.push(entry.embedding as number[]);
       }
     }
@@ -257,6 +244,7 @@ export async function summariseDocumentFromPayload(params: {
   summariserModel?: string;
   embeddingModel?: string;
   maxSummaryChars?: number;
+  logger?: SummarisationLogger;
 }): Promise<SummarisationResult> {
   const {
     payload,
@@ -266,6 +254,7 @@ export async function summariseDocumentFromPayload(params: {
     summariserModel,
     embeddingModel,
     maxSummaryChars,
+    logger,
   } = params;
 
   if (!openaiApiKey) {
@@ -289,6 +278,7 @@ export async function summariseDocumentFromPayload(params: {
       openaiApiKey,
       summariserModel ?? env.SUMMARISER_MODEL ?? DEFAULT_SUMMARISER_MODEL,
       Math.min(maxSummaryChars ?? env.MAX_SUMMARY_CHARS ?? DEFAULT_MAX_SUMMARY_CHARS, DEFAULT_MAX_SUMMARY_CHARS),
+      logger,
     );
 
     const chunks = chunkText(plainText);
@@ -299,6 +289,7 @@ export async function summariseDocumentFromPayload(params: {
           openaiApiKey,
           embeddingModel ?? env.EMBEDDING_MODEL,
           env.EMBEDDING_DIMENSION,
+          logger,
         )
       : [];
 

@@ -4,6 +4,7 @@ import { Workbox } from 'workbox-window';
 
 const DIGEST_KEY = 'avocat-ai-digest-enabled';
 const PWA_FLAG_KEY = 'NEXT_PUBLIC_ENABLE_PWA';
+const PWA_CONSENT_KEY = 'avocat-ai.pwa.consent';
 let registrationPromise: Promise<ServiceWorkerRegistration> | null = null;
 
 function readPwaFlag(): string | undefined {
@@ -30,14 +31,65 @@ export function isPwaFeatureEnabled(): boolean {
   return toBooleanFlag(readPwaFlag());
 }
 
-export function registerPwa() {
+export function hasPwaConsent(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(PWA_CONSENT_KEY) === 'true';
+  } catch (error) {
+    console.warn('pwa_consent_read_failed', error);
+    return false;
+  }
+}
+
+export function grantPwaConsent() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PWA_CONSENT_KEY, 'true');
+  } catch (error) {
+    console.warn('pwa_consent_write_failed', error);
+  }
+}
+
+export function revokePwaConsent() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(PWA_CONSENT_KEY);
+  } catch (error) {
+    console.warn('pwa_consent_revoke_failed', error);
+  }
+}
+
+export function canRegisterPwaWithoutStoredConsent(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hasServiceWorker = typeof navigator !== 'undefined' && 'serviceWorker' in navigator;
+  const hasNotifications = 'Notification' in window;
+  return hasServiceWorker && !hasNotifications;
+}
+
+export function registerPwa(): Promise<ServiceWorkerRegistration | null> {
   if (!isPwaFeatureEnabled()) {
     registrationPromise = null;
-    return;
+    return Promise.resolve(null);
   }
 
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
-    return;
+  if (typeof window === 'undefined') {
+    console.warn('pwa_registration_skipped', { reason: 'window_unavailable' });
+    return Promise.resolve(null);
+  }
+
+  if (!hasPwaConsent()) {
+    if (canRegisterPwaWithoutStoredConsent()) {
+      grantPwaConsent();
+    } else {
+      return Promise.resolve(null);
+    }
+  }
+
+  if (!('serviceWorker' in navigator)) {
+    console.warn('pwa_registration_unsupported_browser', {
+      reason: 'service_worker_unavailable',
+    });
+    return Promise.resolve(null);
   }
 
   if (!registrationPromise) {
@@ -47,9 +99,12 @@ export function registerPwa() {
     });
     registrationPromise = wb.register().catch((error) => {
       console.error('sw_register_failed', error);
+      registrationPromise = null;
       throw error;
     });
   }
+
+  return registrationPromise;
 }
 
 export function isDigestEnabled(): boolean {
@@ -67,8 +122,15 @@ export async function enableDigestNotifications(): Promise<boolean> {
     return false;
   }
 
+  grantPwaConsent();
+
   if (!registrationPromise) {
-    registerPwa();
+    try {
+      await registerPwa();
+    } catch (error) {
+      console.warn('digest_sw_register_failed', error);
+      return false;
+    }
   }
 
   try {
