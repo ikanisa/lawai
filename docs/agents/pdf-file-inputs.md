@@ -1,139 +1,83 @@
-# PDF File Inputs Streaming Guardrails
+# Handling PDF file inputs with streaming responses
 
-This example shows how we stream a `responses.create` call that ingests a PDF
-file, and how we harden the loop so it can safely run inside production
-workers. The instrumentation mirrors the monitoring hooks we attach in
-Avocat AI's agents service.
+When you stream a `Responses` API call that processes a PDF upload you need to
+handle the entire lifecycle of the stream. The example below expands on the
+basic loop so it is safe to run in production monitoring pipelines.
 
 ```ts
-import OpenAI from "openai";
+import { Client } from "@openai/assistants";
 
-const client = new OpenAI();
+const client = new Client({ apiKey: process.env.OPENAI_API_KEY! });
+const pdfFileId = "file-abc123"; // ID returned by the file upload endpoint
 
-export async function streamPdfSummary(fileId: string) {
-  const abortController = new AbortController();
-  const abortOnTimeout = setTimeout(() => {
-    abortController.abort();
-  }, 60_000);
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), 30_000);
 
-  const functionArguments = new Map<string, string>();
-
-  const stream = await client.responses.stream(
+const stream = await client.responses.stream({
+  model: "gpt-4.1",
+  input: [
     {
-      model: "gpt-4.1",
-      input: [
+      role: "user",
+      content: [
+        { type: "input_text", text: "Extract the key findings" },
         {
-          role: "user",
-          content: [
-            { type: "input_text", text: "Summarise the uploaded PDF" },
-            { type: "input_file", file_id: fileId },
-          ],
-        },
-      ],
-      tools: [
-        {
-          type: "function",
-          name: "index_case_law",
-          description: "Persist extracted citations into the legal search index.",
-          parameters: {
-            type: "object",
-            properties: {
-              citations: { type: "array", items: { type: "string" } },
-            },
-            required: ["citations"],
-          },
+          type: "input_file",
+          file_id: pdfFileId,
+          mime_type: "application/pdf",
         },
       ],
     },
-    { signal: abortController.signal },
-  );
+  ],
+  signal: controller.signal,
+});
 
-  const cleanup = () => {
-    clearTimeout(abortOnTimeout);
-    abortController.abort();
-  };
-
-  try {
-    for await (const event of stream) {
-      switch (event.type) {
-        case "response.created": {
-          console.info("response created", { responseId: event.response.id });
-          break;
-        }
-        case "response.output_text.delta": {
-          process.stdout.write(event.delta);
-          break;
-        }
-        case "response.output_text.done": {
-          process.stdout.write("\n");
-          break;
-        }
-        case "response.function_call_arguments.delta": {
-          const next = (functionArguments.get(event.id) ?? "") + event.delta;
-          functionArguments.set(event.id, next);
-          break;
-        }
-        case "response.function_call_arguments.done": {
-          const args = functionArguments.get(event.id) ?? "{}";
-          console.info("tool call ready", {
-            toolCallId: event.id,
-            argumentsJson: args,
-          });
-          break;
-        }
-        case "response.completed": {
-          console.info("response completed", { responseId: event.response.id });
-          break;
-        }
-        case "response.error": {
-          console.error("response stream error", event.error ?? event);
-          cleanup();
-          throw new Error(event.error?.message ?? "Unknown streaming error");
-        }
-        case "error": {
-          console.error("legacy response stream error", event);
-          cleanup();
-          throw new Error(event.message ?? "Unknown streaming error");
-        }
-        default: {
-          // In production we forward other events to observability sinks.
-          break;
-        }
-      }
+try {
+  for await (const event of stream) {
+    switch (event.type) {
+      case "response.output_text.delta":
+        process.stdout.write(event.delta);
+        break;
+      case "response.output_text.done":
+        console.log("\nText streaming complete.");
+        break;
+      case "response.tool_call.delta":
+        console.log("Tool call delta", event.delta);
+        break;
+      case "response.tool_call.done":
+        console.log("Tool call result", event.tool_call);
+        break;
+      case "response.completed":
+        console.log("Response completed", event.response.usage);
+        break;
+      case "response.error":
+        console.error("Stream error", event.error);
+        throw new Error(event.error.message);
+      default:
+        console.debug("Unhandled event", event.type);
     }
-
-    const final = await stream.finalResponse();
-    const usage = final.usage ?? {
-      input_tokens: 0,
-      output_tokens: 0,
-      total_tokens: 0,
-    };
-    console.info("token usage", {
-      input: usage.input_tokens,
-      output: usage.output_tokens,
-      total: usage.total_tokens,
-    });
-
-    return final;
-  } catch (error) {
-    throw error;
-  } finally {
-    cleanup();
   }
+} catch (error) {
+  if ((error as Error).name === "AbortError") {
+    console.warn("Stream aborted after timeout");
+  } else {
+    throw error;
+  }
+} finally {
+  clearTimeout(timeout);
+  controller.abort();
 }
+
+const final = await stream.finalResponse();
+const { total_input_tokens, total_output_tokens } = final.usage;
+console.log("Usage", { total_input_tokens, total_output_tokens });
 ```
 
-Token accounting happens *after* `finalResponse()` resolves so that we capture
-usage from `response.completed` as well as any tool invocations emitted between
-the last text delta and the completion event. Handling `response.error` (and its
-`error` alias) means we surface infrastructure failures immediately instead of
-waiting for a timeout. `response.completed` tells us when the model stops
-producing events—production dashboards mark that boundary to detect hung
-sessions. Tool-call deltas (`response.function_call_arguments.delta` /
-`response.function_call_arguments.done`) feed audit logs that show which
-arguments were sent to internal systems.
-
-Finally, we use an `AbortController` both to time out long-running calls and to
-coordinate cancellation when upstream services drop the request. Production
-runtimes should replace the example timeout with their own SLA budget and ensure
-`cleanup()` executes from every early exit path.
+Calling `finalResponse()` resolves the accumulated response object while still
+preserving token accounting. Logging `final.usage` after the stream ends keeps
+observability tooling consistent with synchronous calls. Handling `response.error`
+and `response.completed` events gives you early insight into failures and normal
+termination without waiting for `finalResponse()`, while tool-call events provide
+per-call visibility that is critical when auditors review automated PDF
+extractions. The explicit `AbortController` cleanup guarantees that a cancellation
+or timeout closes the stream and releases resources before awaiting the final
+summary.
