@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as shared from '@avocat-ai/shared';
 import { chunkText } from '../src/lib/embeddings.js';
 import { validateVectorStore } from '../src/lib/vector-store.js';
 import { getOpenAIClient } from '@avocat-ai/shared';
@@ -24,45 +25,37 @@ describe('validateVectorStore', () => {
   const mockedClient = vi.mocked(getOpenAIClient);
 
   it('returns true when OpenAI responds with 200', async () => {
-    mockedClient.mockReturnValue({
-      beta: {
-        vectorStores: {
-          retrieve: vi.fn(async () => ({ id: 'vs_123' })),
-        },
-      },
-    } as unknown as ReturnType<typeof getOpenAIClient>);
+    const retrieve = vi.fn().mockResolvedValue({ id: 'vs_123' });
+    vi.spyOn(shared, 'getOpenAIClient').mockReturnValue({
+      beta: { vectorStores: { retrieve } },
+    } as unknown as ReturnType<typeof shared.getOpenAIClient>);
 
     await expect(validateVectorStore('sk-test', 'vs_123')).resolves.toBe(true);
+    expect(retrieve).toHaveBeenCalledWith('vs_123');
   });
 
   it('returns false when OpenAI returns 404', async () => {
-    mockedClient.mockReturnValue({
-      beta: {
-        vectorStores: {
-          retrieve: vi.fn(async () => {
-            const error = new Error('Not found');
-            (error as { status?: number }).status = 404;
-            throw error;
-          }),
-        },
-      },
-    } as unknown as ReturnType<typeof getOpenAIClient>);
+    const retrieve = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('Not found'), { status: 404 }));
+    vi.spyOn(shared, 'getOpenAIClient').mockReturnValue({
+      beta: { vectorStores: { retrieve } },
+    } as unknown as ReturnType<typeof shared.getOpenAIClient>);
 
     await expect(validateVectorStore('sk-test', 'vs_missing')).resolves.toBe(false);
+    expect(retrieve).toHaveBeenCalledWith('vs_missing');
   });
 
   it('throws on other OpenAI errors', async () => {
-    mockedClient.mockReturnValue({
-      beta: {
-        vectorStores: {
-          retrieve: vi.fn(async () => {
-            throw new Error('Upstream failure');
-          }),
-        },
-      },
-    } as unknown as ReturnType<typeof getOpenAIClient>);
+    const retrieve = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('Upstream failure'), { status: 500 }));
+    vi.spyOn(shared, 'getOpenAIClient').mockReturnValue({
+      beta: { vectorStores: { retrieve } },
+    } as unknown as ReturnType<typeof shared.getOpenAIClient>);
 
     await expect(validateVectorStore('sk-test', 'vs_fail')).rejects.toThrow('Upstream failure');
+    expect(retrieve).toHaveBeenCalledWith('vs_fail');
   });
 });
 

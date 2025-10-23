@@ -8,6 +8,8 @@ import { createRestClient } from '@avocat-ai/api-clients';
 import { loadRequiredEnv } from './lib/env.js';
 import { createSupabaseService } from './lib/supabase.js';
 import { evaluateExpectedTerms } from './lib/evaluation.js';
+import { createOpenAIEvalsClient, type EvalJobMetrics, type EvalJobResult } from './lib/openai-evals.js';
+import { serverEnv } from './env.server.js';
 import type { IRACPayload } from '@avocat-ai/shared';
 import {
   ACCEPTANCE_THRESHOLDS,
@@ -94,6 +96,40 @@ const FALLBACK_CASES: Array<{
     benchmark: 'fallback',
   },
 ];
+
+type DatasetMap = Record<string, string>;
+
+function parseDatasetMapping(): DatasetMap {
+  const raw = serverEnv.OPENAI_EVAL_DATASET_MAP;
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== 'object') {
+      return {};
+    }
+
+    return Object.entries(parsed).reduce<DatasetMap>((acc, [key, value]) => {
+      if (typeof value === 'string' && value.length > 0) {
+        acc[key.trim().toLowerCase()] = value;
+      }
+      return acc;
+    }, {});
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`OPENAI_EVAL_DATASET_MAP invalid JSON: ${message}`);
+    return {};
+  }
+}
+
+function normaliseScenarioName(input: string | null | undefined): string {
+  if (!input) {
+    return 'fallback';
+  }
+  return input.trim().toLowerCase();
+}
 
 const MAGHREB_JURISDICTION_SET = new Set<string>(
   MAGHREB_JURISDICTIONS.map((code) => code.toUpperCase()),
@@ -417,6 +453,277 @@ export function checkLinkHealthThreshold(summary: LinkHealthSummary | null) {
   return { ok: true, failure: null as string | null };
 }
 
+interface RemoteThresholdResult {
+  ok: boolean;
+  failures: string[];
+}
+
+function evaluateRemoteMetricsAgainstThresholds(metrics: EvalJobMetrics): RemoteThresholdResult {
+  const failures: string[] = [];
+
+  const precision = metrics.allowlistedCitationPrecisionP95;
+  if (precision == null) {
+    failures.push('Précision allowlist P95 non rapportée par le job.');
+  } else if (precision < ACCEPTANCE_THRESHOLDS.citationsAllowlistedP95) {
+    failures.push(
+      `Précision allowlist ${(precision * 100).toFixed(1)}% < ${(
+        ACCEPTANCE_THRESHOLDS.citationsAllowlistedP95 * 100
+      ).toFixed(0)}%`,
+    );
+  }
+
+  const temporal = metrics.temporalValidityP95;
+  if (temporal == null) {
+    failures.push('Validité temporelle P95 non rapportée par le job.');
+  } else if (temporal < ACCEPTANCE_THRESHOLDS.temporalValidityP95) {
+    failures.push(
+      `Validité temporelle ${(temporal * 100).toFixed(1)}% < ${(
+        ACCEPTANCE_THRESHOLDS.temporalValidityP95 * 100
+      ).toFixed(0)}%`,
+    );
+  }
+
+  const maghreb = metrics.maghrebBannerCoverage;
+  if (maghreb == null) {
+    failures.push('Couverture bannière Maghreb non rapportée par le job.');
+  } else if (maghreb < ACCEPTANCE_THRESHOLDS.maghrebBindingBannerCoverage) {
+    failures.push(
+      `Couverture bannière Maghreb ${(maghreb * 100).toFixed(1)}% < ${(
+        ACCEPTANCE_THRESHOLDS.maghrebBindingBannerCoverage * 100
+      ).toFixed(0)}%`,
+    );
+  }
+
+  const hitl = metrics.hitlRecallHighRisk;
+  if (hitl == null) {
+    failures.push('Rappel HITL (haute criticité) non rapporté par le job.');
+  } else if (hitl < ACCEPTANCE_THRESHOLDS.hitlRecallHighRisk) {
+    failures.push(
+      `Rappel HITL ${(hitl * 100).toFixed(1)}% < ${(
+        ACCEPTANCE_THRESHOLDS.hitlRecallHighRisk * 100
+      ).toFixed(0)}%`,
+    );
+  }
+
+  return { ok: failures.length === 0, failures };
+}
+
+function formatPercentage(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) {
+    return 'N/A';
+  }
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+async function recordEvalJobLearningEntry(
+  supabase: SupabaseClient | null,
+  orgId: string,
+  scenario: string,
+  datasetId: string,
+  job: EvalJobResult,
+): Promise<void> {
+  if (!supabase) {
+    return;
+  }
+
+  const statusMap: Record<EvalJobResult['status'], string> = {
+    completed: 'COMPLETED',
+    failed: 'FAILED',
+    cancelled: 'CANCELLED',
+    running: 'RUNNING',
+    queued: 'QUEUED',
+  };
+
+  const payload = {
+    org_id: orgId,
+    job_type: 'eval_metrics',
+    status: statusMap[job.status] ?? 'RECORDED',
+    payload: {
+      scenario,
+      dataset_id: datasetId,
+      job_id: job.id,
+      agent_id: job.agentId,
+      status: job.status,
+      error: job.error,
+      metadata: job.metadata,
+      metrics: job.metrics,
+    },
+  } satisfies Record<string, unknown>;
+
+  const { error } = await supabase.from('agent_learning_jobs').insert(payload);
+  if (error) {
+    throw new Error(`Impossible d'enregistrer le job d'évaluation: ${error.message}`);
+  }
+}
+
+async function runRemoteEvaluation(
+  supabase: SupabaseClient | null,
+  options: CliOptions,
+  datasetId: string,
+  scenario: string,
+): Promise<void> {
+  if (options.dryRun) {
+    const message = `Mode simulation: job OpenAI ignoré pour ${scenario} (dataset ${datasetId}).`;
+    if (options.ciMode) {
+      console.log(message);
+    } else {
+      ora().info(message);
+    }
+    return;
+  }
+
+  const agentId = serverEnv.OPENAI_EVAL_AGENT_ID;
+  if (!agentId) {
+    throw new Error('OPENAI_EVAL_AGENT_ID doit être défini pour déclencher les évaluations plateforme.');
+  }
+
+  const evalClient = createOpenAIEvalsClient();
+  const submissionSpinner = options.ciMode
+    ? null
+    : ora(`Soumission du job OpenAI Evals (${scenario})...`).start();
+
+  let finalJob: EvalJobResult | null = null;
+  try {
+    const metadata: Record<string, unknown> = {
+      org_id: options.orgId,
+      user_id: options.userId,
+      scenario,
+      triggered_from: options.ciMode ? 'ci' : 'manual',
+    };
+
+    const createdJob = await evalClient.createJob({
+      datasetId,
+      agentId,
+      metadata,
+      runName: `ops-eval-${scenario}-${Date.now()}`,
+    });
+
+    if (submissionSpinner) {
+      submissionSpinner.text = `Job ${createdJob.id} soumis, attente des résultats...`;
+    } else {
+      console.log(`Job OpenAI Evals soumis (${createdJob.id}), attente des résultats...`);
+    }
+
+    finalJob = await evalClient.pollJob(createdJob.id);
+
+    if (submissionSpinner) {
+      if (finalJob.status === 'completed') {
+        submissionSpinner.succeed(`Job ${finalJob.id} terminé (${scenario}).`);
+      } else {
+        submissionSpinner.fail(`Job ${finalJob.id} terminé avec statut ${finalJob.status}.`);
+      }
+    } else {
+      console.log(`Job ${finalJob.id} terminé avec statut ${finalJob.status}.`);
+    }
+  } catch (error) {
+    if (submissionSpinner) {
+      submissionSpinner.fail('Soumission du job OpenAI Evals échouée.');
+    }
+    throw error;
+  }
+
+  if (!finalJob) {
+    throw new Error('Job OpenAI Evals introuvable après soumission.');
+  }
+
+  await recordEvalJobLearningEntry(supabase, options.orgId, scenario, datasetId, finalJob);
+
+  const thresholdResult = evaluateRemoteMetricsAgainstThresholds(finalJob.metrics);
+  for (const failure of thresholdResult.failures) {
+    console.error(`Seuil non respecté: ${failure}`);
+  }
+
+  console.log(
+    `Précision allowlist P95: ${formatPercentage(finalJob.metrics.allowlistedCitationPrecisionP95)} | Validité temporelle P95: ${formatPercentage(
+      finalJob.metrics.temporalValidityP95,
+    )} | Bannière Maghreb: ${formatPercentage(finalJob.metrics.maghrebBannerCoverage)} | Rappel HITL haute criticité: ${formatPercentage(
+      finalJob.metrics.hitlRecallHighRisk,
+    )}`,
+  );
+
+  let linkHealthSummary: LinkHealthSummary | null = null;
+  try {
+    linkHealthSummary = await fetchLinkHealthSummary(supabase, options.orgId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(message);
+  }
+
+  const linkHealthCheck = checkLinkHealthThreshold(linkHealthSummary);
+  if (!linkHealthCheck.ok) {
+    const failure = linkHealthCheck.failure ?? 'Liens officiels hors seuil';
+    console.error(`Seuil non respecté: ${failure}`);
+    thresholdResult.failures.push(failure);
+  }
+
+  if (linkHealthSummary) {
+    console.log(
+      `Liens officiels contrôlés: ${linkHealthSummary.totalSources} (en échec: ${linkHealthSummary.failedSources}, stables: ${linkHealthSummary.staleSources})`,
+    );
+  }
+
+  if (finalJob.status !== 'completed') {
+    thresholdResult.failures.push(`Statut job ${finalJob.status}`);
+  }
+  if (finalJob.error) {
+    thresholdResult.failures.push(`Erreur job: ${finalJob.error}`);
+  }
+
+  const report = {
+    generated_at: new Date().toISOString(),
+    scenario,
+    dataset_id: datasetId,
+    job_id: finalJob.id,
+    status: finalJob.status,
+    error: finalJob.error,
+    metrics: finalJob.metrics,
+    threshold_failures: thresholdResult.failures,
+    thresholds: {
+      allowlisted_citation_precision_p95: ACCEPTANCE_THRESHOLDS.citationsAllowlistedP95,
+      temporal_validity_p95: ACCEPTANCE_THRESHOLDS.temporalValidityP95,
+      maghreb_banner_coverage: ACCEPTANCE_THRESHOLDS.maghrebBindingBannerCoverage,
+      hitl_recall_high_risk: ACCEPTANCE_THRESHOLDS.hitlRecallHighRisk,
+    },
+    link_health: linkHealthSummary
+      ? {
+          total_sources: linkHealthSummary.totalSources,
+          failed_sources: linkHealthSummary.failedSources,
+          stale_sources: linkHealthSummary.staleSources,
+          failure_ratio: linkHealthSummary.failureRatio,
+        }
+      : null,
+  };
+
+  const outputPath = path.resolve(process.cwd(), 'ops', 'reports', 'evaluation-summary.json');
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  if (!options.ciMode) {
+    console.log(`Tableau de bord enregistré dans ${outputPath}`);
+  }
+
+  let gatingFailed = finalJob.status !== 'completed' || finalJob.error != null || !thresholdResult.ok || !linkHealthCheck.ok;
+  if (finalJob.error) {
+    console.error(`Erreur job OpenAI Evals: ${finalJob.error}`);
+  }
+
+  const summary = gatingFailed
+    ? `Évaluation ${scenario}: échec (job ${finalJob.id}).`
+    : `Évaluation ${scenario}: succès (job ${finalJob.id}).`;
+
+  if (gatingFailed) {
+    if (options.ciMode) {
+      console.error(summary);
+    } else {
+      ora().fail(summary);
+    }
+    process.exitCode = 1;
+  } else if (options.ciMode) {
+    console.log(summary);
+  } else {
+    ora().succeed(summary);
+  }
+}
+
 function parseArgs(): CliOptions {
   const defaultOrg = process.env.EVAL_ORG_ID ?? '00000000-0000-0000-0000-000000000000';
   const defaultUser = process.env.EVAL_USER_ID ?? defaultOrg;
@@ -569,12 +876,28 @@ export async function runEvaluation(
     throw new Error('OrgId et userId doivent être renseignés (utilisez --org et --user).');
   }
 
-  const cases = await dependencies.dataSource.loadCases(
-    options.orgId,
-    options.limit,
-    options.benchmark ?? null,
-  );
-  dependencies.onProgress?.({ index: 0, total: cases.length, name: '' });
+  const env = loadRequiredEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
+  const hasSupabase = env.missing.length === 0;
+  const supabase = hasSupabase ? createSupabaseService(env.values) : null;
+  if (!hasSupabase) {
+    console.warn('Supabase credentials missing: running evaluation in local fallback mode.');
+  }
+  const datasetMap = parseDatasetMapping();
+  const scenario = normaliseScenarioName(options.benchmark ?? null);
+  const datasetId = datasetMap[scenario] ?? datasetMap.default ?? null;
+
+  if (datasetId) {
+    await runRemoteEvaluation(supabase, options, datasetId, scenario);
+    return;
+  }
+
+  const spinner = options.ciMode ? null : ora("Chargement des cas d'évaluation...").start();
+  const cases = await fetchEvalCases(supabase, options.orgId, options.limit, options.benchmark ?? null);
+  if (spinner) {
+    spinner.succeed(`${cases.length} cas à évaluer pour l'organisation ${options.orgId}.`);
+  } else {
+    console.log(`Loaded ${cases.length} evaluation cases.`);
+  }
 
   if (cases.length === 0) {
     return {
