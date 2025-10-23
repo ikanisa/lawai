@@ -1,12 +1,8 @@
-create unique index if not exists consent_events_unique
-  on public.consent_events(org_id, user_id, consent_type);
+CREATE UNIQUE INDEX if NOT EXISTS consent_events_unique ON public.consent_events (org_id, user_id, consent_type);
 
-create or replace function public.record_consent_events(events jsonb)
-returns setof public.consent_events
-language plpgsql
-security definer
-set search_path = public
-as $$
+CREATE OR REPLACE FUNCTION public.record_consent_events (events jsonb) returns setof public.consent_events language plpgsql security definer
+SET
+  search_path = public AS $$
 declare
   payload jsonb := coalesce(events, '[]'::jsonb);
 begin

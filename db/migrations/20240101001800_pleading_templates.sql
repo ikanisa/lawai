@@ -1,15 +1,22 @@
-create table if not exists public.pleading_templates (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid references public.organizations(id) on delete cascade,
-  jurisdiction_code text not null,
-  matter_type text not null,
-  title text not null,
+CREATE TABLE IF NOT EXISTS public.pleading_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid REFERENCES public.organizations (id) ON DELETE CASCADE,
+  jurisdiction_code text NOT NULL,
+  matter_type text NOT NULL,
+  title text NOT NULL,
   summary text,
-  locale text not null default 'fr',
-  sections jsonb not null,
+  locale text NOT NULL DEFAULT 'fr',
+  sections jsonb NOT NULL,
   fill_ins jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-create unique index if not exists pleading_templates_unique
-  on public.pleading_templates(coalesce(org_id, '00000000-0000-0000-0000-000000000000'::uuid), jurisdiction_code, matter_type, locale);
+CREATE UNIQUE INDEX if NOT EXISTS pleading_templates_unique ON public.pleading_templates (
+  coalesce(
+    org_id,
+    '00000000-0000-0000-0000-000000000000'::uuid
+  ),
+  jurisdiction_code,
+  matter_type,
+  locale
+);
