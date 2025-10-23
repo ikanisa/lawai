@@ -59,25 +59,14 @@ packages/
    pnpm dev:web
    ```
 
-### Production configuration guardrails
+## Deployment checklist (Vercel)
 
-The API now enforces stricter configuration checks in production environments.
-Deployments must provide real secrets for the following variables:
+Avant de fusionner une branche dans `main` ou de promouvoir un déploiement Vercel en production, vérifiez :
 
-- `OPENAI_API_KEY`
-- `OPENAI_VECTOR_STORE_AUTHORITIES_ID`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
-The runtime rejects common placeholder patterns such as:
-
-- Vector store IDs like `vs_test`, `vs-example`, or `vs_placeholder`
-- Supabase URLs containing `example.supabase.co`
-- Service role keys containing `placeholder`, `service-role-key`, or `service-role-test`
-
-CI executes `apps/api/test/config.test.ts` to guarantee these guardrails stay in
-place. Refresh your `.env` or deployment secrets with production values before
-running the API behind Vercel or any other production target.
+- [ ] Le workflow **CI** GitHub Actions est passé (lint, typecheck, tests et builds). Vous pouvez reproduire localement via `pnpm -r lint`, `pnpm -r test`, `pnpm --filter @apps/api typecheck`, `pnpm --filter @avocat-ai/web typecheck`, puis les commandes `build` et `bundle:check`.
+- [ ] L'ensemble des variables d'environnement (OpenAI, Supabase, OTP, alertes) sont saisies dans Vercel conformément au [guide de déploiement détaillé](docs/deployment/vercel.md).
+- [ ] Les migrations Supabase et les buckets obligatoires sont en place (`pnpm ops:foundation`) et les données de référence ont été chargées (`pnpm seed`).
+- [ ] Les drapeaux de fonctionnalités critiques (ex. `FEAT_ADMIN_PANEL`) sont positionnés selon la stratégie d'exposition souhaitée.
 
 ### Assembler les fondations en une étape
 
