@@ -38,7 +38,7 @@ describe('summariseDocumentFromPayload', () => {
       responses: { create: openAIResponsesCreateMock },
       embeddings: { create: openAIEmbeddingsCreateMock },
     });
-    openAIResponsesCreateMock.mockResolvedValue({ output: [] });
+    openAIResponsesCreateMock.mockResolvedValue({ output: [], output_text: '' });
     openAIEmbeddingsCreateMock.mockResolvedValue({ data: [] });
     fetchOpenAIDebugDetailsMock.mockResolvedValue(null);
     isOpenAIDebugEnabledMock.mockReturnValue(false);
@@ -68,22 +68,24 @@ describe('summariseDocumentFromPayload', () => {
 
   it('returns ready when OpenAI summary and embeddings succeed', async () => {
     const text = 'Article 12 — Les dispositions relatives aux sûretés sont applicables. '.repeat(5);
+    const structured = JSON.stringify({
+      summary: 'Synthèse',
+      highlights: [
+        { heading: 'Objet', detail: 'Dispositions applicables.' },
+        { heading: 'Dates', detail: 'Entrée en vigueur immédiate.' },
+      ],
+    });
     const responsesReply = {
       output: [
         {
           content: [
             {
-              text: JSON.stringify({
-                summary: 'Synthèse',
-                highlights: [
-                  { heading: 'Objet', detail: 'Dispositions applicables.' },
-                  { heading: 'Dates', detail: 'Entrée en vigueur immédiate.' },
-                ],
-              }),
+              text: structured,
             },
           ],
         },
       ],
+      output_text: structured,
     };
 
     const embeddingsReply = {
@@ -115,6 +117,45 @@ describe('summariseDocumentFromPayload', () => {
     expect(result.chunks.length).toBeGreaterThan(0);
     expect(result.chunks[0].marker).toMatch(/Article 12/i);
     expect(result.embeddings).toHaveLength(result.chunks.length);
+  });
+
+  it('falls back to response.output when output_text is missing', async () => {
+    const text = 'Article 1 — Les dispositions relatives aux contrats sont détaillées. '.repeat(5);
+    const structured = JSON.stringify({
+      summary: 'Résumé alternatif',
+      highlights: [
+        { heading: 'Objet', detail: 'Détails des contrats.' },
+      ],
+    });
+
+    openAIResponsesCreateMock.mockResolvedValue({
+      output: [
+        {
+          content: [
+            {
+              text: structured,
+            },
+          ],
+        },
+      ],
+      output_text: '',
+    });
+
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
+
+    const result = await summariseDocumentFromPayload({
+      payload: encoder.encode(text),
+      mimeType: 'text/plain',
+      metadata: { title: 'Contrat', jurisdiction: 'FR', publisher: 'Légifrance' },
+      openaiApiKey: 'test-key',
+      summariserModel: 'gpt-summary',
+      embeddingModel: 'text-embedding-test',
+      maxSummaryChars: 4000,
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result.summary).toBe('Résumé alternatif');
+    expect(result.highlights).toHaveLength(1);
   });
 
   it('returns failed when the summary call errors', async () => {

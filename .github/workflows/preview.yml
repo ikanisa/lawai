@@ -2,7 +2,7 @@ name: Preview Build
 
 on:
   pull_request:
-    branches: [main]
+    branches: [work]
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
@@ -30,6 +30,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: SQL lint
+        run: pnpm lint:sql
+
+      - name: Check migrations
+        run: pnpm check:migrations
 
       - name: Build Next.js preview
         run: pnpm --filter @apps/pwa build
