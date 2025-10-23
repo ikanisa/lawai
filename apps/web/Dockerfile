@@ -6,10 +6,10 @@ RUN corepack enable && corepack prepare pnpm@8.15.4 --activate
 
 # Copy top-level manifests for workspace install
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
-# Copy the web app manifest and any shared package manifests as needed
-COPY apps/web/package.json apps/web/
-# If you have workspace packages, copy their manifests for better caching
-# COPY packages/*/package.json packages/*/
+# Copy workspace manifests referenced by the lockfile before installing
+COPY apps/*/package.json apps/*/
+COPY packages/*/package.json packages/*/
+COPY db/*/package.json db/*/
 
 RUN pnpm install --frozen-lockfile
 
