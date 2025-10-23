@@ -1,14 +1,14 @@
 import { z } from 'zod';
-import type { FastifyInstance } from 'fastify';
+import type { AppFastifyInstance } from '../../types/fastify.js';
 
 import type { AppContext } from '../../types/context.js';
 import { cloneHitlQueueData } from './data.js';
 
 const hitlActionSchema = z.object({
-  action: z.enum(['approve', 'request_changes', 'reject']).default('acknowledged'),
+  action: z.enum(['approve', 'request_changes', 'reject']).default('approve'),
 });
 
-export async function registerHitlRoutes(app: FastifyInstance, _ctx: AppContext) {
+export async function registerHitlRoutes(app: AppFastifyInstance, _ctx: AppContext) {
   app.get('/hitl', async () => cloneHitlQueueData());
 
   app.post<{ Params: { id: string } }>('/hitl/:id', async (request, reply) => {

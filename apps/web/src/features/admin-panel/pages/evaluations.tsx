@@ -2,15 +2,21 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Flag, RefreshCcw, TrendingUp } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
+import { Button } from '../@/ui/button';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
 import { adminQueries } from '../api/client';
+import { useAdminSession } from '../session-context';
 
 export function AdminEvaluationsPage() {
   const { activeOrg, searchQuery } = useAdminPanelContext();
-  const evalQuery = useQuery(adminQueries.evaluations(activeOrg.id));
+  const { session, loading: sessionLoading } = useAdminSession();
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const evalQuery = useQuery({
+    ...adminQueries.evaluations(activeOrg.id),
+    enabled: isSessionReady,
+  });
   const evals = evalQuery.data?.evaluations ?? [];
 
   return (
@@ -19,7 +25,7 @@ export function AdminEvaluationsPage() {
         title="Evaluations"
         description="Monitor nightly datasets, SLO gates, and rollback workflows for regressions."
         actions={
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button variant="outline" size="sm" className="gap-2" disabled={!isSessionReady}>
             <RefreshCcw className="h-4 w-4" /> Re-run now
           </Button>
         }
@@ -47,7 +53,7 @@ export function AdminEvaluationsPage() {
           Nightly regressions automatically halt promotions and file incidents into the audit log. Use rollback controls to revert
           to the previous workflow version.
         </p>
-        <Button variant="secondary" size="sm" className="mt-4 gap-2">
+        <Button variant="secondary" size="sm" className="mt-4 gap-2" disabled={!isSessionReady}>
           <Flag className="h-4 w-4" /> Rollback workflow
         </Button>
       </section>

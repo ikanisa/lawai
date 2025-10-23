@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import ora from 'ora';
+import { createRestClient, type RestApiClient } from '@avocat-ai/api-clients';
 import { requireEnv } from './lib/env.js';
 
 interface CliOptions {
@@ -62,29 +63,14 @@ function parseArgs(): CliOptions {
   return options;
 }
 
-async function generateReport(options: CliOptions): Promise<unknown> {
-  const payload = {
+async function generateReport(options: CliOptions, api: RestApiClient): Promise<unknown> {
+  return api.generateTransparencyReport({
     orgId: options.orgId,
+    userId: options.userId,
     periodStart: options.start,
     periodEnd: options.end,
     dryRun: options.dryRun,
-  };
-
-  const response = await fetch(`${options.apiBaseUrl}/reports/transparency`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': options.userId,
-    },
-    body: JSON.stringify(payload),
   });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Echec génération rapport (${response.status}): ${body}`);
-  }
-
-  return response.json();
 }
 
 function writeOutput(report: unknown, options: CliOptions): void {
@@ -103,9 +89,10 @@ async function run(): Promise<void> {
     requireEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
   }
 
+  const api = createRestClient({ baseUrl: options.apiBaseUrl });
   const spinner = ora('Génération du rapport de transparence...').start();
   try {
-    const report = await generateReport(options);
+    const report = await generateReport(options, api);
     spinner.succeed('Rapport généré');
     writeOutput(report, options);
   } catch (error) {

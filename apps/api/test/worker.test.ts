@@ -1,29 +1,37 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import {
-  workerRegistry,
-  claimFinanceJobs,
-  runFinanceWorker,
-  processFinanceQueue,
-  resetWorkerRegistry,
-} from '../src/worker.js';
-import { registerFinanceWorkers } from '../src/finance-workers.js';
 import type { FinanceWorkerEnvelope } from '@avocat-ai/shared';
-import { financeCommandPayloadSchema, listPendingJobs, updateCommandStatus, updateJobStatus } from '@avocat-ai/shared';
+import { financeCommandPayloadSchema } from '@avocat-ai/shared';
+vi.mock('../src/orchestrator.ts', () => ({
+  listPendingJobs: vi.fn(),
+  updateJobStatus: vi.fn(),
+  updateCommandStatus: vi.fn(),
+}));
 
-vi.mock('@avocat-ai/shared', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@avocat-ai/shared')>();
-  return {
-    ...actual,
-    listPendingJobs: vi.fn(actual.listPendingJobs),
-    updateJobStatus: vi.fn(actual.updateJobStatus),
-    updateCommandStatus: vi.fn(actual.updateCommandStatus),
-  };
+let workerRegistry: typeof import('../src/worker.js')['workerRegistry'];
+let claimFinanceJobs: typeof import('../src/worker.js')['claimFinanceJobs'];
+let runFinanceWorker: typeof import('../src/worker.js')['runFinanceWorker'];
+let processFinanceQueue: typeof import('../src/worker.js')['processFinanceQueue'];
+let resetWorkerRegistry: typeof import('../src/worker.js')['resetWorkerRegistry'];
+let registerFinanceWorkers: typeof import('../src/finance-workers.js')['registerFinanceWorkers'];
+let listPendingJobsMock: vi.Mock;
+let updateJobStatusMock: vi.Mock;
+let updateCommandStatusMock: vi.Mock;
+
+beforeAll(async () => {
+  const workerModule = await import('../src/worker.js');
+  workerRegistry = workerModule.workerRegistry;
+  claimFinanceJobs = workerModule.claimFinanceJobs;
+  runFinanceWorker = workerModule.runFinanceWorker;
+  processFinanceQueue = workerModule.processFinanceQueue;
+  resetWorkerRegistry = workerModule.resetWorkerRegistry;
+  const financeWorkersModule = await import('../src/finance-workers.js');
+  registerFinanceWorkers = financeWorkersModule.registerFinanceWorkers;
+  const orchestratorMocks = await import('../src/orchestrator.ts');
+  listPendingJobsMock = orchestratorMocks.listPendingJobs as unknown as vi.Mock;
+  updateJobStatusMock = orchestratorMocks.updateJobStatus as unknown as vi.Mock;
+  updateCommandStatusMock = orchestratorMocks.updateCommandStatus as unknown as vi.Mock;
 });
-
-const listPendingJobsMock = listPendingJobs as unknown as vi.Mock;
-const updateJobStatusMock = updateJobStatus as unknown as vi.Mock;
-const updateCommandStatusMock = updateCommandStatus as unknown as vi.Mock;
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -111,6 +119,31 @@ function createSupabaseMock(
   connectorMap?: Record<string, { connector_type: string; status?: string; config?: Record<string, unknown> }>,
 ): SupabaseClient {
   const resolvedHandlers: Record<string, () => Record<string, unknown>> = { ...handlers };
+
+  const makeFilterBuilder = () => {
+    const builder: Record<string, any> = {};
+    builder.eq = vi.fn(() => builder);
+    builder.in = vi.fn(() => builder);
+    builder.order = vi.fn(() => ({
+      limit: vi.fn(async () => ({ data: [], error: null })),
+    }));
+    builder.limit = vi.fn(async () => ({ data: [], error: null }));
+    builder.maybeSingle = vi.fn(async () => ({ data: null, error: null }));
+    return builder;
+  };
+
+  const makeUpdateBuilder = () => ({
+    eq: vi.fn(async () => ({ data: null, error: null })),
+  });
+
+  resolvedHandlers.orchestrator_commands ??= () => ({
+    select: vi.fn(() => makeFilterBuilder()),
+    update: vi.fn(() => makeUpdateBuilder()),
+  });
+  resolvedHandlers.orchestrator_jobs ??= () => ({
+    select: vi.fn(() => makeFilterBuilder()),
+    update: vi.fn(() => makeUpdateBuilder()),
+  });
   if (connectorMap) {
     const rows = connectorsRows(connectorMap);
     resolvedHandlers.org_connectors = () => ({
@@ -208,8 +241,8 @@ function buildEnvelope(options: {
       orgId: 'org-1',
       chatSessionId: null,
       status: 'active',
-      directorState: {},
-      safetyState: {},
+      directorState: null,
+      safetyState: null,
       metadata: {},
       currentObjective: null,
       lastDirectorRunId: null,

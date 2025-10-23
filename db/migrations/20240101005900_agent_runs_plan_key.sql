@@ -1,7 +1,7 @@
-alter table public.agent_runs
-  add column if not exists plan_trace jsonb,
-  add column if not exists run_key text;
+ALTER TABLE public.agent_runs
+ADD COLUMN IF NOT EXISTS plan_trace jsonb,
+ADD COLUMN IF NOT EXISTS run_key text;
 
-create unique index if not exists agent_runs_run_key_idx
-  on public.agent_runs (org_id, run_key)
-  where run_key is not null;
+CREATE UNIQUE INDEX if NOT EXISTS agent_runs_run_key_idx ON public.agent_runs (org_id, run_key)
+WHERE
+  run_key IS NOT NULL;

@@ -17,6 +17,12 @@ The Drive ingestion pipeline synchronises curated legal sources into the authori
 - Observability dashboard: latency + error rate per ingestion stage.
 - Alerts triggered when quarantine backlog exceeds SLA or vector store status != READY.
 
+### Smoke Command
+- Trigger a dry-run queue insert with `pnpm --filter @apps/ops exec tsx src/index.ts --schedule ingestion --org <org-id> --adapter drive-watcher`.
+- Expected output:
+  - Spinner progresses through “Initialisation du client Supabase…”, “Planification de la tâche…”.
+  - Console echoes `Adapter drive-watcher en file.` and exit code `0`.
+
 ## On-Call Playbook
 1. **Failure in Manifest Validation** — Contact content ops, request manifest fix, and requeue job.
 2. **Embedding Failures** — Retry up to 3 times; if still failing, failover to backup embedding model and notify platform team.

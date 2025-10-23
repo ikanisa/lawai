@@ -4,12 +4,13 @@ import { motion } from 'framer-motion';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sparkles, Play } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
-import { Badge } from '../../../components/ui/badge';
+import { Button } from '../@/ui/button';
+import { Badge } from '../@/ui/badge';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
 import { adminQueries, triggerAdminJob } from '../api/client';
+import { useAdminSession } from '../session-context';
 
 const FALLBACK_STATS = [
   { id: 'runs', label: 'Agent runs (24h)', value: 1284, trend: 12, unit: '%' },
@@ -20,8 +21,16 @@ const FALLBACK_STATS = [
 
 export function AdminOverviewPage() {
   const { activeOrg } = useAdminPanelContext();
-  const overviewQuery = useQuery(adminQueries.overview(activeOrg.id));
-  const jobsQuery = useQuery(adminQueries.jobs(activeOrg.id));
+  const { session, loading: sessionLoading } = useAdminSession();
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const overviewQuery = useQuery({
+    ...adminQueries.overview(activeOrg.id),
+    enabled: isSessionReady,
+  });
+  const jobsQuery = useQuery({
+    ...adminQueries.jobs(activeOrg.id),
+    enabled: isSessionReady,
+  });
 
   const stats = overviewQuery.data?.stats ?? FALLBACK_STATS;
   const charts = overviewQuery.data?.charts ?? [];
@@ -50,7 +59,12 @@ export function AdminOverviewPage() {
         title="Overview"
         description="Centralized health view for your tenant. Track runs, ingestion freshness, eval status, and policy alerts."
         actions={
-          <Button size="sm" className="gap-2" onClick={() => void triggerAdminJob('eval-nightly', activeOrg.id)}>
+          <Button
+            size="sm"
+            className="gap-2"
+            onClick={() => void triggerAdminJob('eval-nightly', activeOrg.id)}
+            disabled={!isSessionReady}
+          >
             <Play className="h-4 w-4" /> Trigger nightly eval
           </Button>
         }
@@ -128,7 +142,13 @@ export function AdminOverviewPage() {
         <div className="space-y-3 rounded-xl border border-slate-800/60 bg-slate-900/50 p-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-200">Jobs</h2>
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => void triggerAdminJob('drive-watch', activeOrg.id)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => void triggerAdminJob('drive-watch', activeOrg.id)}
+              disabled={!isSessionReady}
+            >
               <Sparkles className="h-4 w-4" /> Run Drive watcher
             </Button>
           </div>

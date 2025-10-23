@@ -103,9 +103,14 @@ export function buildAkomaBodyFromText(text: string): AkomaBody | null {
         currentArticle.excerpt = formatExcerpt(currentArticle.paragraphs);
       }
 
+      const headingMatch = line.match(/^(article|art\.)\s*[0-9a-z][0-9a-z.-]*/i);
+      const marker = headingMatch?.[0] ? headingMatch[0].trim() : line;
+      const remainder = headingMatch ? line.slice(headingMatch[0].length).trim() : '';
+      const initialParagraph = remainder.replace(/^[-:–—]\s*/, '');
+
       currentArticle = {
-        marker: line.match(/^(article|art\.)\s*[0-9a-z][0-9a-z.-]*/i)?.[0] ?? line,
-        heading: line,
+        marker,
+        heading: marker,
         paragraphs: [],
         excerpt: '',
         section: currentSection?.heading ?? null,
@@ -115,6 +120,10 @@ export function buildAkomaBodyFromText(text: string): AkomaBody | null {
         currentSection.articles.push(currentArticle);
       } else {
         rootArticles.push(currentArticle);
+      }
+
+      if (initialParagraph.length > 0) {
+        currentArticle.paragraphs.push(initialParagraph);
       }
       continue;
     }
@@ -150,7 +159,45 @@ export type CaseTreatmentHint = {
   ecli?: string;
 };
 
-const SENTENCE_SPLIT_REGEX = /(?<=[.!?])\s+/;
+const SENTENCE_SPLIT_REGEX = /(?<!\bAff)(?<!\bArt)(?<!\bN°)(?<!\bNo)(?<!\bMr)(?<!\bMme)(?<=[.!?])\s+/i;
+
+function mergeAbbreviationSegments(segments: string[]): string[] {
+  const merged: string[] = [];
+  const trailingAbbreviation = /(\bAff\.|\bArt\.|\bN°|\bNo\.?|\bNº)$/i;
+
+  for (const segment of segments) {
+    if (merged.length > 0 && trailingAbbreviation.test(merged[merged.length - 1])) {
+      merged[merged.length - 1] = `${merged[merged.length - 1]} ${segment}`.trim();
+      continue;
+    }
+
+    merged.push(segment);
+  }
+
+  return merged;
+}
+
+function splitSentences(text: string): string[] {
+  if (!text) {
+    return [];
+  }
+
+  if (typeof (Intl as unknown as { Segmenter?: typeof Intl.Segmenter }).Segmenter === 'function') {
+    const segmenter = new Intl.Segmenter('fr', { granularity: 'sentence' });
+    return mergeAbbreviationSegments(
+      Array.from(segmenter.segment(text))
+        .map(({ segment }) => segment.trim())
+        .filter((segment) => segment.length > 0),
+    );
+  }
+
+  return mergeAbbreviationSegments(
+    text
+      .split(SENTENCE_SPLIT_REGEX)
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => sentence.length > 0),
+  );
+}
 
 function detectTreatment(sentence: string): CaseTreatmentHint['treatment'] {
   const lower = sentence.toLowerCase();
@@ -194,7 +241,7 @@ export function extractCaseTreatmentHints(text: string): CaseTreatmentHint[] {
     return [];
   }
 
-  const sentences = text.split(SENTENCE_SPLIT_REGEX);
+  const sentences = splitSentences(text);
   const seen = new Set<string>();
   const hints: CaseTreatmentHint[] = [];
 
