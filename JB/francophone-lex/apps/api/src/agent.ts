@@ -16,6 +16,8 @@ import {
   IRACPayload,
   IRACSchema,
   OFFICIAL_DOMAIN_ALLOWLIST,
+  buildWebSearchAllowlist,
+  DEFAULT_WEB_SEARCH_ALLOWLIST_MAX,
   getAgentDefinition,
   getAutonomousSuiteManifest,
 } from '@avocat-ai/shared';
@@ -410,7 +412,21 @@ async function buildComplianceSummary(
   } satisfies TrustPanelComplianceSummary;
 }
 
-const DOMAIN_ALLOWLIST = loadAllowlistOverride() ?? [...OFFICIAL_DOMAIN_ALLOWLIST];
+const webSearchAllowlist = buildWebSearchAllowlist({
+  fallback: OFFICIAL_DOMAIN_ALLOWLIST,
+  override: loadAllowlistOverride(),
+  maxDomains: DEFAULT_WEB_SEARCH_ALLOWLIST_MAX,
+  onTruncate: ({ truncatedCount, totalDomains, maxDomains, source }) => {
+    console.warn('web_search_allowlist_truncated', {
+      truncatedCount,
+      totalDomains,
+      maxDomains,
+      source,
+    });
+  },
+});
+
+const DOMAIN_ALLOWLIST = webSearchAllowlist.allowlist;
 
 const stubMode = env.AGENT_STUB_MODE;
 

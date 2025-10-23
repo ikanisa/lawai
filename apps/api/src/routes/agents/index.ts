@@ -50,7 +50,7 @@ export async function registerAgentsRoutes(app: FastifyInstance, _ctx: AppContex
       webSearchMode: body.web_search_mode ?? 'allowlist'
     });
 
-    const events = createResearchStream(body.input, body.tools_enabled ?? []);
+    const events = createResearchStream(body.input, body.tools_enabled ?? [], run.webSearchMode);
     persistRun(runId, { run, events, createdAt: Date.now() });
 
     return run;
