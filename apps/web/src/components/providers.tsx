@@ -4,21 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode, useEffect, useState } from 'react';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
+import { isPwaEnvEnabled, registerPwa } from '../lib/pwa';
 import { PwaInstallProvider } from '../hooks/use-pwa-install';
 import { PwaPreferenceProvider, usePwaPreference } from '../hooks/use-pwa-preference';
-
-function PwaRegistrationGate() {
-  const { enabled, canToggle } = usePwaPreference();
-
-  useEffect(() => {
-    if (!enabled || !canToggle) {
-      return;
-    }
-    registerPwa();
-  }, [enabled, canToggle]);
-
-  return null;
-}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +16,22 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+const PWA_ENV_ENABLED = isPwaEnvEnabled();
+
+function PwaRegistrationGate() {
+  const { enabled, loading } = usePwaPreference();
+
+  useEffect(() => {
+    if (!PWA_ENV_ENABLED || loading || !enabled) {
+      return;
+    }
+
+    registerPwa();
+  }, [enabled, loading]);
+
+  return null;
+}
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);

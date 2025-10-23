@@ -1,74 +1,50 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  getPwaPreference,
-  isPwaGloballyEnabled,
-  setPwaPreference,
-  PWA_PREFERENCE_STORAGE_KEY,
-} from '../lib/pwa';
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { getPwaPreference, setPwaPreference } from '../lib/pwa';
 
 interface PwaPreferenceContextValue {
   enabled: boolean;
-  canToggle: boolean;
-  setEnabled: (value: boolean) => void;
+  loading: boolean;
+  setEnabled: (enabled: boolean) => void;
 }
 
 const PwaPreferenceContext = createContext<PwaPreferenceContextValue | undefined>(undefined);
 
 export function PwaPreferenceProvider({ children }: { children: ReactNode }) {
-  const canToggle = isPwaGloballyEnabled();
-  const [enabled, setEnabledState] = useState<boolean>(() => {
-    if (!canToggle) {
-      return false;
-    }
-    return getPwaPreference();
-  });
+  const [enabled, setEnabled] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!canToggle) {
-      setEnabledState(false);
-      return;
-    }
-    setEnabledState(getPwaPreference());
-  }, [canToggle]);
-
-  useEffect(() => {
-    if (!canToggle || typeof window === 'undefined') {
+    if (typeof window === 'undefined') {
+      setLoading(false);
       return;
     }
 
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key !== PWA_PREFERENCE_STORAGE_KEY) {
-        return;
-      }
-      setEnabledState(event.newValue !== 'disabled');
-    };
+    setEnabled(getPwaPreference());
+    setLoading(false);
+  }, []);
 
-    window.addEventListener('storage', handleStorage);
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, [canToggle]);
-
-  const setEnabled = useCallback(
-    (value: boolean) => {
-      if (!canToggle) {
-        return;
-      }
-      setPwaPreference(value);
-      setEnabledState(value);
-    },
-    [canToggle],
-  );
+  const handleSetEnabled = useCallback((value: boolean) => {
+    setEnabled(value);
+    setPwaPreference(value);
+  }, []);
 
   const value = useMemo<PwaPreferenceContextValue>(
     () => ({
       enabled,
-      canToggle,
-      setEnabled,
+      loading,
+      setEnabled: handleSetEnabled,
     }),
-    [enabled, canToggle, setEnabled],
+    [enabled, loading, handleSetEnabled],
   );
 
   return <PwaPreferenceContext.Provider value={value}>{children}</PwaPreferenceContext.Provider>;
@@ -81,4 +57,3 @@ export function usePwaPreference(): PwaPreferenceContextValue {
   }
   return context;
 }
-

@@ -4,10 +4,7 @@ import { Workbox } from 'workbox-window';
 import { clientEnv } from '../env.client';
 
 const DIGEST_KEY = 'avocat-ai-digest-enabled';
-export const PWA_PREFERENCE_STORAGE_KEY = 'avocat-ai-pwa-preference';
-
-const envFlag = process.env.NEXT_PUBLIC_ENABLE_PWA;
-const pwaGloballyEnabled = envFlag ? !/^\s*(false|0|off|no)\s*$/i.test(envFlag) : true;
+export const PWA_OPT_IN_STORAGE_KEY = 'avocat-ai.install.optIn';
 
 let registrationPromise: Promise<ServiceWorkerRegistration> | null = null;
 let preferenceCache: boolean | null = null;
@@ -76,8 +73,63 @@ export function setPwaPreference(enabled: boolean) {
   }
 }
 
+export function isPwaEnvEnabled(): boolean {
+  const flag = process.env.NEXT_PUBLIC_ENABLE_PWA;
+  return flag === undefined || flag === 'true';
+}
+
+export function getPwaPreference(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(PWA_OPT_IN_STORAGE_KEY) === 'true';
+  } catch (error) {
+    console.warn('pwa_preference_read_failed', error);
+    return false;
+  }
+}
+
+export function setPwaPreference(enabled: boolean): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(PWA_OPT_IN_STORAGE_KEY, enabled ? 'true' : 'false');
+  } catch (error) {
+    console.warn('pwa_preference_write_failed', error);
+  }
+}
+
+export function isPwaSupported(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const nav = window.navigator;
+  return Boolean(nav && 'serviceWorker' in nav);
+}
+
 export function registerPwa() {
-  if (!pwaGloballyEnabled) {
+  if (!isPwaEnvEnabled()) {
+    console.info('pwa_registration_skipped', { reason: 'env_disabled' });
+    return;
+  }
+
+  if (typeof window === 'undefined') {
+    console.info('pwa_registration_skipped', { reason: 'ssr' });
+    return;
+  }
+
+  if (!isPwaSupported()) {
+    console.warn('pwa_unsupported_browser');
+    return;
+  }
+
+  if (!getPwaPreference()) {
+    console.info('pwa_registration_skipped', { reason: 'user_opt_out' });
     return;
   }
 
@@ -164,7 +216,7 @@ export async function enableDigestNotifications(): Promise<boolean> {
     return false;
   }
 
-  grantPwaConsent();
+  setPwaPreference(true);
 
   if (!registrationPromise) {
     const result = registerPwa();

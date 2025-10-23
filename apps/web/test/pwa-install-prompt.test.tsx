@@ -48,6 +48,14 @@ vi.mock('../src/hooks/use-outbox', () => ({
   }),
 }));
 
+vi.mock('../src/hooks/use-pwa-preference', () => ({
+  usePwaPreference: () => ({
+    enabled: true,
+    loading: false,
+    setEnabled: vi.fn(),
+  }),
+}));
+
 const telemetryMock = vi.fn();
 
 vi.mock('../src/lib/api', () => ({
@@ -77,6 +85,9 @@ describe('PwaInstallPrompt', () => {
       success: 'Ready',
       snoozed: 'Soon',
       unavailable: 'Unavailable',
+      optInToggle: 'Enable offline mode',
+      optInDescription: 'Cache resources to stay ready offline.',
+      optInEnabled: 'Offline ready',
       releaseNotes: {
         title: "What's new",
         items: ['Note A', 'Note B'],
