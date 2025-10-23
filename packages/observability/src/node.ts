@@ -54,7 +54,8 @@ export async function initNodeTelemetry(config: NodeTelemetryConfig): Promise<Te
     diag.setLogger(new DiagConsoleLogger(), config.logLevel as DiagLogLevel);
   } else if (process.env.OTEL_DIAGNOSTIC_LOG_LEVEL) {
     const level = process.env.OTEL_DIAGNOSTIC_LOG_LEVEL.toUpperCase();
-    diag.setLogger(new DiagConsoleLogger(), (DiagLogLevel as Record<string, DiagLogLevel>)[level] ?? DiagLogLevel.ERROR);
+    const diagLevels = DiagLogLevel as unknown as Record<string, DiagLogLevel>;
+    diag.setLogger(new DiagConsoleLogger(), diagLevels[level] ?? DiagLogLevel.ERROR);
   }
 
   const traceExporter = (() => {
@@ -75,13 +76,15 @@ export async function initNodeTelemetry(config: NodeTelemetryConfig): Promise<Te
 
   const instrumentations: Instrumentation[] = config.instrumentations ?? [];
 
+  const metricReader = new PeriodicExportingMetricReader({
+    exporter: metricExporter,
+    exportIntervalMillis: 15_000,
+    exportTimeoutMillis: 10_000,
+  });
+
   sdk = new NodeSDK({
     traceExporter,
-    metricReader: new PeriodicExportingMetricReader({
-      exporter: metricExporter,
-      exportIntervalMillis: 15_000,
-      exportTimeoutMillis: 10_000,
-    }),
+    metricReader: metricReader as any,
     resource,
     instrumentations,
   });

@@ -9,9 +9,17 @@ const envSchema = z.object({
 
 export type SupabaseEnv = z.infer<typeof envSchema>;
 
+export interface CreateServiceClientOptions {
+  client?: ServiceSupabaseClient;
+  reuseExisting?: boolean;
+}
+
 let cachedClient: ServiceSupabaseClient | null = null;
 
-export function createServiceClient(env: SupabaseEnv): ServiceSupabaseClient {
+export function createServiceClient(
+  env: SupabaseEnv,
+  options: CreateServiceClientOptions = {},
+): ServiceSupabaseClient {
   const parsed = envSchema.parse(env);
   const reuseExisting = options.reuseExisting ?? true;
 
@@ -26,7 +34,7 @@ export function createServiceClient(env: SupabaseEnv): ServiceSupabaseClient {
     return cachedClient;
   }
 
-  cachedClient = createClient<ServiceDatabase>(
+  const instance = createClient<ServiceDatabase>(
     parsed.SUPABASE_URL,
     parsed.SUPABASE_SERVICE_ROLE_KEY,
     {

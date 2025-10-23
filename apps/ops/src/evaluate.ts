@@ -954,7 +954,13 @@ export async function runEvaluation(
       const payload = result.data;
       if (!payload) {
         const message = 'Réponse vide';
-        await recordResult(supabase, evaluationCase.id as string, null, false, message, undefined, caseBenchmark);
+        await recordResult(supabase, {
+          caseId: evaluationCase.id as string,
+          runId: null,
+          pass: false,
+          notes: message,
+          benchmark: caseBenchmark,
+        });
         scoreboard.push({
           caseId: evaluationCase.id as string,
           name: evaluationCase.name as string,
@@ -981,11 +987,10 @@ export async function runEvaluation(
       const evaluation = evaluateExpectedTerms(payload, expectedTerms);
       const metrics = computeMetrics(payload);
       const notes = evaluation.pass ? null : `Manquants: ${evaluation.missing.join(', ')}`;
-      await recordResult(
-        supabase,
-        evaluationCase.id as string,
-        result.runId ?? null,
-        evaluation.pass,
+      await recordResult(supabase, {
+        caseId: evaluationCase.id as string,
+        runId: result.runId ?? null,
+        pass: evaluation.pass,
         notes,
         metrics,
         benchmark: caseBenchmark,

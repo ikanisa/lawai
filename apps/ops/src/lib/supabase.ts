@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createServiceClient } from '@avocat-ai/supabase';
+import { createServiceClient, type CreateServiceClientOptions, type ServiceSupabaseClient } from '@avocat-ai/supabase';
 import { AuditLogger } from '@avocat-ai/compliance';
 import ora from 'ora';
 import { OFFICIAL_DOMAIN_ALLOWLIST, getJurisdictionsForDomain } from '@avocat-ai/shared';
@@ -9,9 +9,7 @@ type BucketListItem = {
   name: string;
 };
 
-export interface SupabaseServiceOptions {
-  factory?: ServiceClientFactory;
-  reuseExisting?: boolean;
+export interface SupabaseServiceOptions extends Omit<CreateServiceClientOptions, 'client'> {
   client?: SupabaseClient | null;
 }
 
@@ -19,15 +17,15 @@ export function createSupabaseService(
   env: Record<string, string>,
   options: SupabaseServiceOptions = {},
 ): SupabaseClient {
+  const { client, ...rest } = options;
   return createServiceClient(
     {
       SUPABASE_URL: env.SUPABASE_URL,
       SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
     },
     {
-      factory: options.factory,
-      reuseExisting: options.reuseExisting,
-      client: options.client ?? null,
+      ...rest,
+      client: (client ?? undefined) as ServiceSupabaseClient | undefined,
     },
   );
 }

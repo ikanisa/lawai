@@ -1,9 +1,19 @@
 // deno-lint-ignore-file no-explicit-any
-import { context, trace, SpanStatusCode, diag, DiagConsoleLogger, DiagLogLevel, type Span } from '@opentelemetry/api';
+import {
+  context,
+  trace,
+  SpanStatusCode,
+  diag,
+  DiagConsoleLogger,
+  DiagLogLevel,
+  type Span,
+  type Counter,
+  type Histogram,
+} from '@opentelemetry/api';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { Resource } from '@opentelemetry/resources';
-import { PeriodicExportingMetricReader, MeterProvider, type Counter, type Histogram } from '@opentelemetry/sdk-metrics';
+import { PeriodicExportingMetricReader, MeterProvider } from '@opentelemetry/sdk-metrics';
 import { BasicTracerProvider, BatchSpanProcessor, type SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import type { EdgeTelemetryConfig, TelemetryRuntime } from './types.js';
@@ -17,10 +27,19 @@ let serviceName: string | null = null;
 let telemetryRuntime: TelemetryRuntime | null = null;
 let servePatched = false;
 
+type EdgeServeHandlerInfo = {
+  remoteAddr?: { hostname?: string; port?: number };
+  [key: string]: unknown;
+};
+
+const deno = (globalThis as typeof globalThis & { Deno?: { env?: { get?: (key: string) => string | undefined }; serve?: (...args: any[]) => any } }).Deno;
+
+const getDenoEnv = (key: string) => deno?.env?.get?.(key);
+
 function resolveEndpoint(config: EdgeTelemetryConfig, kind: 'trace' | 'metric'): string | undefined {
   const base = kind === 'trace' ? config.otlpEndpoint : config.metricsEndpoint ?? config.otlpEndpoint;
-  const envSpecific = kind === 'trace' ? Deno.env.get('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT') : Deno.env.get('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT');
-  const sharedEnv = Deno.env.get('OTEL_EXPORTER_OTLP_ENDPOINT');
+  const envSpecific = kind === 'trace' ? getDenoEnv('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT') : getDenoEnv('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT');
+  const sharedEnv = getDenoEnv('OTEL_EXPORTER_OTLP_ENDPOINT');
   const candidate = base ?? envSpecific ?? sharedEnv;
   if (!candidate) return undefined;
   if (candidate.endsWith('/v1/' + (kind === 'trace' ? 'traces' : 'metrics'))) {
@@ -33,27 +52,27 @@ function buildResource(config: EdgeTelemetryConfig): Resource {
   return new Resource({
     [SemanticResourceAttributes.SERVICE_NAME]: config.serviceName,
     [SemanticResourceAttributes.SERVICE_VERSION]: config.serviceVersion ?? 'edge-unknown',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: config.environment ?? Deno.env.get('DENO_DEPLOYMENT_ID') ?? 'development',
+    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: config.environment ?? getDenoEnv('DENO_DEPLOYMENT_ID') ?? 'development',
     ...config.attributes,
   });
 }
 
 function ensurePatchedServe(tracerName: string) {
   if (servePatched) return;
-  const originalServe = (Deno as any).serve?.bind(Deno);
-  if (typeof originalServe !== 'function') {
+  const originalServe = deno?.serve?.bind(deno);
+  if (!deno || typeof originalServe !== 'function') {
     throw new Error('Deno.serve is not available for telemetry wrapping');
   }
   const tracer = trace.getTracer(tracerName);
-  const wrapHandler = (handler: (request: Request, info: Deno.ServeHandlerInfo) => Response | Promise<Response>) => {
-    return async (request: Request, info: Deno.ServeHandlerInfo): Promise<Response> => {
+  const wrapHandler = (handler: (request: Request, info: EdgeServeHandlerInfo) => Response | Promise<Response>) => {
+    return async (request: Request, info: EdgeServeHandlerInfo): Promise<Response> => {
       const span = tracer.startSpan('edge.request', {
         attributes: {
           'http.method': request.method,
           'http.target': new URL(request.url).pathname,
           'http.scheme': new URL(request.url).protocol.replace(':', ''),
           'faas.trigger': 'http',
-          'service.instance.id': Deno.env.get('DENO_DEPLOYMENT_ID') ?? Deno.env.get('HOSTNAME') ?? 'edge',
+          'service.instance.id': getDenoEnv('DENO_DEPLOYMENT_ID') ?? getDenoEnv('HOSTNAME') ?? 'edge',
         },
       });
       const start = performance.now();
@@ -96,7 +115,7 @@ function ensurePatchedServe(tracerName: string) {
     };
   };
 
-  (Deno as any).serve = function (...args: any[]) {
+  deno.serve = function (...args: any[]) {
     if (args.length === 1 && typeof args[0] === 'function') {
       return originalServe(wrapHandler(args[0]));
     }
