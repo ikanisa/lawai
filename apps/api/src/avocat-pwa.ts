@@ -22,6 +22,8 @@ import {
   policyConfiguration,
   voiceConsoleContext,
   buildVoiceRunResponse,
+  defaultWebSearchMode,
+  webSearchModes,
 } from './avocat-pwa-data.js';
 
 interface StreamEvent {
@@ -31,6 +33,14 @@ interface StreamEvent {
     citation?: ResearchStreamPayload['citation'];
   };
 }
+
+const WebSearchModeSchema = z.enum(webSearchModes);
+const RunRequestSchema = AgentRunRequestSchema.extend({
+  web_search_mode: WebSearchModeSchema.optional(),
+});
+const StreamRequestSchema = AgentStreamRequestSchema.extend({
+  web_search_mode: WebSearchModeSchema.optional(),
+});
 
 function sendEvent(reply: FastifyReply, event: StreamEvent) {
   reply.raw.write(`${JSON.stringify(event)}\n`);
@@ -50,6 +60,7 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
             input: { type: 'string' },
             jurisdiction: { type: ['string', 'null'] },
             policy_flags: { type: 'array', items: { type: 'string' } },
+            web_search_mode: { type: 'string', enum: [...webSearchModes] },
           },
           required: ['agent_id', 'input'],
           additionalProperties: true,
@@ -58,7 +69,7 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const parsed = AgentRunRequestSchema.parse(request.body ?? {});
+      const parsed = RunRequestSchema.parse(request.body ?? {});
       const now = new Date().toISOString();
       const run = AgentRunSchema.parse({
         id: `run_${randomUUID()}`,
@@ -70,7 +81,6 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
         input: parsed.input,
         jurisdiction: parsed.jurisdiction ?? null,
         policyFlags: parsed.policy_flags ?? [],
-        webSearchMode: parsed.web_search_mode ?? 'allowlist',
       });
       reply.code(201);
       return run;
@@ -88,6 +98,7 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
             input: { type: 'string' },
             jurisdiction: { type: ['string', 'null'] },
             policy_flags: { type: 'array', items: { type: 'string' } },
+            web_search_mode: { type: 'string', enum: [...webSearchModes] },
           },
           required: ['tools_enabled', 'input'],
           additionalProperties: true,
@@ -95,128 +106,135 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const parsed = AgentStreamRequestSchema.parse(request.body ?? {});
+      const parsed = StreamRequestSchema.parse(request.body ?? {});
 
-    reply.raw.setHeader('Content-Type', 'text/event-stream');
-    reply.raw.setHeader('Cache-Control', 'no-cache');
-    reply.raw.setHeader('Connection', 'keep-alive');
-    reply.raw.flushHeaders?.();
-    reply.hijack();
+      reply.raw.setHeader('Content-Type', 'text/event-stream');
+      reply.raw.setHeader('Cache-Control', 'no-cache');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.flushHeaders?.();
+      reply.hijack();
 
-    const baseToolEvents: StreamEvent[] = [
-      {
-        type: 'tool',
-        data: {
-          tool: {
-            id: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
-            name: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
-            status: 'running',
-            detail: researchToolSummaries.lookupCodeArticle.start,
-            planStepId: 'step-intake',
+      const requestedWebSearchMode = parsed.web_search_mode ?? defaultWebSearchMode;
+      const webSearchCopy =
+        researchToolSummaries.web_search[requestedWebSearchMode] ??
+        researchToolSummaries.web_search[defaultWebSearchMode];
+
+      const baseToolEvents: StreamEvent[] = [
+        {
+          type: 'tool',
+          data: {
+            tool: {
+              id: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
+              name: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
+              status: 'running',
+              detail: researchToolSummaries.lookupCodeArticle.start,
+              planStepId: 'step-intake',
+            },
           },
         },
-      },
-      {
-        type: 'tool',
-        data: {
-          tool: {
-            id: 'web_search',
-            name: 'web_search',
-            status: 'running',
-            detail: researchToolSummaries.web_search.start,
-            planStepId: 'step-risk',
+        {
+          type: 'tool',
+          data: {
+            tool: {
+              id: 'web_search',
+              name: 'web_search',
+              status: 'running',
+              detail: webSearchCopy.start,
+              planStepId: 'step-risk',
+            },
           },
         },
-      },
-    ];
+      ];
 
-    const tokenEvents: StreamEvent[] = researchAnswerChunks.map((chunk) => ({
-      type: 'token',
-      data: { token: `${chunk} ` },
-    }));
+      const tokenEvents: StreamEvent[] = researchAnswerChunks.map((chunk) => ({
+        type: 'token',
+        data: { token: `${chunk} ` },
+      }));
 
-    const citationEvents: StreamEvent[] = researchDeskContext.defaultCitations.slice(0, 2).map((citation: any) => ({
-      type: 'citation',
-      data: { citation },
-    }));
+      const citationEvents: StreamEvent[] = researchDeskContext.defaultCitations
+        .slice(0, 2)
+        .map((citation: any) => ({
+          type: 'citation',
+          data: { citation },
+        }));
 
-    const completionEvents: StreamEvent[] = [
-      {
-        type: 'tool',
-        data: {
-          tool: {
-            id: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
-            name: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
-            status: 'success',
-            detail: researchToolSummaries.lookupCodeArticle.success,
-            planStepId: 'step-intake',
+      const completionEvents: StreamEvent[] = [
+        {
+          type: 'tool',
+          data: {
+            tool: {
+              id: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
+              name: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
+              status: 'success',
+              detail: researchToolSummaries.lookupCodeArticle.success,
+              planStepId: 'step-intake',
+            },
           },
         },
-      },
-      {
-        type: 'tool',
-        data: {
-          tool: {
-            id: 'web_search',
-            name: 'web_search',
-            status: 'success',
-            detail: researchToolSummaries.web_search.success,
-            planStepId: 'step-risk',
+        {
+          type: 'tool',
+          data: {
+            tool: {
+              id: 'web_search',
+              name: 'web_search',
+              status: 'success',
+              detail: webSearchCopy.success,
+              planStepId: 'step-risk',
+            },
           },
         },
-      },
-      {
-        type: 'tool',
-        data: {
-          tool: {
-            id: 'limitationCheck',
-            name: 'limitationCheck',
-            status: 'running',
-            detail: researchToolSummaries.limitationCheck.start,
-            planStepId: 'step-deadline',
+        {
+          type: 'tool',
+          data: {
+            tool: {
+              id: 'limitationCheck',
+              name: 'limitationCheck',
+              status: 'running',
+              detail: researchToolSummaries.limitationCheck.start,
+              planStepId: 'step-deadline',
+            },
           },
         },
-      },
-      {
-        type: 'tool',
-        data: {
-          tool: {
-            id: 'limitationCheck',
-            name: 'limitationCheck',
-            status: 'success',
-            detail: researchToolSummaries.limitationCheck.success,
-            planStepId: 'step-deadline',
+        {
+          type: 'tool',
+          data: {
+            tool: {
+              id: 'limitationCheck',
+              name: 'limitationCheck',
+              status: 'success',
+              detail: researchToolSummaries.limitationCheck.success,
+              planStepId: 'step-deadline',
+            },
           },
         },
-      },
-      {
-        type: 'risk',
-        data: {
-          risk: {
-            level: researchDeskContext.plan.riskLevel,
-            summary: researchDeskContext.plan.riskSummary,
+        {
+          type: 'risk',
+          data: {
+            risk: {
+              level: researchDeskContext.plan.riskLevel,
+              summary: researchDeskContext.plan.riskSummary,
+            },
           },
         },
-      },
-      { type: 'done', data: {} },
-    ];
+        { type: 'done', data: {} },
+      ];
 
-    const events = [...baseToolEvents, ...tokenEvents, ...citationEvents, ...completionEvents];
+      const events = [...baseToolEvents, ...tokenEvents, ...citationEvents, ...completionEvents];
 
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index >= events.length) {
+      let index = 0;
+      const interval = setInterval(() => {
+        if (index >= events.length) {
+          clearInterval(interval);
+          reply.raw.end();
+          return;
+        }
+        sendEvent(reply, events[index]);
+        index += 1;
+      }, 250);
+
+      request.raw.on('close', () => {
         clearInterval(interval);
-        reply.raw.end();
-        return;
-      }
-      sendEvent(reply, events[index]);
-      index += 1;
-    }, 250);
-
-    request.raw.on('close', () => {
-      clearInterval(interval);
-    });
+      });
     },
   );
 
