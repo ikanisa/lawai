@@ -349,12 +349,14 @@ const complianceAcknowledgementBodySchema = z
         type: z.literal(COMPLIANCE_ACK_TYPES.consent),
         version: z.string().min(1),
       })
+      .strict()
       .nullable()
       .optional(),
     councilOfEurope: z
       .object({
         version: z.string().min(1),
       })
+      .strict()
       .nullable()
       .optional(),
   })

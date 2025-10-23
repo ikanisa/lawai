@@ -1021,7 +1021,7 @@ export async function acknowledgeCompliance(
 ): Promise<ComplianceStatusResponse> {
   const payload: Record<string, unknown> = {};
   if (input.consent) {
-    payload.consent = input.consent;
+    payload.consent = { type: 'ai_assist', version: input.consent.version };
   }
   if (input.councilOfEurope) {
     payload.councilOfEurope = input.councilOfEurope;

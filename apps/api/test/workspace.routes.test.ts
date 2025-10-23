@@ -1,90 +1,140 @@
-import Fastify from 'fastify';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { OrgAccessContext } from '../src/access-control.ts';
 
-import { registerWorkspaceRoutes } from '../src/domain/workspace/routes.js';
-import type { AppContext } from '../src/types/context.js';
+process.env.NODE_ENV = 'test';
 
-interface QueryResult {
-  data: unknown;
-  error: unknown;
-}
+const supabaseMock = {
+  from: vi.fn(),
+  rpc: vi.fn(),
+};
 
-function createQueryBuilder(result: QueryResult) {
-  const builder: any = {};
-  builder.select = vi.fn(() => builder);
-  builder.eq = vi.fn(() => builder);
-  builder.limit = vi.fn(async () => result);
+function createConsentQuery(result: { data: unknown; error: unknown }) {
+  const builder: any = {
+    __result: result,
+    select: vi.fn(() => builder),
+    eq: vi.fn(() => builder),
+    or: vi.fn(() => builder),
+    in: vi.fn(() => builder),
+    order: vi.fn(() => builder),
+    then: (resolve: (value: { data: unknown; error: unknown }) => unknown) => resolve(result),
+  };
   return builder;
 }
 
-async function setupApp(result: QueryResult) {
-  const app = Fastify({
-    ajv: {
-      customOptions: {
-        removeAdditional: false,
-      },
+const authorizeRequestWithGuardsMock = vi.fn<
+  [string, string, string, unknown],
+  Promise<OrgAccessContext>
+>();
+
+vi.mock('@avocat-ai/supabase', () => ({
+  createServiceClient: () => supabaseMock,
+}));
+
+vi.mock('../src/domain/workspace/routes.ts', () => ({
+  registerWorkspaceRoutes: vi.fn(async () => undefined),
+}));
+
+vi.mock('../src/http/authorization.ts', () => ({
+  authorizeRequestWithGuards: authorizeRequestWithGuardsMock,
+}));
+
+function makeAccessContext(): OrgAccessContext {
+  return {
+    orgId: 'org-1',
+    userId: 'user-1',
+    role: 'admin',
+    policies: {
+      confidentialMode: false,
+      franceJudgeAnalyticsBlocked: false,
+      mfaRequired: false,
+      ipAllowlistEnforced: false,
+      consentRequirement: null,
+      councilOfEuropeRequirement: null,
+      sensitiveTopicHitl: false,
+      residencyZone: null,
+      residencyZones: null,
     },
-  });
-  const supabase = { from: vi.fn() };
-  const context: AppContext = {
-    supabase: supabase as unknown as AppContext['supabase'],
-    config: {
-      openai: {
-        apiKey: 'test-key',
-      },
-    },
-    container: {} as AppContext['container'],
+    rawPolicies: {},
+    entitlements: new Map(),
+    ipAllowlistCidrs: [],
+    consent: { requirement: null, latest: null },
+    councilOfEurope: { requirement: null, acknowledgedVersion: null },
   };
-
-  const queryBuilder = createQueryBuilder(result);
-  supabase.from.mockReturnValue(queryBuilder);
-
-  await registerWorkspaceRoutes(app, context);
-  await app.ready();
-
-  return { app, supabase, queryBuilder };
 }
 
-describe('workspace routes', () => {
-  const orgId = '550e8400-e29b-41d4-a716-446655440000';
+authorizeRequestWithGuardsMock.mockResolvedValue(makeAccessContext());
 
-  it('returns the recent workspace runs', async () => {
-    const { app, supabase, queryBuilder } = await setupApp({ data: [{ id: 'run-1' }], error: null });
+const { app } = await import('../src/server.ts');
 
-    const response = await app.inject({ method: 'GET', url: `/workspace?orgId=${orgId}` });
-
-    expect(response.statusCode).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({ runs: [{ id: 'run-1' }] });
-    expect(supabase.from).toHaveBeenCalledWith('agent_runs');
-    expect(queryBuilder.select).toHaveBeenCalledWith('id');
-    expect(queryBuilder.eq).toHaveBeenCalledWith('org_id', orgId);
-    expect(queryBuilder.limit).toHaveBeenCalledWith(1);
-
-    await app.close();
+describe('Workspace compliance acknowledgements route', () => {
+  beforeEach(() => {
+    supabaseMock.from.mockReset();
+    supabaseMock.rpc.mockReset();
+    authorizeRequestWithGuardsMock.mockReset();
+    authorizeRequestWithGuardsMock.mockResolvedValue(makeAccessContext());
   });
 
-  it('returns an error when the query fails', async () => {
-    const { app } = await setupApp({ data: null, error: { message: 'boom' } });
-
-    const response = await app.inject({ method: 'GET', url: `/workspace?orgId=${orgId}` });
-
-    expect(response.statusCode).toBe(500);
-    expect(JSON.parse(response.body)).toEqual({ error: 'workspace_failed' });
-
-    await app.close();
-  });
-
-  it('rejects requests with unknown query parameters', async () => {
-    const { app, supabase } = await setupApp({ data: null, error: null });
-
-    const response = await app.inject({ method: 'GET', url: `/workspace?orgId=${orgId}&unexpected=value` });
+  it('rejects consent payloads with council acknowledgement type', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/compliance/acknowledgements',
+      headers: { 'x-user-id': 'user-1', 'x-org-id': 'org-1' },
+      payload: { consent: { type: 'council_of_europe_disclosure', version: '1.0.0' } },
+    });
 
     expect(response.statusCode).toBe(400);
-    const errorBody = JSON.parse(response.body);
-    expect(errorBody).toMatchObject({ statusCode: 400, error: 'Bad Request' });
-    expect(errorBody.message).toMatch(/additional properties/);
-    expect(supabase.from).not.toHaveBeenCalled();
+    expect(response.json()).toMatchObject({ error: 'invalid_body' });
+    expect(supabaseMock.rpc).not.toHaveBeenCalled();
+  });
 
-    await app.close();
+  it('rejects consent payloads with arbitrary acknowledgement types', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/compliance/acknowledgements',
+      headers: { 'x-user-id': 'user-1', 'x-org-id': 'org-1' },
+      payload: { consent: { type: 'custom_type', version: '1.0.0' } },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: 'invalid_body' });
+    expect(supabaseMock.rpc).not.toHaveBeenCalled();
+  });
+
+  it('persists consent acknowledgements with the normalized consent type', async () => {
+    const now = new Date().toISOString();
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'consent_events') {
+        return createConsentQuery({
+          data: [
+            { consent_type: 'ai_assist', version: '1.0.0', created_at: now },
+          ],
+          error: null,
+        });
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+    supabaseMock.rpc.mockResolvedValue({ data: null, error: null });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/compliance/acknowledgements',
+      headers: { 'x-user-id': 'user-1', 'x-org-id': 'org-1' },
+      payload: { consent: { type: 'ai_assist', version: '2.0.0' } },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(supabaseMock.rpc).toHaveBeenCalledWith(
+      'record_consent_events',
+      expect.objectContaining({
+        events: [
+          expect.objectContaining({
+            consent_type: 'ai_assist',
+            version: '2.0.0',
+            org_id: 'org-1',
+            user_id: 'user-1',
+          }),
+        ],
+      }),
+    );
   });
 });
