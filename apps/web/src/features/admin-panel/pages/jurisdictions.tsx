@@ -2,8 +2,8 @@
 
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Globe2, UploadCloud } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
-import { Switch } from '../../../components/ui/switch';
+import { Button } from '../@/ui/button';
+import { Switch } from '../@/ui/switch';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';

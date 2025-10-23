@@ -85,4 +85,5 @@ Goal: autonomous, collaborating finance agents (tax, audit, AP, CFO, risk, regul
 1. Finalise MCP schema (capabilities, handoff protocol, error handling) for Director ↔ domain collaboration.
 2. Prioritise agent build order (suggested: Tax → AP → Risk → Audit → CFO → Corporate → Regulatory → Orchestrator iterations).
 3. Expand `docs/agents/platform-migration.md` with finance agent-specific resource IDs as they are provisioned.
-4. Begin capturing guardrail bundle requirements per agent (e.g., tax-confidentiality, AP-payment authority) and align with Agent Platform policies.
+4. Align finance document ingestion with the [File Inputs (PDF) guide](./file-inputs-pdf.md) so each domain agent has indexed artefacts ready for launch.
+5. Begin capturing guardrail bundle requirements per agent (e.g., tax-confidentiality, AP-payment authority) and align with Agent Platform policies.
