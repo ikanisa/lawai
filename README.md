@@ -367,6 +367,17 @@ curl -X POST http://localhost:3000/runs \
 
 Le workflow GitHub Actions `.github/workflows/ci.yml` installe les dépendances PNPM, exécute `pnpm lint`, applique les migrations contre une instance Postgres de test et lance la suite de tests (`pnpm test`). Ajoutez vos étapes de déploiement selon vos environnements cibles pour garantir la conformité du plan de mise en production.
 
+### Tests E2E d'accusé de conformité
+
+Une suite Playwright valide le flux d'accusé de conformité entre le front (`apps/web`) et l'API (`apps/api`). Les tests fonctionnent avec une instance Supabase existante (locale ou distante) et nécessitent l'activation d'un compte de démonstration.
+
+1. Configurez les variables d'environnement `SUPABASE_URL` et `SUPABASE_SERVICE_ROLE_KEY` (ainsi que `OPENAI_API_KEY` si vous ne souhaitez pas utiliser la valeur par défaut). Facultativement, ajustez `E2E_ORG_ID`, `E2E_USER_ID`, `E2E_CONSENT_VERSION` ou `E2E_COE_VERSION` pour cibler une autre organisation ou version d'accusé.
+2. Générez les données déterministes via `node ./scripts/seed-compliance-test-data.mjs`. Ce script crée/actualise l'organisation de test, rattache l'utilisateur et remet à zéro les événements de consentement afin que la bannière demande un accusé.
+3. (Première exécution uniquement) installez les navigateurs Playwright : `pnpm --filter @avocat-ai/web exec playwright install --with-deps chromium`.
+4. Lancez les tests : `pnpm --filter @avocat-ai/web test:e2e`. Une interface interactive est disponible via `pnpm --filter @avocat-ai/web test:e2e:ui`.
+
+La CI déclenche ces étapes dans le job `e2e` du workflow principal. En cas d'échec local, vérifiez que les en-têtes Supabase sont valides et que le script de seed s'exécute sans erreur avant de relancer Playwright.
+
 Consult `docs/avocat_ai_bell_system_plan.md` for the full BELL analysis and delivery roadmap.
 Review [`docs/vector-embeddings.md`](docs/vector-embeddings.md) for guidance on selecting, generating, and scaling semantic embeddings with the latest OpenAI models.
 
