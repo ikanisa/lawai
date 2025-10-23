@@ -1,14 +1,13 @@
 -- Align match_chunks RPC with 3072-dimension embeddings
-DROP FUNCTION IF EXISTS public.match_chunks(uuid, vector(1536), int, float, text);
+DROP FUNCTION IF EXISTS public.match_chunks (uuid, vector (1536), int, float, text);
 
-CREATE OR REPLACE FUNCTION public.match_chunks(
+CREATE OR REPLACE FUNCTION public.match_chunks (
   p_org uuid,
-  p_query_embedding vector(3072),
+  p_query_embedding vector (3072),
   p_match_count int DEFAULT 8,
   p_min_sim float DEFAULT 0.75,
-  p_jurisdiction text DEFAULT null
-)
-RETURNS TABLE(
+  p_jurisdiction text DEFAULT NULL
+) RETURNS TABLE (
   chunk_id uuid,
   document_id uuid,
   source_id uuid,
@@ -17,10 +16,7 @@ RETURNS TABLE(
   source_type text,
   similarity float,
   content text
-)
-LANGUAGE sql
-STABLE
-AS $$
+) LANGUAGE sql STABLE AS $$
   SELECT
     dc.id AS chunk_id,
     dc.document_id,

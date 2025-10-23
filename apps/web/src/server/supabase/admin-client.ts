@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createServiceClient } from '@avocat-ai/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { serverEnv } from '../../env.server';
 
@@ -156,8 +157,9 @@ function createAdminClient(): SupabaseClient | null {
   if (!url || !serviceRole) {
     return null;
   }
-  cachedClient = createClient(url, serviceRole, {
-    auth: { autoRefreshToken: false, persistSession: false },
+  cachedClient = createServiceClient({
+    SUPABASE_URL: url,
+    SUPABASE_SERVICE_ROLE_KEY: serviceRole,
   });
   return cachedClient;
 }
