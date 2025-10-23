@@ -119,6 +119,31 @@ function createSupabaseMock(
   connectorMap?: Record<string, { connector_type: string; status?: string; config?: Record<string, unknown> }>,
 ): SupabaseClient {
   const resolvedHandlers: Record<string, () => Record<string, unknown>> = { ...handlers };
+
+  const makeFilterBuilder = () => {
+    const builder: Record<string, any> = {};
+    builder.eq = vi.fn(() => builder);
+    builder.in = vi.fn(() => builder);
+    builder.order = vi.fn(() => ({
+      limit: vi.fn(async () => ({ data: [], error: null })),
+    }));
+    builder.limit = vi.fn(async () => ({ data: [], error: null }));
+    builder.maybeSingle = vi.fn(async () => ({ data: null, error: null }));
+    return builder;
+  };
+
+  const makeUpdateBuilder = () => ({
+    eq: vi.fn(async () => ({ data: null, error: null })),
+  });
+
+  resolvedHandlers.orchestrator_commands ??= () => ({
+    select: vi.fn(() => makeFilterBuilder()),
+    update: vi.fn(() => makeUpdateBuilder()),
+  });
+  resolvedHandlers.orchestrator_jobs ??= () => ({
+    select: vi.fn(() => makeFilterBuilder()),
+    update: vi.fn(() => makeUpdateBuilder()),
+  });
   if (connectorMap) {
     const rows = connectorsRows(connectorMap);
     resolvedHandlers.org_connectors = () => ({
@@ -216,8 +241,8 @@ function buildEnvelope(options: {
       orgId: 'org-1',
       chatSessionId: null,
       status: 'active',
-      directorState: {},
-      safetyState: {},
+      directorState: null,
+      safetyState: null,
       metadata: {},
       currentObjective: null,
       lastDirectorRunId: null,
