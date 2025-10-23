@@ -4,6 +4,7 @@ interface CounterKey {
 }
 
 const counters = new Map<string, number>();
+let meterProviderReady = false;
 
 function makeKey(name: string, labels: Record<string, unknown>): CounterKey {
   const normalisedLabels = Object.entries(labels)
@@ -26,4 +27,16 @@ export function getCounterSnapshot() {
 
 export function resetCounters() {
   counters.clear();
+}
+
+export function markMeterProviderReady() {
+  meterProviderReady = true;
+}
+
+export function isMeterProviderReady() {
+  return meterProviderReady;
+}
+
+export function resetMeterProviderReady() {
+  meterProviderReady = false;
 }

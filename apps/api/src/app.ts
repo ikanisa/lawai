@@ -1,5 +1,4 @@
-// @ts-nocheck
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
@@ -16,8 +15,18 @@ import { env, rateLimitConfig } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
 import { createRateLimiterFactory } from './rate-limit.js';
 
-export async function createApp() {
+interface AppBootstrap {
+  app: FastifyInstance;
+  context: AppContext;
+}
+
+export async function createApp(): Promise<AppBootstrap> {
   const app = Fastify({
+    ajv: {
+      customOptions: {
+        removeAdditional: false,
+      },
+    },
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
       redact: [
@@ -39,7 +48,17 @@ export async function createApp() {
     },
   });
 
-  const supabase = serviceClient;
+  await app.register(observabilityPlugin);
+
+  const { supabase: supabaseOverride, overrides, includeWorkspaceDomainRoutes = false } = options;
+
+  const supabase = supabaseOverride ?? serviceClient;
+  const container = createAppContainer({
+    supabase,
+    ...(overrides ?? {}),
+  });
+
+  const shouldRegisterWorkspaceRoutes = options.registerWorkspaceRoutes ?? true;
 
   const rateLimiterFactory = createRateLimiterFactory({
     driver: rateLimitConfig.driver,
@@ -63,7 +82,7 @@ export async function createApp() {
     },
   };
 
-  await app.register(async (instance) => {
+  await app.register(async (instance: FastifyInstance) => {
     await registerAgentsRoutes(instance, context);
     await registerResearchRoutes(instance, context);
     await registerCitationsRoutes(instance, context);
@@ -76,7 +95,12 @@ export async function createApp() {
     await registerRealtimeRoutes(instance, context);
   }, { prefix: '/api' });
 
-  await registerWorkspaceRoutes(app, context);
+  if (!(app as any).workspaceRoutesRegistered) {
+    if (shouldRegisterWorkspaceRoutes) {
+      await registerWorkspaceRoutes(app, context);
+      (app as any).workspaceRoutesRegistered = true;
+    }
+  }
 
   return { app, context };
 }

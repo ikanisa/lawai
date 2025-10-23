@@ -3,12 +3,13 @@ import { z } from 'zod';
 import type { AppContext } from '../../types/context';
 import { enforceRateLimit } from '../../rate-limit';
 
-const workspaceQuerySchema = z.object({
-  orgId: z.string().uuid(),
-});
+type WorkspaceQuery = z.infer<typeof workspaceQuerySchema>;
+type WorkspaceResponse = z.infer<typeof workspaceResponseSchema>;
 
 export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
-  app.get<{ Querystring: z.infer<typeof workspaceQuerySchema> }>('/workspace', async (request, reply) => {
+  const workspaceController = ctx.container.workspace;
+
+  app.get<{ Querystring: WorkspaceQuery }>('/workspace', async (request, reply) => {
     const parse = workspaceQuerySchema.safeParse(request.query);
     if (!parse.success) {
       return reply.code(400).send({ error: 'Invalid query parameters' });
@@ -24,18 +25,21 @@ export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppCont
       return;
     }
 
-    // TODO: move existing implementation from server.ts here.
-    const { data, error } = await supabase
-      .from('agent_runs')
-      .select('id')
-      .eq('org_id', orgId)
-      .limit(1);
+    const { overview, errors } = await getWorkspaceOverview(supabase, orgId);
 
-    if (error) {
-      request.log.error({ err: error }, 'workspace query failed');
-      return reply.code(500).send({ error: 'workspace_failed' });
+    if (errors.jurisdictions) {
+      request.log.error({ err: errors.jurisdictions }, 'workspace jurisdictions query failed');
+    }
+    if (errors.matters) {
+      request.log.error({ err: errors.matters }, 'workspace matters query failed');
+    }
+    if (errors.compliance) {
+      request.log.error({ err: errors.compliance }, 'workspace compliance query failed');
+    }
+    if (errors.hitl) {
+      request.log.error({ err: errors.hitl }, 'workspace hitl query failed');
     }
 
-    return { runs: data ?? [] };
+    return overview;
   });
 }
