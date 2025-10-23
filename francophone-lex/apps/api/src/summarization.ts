@@ -1,3 +1,9 @@
+import {
+  LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA,
+  SUMMARISATION_CLIENT_TAGS,
+  getOpenAIClient,
+  parseLegalDocumentSummaryPayload,
+} from '@avocat-ai/shared';
 import { env } from './config.js';
 
 const textDecoder = new TextDecoder('utf-8', { fatal: false });
@@ -7,6 +13,53 @@ const DEFAULT_MAX_SUMMARY_CHARS = 12000;
 const MAX_CHUNKS = 40;
 
 export type TextChunk = { seq: number; content: string; marker: string | null };
+
+type OpenAIResponsesResult = {
+  output_text?: unknown;
+  output?: Array<{ content?: Array<{ text?: unknown }> }>;
+  output_json?: unknown;
+};
+
+function extractStructuredOutputText(result: OpenAIResponsesResult | null | undefined): string {
+  const direct = typeof result?.output_text === 'string' ? result.output_text.trim() : '';
+  if (direct) {
+    return direct;
+  }
+
+  if (Array.isArray(result?.output)) {
+    for (const item of result.output) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const content = Array.isArray(item.content) ? item.content : [];
+      for (const part of content) {
+        if (part && typeof part === 'object' && typeof part.text === 'string') {
+          const text = part.text.trim();
+          if (text) {
+            return text;
+          }
+        }
+      }
+    }
+  }
+
+  const jsonPayload = result?.output_json;
+  if (typeof jsonPayload === 'string' && jsonPayload.trim()) {
+    return jsonPayload.trim();
+  }
+  if (jsonPayload && typeof jsonPayload === 'object') {
+    try {
+      const stringified = JSON.stringify(jsonPayload);
+      if (stringified.trim()) {
+        return stringified.trim();
+      }
+    } catch {
+      // ignore serialization errors
+    }
+  }
+
+  return '';
+}
 
 function stripHtml(html: string): string {
   return html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -101,43 +154,11 @@ async function generateStructuredSummary(
   maxSummaryChars: number,
 ): Promise<{ summary: string; highlights: Array<{ heading: string; detail: string }> }> {
   const truncated = text.slice(0, maxSummaryChars);
-  const schema = {
-    name: 'LegalDocumentSummary',
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['summary', 'highlights'],
-      properties: {
-        summary: {
-          type: 'string',
-          description:
-            "Résumé exécutif en français (3 à 5 phrases) mettant en avant l’objet, la portée et les dates clés du document.",
-        },
-        highlights: {
-          type: 'array',
-          minItems: 1,
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['heading', 'detail'],
-            properties: {
-              heading: { type: 'string' },
-              detail: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-    strict: true,
-  } as const;
+  const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${openaiApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  let response;
+  try {
+    response = await openai.responses.create({
       model,
       input: [
         {
@@ -160,37 +181,21 @@ async function generateStructuredSummary(
           ],
         },
       ],
-      response_format: { type: 'json_schema', json_schema: schema },
+      response_format: { type: 'json_schema', json_schema: LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA },
       max_output_tokens: 800,
-    }),
-  });
-
-  const json = await response.json();
-  if (!response.ok) {
-    const message = json?.error?.message ?? 'Synthèse indisponible';
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Synthèse indisponible';
     throw new Error(message);
   }
 
-  const output = Array.isArray(json?.output) ? json.output : [];
-  const first = output[0]?.content?.[0]?.text ?? json?.output_text ?? '';
-  if (!first) {
+  const outputText = extractStructuredOutputText(response);
+  if (!outputText) {
     throw new Error('Réponse vide du modèle de synthèse');
   }
 
-  const parsed = JSON.parse(first) as { summary?: string; highlights?: Array<{ heading?: string; detail?: string }> };
-  const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
-  const highlights = Array.isArray(parsed.highlights)
-    ? parsed.highlights.filter(
-        (entry): entry is { heading: string; detail: string } =>
-          typeof entry?.heading === 'string' && typeof entry?.detail === 'string',
-      )
-    : [];
-
-  if (!summary) {
-    throw new Error('Synthèse JSON invalide');
-  }
-
-  return { summary, highlights };
+  const parsed = parseLegalDocumentSummaryPayload(outputText);
+  return { summary: parsed.summary, highlights: parsed.highlights };
 }
 
 async function generateEmbeddings(
@@ -201,33 +206,25 @@ async function generateEmbeddings(
 ): Promise<number[][]> {
   const embeddings: number[][] = [];
   const batchSize = 16;
+  const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
 
   for (let index = 0; index < texts.length; index += batchSize) {
     const slice = texts.slice(index, index + batchSize);
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    try {
+      const response = await openai.embeddings.create({
         model,
         input: slice,
         ...(dimensions ? { dimensions } : {}),
-      }),
-    });
+      });
 
-    const json = await response.json();
-    if (!response.ok) {
-      const message = json?.error?.message ?? 'Échec de génération des embeddings';
-      throw new Error(message);
-    }
-
-    const data = Array.isArray(json?.data) ? json.data : [];
-    for (const entry of data) {
-      if (Array.isArray(entry?.embedding)) {
-        embeddings.push(entry.embedding as number[]);
+      for (const entry of response.data ?? []) {
+        if (Array.isArray(entry?.embedding)) {
+          embeddings.push(entry.embedding as number[]);
+        }
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Échec de génération des embeddings';
+      throw new Error(message);
     }
   }
 

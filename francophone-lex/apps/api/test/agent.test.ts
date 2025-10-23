@@ -53,6 +53,13 @@ const auditInsertMock = vi.fn(async () => ({ error: null }));
 const caseScoresInsertMock = vi.fn(async () => ({ error: null }));
 const supabaseRpcMock = vi.fn(async () => ({ data: [], error: null }));
 
+const openAIResponsesCreateMock = vi.fn();
+const openAIEmbeddingsCreateMock = vi.fn();
+const getOpenAIClientMock = vi.fn(() => ({
+  responses: { create: openAIResponsesCreateMock },
+  embeddings: { create: openAIEmbeddingsCreateMock },
+}));
+
 function createAsyncQuery(initialData: unknown[] = [], initialError: unknown = null) {
   const builder: any = {
     __response: { data: initialData, error: initialError },
@@ -315,21 +322,15 @@ beforeEach(() => {
   process.env.SUPABASE_URL = 'https://example.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service';
   process.env.AGENT_STUB_MODE = 'never';
-  delete process.env.JURIS_ALLOWLIST_JSON;
-
-  global.fetch = vi.fn(async (input: RequestInfo | URL) => {
-    const url = typeof input === 'string' ? input : input.toString();
-    if (url.includes('/embeddings')) {
-      return {
-        ok: true,
-        json: async () => ({ data: [{ embedding: new Array(3072).fill(0.1) }] }),
-      } as Response;
-    }
-
-    return {
-      ok: true,
-      json: async () => ({}),
-    } as Response;
+  openAIResponsesCreateMock.mockReset();
+  openAIEmbeddingsCreateMock.mockReset();
+  getOpenAIClientMock.mockReturnValue({
+    responses: { create: openAIResponsesCreateMock },
+    embeddings: { create: openAIEmbeddingsCreateMock },
+  });
+  openAIResponsesCreateMock.mockResolvedValue({ output: [], output_text: '' });
+  openAIEmbeddingsCreateMock.mockResolvedValue({
+    data: [{ embedding: new Array(3072).fill(0.1) }],
   });
 
   vi.doMock('@openai/agents', () => ({
@@ -353,6 +354,14 @@ beforeEach(() => {
       constructor(_options?: unknown) {}
     },
   }));
+
+  vi.doMock('@avocat-ai/shared', async () => {
+    const actual = await vi.importActual<typeof import('@avocat-ai/shared')>('@avocat-ai/shared');
+    return {
+      ...actual,
+      getOpenAIClient: getOpenAIClientMock,
+    };
+  });
 
   vi.doMock('@avocat-ai/supabase', () => ({
     createServiceClient: vi.fn(() => ({
@@ -901,13 +910,13 @@ describe('runLegalAgent', () => {
       makeContext(),
     );
 
-    const embeddingCall = (global.fetch as unknown as vi.Mock).mock.calls.find((call) =>
-      (typeof call[0] === 'string' ? call[0] : call[0].toString()).includes('/embeddings'),
+    const embeddingCall = openAIEmbeddingsCreateMock.mock.calls.find((call) =>
+      typeof call[0]?.input === 'string' && call[0].input.includes('Synonymes pertinents'),
     );
     expect(embeddingCall).toBeTruthy();
-    const body = JSON.parse((embeddingCall?.[1] as RequestInit)?.body as string);
-    expect(body.input).toContain('Synonymes pertinents');
-    expect(body.input).toContain('forclusion');
+    const payload = embeddingCall?.[0];
+    expect(payload?.input).toContain('Synonymes pertinents');
+    expect(payload?.input).toContain('forclusion');
   });
 
   it('blocks judge analytics queries for France and escalates to HITL', async () => {
