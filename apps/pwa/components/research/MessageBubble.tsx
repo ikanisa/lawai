@@ -1,6 +1,8 @@
+"use client";
+
 import Link from "next/link";
 
-import { type ResearchCitation } from "@/lib/data/research";
+import type { ResearchCitation } from "@/lib/data/research";
 import { cn } from "@/lib/utils";
 
 export interface ChatMessage {
@@ -11,12 +13,7 @@ export interface ChatMessage {
   createdAt: number;
 }
 
-interface MessageBubbleProps {
-  message: ChatMessage;
-  onCitationClick?: (citation: ResearchCitation) => void;
-}
-
-export function MessageBubble({ message, onCitationClick }: MessageBubbleProps) {
+export function MessageBubble({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
 
   return (
@@ -33,18 +30,24 @@ export function MessageBubble({ message, onCitationClick }: MessageBubbleProps) 
       <p className="mt-3 text-sm leading-relaxed text-white/90">{message.content}</p>
       {message.citations.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
-          {message.citations.map((citation) => (
-            <Link
-              key={citation.id}
-              href={citation.href}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-white/30 bg-white/5 px-3 py-1 text-[11px] text-white/80 transition hover:border-white/60 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-              onClick={() => onCitationClick?.(citation)}
-            >
-              {citation.label}
-            </Link>
-          ))}
+          {message.citations.map((citation: ResearchCitation) => {
+            const formattedDate = new Intl.DateTimeFormat("fr-FR", {
+              dateStyle: "medium"
+            }).format(new Date(citation.date));
+            const screenReaderLabel = `Consulter ${citation.type} publié le ${formattedDate} : ${citation.label}`;
+            return (
+              <Link
+                key={citation.id}
+                href={citation.href}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center rounded-full border border-white/30 bg-white/5 px-3 py-1 text-[11px] text-white/80 transition hover:border-white/50 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#22D3EE]"
+                aria-label={screenReaderLabel}
+              >
+                <span aria-hidden>{citation.label}</span>
+              </Link>
+            );
+          })}
         </div>
       ) : null}
     </article>

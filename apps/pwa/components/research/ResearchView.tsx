@@ -21,6 +21,7 @@ import { EvidencePane } from "@/components/evidence/EvidencePane";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { MessageBubble, type ChatMessage } from "./MessageBubble";
 import {
   type ResearchCitation,
   type ResearchDeskContext,
@@ -35,8 +36,6 @@ import { researchDeskContextQueryOptions } from "@/lib/queries/research";
 import { useTelemetry } from "@/lib/telemetry";
 import { jurisdictionOptions, useUIState, type JurisdictionCode } from "@/lib/state/ui-store";
 import { cn } from "@/lib/utils";
-
-import { MessageBubble, type ChatMessage } from "./MessageBubble";
 
 export function ResearchView() {
   const telemetry = useTelemetry();

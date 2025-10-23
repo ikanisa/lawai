@@ -1,37 +1,39 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { MessageBubble, type ChatMessage } from "@/components/research/MessageBubble";
-
-const baseMessage: ChatMessage = {
-  id: "message-1",
-  role: "assistant",
-  content: "Voici une décision pertinente.",
-  createdAt: Date.now(),
-  citations: [
-    {
-      id: "citation-1",
-      label: "Décret 2024-123",
-      href: "https://example.com/decret-2024-123",
-      type: "Officiel",
-      snippet: "Extrait du décret...",
-      score: 92,
-      date: new Date().toISOString()
-    }
-  ]
-};
+import type { ResearchCitation } from "@/lib/data/research";
 
 describe("MessageBubble", () => {
-  it("notifies when a citation link is activated", async () => {
-    const handleCitationClick = vi.fn();
+  it("renders citations as anchors with the expected href", () => {
+    const citation: ResearchCitation = {
+      id: "citation-1",
+      label: "Article 1103 du Code civil",
+      href: "https://legifrance.gouv.fr/codes/article_lc/LEGIARTI000032040563/",
+      type: "Officiel",
+      snippet: "Les contrats légalement formés tiennent lieu de loi à ceux qui les ont faits.",
+      score: 92,
+      date: "2024-01-15T00:00:00.000Z"
+    };
 
-    render(<MessageBubble message={baseMessage} onCitationClick={handleCitationClick} />);
+    const message: ChatMessage = {
+      id: "message-1",
+      role: "assistant",
+      content: "Selon l'article 1103 du Code civil, ...",
+      citations: [citation],
+      createdAt: Date.now()
+    };
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("link", { name: "Décret 2024-123" }));
+    render(<MessageBubble message={message} />);
 
-    expect(handleCitationClick).toHaveBeenCalledTimes(1);
-    expect(handleCitationClick).toHaveBeenCalledWith(baseMessage.citations[0]);
+    const formattedDate = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(
+      new Date(citation.date)
+    );
+
+    const link = screen.getByRole("link", {
+      name: `Consulter ${citation.type} publié le ${formattedDate} : ${citation.label}`
+    });
+
+    expect(link).toHaveAttribute("href", citation.href);
   });
 });

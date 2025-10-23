@@ -1,4 +1,32 @@
-import type { ReactNode } from "react";
+import { vi } from "vitest";
+
+vi.mock("@/lib/state/ui-store", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/state/ui-store")>("@/lib/state/ui-store");
+  const React = await import("react");
+  const mockSetPlanDrawerOpen = vi.fn();
+
+  const mockState = {
+    commandPaletteOpen: false,
+    setCommandPaletteOpen: () => {},
+    sidebarCollapsed: false,
+    toggleSidebar: () => {},
+    planDrawerOpen: true,
+    setPlanDrawerOpen: mockSetPlanDrawerOpen,
+    theme: "dark",
+    setTheme: () => {},
+    jurisdiction: "FR",
+    setJurisdiction: () => {}
+  } as import("@/lib/state/ui-store").UIState;
+
+  return {
+    ...actual,
+    UIStateProvider: ({ children }: { children: import("react").ReactNode }) => (
+      <React.Fragment>{children}</React.Fragment>
+    ),
+    useUIState: (selector: (state: typeof mockState) => unknown) => selector(mockState)
+  };
+});
+
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
