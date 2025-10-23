@@ -1,58 +1,58 @@
-create table if not exists chat_sessions (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null,
-  user_id uuid not null,
-  agent_name text not null,
-  channel text not null check (channel in ('web','voice')),
-  status text not null default 'active' check (status in ('active','ended')),
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  agent_name text NOT NULL,
+  channel text NOT NULL CHECK (channel IN ('web', 'voice')),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'ended')),
   chatkit_session_id text,
-  metadata jsonb default '{}'::jsonb,
-  created_at timestamptz not null default now(),
+  metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
   ended_at timestamptz
 );
 
-create index if not exists chat_sessions_org_idx on chat_sessions (org_id);
-create index if not exists chat_sessions_status_idx on chat_sessions (status);
-create index if not exists chat_sessions_created_idx on chat_sessions (created_at);
+CREATE INDEX if NOT EXISTS chat_sessions_org_idx ON chat_sessions (org_id);
 
-create table if not exists chat_messages (
-  id uuid primary key default gen_random_uuid(),
-  session_id uuid not null references chat_sessions(id) on delete cascade,
-  role text not null check (role in ('user','agent','system')),
-  content text not null,
+CREATE INDEX if NOT EXISTS chat_sessions_status_idx ON chat_sessions (status);
+
+CREATE INDEX if NOT EXISTS chat_sessions_created_idx ON chat_sessions (created_at);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id uuid NOT NULL REFERENCES chat_sessions (id) ON DELETE CASCADE,
+  role text NOT NULL CHECK (role IN ('user', 'agent', 'system')),
+  content text NOT NULL,
   attachments jsonb,
   tool_invocation_id text,
-  created_at timestamptz not null default now()
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists chat_messages_session_idx on chat_messages (session_id);
-create index if not exists chat_messages_created_idx on chat_messages (created_at);
+CREATE INDEX if NOT EXISTS chat_messages_session_idx ON chat_messages (session_id);
 
-create table if not exists chat_events (
-  id uuid primary key default gen_random_uuid(),
-  session_id uuid not null references chat_sessions(id) on delete cascade,
-  event_type text not null,
+CREATE INDEX if NOT EXISTS chat_messages_created_idx ON chat_messages (created_at);
+
+CREATE TABLE IF NOT EXISTS chat_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id uuid NOT NULL REFERENCES chat_sessions (id) ON DELETE CASCADE,
+  event_type text NOT NULL,
   payload jsonb,
   actor_type text,
   actor_id text,
-  created_at timestamptz not null default now()
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists chat_events_session_idx on chat_events (session_id);
-create index if not exists chat_events_type_idx on chat_events (event_type);
+CREATE INDEX if NOT EXISTS chat_events_session_idx ON chat_events (session_id);
 
-alter table chat_sessions enable row level security;
-alter table chat_messages enable row level security;
-alter table chat_events enable row level security;
+CREATE INDEX if NOT EXISTS chat_events_type_idx ON chat_events (event_type);
 
-create policy if not exists chat_sessions_service_role_full_access on chat_sessions
-  for all
-  using (auth.role() = 'service_role');
+ALTER TABLE chat_sessions enable ROW level security;
 
-create policy if not exists chat_messages_service_role_full_access on chat_messages
-  for all
-  using (auth.role() = 'service_role');
+ALTER TABLE chat_messages enable ROW level security;
 
-create policy if not exists chat_events_service_role_full_access on chat_events
-  for all
-  using (auth.role() = 'service_role');
+ALTER TABLE chat_events enable ROW level security;
+
+CREATE POLICY if NOT EXISTS chat_sessions_service_role_full_access ON chat_sessions FOR ALL USING (auth.role () = 'service_role');
+
+CREATE POLICY if NOT EXISTS chat_messages_service_role_full_access ON chat_messages FOR ALL USING (auth.role () = 'service_role');
+
+CREATE POLICY if NOT EXISTS chat_events_service_role_full_access ON chat_events FOR ALL USING (auth.role () = 'service_role');

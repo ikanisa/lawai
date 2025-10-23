@@ -1,24 +1,48 @@
 -- Aggregated CEPEJ and FRIA metrics for dashboards and exports
-create or replace view public.cepej_metrics as
-select
+CREATE OR REPLACE VIEW public.cepej_metrics AS
+SELECT
   org_id,
-  count(*) as assessed_runs,
-  count(*) filter (where cepej_passed) as passed_runs,
-  count(*) filter (where not cepej_passed) as violation_runs,
-  count(*) filter (where fria_required) as fria_required_runs,
-  case when count(*) = 0 then null else count(*) filter (where cepej_passed)::numeric / nullif(count(*), 0) end as pass_rate
-from public.compliance_assessments
-group by org_id;
+  count(*) AS assessed_runs,
+  count(*) FILTER (
+    WHERE
+      cepej_passed
+  ) AS passed_runs,
+  count(*) FILTER (
+    WHERE
+      NOT cepej_passed
+  ) AS violation_runs,
+  count(*) FILTER (
+    WHERE
+      fria_required
+  ) AS fria_required_runs,
+  CASE
+    WHEN count(*) = 0 THEN NULL
+    ELSE count(*) FILTER (
+      WHERE
+        cepej_passed
+    )::numeric / nullif(count(*), 0)
+  END AS pass_rate
+FROM
+  public.compliance_assessments
+GROUP BY
+  org_id;
 
-alter view public.cepej_metrics set (security_invoker = true);
+ALTER VIEW public.cepej_metrics
+SET
+  (security_invoker = TRUE);
 
-create or replace view public.cepej_violation_breakdown as
-select
+CREATE OR REPLACE VIEW public.cepej_violation_breakdown AS
+SELECT
   org_id,
   violation,
-  count(*) as occurrences
-from public.compliance_assessments ca
-  left join lateral unnest(coalesce(ca.cepej_violations, array[]::text[])) as violation on true
-group by org_id, violation;
+  count(*) AS occurrences
+FROM
+  public.compliance_assessments ca
+  LEFT JOIN LATERAL unnest(coalesce(ca.cepej_violations, ARRAY[]::TEXT[])) AS violation ON TRUE
+GROUP BY
+  org_id,
+  violation;
 
-alter view public.cepej_violation_breakdown set (security_invoker = true);
+ALTER VIEW public.cepej_violation_breakdown
+SET
+  (security_invoker = TRUE);

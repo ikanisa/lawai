@@ -22,9 +22,19 @@ export type EdgeDatabase = {
 };
 
 export type EdgeSupabaseClient = SupabaseClient<EdgeDatabase, 'public', EdgeSchema>;
+export type EdgeClientFactory = (
+  url: string,
+  serviceRoleKey: string,
+  options?: Parameters<typeof createClient>[2],
+) => SupabaseClient<EdgeDatabase, 'public', EdgeSchema>;
 
-export function createEdgeClient(url: string, serviceRoleKey: string, options?: Parameters<typeof createClient>[2]): EdgeSupabaseClient {
-  return createClient<EdgeDatabase>(url, serviceRoleKey, options) as EdgeSupabaseClient;
+export function createEdgeClient(
+  url: string,
+  serviceRoleKey: string,
+  options?: Parameters<typeof createClient>[2],
+  factory: EdgeClientFactory = createClient,
+): EdgeSupabaseClient {
+  return factory(url, serviceRoleKey, options) as EdgeSupabaseClient;
 }
 
 export function rowAs<T>(row: EdgeRow | null | undefined): T | null {

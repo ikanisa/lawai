@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Flag, RefreshCcw, TrendingUp } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
+import { Button } from '../@/ui/button';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';

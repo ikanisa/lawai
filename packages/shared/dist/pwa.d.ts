@@ -1,6 +1,8 @@
 import { z } from 'zod';
 export declare const AgentRunStatusSchema: z.ZodEnum<["queued", "running", "succeeded", "failed", "requires_hitl"]>;
 export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
+export declare const WebSearchModeSchema: z.ZodEnum<["disabled", "allowlist", "broad"]>;
+export type WebSearchMode = z.infer<typeof WebSearchModeSchema>;
 export declare const AgentRunSchema: z.ZodObject<{
     id: z.ZodString;
     agentId: z.ZodString;
@@ -11,6 +13,7 @@ export declare const AgentRunSchema: z.ZodObject<{
     input: z.ZodString;
     jurisdiction: z.ZodDefault<z.ZodNullable<z.ZodString>>;
     policyFlags: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    webSearchMode: z.ZodDefault<z.ZodEnum<["disabled", "allowlist", "broad"]>>;
 }, "strict", z.ZodTypeAny, {
     status: "failed" | "queued" | "running" | "succeeded" | "requires_hitl";
     jurisdiction: string | null;
@@ -21,6 +24,7 @@ export declare const AgentRunSchema: z.ZodObject<{
     updatedAt: string;
     input: string;
     policyFlags: string[];
+    webSearchMode: "disabled" | "allowlist" | "broad";
 }, {
     status: "failed" | "queued" | "running" | "succeeded" | "requires_hitl";
     id: string;
@@ -31,6 +35,7 @@ export declare const AgentRunSchema: z.ZodObject<{
     input: string;
     jurisdiction?: string | null | undefined;
     policyFlags?: string[] | undefined;
+    webSearchMode?: "disabled" | "allowlist" | "broad" | undefined;
 }>;
 export type AgentRun = z.infer<typeof AgentRunSchema>;
 export declare const ToolEventSchema: z.ZodObject<{
@@ -65,11 +70,13 @@ export declare const AgentRunRequestSchema: z.ZodObject<{
     tools_enabled: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     jurisdiction: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     policy_flags: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    web_search_mode: z.ZodDefault<z.ZodEnum<["disabled", "allowlist", "broad"]>>;
 }, "strict", z.ZodTypeAny, {
     input: string;
     agent_id: string;
     tools_enabled: string[];
     policy_flags: string[];
+    web_search_mode: "disabled" | "allowlist" | "broad";
     jurisdiction?: string | null | undefined;
 }, {
     input: string;
@@ -77,6 +84,7 @@ export declare const AgentRunRequestSchema: z.ZodObject<{
     jurisdiction?: string | null | undefined;
     tools_enabled?: string[] | undefined;
     policy_flags?: string[] | undefined;
+    web_search_mode?: "disabled" | "allowlist" | "broad" | undefined;
 }>;
 export type AgentRunRequest = z.infer<typeof AgentRunRequestSchema>;
 export declare const AgentStreamRequestSchema: z.ZodObject<{
@@ -85,10 +93,12 @@ export declare const AgentStreamRequestSchema: z.ZodObject<{
     run_id: z.ZodString;
     thread_id: z.ZodString;
     tools_enabled: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    web_search_mode: z.ZodDefault<z.ZodEnum<["disabled", "allowlist", "broad"]>>;
 }, "strict", z.ZodTypeAny, {
     input: string;
     agent_id: string;
     tools_enabled: string[];
+    web_search_mode: "disabled" | "allowlist" | "broad";
     run_id: string;
     thread_id: string;
 }, {
@@ -97,6 +107,7 @@ export declare const AgentStreamRequestSchema: z.ZodObject<{
     run_id: string;
     thread_id: string;
     tools_enabled?: string[] | undefined;
+    web_search_mode?: "disabled" | "allowlist" | "broad" | undefined;
 }>;
 export type AgentStreamRequest = z.infer<typeof AgentStreamRequestSchema>;
 export declare const VoiceSessionTokenSchema: z.ZodObject<{
@@ -1734,14 +1745,14 @@ export declare const IntegrationStatusSchema: z.ZodObject<{
     lastSync: z.ZodOptional<z.ZodString>;
     message: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    status: "error" | "syncing" | "connected" | "disconnected";
+    status: "error" | "connected" | "syncing" | "disconnected";
     id: string;
     name: string;
     provider: string;
     message?: string | undefined;
     lastSync?: string | undefined;
 }, {
-    status: "error" | "syncing" | "connected" | "disconnected";
+    status: "error" | "connected" | "syncing" | "disconnected";
     id: string;
     name: string;
     provider: string;
@@ -1769,6 +1780,26 @@ export declare const SnapshotEntrySchema: z.ZodObject<{
     sizeMb: number;
 }>;
 export type SnapshotEntry = z.infer<typeof SnapshotEntrySchema>;
+export declare const UploadDocumentEntrySchema: z.ZodObject<{
+    id: z.ZodString;
+    name: z.ZodString;
+    createdAt: z.ZodString;
+    residencyZone: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    status: z.ZodOptional<z.ZodEnum<["queued", "processing", "indexed", "quarantined", "failed"]>>;
+}, "strict", z.ZodTypeAny, {
+    id: string;
+    createdAt: string;
+    name: string;
+    status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+    residencyZone?: string | null | undefined;
+}, {
+    id: string;
+    createdAt: string;
+    name: string;
+    status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+    residencyZone?: string | null | undefined;
+}>;
+export type UploadDocumentEntry = z.infer<typeof UploadDocumentEntrySchema>;
 export declare const IngestionJobSchema: z.ZodObject<{
     id: z.ZodString;
     filename: z.ZodString;
@@ -1795,6 +1826,17 @@ export declare const IngestionJobSchema: z.ZodObject<{
     note?: string | undefined;
 }>;
 export type IngestionJob = z.infer<typeof IngestionJobSchema>;
+export declare const ResidencySummarySchema: z.ZodObject<{
+    activeZone: z.ZodNullable<z.ZodString>;
+    allowedZones: z.ZodNullable<z.ZodArray<z.ZodString, "many">>;
+}, "strict", z.ZodTypeAny, {
+    activeZone: string | null;
+    allowedZones: string[] | null;
+}, {
+    activeZone: string | null;
+    allowedZones: string[] | null;
+}>;
+export type ResidencySummary = z.infer<typeof ResidencySummarySchema>;
 export declare const CorpusDashboardDataSchema: z.ZodObject<{
     allowlist: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
@@ -1826,14 +1868,14 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         lastSync: z.ZodOptional<z.ZodString>;
         message: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
-        status: "error" | "syncing" | "connected" | "disconnected";
+        status: "error" | "connected" | "syncing" | "disconnected";
         id: string;
         name: string;
         provider: string;
         message?: string | undefined;
         lastSync?: string | undefined;
     }, {
-        status: "error" | "syncing" | "connected" | "disconnected";
+        status: "error" | "connected" | "syncing" | "disconnected";
         id: string;
         name: string;
         provider: string;
@@ -1884,6 +1926,35 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         progress: number;
         note?: string | undefined;
     }>, "many">;
+    uploads: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        name: z.ZodString;
+        createdAt: z.ZodString;
+        residencyZone: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        status: z.ZodOptional<z.ZodEnum<["queued", "processing", "indexed", "quarantined", "failed"]>>;
+    }, "strict", z.ZodTypeAny, {
+        id: string;
+        createdAt: string;
+        name: string;
+        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        residencyZone?: string | null | undefined;
+    }, {
+        id: string;
+        createdAt: string;
+        name: string;
+        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        residencyZone?: string | null | undefined;
+    }>, "many">;
+    residency: z.ZodOptional<z.ZodObject<{
+        activeZone: z.ZodNullable<z.ZodString>;
+        allowedZones: z.ZodNullable<z.ZodArray<z.ZodString, "many">>;
+    }, "strict", z.ZodTypeAny, {
+        activeZone: string | null;
+        allowedZones: string[] | null;
+    }, {
+        activeZone: string | null;
+        allowedZones: string[] | null;
+    }>>;
 }, "strict", z.ZodTypeAny, {
     allowlist: {
         type: "official" | "secondary" | "internal";
@@ -1894,7 +1965,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         lastIndexed: string;
     }[];
     integrations: {
-        status: "error" | "syncing" | "connected" | "disconnected";
+        status: "error" | "connected" | "syncing" | "disconnected";
         id: string;
         name: string;
         provider: string;
@@ -1917,6 +1988,17 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         progress: number;
         note?: string | undefined;
     }[];
+    uploads: {
+        id: string;
+        createdAt: string;
+        name: string;
+        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        residencyZone?: string | null | undefined;
+    }[];
+    residency?: {
+        activeZone: string | null;
+        allowedZones: string[] | null;
+    } | undefined;
 }, {
     allowlist: {
         type: "official" | "secondary" | "internal";
@@ -1927,7 +2009,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         lastIndexed: string;
     }[];
     integrations: {
-        status: "error" | "syncing" | "connected" | "disconnected";
+        status: "error" | "connected" | "syncing" | "disconnected";
         id: string;
         name: string;
         provider: string;
@@ -1950,6 +2032,17 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         progress: number;
         note?: string | undefined;
     }[];
+    uploads: {
+        id: string;
+        createdAt: string;
+        name: string;
+        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        residencyZone?: string | null | undefined;
+    }[];
+    residency?: {
+        activeZone: string | null;
+        allowedZones: string[] | null;
+    } | undefined;
 }>;
 export type CorpusDashboardData = z.infer<typeof CorpusDashboardDataSchema>;
 export declare const PolicyConfigurationSchema: z.ZodObject<{
@@ -1972,18 +2065,89 @@ export declare const PolicyConfigurationSchema: z.ZodObject<{
     confidential_mode: boolean;
 }>;
 export type PolicyConfiguration = z.infer<typeof PolicyConfigurationSchema>;
+export declare const UploadContractSchema: z.ZodObject<{
+    bucket: z.ZodString;
+    path: z.ZodString;
+    url: z.ZodString;
+    token: z.ZodString;
+    expiresAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    path: string;
+    url: string;
+    token: string;
+    bucket: string;
+    expiresAt: string;
+}, {
+    path: string;
+    url: string;
+    token: string;
+    bucket: string;
+    expiresAt: string;
+}>;
+export type UploadContract = z.infer<typeof UploadContractSchema>;
 export declare const UploadResponseSchema: z.ZodObject<{
     uploadId: z.ZodString;
     status: z.ZodEnum<["queued", "processing", "indexed"]>;
     receivedAt: z.ZodString;
+    upload: z.ZodObject<{
+        bucket: z.ZodString;
+        path: z.ZodString;
+        url: z.ZodString;
+        token: z.ZodString;
+        expiresAt: z.ZodString;
+    }, "strict", z.ZodTypeAny, {
+        path: string;
+        url: string;
+        token: string;
+        bucket: string;
+        expiresAt: string;
+    }, {
+        path: string;
+        url: string;
+        token: string;
+        bucket: string;
+        expiresAt: string;
+    }>;
+    quarantine: z.ZodOptional<z.ZodObject<{
+        reason: z.ZodString;
+        status: z.ZodDefault<z.ZodEnum<["pending", "resolved"]>>;
+    }, "strip", z.ZodTypeAny, {
+        status: "pending" | "resolved";
+        reason: string;
+    }, {
+        reason: string;
+        status?: "pending" | "resolved" | undefined;
+    }>>;
 }, "strict", z.ZodTypeAny, {
     status: "queued" | "processing" | "indexed";
     uploadId: string;
     receivedAt: string;
+    upload: {
+        path: string;
+        url: string;
+        token: string;
+        bucket: string;
+        expiresAt: string;
+    };
+    quarantine?: {
+        status: "pending" | "resolved";
+        reason: string;
+    } | undefined;
 }, {
     status: "queued" | "processing" | "indexed";
     uploadId: string;
     receivedAt: string;
+    upload: {
+        path: string;
+        url: string;
+        token: string;
+        bucket: string;
+        expiresAt: string;
+    };
+    quarantine?: {
+        reason: string;
+        status?: "pending" | "resolved" | undefined;
+    } | undefined;
 }>;
 export type UploadResponse = z.infer<typeof UploadResponseSchema>;
 export declare const VoiceToolIntentStatusSchema: z.ZodEnum<["scheduled", "running", "completed", "requires_hitl"]>;
@@ -2008,6 +2172,23 @@ export declare const VoiceToolIntentSchema: z.ZodObject<{
     tool: string;
 }>;
 export type VoiceToolIntent = z.infer<typeof VoiceToolIntentSchema>;
+export declare const VoiceSessionIntentSchema: z.ZodObject<{
+    id: z.ZodString;
+    name: z.ZodString;
+    tool: z.ZodString;
+    status: z.ZodOptional<z.ZodEnum<["scheduled", "running", "completed", "requires_hitl"]>>;
+}, "strict", z.ZodTypeAny, {
+    status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+    id: string;
+    name: string;
+    tool: string;
+}, {
+    status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+    id: string;
+    name: string;
+    tool: string;
+}>;
+export type VoiceSessionIntent = z.infer<typeof VoiceSessionIntentSchema>;
 export declare const VoiceCitationSchema: z.ZodObject<{
     id: z.ZodString;
     label: z.ZodString;
@@ -2051,11 +2232,14 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
         id: z.ZodString;
         name: z.ZodString;
         tool: z.ZodString;
-    }, "strip", z.ZodTypeAny, {
+        status: z.ZodOptional<z.ZodEnum<["scheduled", "running", "completed", "requires_hitl"]>>;
+    }, "strict", z.ZodTypeAny, {
+        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
         id: string;
         name: string;
         tool: string;
     }, {
+        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
         id: string;
         name: string;
         tool: string;
@@ -2073,6 +2257,7 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
     durationMs: number;
     transcript: string;
     intents: {
+        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
         id: string;
         name: string;
         tool: string;
@@ -2090,6 +2275,7 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
     durationMs: number;
     transcript: string;
     intents: {
+        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
         id: string;
         name: string;
         tool: string;

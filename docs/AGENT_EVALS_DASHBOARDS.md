@@ -17,7 +17,8 @@ This guide documents the evaluation dashboards that gate production deploys.
 | Voice Realtime Health | WebRTC metrics + token issuance | `https://grafana.internal/voice-live` |
 
 ## Deployment Gate Process
-1. Trigger nightly eval pipeline via `apps/edge/eval-nightly` worker.
+1. Trigger nightly eval pipeline via `apps/edge/eval-nightly` worker or queue it from the Ops CLI with `pnpm --filter @apps/ops exec tsx src/index.ts --schedule evaluation --org <org-id> --benchmark nightly-sanity`.
+   - CLI output should display spinner transitions and `Benchmark nightly-sanity en file.` before returning `0`.
 2. Review dashboards for regressions. If any metric breaches threshold, block deploy and open incident ticket.
 3. Document findings in release notes and attach screenshots to the GO/NO-GO checklist.
 

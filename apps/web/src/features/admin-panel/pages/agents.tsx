@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PlayCircle, TestTube2, Wrench, Sparkles } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
-import { Textarea } from '../../../components/ui/textarea';
+import { Button } from '../@/ui/button';
+import { Textarea } from '../@/ui/textarea';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
