@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-10-22T14:50:52.457Z",
+  "generatedAt": "2025-10-22T22:27:39.479Z",
   "migrations": [
     {
       "id": "20240101000000_enable_pgcrypto",
@@ -7,7 +7,7 @@
       "timestamp": "20240101000000",
       "slug": "enable_pgcrypto",
       "checksum": "sha256:ddcb8e80864bda717c98195f794d938fba2d6e247041d6bd46d5317ffa2bd34f",
-      "dependsOn": null,
+      "dependsOn": [],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -16,7 +16,9 @@
       "timestamp": "20240101000100",
       "slug": "extensions",
       "checksum": "sha256:5409daf96b5522239bc0e496173a868cbcfe101bdf6a7acb5d9b972210cd06ba",
-      "dependsOn": "20240101000000_enable_pgcrypto",
+      "dependsOn": [
+        "20240101000000_enable_pgcrypto"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -25,7 +27,9 @@
       "timestamp": "20240101000200",
       "slug": "auth_orgs",
       "checksum": "sha256:cc0bd127664326ba0f01dd6ecb5cc79749338b5daf61c9e0c0a3f9b2e1b8f666",
-      "dependsOn": "20240101000100_extensions",
+      "dependsOn": [
+        "20240101000100_extensions"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -34,7 +38,9 @@
       "timestamp": "20240101000300",
       "slug": "legal_core",
       "checksum": "sha256:284e9ddf4de58f0e88d130fce2f4c9171e729d87c3aa0297b288fded3c6e6adf",
-      "dependsOn": "20240101000200_auth_orgs",
+      "dependsOn": [
+        "20240101000200_auth_orgs"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -43,7 +49,9 @@
       "timestamp": "20240101000400",
       "slug": "agent_ops",
       "checksum": "sha256:ca4a56fba400c8ff8c7f8422f81318cb4910a5fec51da2b8347bbec8e52eb0bb",
-      "dependsOn": "20240101000300_legal_core",
+      "dependsOn": [
+        "20240101000300_legal_core"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -52,7 +60,9 @@
       "timestamp": "20240101000500",
       "slug": "rls",
       "checksum": "sha256:cea02e2558d7fccd44f345a935cbcbd7364e2c94f8dcfe9eaa2333697b3bc9e8",
-      "dependsOn": "20240101000400_agent_ops",
+      "dependsOn": [
+        "20240101000400_agent_ops"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -61,7 +71,9 @@
       "timestamp": "20240101000600",
       "slug": "rpc",
       "checksum": "sha256:f58df9189d126d35d4cf2bb0b1c97989349df44834f49675d9fd3aadb3ba0112",
-      "dependsOn": "20240101000500_rls",
+      "dependsOn": [
+        "20240101000500_rls"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -70,7 +82,9 @@
       "timestamp": "20240101000700",
       "slug": "storage_schema_stub",
       "checksum": "sha256:d19b02df8d785eeda72d9422d3107242c8f2741326903ecdc4f582269191f0b3",
-      "dependsOn": "20240101000600_rpc",
+      "dependsOn": [
+        "20240101000600_rpc"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -79,7 +93,9 @@
       "timestamp": "20240101000800",
       "slug": "storage",
       "checksum": "sha256:3691c744ce9aabacdafa5be0c5abf6e723b9a2f78e1d8126adefc62a3b7b57e9",
-      "dependsOn": "20240101000700_storage_schema_stub",
+      "dependsOn": [
+        "20240101000700_storage_schema_stub"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -88,7 +104,9 @@
       "timestamp": "20240101000900",
       "slug": "documents_status",
       "checksum": "sha256:a4ff3baae19944253e35ae9eb9689d120de4b62cfea8a91d1d43cfe6b91a0ad9",
-      "dependsOn": "20240101000800_storage",
+      "dependsOn": [
+        "20240101000800_storage"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -97,7 +115,9 @@
       "timestamp": "20240101001000",
       "slug": "sources_metadata",
       "checksum": "sha256:39375cc383eed69b3b0321e5f339acac6df050e07710d0685504612d24f209b6",
-      "dependsOn": "20240101000900_documents_status",
+      "dependsOn": [
+        "20240101000900_documents_status"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -106,7 +126,9 @@
       "timestamp": "20240101001100",
       "slug": "update_jurisdictions",
       "checksum": "sha256:180e1d019f589b26d7f9cea65e6676ef22bf272a9f6821a87e292c15cbbe2da3",
-      "dependsOn": "20240101001000_sources_metadata",
+      "dependsOn": [
+        "20240101001000_sources_metadata"
+      ],
       "rollbackStrategy": "reseed"
     },
     {
@@ -115,7 +137,9 @@
       "timestamp": "20240101001200",
       "slug": "agent_learning",
       "checksum": "sha256:6132eeea8035551382a02a6f3871f22834c55292444ed4a62c2996d7fbe3c98e",
-      "dependsOn": "20240101001100_update_jurisdictions",
+      "dependsOn": [
+        "20240101001100_update_jurisdictions"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -124,7 +148,9 @@
       "timestamp": "20240101001300",
       "slug": "ingestion_telemetry",
       "checksum": "sha256:0a23802777b0aa7a6ece401eb150c60d20d2b5a648d9da8a425d5cc0fec79947",
-      "dependsOn": "20240101001200_agent_learning",
+      "dependsOn": [
+        "20240101001200_agent_learning"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -133,7 +159,9 @@
       "timestamp": "20240101001400",
       "slug": "ingestion_rls",
       "checksum": "sha256:485312e0d16e6c14d04bff396be8f6e722373c7f48b7105e026dc14d55fda558",
-      "dependsOn": "20240101001300_ingestion_telemetry",
+      "dependsOn": [
+        "20240101001300_ingestion_telemetry"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -142,7 +170,9 @@
       "timestamp": "20240101001500",
       "slug": "hitl_review_notes",
       "checksum": "sha256:ead2be2330c009bc4f0b3b2e5fb6ac7dff9ec4efe0c6698ea2dac5cbcde423ac",
-      "dependsOn": "20240101001400_ingestion_rls",
+      "dependsOn": [
+        "20240101001400_ingestion_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -151,7 +181,9 @@
       "timestamp": "20240101001600",
       "slug": "drive_manifests",
       "checksum": "sha256:1062e0dfc32baf38b1cf17a457166d6e793b1c86dabdd415bb30466816112e28",
-      "dependsOn": "20240101001500_hitl_review_notes",
+      "dependsOn": [
+        "20240101001500_hitl_review_notes"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -160,7 +192,9 @@
       "timestamp": "20240101001700",
       "slug": "drive_manifests_rls",
       "checksum": "sha256:702fa27ed75889bd880441fa089ccf9935bcbce7fd287d662c0dbf274755096d",
-      "dependsOn": "20240101001600_drive_manifests",
+      "dependsOn": [
+        "20240101001600_drive_manifests"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -169,7 +203,9 @@
       "timestamp": "20240101001800",
       "slug": "pleading_templates",
       "checksum": "sha256:ffdef79783da2fe89b1684aed9fe0421b4e12cbc558ac5f531359d4730ca8b90",
-      "dependsOn": "20240101001700_drive_manifests_rls",
+      "dependsOn": [
+        "20240101001700_drive_manifests_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -178,7 +214,9 @@
       "timestamp": "20240101001900",
       "slug": "pleading_templates_rls",
       "checksum": "sha256:6f0a6eb6179ae7880c117b5f1f022fc92c51c50c9351e09e60ced07e37d374cd",
-      "dependsOn": "20240101001800_pleading_templates",
+      "dependsOn": [
+        "20240101001800_pleading_templates"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -187,7 +225,9 @@
       "timestamp": "20240101002000",
       "slug": "agent_runs_confidential",
       "checksum": "sha256:858d5f47e3229d28ae63e226a0934416efe2866711e4a4842d3275ccea95d068",
-      "dependsOn": "20240101001900_pleading_templates_rls",
+      "dependsOn": [
+        "20240101001900_pleading_templates_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -196,7 +236,9 @@
       "timestamp": "20240101002100",
       "slug": "eval_metrics",
       "checksum": "sha256:2ef0687a41c21d79b0c4f2f58ae216adec399868d1a22accd448ff04b8baa7bb",
-      "dependsOn": "20240101002000_agent_runs_confidential",
+      "dependsOn": [
+        "20240101002000_agent_runs_confidential"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -205,7 +247,9 @@
       "timestamp": "20240101002200",
       "slug": "case_quality_schema",
       "checksum": "sha256:dde1a386cd6f6fb20ff7c08ba372856b2cdfe6a354bcd8f22e17a5dad2612976",
-      "dependsOn": "20240101002100_eval_metrics",
+      "dependsOn": [
+        "20240101002100_eval_metrics"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -214,7 +258,9 @@
       "timestamp": "20240101002300",
       "slug": "case_quality_rls",
       "checksum": "sha256:5cf1a9b99bae17ccde58b1c3d2b9fe3973d45070a7e2114b7733f7d2305c96f1",
-      "dependsOn": "20240101002200_case_quality_schema",
+      "dependsOn": [
+        "20240101002200_case_quality_schema"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -223,7 +269,9 @@
       "timestamp": "20240101002400",
       "slug": "update_match_chunks",
       "checksum": "sha256:7ba235a7c02969a12a8fd37a9cb364677b363fffe19c4d23907a7a4026532b2b",
-      "dependsOn": "20240101002300_case_quality_rls",
+      "dependsOn": [
+        "20240101002300_case_quality_rls"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -232,7 +280,9 @@
       "timestamp": "20240101002500",
       "slug": "sources_remote_metadata",
       "checksum": "sha256:c0609421b091c231f0036396d9adc04c7a851305e52ec642d1390544dbeb1e50",
-      "dependsOn": "20240101002400_update_match_chunks",
+      "dependsOn": [
+        "20240101002400_update_match_chunks"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -241,7 +291,9 @@
       "timestamp": "20240101002600",
       "slug": "governance_metrics",
       "checksum": "sha256:0edecdc3c15158fcf05574bfe5e60035b90871a5df9c3598343f35ec4a71a9b1",
-      "dependsOn": "20240101002500_sources_remote_metadata",
+      "dependsOn": [
+        "20240101002500_sources_remote_metadata"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -250,7 +302,9 @@
       "timestamp": "20240101002700",
       "slug": "user_management",
       "checksum": "sha256:372f40385947c2d982e6bd9251bfb858a935834c19bd2716798059a1f9f30c0a",
-      "dependsOn": "20240101002600_governance_metrics",
+      "dependsOn": [
+        "20240101002600_governance_metrics"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -259,7 +313,9 @@
       "timestamp": "20240101002800",
       "slug": "user_management_rls",
       "checksum": "sha256:8fe68b3c80569c6b2a0434c2e6cb00f0e34b11c50f98f754d50d973a18631006",
-      "dependsOn": "20240101002700_user_management",
+      "dependsOn": [
+        "20240101002700_user_management"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -268,7 +324,9 @@
       "timestamp": "20240101002900",
       "slug": "residency_zones",
       "checksum": "sha256:5becce74f908f65092896124340b12bf6362bc3562e06138bc17504dfacc1694",
-      "dependsOn": "20240101002800_user_management_rls",
+      "dependsOn": [
+        "20240101002800_user_management_rls"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -277,7 +335,9 @@
       "timestamp": "20240101003000",
       "slug": "update_storage_policies",
       "checksum": "sha256:15b429829b1cad959338e2472ec2b95ed1846067d0927742c7fed3ddc18d389d",
-      "dependsOn": "20240101002900_residency_zones",
+      "dependsOn": [
+        "20240101002900_residency_zones"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -286,7 +346,9 @@
       "timestamp": "20240101003100",
       "slug": "source_identifiers",
       "checksum": "sha256:4c0d38641172dc4c569a2f79d4abab9cccec81102832950c9779729ec603c75b",
-      "dependsOn": "20240101003000_update_storage_policies",
+      "dependsOn": [
+        "20240101003000_update_storage_policies"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -295,7 +357,9 @@
       "timestamp": "20240101003200",
       "slug": "learning_reports",
       "checksum": "sha256:9d6b0bca2fbccc69a4f424a24a980e5c782d54ed5e63655428a717575e32db06",
-      "dependsOn": "20240101003100_source_identifiers",
+      "dependsOn": [
+        "20240101003100_source_identifiers"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -304,7 +368,9 @@
       "timestamp": "20240101003300",
       "slug": "ui_telemetry",
       "checksum": "sha256:f611f5f6064088a9b51d8f7eff7e5473dfddc13bd83945dd7aa87c83182ed44e",
-      "dependsOn": "20240101003200_learning_reports",
+      "dependsOn": [
+        "20240101003200_learning_reports"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -313,7 +379,9 @@
       "timestamp": "20240101003400",
       "slug": "document_summaries",
       "checksum": "sha256:35b0529ff1861544b5321a52bd2aee08eeb5f445b71b1b0fd89173479b5c2573",
-      "dependsOn": "20240101003300_ui_telemetry",
+      "dependsOn": [
+        "20240101003300_ui_telemetry"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -322,7 +390,9 @@
       "timestamp": "20240101003500",
       "slug": "document_summaries_rls",
       "checksum": "sha256:32ee088dd5b693866b7cee7bfc24a9f682851c7d1880772bc3700a9e0f5fc7c8",
-      "dependsOn": "20240101003400_document_summaries",
+      "dependsOn": [
+        "20240101003400_document_summaries"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -331,7 +401,9 @@
       "timestamp": "20240101003600",
       "slug": "governance_summary_metrics",
       "checksum": "sha256:ffdd87f31fb4b5c816f0db6cd82986ee183806aafc3ae3d6f363cef3bb3fb576",
-      "dependsOn": "20240101003500_document_summaries_rls",
+      "dependsOn": [
+        "20240101003500_document_summaries_rls"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -340,7 +412,9 @@
       "timestamp": "20240101003700",
       "slug": "sso_scim",
       "checksum": "sha256:17ff0f60b79c9fb742374ceab235dd112b8a7883ec531b641dfb56d5d09a2306",
-      "dependsOn": "20240101003600_governance_summary_metrics",
+      "dependsOn": [
+        "20240101003600_governance_summary_metrics"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -349,7 +423,9 @@
       "timestamp": "20240101003800",
       "slug": "sso_scim_rls",
       "checksum": "sha256:cbf78abbe34d94a562e7603eaa577867024e999c72a02dbcd0ddc330bab5c621",
-      "dependsOn": "20240101003700_sso_scim",
+      "dependsOn": [
+        "20240101003700_sso_scim"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -358,7 +434,9 @@
       "timestamp": "20240101003900",
       "slug": "red_team_findings",
       "checksum": "sha256:6c555462f49f824a6e1640c9d3c288dd86ae748e6a1f2e38ac6e6bea21e27179",
-      "dependsOn": "20240101003800_sso_scim_rls",
+      "dependsOn": [
+        "20240101003800_sso_scim_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -367,7 +445,9 @@
       "timestamp": "20240101004000",
       "slug": "red_team_findings_rls",
       "checksum": "sha256:f99b53e379987653645f3f327336b34c1ed7605e0adfc0e256aa47fde8970dd4",
-      "dependsOn": "20240101003900_red_team_findings",
+      "dependsOn": [
+        "20240101003900_red_team_findings"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -376,7 +456,9 @@
       "timestamp": "20240101004100",
       "slug": "performance_snapshots",
       "checksum": "sha256:15e702e193d3da9b5782d8a6c1ec86b2fd315d076d1ff8728f7361b3356c6c91",
-      "dependsOn": "20240101004000_red_team_findings_rls",
+      "dependsOn": [
+        "20240101004000_red_team_findings_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -385,7 +467,9 @@
       "timestamp": "20240101004200",
       "slug": "performance_snapshots_rls",
       "checksum": "sha256:81b52759f7aef50cadee39b3eedb3de23ce3c62c26c951df8602330f1512d7d6",
-      "dependsOn": "20240101004100_performance_snapshots",
+      "dependsOn": [
+        "20240101004100_performance_snapshots"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -394,7 +478,9 @@
       "timestamp": "20240101004300",
       "slug": "compliance_assessments",
       "checksum": "sha256:de596782069915e60b2e431905f5658e7ab85360ab3f76ceed2e8f69efe9388c",
-      "dependsOn": "20240101004200_performance_snapshots_rls",
+      "dependsOn": [
+        "20240101004200_performance_snapshots_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -403,7 +489,9 @@
       "timestamp": "20240101004400",
       "slug": "compliance_assessments_rls",
       "checksum": "sha256:c3b142ba3866c7924b7b817ea59d6e714865aefe077fc5cd7d0ebe43a534b56a",
-      "dependsOn": "20240101004300_compliance_assessments",
+      "dependsOn": [
+        "20240101004300_compliance_assessments"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -412,7 +500,9 @@
       "timestamp": "20240101004500",
       "slug": "transparency_reports",
       "checksum": "sha256:421c3522e672c67c220e94bf35b67d1c71ee8b81e2ac703301e73842a44da7b0",
-      "dependsOn": "20240101004400_compliance_assessments_rls",
+      "dependsOn": [
+        "20240101004400_compliance_assessments_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -421,7 +511,9 @@
       "timestamp": "20240101004600",
       "slug": "transparency_reports_rls",
       "checksum": "sha256:a4ccfda2dce32962c8d65f131f8189682e9d35eb89598e857c492cd35736e4f0",
-      "dependsOn": "20240101004500_transparency_reports",
+      "dependsOn": [
+        "20240101004500_transparency_reports"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -430,7 +522,9 @@
       "timestamp": "20240101004700",
       "slug": "cepej_metrics_view",
       "checksum": "sha256:7442ecd34c79b085eb1fa91609ee0a168fff6f8e04d56357a6280ac4e73f8fe8",
-      "dependsOn": "20240101004600_transparency_reports_rls",
+      "dependsOn": [
+        "20240101004600_transparency_reports_rls"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -439,7 +533,9 @@
       "timestamp": "20240101004800",
       "slug": "slo_snapshots",
       "checksum": "sha256:13e32fb8d3d58ee535fc07bf387ff06cf7c0660b21c24dee62906df8c0b73296",
-      "dependsOn": "20240101004700_cepej_metrics_view",
+      "dependsOn": [
+        "20240101004700_cepej_metrics_view"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -448,7 +544,9 @@
       "timestamp": "20240101004900",
       "slug": "slo_snapshots_rls",
       "checksum": "sha256:e4284d94245b39da5e0c74ae0fa60329220fc2394c668bbaa6b18192ae335a8e",
-      "dependsOn": "20240101004800_slo_snapshots",
+      "dependsOn": [
+        "20240101004800_slo_snapshots"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -457,7 +555,9 @@
       "timestamp": "20240101005000",
       "slug": "regulator_dispatches",
       "checksum": "sha256:5cbddbb7b26d293fdfd21c78804128755a4c9f96d310563e128d2a5e8a1fc873",
-      "dependsOn": "20240101004900_slo_snapshots_rls",
+      "dependsOn": [
+        "20240101004900_slo_snapshots_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -466,7 +566,9 @@
       "timestamp": "20240101005100",
       "slug": "regulator_dispatches_rls",
       "checksum": "sha256:04c4068b18c67a3912a82edcf946cb470c69d0440afb1391ddc8a9cf6e060d69",
-      "dependsOn": "20240101005000_regulator_dispatches",
+      "dependsOn": [
+        "20240101005000_regulator_dispatches"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -475,7 +577,9 @@
       "timestamp": "20240101005200",
       "slug": "go_no_go_tracking",
       "checksum": "sha256:5df30f187ce9d2cff8956c87419806f031315d70d7a72c5f77b04ee7034d7ed6",
-      "dependsOn": "20240101005100_regulator_dispatches_rls",
+      "dependsOn": [
+        "20240101005100_regulator_dispatches_rls"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -484,7 +588,9 @@
       "timestamp": "20240101005300",
       "slug": "fria_artifacts",
       "checksum": "sha256:8c1df619d651f7787d8068d3fad42f558b9619e6ab6e6abad2184b9f2f2723cc",
-      "dependsOn": "20240101005200_go_no_go_tracking",
+      "dependsOn": [
+        "20240101005200_go_no_go_tracking"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -493,7 +599,9 @@
       "timestamp": "20240101005400",
       "slug": "storage_residency_enforcement",
       "checksum": "sha256:fc8ea32a9dcff32e06686c786ad7e06c3b8eff1e24c27661ae3e9309567c32a7",
-      "dependsOn": "20240101005300_fria_artifacts",
+      "dependsOn": [
+        "20240101005300_fria_artifacts"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -502,7 +610,9 @@
       "timestamp": "20240101005500",
       "slug": "run_retrieval_sets",
       "checksum": "sha256:4d5b9d1fb5594cdd8b66a5482b698b006d08b0f39d9a3e03e020b1913127e0aa",
-      "dependsOn": "20240101005400_storage_residency_enforcement",
+      "dependsOn": [
+        "20240101005400_storage_residency_enforcement"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -511,7 +621,9 @@
       "timestamp": "20240101005600",
       "slug": "run_retrieval_sets_rls",
       "checksum": "sha256:bdbd8032b2feb0a3fe08e2562c7261c01fa1acb4ac3c761556ea05358c214454",
-      "dependsOn": "20240101005500_run_retrieval_sets",
+      "dependsOn": [
+        "20240101005500_run_retrieval_sets"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -520,7 +632,9 @@
       "timestamp": "20240101005700",
       "slug": "source_link_health",
       "checksum": "sha256:1c2a29f40215deabd9d3857bee286eb6393c5170059842b3d5d535efcad8dce2",
-      "dependsOn": "20240101005600_run_retrieval_sets_rls",
+      "dependsOn": [
+        "20240101005600_run_retrieval_sets_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -529,7 +643,9 @@
       "timestamp": "20240101005800",
       "slug": "org_provenance_metrics",
       "checksum": "sha256:ba920c296da758692a35496aa3a5dbdb30f41a0580306c39135edcfc8d0ae84b",
-      "dependsOn": "20240101005700_source_link_health",
+      "dependsOn": [
+        "20240101005700_source_link_health"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -538,7 +654,9 @@
       "timestamp": "20240101005900",
       "slug": "agent_runs_plan_key",
       "checksum": "sha256:1955cd20c9be2938fe67c0b96588f1f760ad6401cb29eed31f303a5f1a7bb3a6",
-      "dependsOn": "20240101005800_org_provenance_metrics",
+      "dependsOn": [
+        "20240101005800_org_provenance_metrics"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -547,7 +665,9 @@
       "timestamp": "20240101010000",
       "slug": "hitl_resolution_metrics",
       "checksum": "sha256:31ff893c44e60232769e2db303702726d03091f9952e5e5a794826ca13044412",
-      "dependsOn": "20240101005900_agent_runs_plan_key",
+      "dependsOn": [
+        "20240101005900_agent_runs_plan_key"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -556,7 +676,9 @@
       "timestamp": "20240101010100",
       "slug": "agent_run_verification",
       "checksum": "sha256:ca14fa68957a9ad605c530134f8040bd23f469e4c00da44157fb0ad8c2a6b2e3",
-      "dependsOn": "20240101010000_hitl_resolution_metrics",
+      "dependsOn": [
+        "20240101010000_hitl_resolution_metrics"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -565,7 +687,9 @@
       "timestamp": "20240101010200",
       "slug": "ingestion_quarantine",
       "checksum": "sha256:66cbad9ae16ea83e37c3432e9c181f695c52989b409f74984ca3601d4dc92a9d",
-      "dependsOn": "20240101010100_agent_run_verification",
+      "dependsOn": [
+        "20240101010100_agent_run_verification"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -574,7 +698,9 @@
       "timestamp": "20240101010300",
       "slug": "ingestion_quarantine_rls",
       "checksum": "sha256:07f8276043c43a06c1eb71a35a884bd3f7105f65d0c29f5e9b86276a991003d7",
-      "dependsOn": "20240101010200_ingestion_quarantine",
+      "dependsOn": [
+        "20240101010200_ingestion_quarantine"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -583,7 +709,9 @@
       "timestamp": "20240101010400",
       "slug": "governance_publications",
       "checksum": "sha256:abadb7068fe188be9dacac24e646cdb1f5925f39ef211ac17e16c45d4870e135",
-      "dependsOn": "20240101010300_ingestion_quarantine_rls",
+      "dependsOn": [
+        "20240101010300_ingestion_quarantine_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -592,7 +720,9 @@
       "timestamp": "20240101010500",
       "slug": "governance_publications_rls",
       "checksum": "sha256:0a1e9d1d6ec99114e276b51c6a1a6300dfacfe6b2bcb7bef2f8b6d0f4236ff59",
-      "dependsOn": "20240101010400_governance_publications",
+      "dependsOn": [
+        "20240101010400_governance_publications"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -601,7 +731,9 @@
       "timestamp": "20240101010600",
       "slug": "learning_reports_queue",
       "checksum": "sha256:646a51cfd8e4cd9b006d4a90120efa865a397d529efb0863d6448bed88181ee6",
-      "dependsOn": "20240101010500_governance_publications_rls",
+      "dependsOn": [
+        "20240101010500_governance_publications_rls"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -610,7 +742,9 @@
       "timestamp": "20240101010700",
       "slug": "learning_reports_fairness",
       "checksum": "sha256:6a94157f62e0387f4e0fbc68ce8d03eab3f25bd48a502ff537083e72fc796a68",
-      "dependsOn": "20240101010600_learning_reports_queue",
+      "dependsOn": [
+        "20240101010600_learning_reports_queue"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -619,7 +753,9 @@
       "timestamp": "20240101010800",
       "slug": "retrieval_metrics_views",
       "checksum": "sha256:6e381c4d7e5f941ba2dbd49d200ce592efc227d7c43e725705b0def9bc43909a",
-      "dependsOn": "20240101010700_learning_reports_fairness",
+      "dependsOn": [
+        "20240101010700_learning_reports_fairness"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -628,7 +764,9 @@
       "timestamp": "20240101010900",
       "slug": "hitl_reviewer_edits",
       "checksum": "sha256:3ecb4a7dad389aa3722e96f060a7a0ba1f3adcddd11ffd73b107555eaaef3ee0",
-      "dependsOn": "20240101010800_retrieval_metrics_views",
+      "dependsOn": [
+        "20240101010800_retrieval_metrics_views"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -637,7 +775,9 @@
       "timestamp": "20240101011000",
       "slug": "eval_metrics_maghreb",
       "checksum": "sha256:a5ed0183f8c79da4e28a8b42bab8094e4198d0891cd82265b46087a1fe302e22",
-      "dependsOn": "20240101010900_hitl_reviewer_edits",
+      "dependsOn": [
+        "20240101010900_hitl_reviewer_edits"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -646,7 +786,9 @@
       "timestamp": "20240101011100",
       "slug": "identifier_coverage_view",
       "checksum": "sha256:b6c6b1b858def9dd72cfda85352559beb177f9bf21904d067ed0b8e7620b7dc1",
-      "dependsOn": "20240101011000_eval_metrics_maghreb",
+      "dependsOn": [
+        "20240101011000_eval_metrics_maghreb"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -655,7 +797,9 @@
       "timestamp": "20240101011200",
       "slug": "org_evaluation_metrics",
       "checksum": "sha256:bd4e52e3f177112021b63574ef0794e823695b02de16398b8f3d5b5650006bde",
-      "dependsOn": "20240101011100_identifier_coverage_view",
+      "dependsOn": [
+        "20240101011100_identifier_coverage_view"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -664,7 +808,9 @@
       "timestamp": "20240101011300",
       "slug": "update_document_chunk_embeddings",
       "checksum": "sha256:7920a8f1fa43cf3f4e2cc2ba30a8af856991a90e098b71b4775013ff3ee26c4a",
-      "dependsOn": "20240101011200_org_evaluation_metrics",
+      "dependsOn": [
+        "20240101011200_org_evaluation_metrics"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -673,7 +819,9 @@
       "timestamp": "20240101011400",
       "slug": "org_jurisdiction_provenance_view",
       "checksum": "sha256:f3b85c22016c3fc27c6f4e3d3e4068ecf57571c3a78f2bc70665bcc1790e01a2",
-      "dependsOn": "20240101011300_update_document_chunk_embeddings",
+      "dependsOn": [
+        "20240101011300_update_document_chunk_embeddings"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -682,7 +830,9 @@
       "timestamp": "20240101011500",
       "slug": "incident_reports",
       "checksum": "sha256:f53188bf40525d796722f2d4e5e11a063d6c2e7f4f64d954bac3942d197a8ca5",
-      "dependsOn": "20240101011400_org_jurisdiction_provenance_view",
+      "dependsOn": [
+        "20240101011400_org_jurisdiction_provenance_view"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -691,7 +841,9 @@
       "timestamp": "20240101011600",
       "slug": "incident_reports_rls",
       "checksum": "sha256:7fb05828ba6668517deef7a04dffed3e69ac11f1d797a0da24166fb03fdb8433",
-      "dependsOn": "20240101011500_incident_reports",
+      "dependsOn": [
+        "20240101011500_incident_reports"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -700,7 +852,9 @@
       "timestamp": "20240101011700",
       "slug": "change_log_entries",
       "checksum": "sha256:319244c6096404e6782331b434ce7d8f633c4ec81a9077f4e0ef6131ba7f68cd",
-      "dependsOn": "20240101011600_incident_reports_rls",
+      "dependsOn": [
+        "20240101011600_incident_reports_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -709,7 +863,9 @@
       "timestamp": "20240101011800",
       "slug": "change_log_entries_rls",
       "checksum": "sha256:a4e40c8b5c0b7427318c9d9337bcd6ce78db8d4a43a79597efb9f77929a6ea6d",
-      "dependsOn": "20240101011700_change_log_entries",
+      "dependsOn": [
+        "20240101011700_change_log_entries"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -718,7 +874,9 @@
       "timestamp": "20240101011850",
       "slug": "profile_sync_default_privileges_fix",
       "checksum": "sha256:2a149774f0d03e7701f06c5b9330cce7a9eb7d54798bad4a949b4b320591615b",
-      "dependsOn": "20240101011800_change_log_entries_rls",
+      "dependsOn": [
+        "20240101011800_change_log_entries_rls"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -727,7 +885,9 @@
       "timestamp": "20240101011900",
       "slug": "document_chunks_3072",
       "checksum": "sha256:29b14257fff08413321a2a951a4ec6ae7ce76f073448067f23809f1e9ae9e104",
-      "dependsOn": "20240101011850_profile_sync_default_privileges_fix",
+      "dependsOn": [
+        "20240101011850_profile_sync_default_privileges_fix"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -736,7 +896,9 @@
       "timestamp": "20240101012000",
       "slug": "update_match_chunks_dimension",
       "checksum": "sha256:cc5e40ec97f3aca587c37c0eb94423c90bbd568e4a72e3a83b0ae875fd98e8e1",
-      "dependsOn": "20240101011900_document_chunks_3072",
+      "dependsOn": [
+        "20240101011900_document_chunks_3072"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -745,7 +907,9 @@
       "timestamp": "20240101012100",
       "slug": "eval_metrics_rwanda",
       "checksum": "sha256:784209d765179a3e8aa3ca0bbaf80c01d964f4bec55d9a1d0b19f25a072456cb",
-      "dependsOn": "20240101012000_update_match_chunks_dimension",
+      "dependsOn": [
+        "20240101012000_update_match_chunks_dimension"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -754,7 +918,9 @@
       "timestamp": "20240101012200",
       "slug": "gdrive_state",
       "checksum": "sha256:bc02293cded20d13153f9196b289a71fee584bad57f3c55fe078f300c5953bec",
-      "dependsOn": "20240101012100_eval_metrics_rwanda",
+      "dependsOn": [
+        "20240101012100_eval_metrics_rwanda"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -763,7 +929,9 @@
       "timestamp": "20240101012300",
       "slug": "exports_and_deletions",
       "checksum": "sha256:5db991b0138c1273a61134aac1ee29be7f7c4f432d9d7a2803b5bd7ab8bd6868",
-      "dependsOn": "20240101012200_gdrive_state",
+      "dependsOn": [
+        "20240101012200_gdrive_state"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -772,7 +940,9 @@
       "timestamp": "20240101012400",
       "slug": "user_mgmt_whatsapp",
       "checksum": "sha256:58d0cb162f2718faca9ae2b18f3211ac151cac99317aa33233011e9cce63a14a",
-      "dependsOn": "20240101012300_exports_and_deletions",
+      "dependsOn": [
+        "20240101012300_exports_and_deletions"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -781,7 +951,9 @@
       "timestamp": "20240101012500",
       "slug": "learning_foundation",
       "checksum": "sha256:d4e95d86f146be05953443d35d6fae0052e715d4712ef8bdfc8a0eff67a0fdfd",
-      "dependsOn": "20240101012400_user_mgmt_whatsapp",
+      "dependsOn": [
+        "20240101012400_user_mgmt_whatsapp"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -790,7 +962,9 @@
       "timestamp": "20240101012600",
       "slug": "learning_policy_versions",
       "checksum": "sha256:8fbb4e92135abe1c85173f20c3b56a13b1934a9863d8c35cca767b0ae71e07e8",
-      "dependsOn": "20240101012500_learning_foundation",
+      "dependsOn": [
+        "20240101012500_learning_foundation"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -799,7 +973,9 @@
       "timestamp": "20240101012700",
       "slug": "drafting_drafts",
       "checksum": "sha256:ae8be16e62c4935d3111b1bf40ba8c4edf1202701e368f2825cf121afdc7cf75",
-      "dependsOn": "20240101012600_learning_policy_versions",
+      "dependsOn": [
+        "20240101012600_learning_policy_versions"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -808,7 +984,9 @@
       "timestamp": "20240101012800",
       "slug": "drafting_drafts_rls",
       "checksum": "sha256:98ba272d9f83091c53722285931ebc97b8888ccede2abb5fe006f3062cc908ae",
-      "dependsOn": "20240101012700_drafting_drafts",
+      "dependsOn": [
+        "20240101012700_drafting_drafts"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -817,7 +995,9 @@
       "timestamp": "20240101020000",
       "slug": "export_signatures",
       "checksum": "sha256:6a3561c5baee93a316e38c675d75953fcb8613f9fa0b7ea0c1252c81b5c866f6",
-      "dependsOn": "20240101012800_drafting_drafts_rls",
+      "dependsOn": [
+        "20240101012800_drafting_drafts_rls"
+      ],
       "rollbackStrategy": "manual-restore"
     },
     {
@@ -826,7 +1006,9 @@
       "timestamp": "20240710120000",
       "slug": "admin_panel",
       "checksum": "sha256:9e061572b5c8977a9d4c622043a5d70c414b9518148d8a6543ab06dd05686812",
-      "dependsOn": "20240101020000_export_signatures",
+      "dependsOn": [
+        "20240101020000_export_signatures"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -835,7 +1017,9 @@
       "timestamp": "20251003173000",
       "slug": "create_drafts",
       "checksum": "sha256:6df927b06091b4514515e69067b195d5aaf00135663763fc71ee63543e1a0c6b",
-      "dependsOn": "20240710120000_admin_panel",
+      "dependsOn": [
+        "20240710120000_admin_panel"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -844,7 +1028,9 @@
       "timestamp": "20251003180000",
       "slug": "create_matters",
       "checksum": "sha256:68ee2ce9e3fc58fade1b8a9f2391330c2abbbdedc1f90cd0b29ec036016844e6",
-      "dependsOn": "20251003173000_create_drafts",
+      "dependsOn": [
+        "20251003173000_create_drafts"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -853,7 +1039,9 @@
       "timestamp": "20251003190000",
       "slug": "chat_sessions",
       "checksum": "sha256:7ae542dc7539de17bb08ad7664a727fe0d8433ccba8dbdb66cf5aa4718d16ad7",
-      "dependsOn": "20251003180000_create_matters",
+      "dependsOn": [
+        "20251003180000_create_matters"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -862,7 +1050,9 @@
       "timestamp": "20251003200000",
       "slug": "orchestrator_phase_a",
       "checksum": "sha256:28be4ba79d7ea4f0a68b6cf412fa989299061c3ca557706b72475dba7144e089",
-      "dependsOn": "20251003190000_chat_sessions",
+      "dependsOn": [
+        "20251003190000_chat_sessions"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -871,7 +1061,9 @@
       "timestamp": "20251003210000",
       "slug": "finance_domain_sources",
       "checksum": "sha256:f4ceaefd4c811bb1ac5c438b1b996e8d3352b09cbbde241f8ec5ccfd0cb9b469",
-      "dependsOn": "20251003200000_orchestrator_phase_a",
+      "dependsOn": [
+        "20251003200000_orchestrator_phase_a"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -880,7 +1072,9 @@
       "timestamp": "20251009191000",
       "slug": "device_sessions",
       "checksum": "sha256:1904dbc592869e2820be3336ad368fb6c73e3c118f978f6398f4b459732350a6",
-      "dependsOn": "20251003210000_finance_domain_sources",
+      "dependsOn": [
+        "20251003210000_finance_domain_sources"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -889,7 +1083,9 @@
       "timestamp": "20251010010000",
       "slug": "provenance_alerts_cron",
       "checksum": "sha256:3489e593062cf9f27da2d2e2d53b435fc5f18ae702355b6a16fd80fdec359a6d",
-      "dependsOn": "20251009191000_device_sessions",
+      "dependsOn": [
+        "20251009191000_device_sessions"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {
@@ -898,7 +1094,9 @@
       "timestamp": "20251010020000",
       "slug": "compliance_ack_transaction",
       "checksum": "sha256:b6edc6015b78a358ade2c450cd4fc8d0e0665258374b2ffb5309c8cf3ca9eb02",
-      "dependsOn": "20251010010000_provenance_alerts_cron",
+      "dependsOn": [
+        "20251010010000_provenance_alerts_cron"
+      ],
       "rollbackStrategy": "reapply-migration"
     },
     {

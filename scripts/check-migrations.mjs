@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 function fail(msg) {
@@ -21,6 +21,7 @@ const repoRoot = process.cwd();
 const dbDir = join(repoRoot, 'db', 'migrations');
 const supaDir = join(repoRoot, 'supabase', 'migrations');
 const manifestPath = join(dbDir, 'manifest.json');
+const dependencyOverridesPath = join(dbDir, 'dependency-overrides.json');
 
 const allowedRollbackStrategies = new Set([
   'manual-restore',
@@ -49,6 +50,15 @@ try {
 const files = readdirSync(dbDir)
   .filter((f) => f.endsWith('.sql'))
   .sort();
+
+const fileIds = files.map((file) => {
+  const match = file.match(/^(\d{14})_([a-z0-9_]+)\.sql$/);
+  if (!match) {
+    fail(`migration filename must follow YYYYMMDDHHMMSS_slug.sql: ${file}`);
+  }
+  const [, timestamp, slug] = match;
+  return `${timestamp}_${slug}`;
+});
 if (files.length === 0) {
   ok('no db migrations found');
   process.exit(0);
@@ -57,6 +67,37 @@ if (files.length === 0) {
 const seen = new Set();
 let previousId = null;
 const manifestEntries = [];
+
+const dependencyOverrides = existsSync(dependencyOverridesPath)
+  ? JSON.parse(readFileSync(dependencyOverridesPath, 'utf8'))
+  : {};
+
+for (const overrideId of Object.keys(dependencyOverrides)) {
+  if (!fileIds.includes(overrideId)) {
+    fail(`dependency-overrides.json references unknown migration id ${overrideId}`);
+  }
+}
+
+function resolveDependencies(id) {
+  const override = dependencyOverrides[id];
+  if (override === undefined) {
+    return previousId ? [previousId] : [];
+  }
+  if (!Array.isArray(override)) {
+    fail(`dependency override for ${id} must be an array of migration ids`);
+  }
+  const unique = Array.from(new Set(override.filter((value) => typeof value === 'string' && value.length > 0)));
+  unique.sort();
+  for (const dependency of unique) {
+    if (!fileIds.includes(dependency)) {
+      fail(`dependency override for ${id} references unknown migration id ${dependency}`);
+    }
+    if (dependency === id) {
+      fail(`dependency override for ${id} cannot reference itself`);
+    }
+  }
+  return unique;
+}
 
 for (const file of files) {
   const match = file.match(/^(\d{14})_([a-z0-9_]+)\.sql$/);
@@ -82,7 +123,7 @@ for (const file of files) {
     slug,
     file,
     checksum: `sha256:${checksum(contents)}`,
-    dependsOn: previousId,
+    dependsOn: resolveDependencies(id),
   });
   previousId = id;
 }
@@ -107,6 +148,8 @@ if (manifest.migrations.length !== manifestEntries.length) {
   );
 }
 
+const idToIndex = new Map(manifestEntries.map((entry, index) => [entry.id, index]));
+
 for (let index = 0; index < manifestEntries.length; index += 1) {
   const expected = manifestEntries[index];
   const actual = manifest.migrations[index];
@@ -125,8 +168,24 @@ for (let index = 0; index < manifestEntries.length; index += 1) {
   if (actual.slug !== expected.slug) {
     fail(`manifest entry ${actual.id} slug mismatch: expected ${expected.slug}, received ${actual.slug}`);
   }
-  if (actual.dependsOn !== expected.dependsOn) {
-    fail(`manifest entry ${actual.id} dependsOn mismatch: expected ${expected.dependsOn}, received ${actual.dependsOn}`);
+  if (!Array.isArray(actual.dependsOn)) {
+    fail(`manifest entry ${actual.id} dependsOn must be an array`);
+  }
+  const actualDependencies = Array.from(new Set(actual.dependsOn.filter((value) => typeof value === 'string' && value.length > 0)));
+  const sortedActual = [...actualDependencies].sort();
+  if (sortedActual.length !== actualDependencies.length) {
+    fail(`manifest entry ${actual.id} dependsOn contains duplicate values`);
+  }
+  if (sortedActual.some((dep) => !fileIds.includes(dep))) {
+    fail(`manifest entry ${actual.id} dependsOn references unknown migration id`);
+  }
+  if (sortedActual.some((dep) => idToIndex.get(dep) === undefined || idToIndex.get(dep) >= index)) {
+    fail(`manifest entry ${actual.id} dependsOn must reference earlier migrations`);
+  }
+  if (JSON.stringify(sortedActual) !== JSON.stringify(expected.dependsOn)) {
+    fail(
+      `manifest entry ${actual.id} dependsOn mismatch: expected [${expected.dependsOn.join(', ')}], received [${sortedActual.join(', ')}]`,
+    );
   }
   if (actual.checksum !== expected.checksum) {
     fail(
