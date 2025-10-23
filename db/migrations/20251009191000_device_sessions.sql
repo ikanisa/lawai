@@ -1,9 +1,9 @@
-create table if not exists public.device_sessions (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  user_id uuid not null,
-  session_token text not null,
-  device_fingerprint text not null,
+CREATE TABLE IF NOT EXISTS public.device_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  user_id uuid NOT NULL,
+  session_token text NOT NULL,
+  device_fingerprint text NOT NULL,
   device_label text,
   user_agent text,
   platform text,
@@ -13,37 +13,42 @@ create table if not exists public.device_sessions (
   mfa_method text,
   attested boolean,
   passkey boolean,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  last_seen_at timestamptz not null default now(),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz,
   revoked_at timestamptz,
   revoked_by uuid,
   revoked_reason text
 );
 
-alter table public.device_sessions
-  add constraint device_sessions_org_session_token_unique unique (org_id, session_token);
+ALTER TABLE public.device_sessions
+ADD CONSTRAINT device_sessions_org_session_token_unique UNIQUE (org_id, session_token);
 
-create index if not exists device_sessions_org_last_seen_idx on public.device_sessions (org_id, last_seen_at desc);
-create index if not exists device_sessions_user_last_seen_idx on public.device_sessions (user_id, last_seen_at desc);
-create index if not exists device_sessions_fingerprint_idx on public.device_sessions (device_fingerprint);
+CREATE INDEX if NOT EXISTS device_sessions_org_last_seen_idx ON public.device_sessions (org_id, last_seen_at DESC);
 
-alter table public.device_sessions enable row level security;
+CREATE INDEX if NOT EXISTS device_sessions_user_last_seen_idx ON public.device_sessions (user_id, last_seen_at DESC);
 
-drop policy if exists device_sessions_service_role_access on public.device_sessions;
-create policy device_sessions_service_role_access on public.device_sessions
-  for all
-  using (auth.role() = 'service_role')
-  with check (auth.role() = 'service_role');
+CREATE INDEX if NOT EXISTS device_sessions_fingerprint_idx ON public.device_sessions (device_fingerprint);
 
-drop policy if exists device_sessions_org_read on public.device_sessions;
-create policy device_sessions_org_read on public.device_sessions
-  for select
-  using (public.is_org_member(org_id));
+ALTER TABLE public.device_sessions enable ROW level security;
 
-drop policy if exists device_sessions_org_write on public.device_sessions;
-create policy device_sessions_org_write on public.device_sessions
-  for update
-  using (public.is_org_member(org_id))
-  with check (public.is_org_member(org_id));
+DROP POLICY if EXISTS device_sessions_service_role_access ON public.device_sessions;
+
+CREATE POLICY device_sessions_service_role_access ON public.device_sessions FOR ALL USING (auth.role () = 'service_role')
+WITH
+  CHECK (auth.role () = 'service_role');
+
+DROP POLICY if EXISTS device_sessions_org_read ON public.device_sessions;
+
+CREATE POLICY device_sessions_org_read ON public.device_sessions FOR
+SELECT
+  USING (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS device_sessions_org_write ON public.device_sessions;
+
+CREATE POLICY device_sessions_org_write ON public.device_sessions
+FOR UPDATE
+  USING (public.is_org_member (org_id))
+WITH
+  CHECK (public.is_org_member (org_id));

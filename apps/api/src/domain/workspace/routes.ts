@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../../types/context';
+import { enforceRateLimit } from '../../rate-limit';
 
-const workspaceQuerySchema = z.object({
-  orgId: z.string().uuid(),
-});
+type WorkspaceQuery = z.infer<typeof workspaceQuerySchema>;
+type WorkspaceResponse = z.infer<typeof workspaceResponseSchema>;
 
 export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
   const guard = ctx.rateLimits.workspace ?? null;

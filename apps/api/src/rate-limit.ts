@@ -25,11 +25,13 @@ export interface RateLimiter {
 export class InMemoryRateLimiter implements RateLimiter {
   private readonly limit: number;
 
-  private readonly windowMs: number;
+  public readonly windowMs: number;
 
   private readonly store = new Map<string, { count: number; resetAt: number }>();
 
   private readonly prefix: string;
+
+  private readonly identifier?: string;
 
   constructor(options: RateLimiterOptions) {
     this.limit = Math.max(1, options.limit);
@@ -44,7 +46,8 @@ export class InMemoryRateLimiter implements RateLimiter {
   async hit(rawKey: string): Promise<RateLimitResult> {
     const key = this.buildKey(rawKey);
     const now = Date.now();
-    const counter = this.store.get(key);
+    const namespacedKey = this.applyNamespace(key);
+    const counter = this.store.get(namespacedKey);
 
     if (!counter || counter.resetAt <= now) {
       const next = { count: 1, resetAt: now + this.windowMs };
@@ -68,12 +71,54 @@ export class InMemoryRateLimiter implements RateLimiter {
   async block(rawKey: string, durationMs: number): Promise<void> {
     const key = this.buildKey(rawKey);
     const until = Date.now() + durationMs;
-    this.store.set(key, { count: this.limit, resetAt: until });
+    const namespacedKey = this.applyNamespace(key);
+    this.store.set(namespacedKey, { count: this.limit, resetAt: until });
     await delay(durationMs);
-    const counter = this.store.get(key);
+    const counter = this.store.get(namespacedKey);
     if (counter && counter.resetAt === until) {
-      this.store.delete(key);
+      this.store.delete(namespacedKey);
     }
+  }
+
+  private applyNamespace(key: string): string {
+    if (!this.identifier) {
+      return key;
+    }
+    return `${this.identifier}:${key}`;
+  }
+}
+
+class RedisRateLimiter implements RateLimiter {
+  public readonly limit: number;
+
+  public readonly windowMs: number;
+
+  private readonly client: Redis;
+
+  private readonly keyPrefix: string;
+
+  constructor(client: Redis, options: RateLimiterOptions) {
+    this.client = client;
+    this.limit = Math.max(1, options.limit);
+    this.windowMs = Math.max(1000, options.windowMs);
+    this.keyPrefix = options.identifier ? `rl:${options.identifier}:` : 'rl:';
+  }
+
+  async hit(key: string): Promise<RateLimitResult> {
+    const redisKey = `${this.keyPrefix}${key}`;
+    const count = await this.client.incr(redisKey);
+    if (count === 1) {
+      await this.client.pexpire(redisKey, this.windowMs);
+    }
+    let ttl = await this.client.pttl(redisKey);
+    if (ttl < 0) {
+      await this.client.pexpire(redisKey, this.windowMs);
+      ttl = this.windowMs;
+    }
+    const allowed = count <= this.limit;
+    const remaining = allowed ? Math.max(0, this.limit - count) : 0;
+    const resetAt = Date.now() + (ttl > 0 ? ttl : this.windowMs);
+    return { allowed, remaining, resetAt };
   }
 }
 

@@ -1,5 +1,6 @@
+import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
-import { InMemoryRateLimiter } from '../src/rate-limit';
+import { InMemoryRateLimiter, createRateLimitGuard } from '../src/rate-limit';
 
 describe('InMemoryRateLimiter', () => {
   it('allows hits up to the configured limit', async () => {
@@ -44,5 +45,36 @@ describe('InMemoryRateLimiter', () => {
     expect(afterBlock.allowed).toBe(true);
 
     vi.useRealTimers();
+  });
+});
+
+describe('createRateLimitGuard', () => {
+  it('returns 429 when the limiter is exhausted', async () => {
+    const app = Fastify();
+    const limiter = new InMemoryRateLimiter({ limit: 2, windowMs: 60_000 });
+    const guard = createRateLimitGuard(limiter, {
+      keyGenerator: (request) => {
+        const body = (request.body ?? {}) as { orgId?: string; userId?: string };
+        if (body.orgId && body.userId) {
+          return `${body.orgId}:${body.userId}`;
+        }
+        return request.ip;
+      },
+    });
+
+    app.post('/runs', { preHandler: guard }, async () => ({ ok: true }));
+
+    const payload = { orgId: 'org-1', userId: 'user-1', question: 'hi' };
+    const first = await app.inject({ method: 'POST', url: '/runs', payload });
+    const second = await app.inject({ method: 'POST', url: '/runs', payload });
+    const third = await app.inject({ method: 'POST', url: '/runs', payload });
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(third.statusCode).toBe(429);
+    expect(third.headers['retry-after']).toBeDefined();
+    expect(third.json()).toMatchObject({ error: 'rate_limit_exceeded' });
+
+    await app.close();
   });
 });

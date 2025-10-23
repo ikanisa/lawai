@@ -5,9 +5,9 @@ import { IRACPayload } from '@avocat-ai/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import messagesEn from '../messages/en.json';
 import messagesFr from '../messages/fr.json';
-import type { Messages } from '../src/lib/i18n';
+import type { Messages } from '@/lib/i18n';
 import type { AgentRunResponse } from '../src/lib/api';
-import { ResearchView } from '../src/components/research/research-view';
+import { ResearchView } from '@/features/research/components/research-view';
 import { PwaInstallProvider } from '../src/hooks/use-pwa-install';
 
 vi.mock('sonner', () => ({
@@ -19,11 +19,11 @@ vi.mock('sonner', () => ({
   },
 }));
 
-vi.mock('../src/components/research/voice-input-button', () => ({
+vi.mock('@/features/research/components/voice-input-button', () => ({
   VoiceInputButton: () => null,
 }));
 
-vi.mock('../src/components/research/camera-ocr-button', () => ({
+vi.mock('@/features/research/components/camera-ocr-button', () => ({
   CameraOcrButton: () => null,
 }));
 
