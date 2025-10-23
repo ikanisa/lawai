@@ -69,10 +69,21 @@ import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
 import { registerGracefulShutdown } from './core/lifecycle/graceful-shutdown.js';
+import { ensureTelemetryRuntime } from './telemetry.js';
+import { resolveResidencyZone, ensureResidencyAllowed } from '@avocat-ai/compliance';
 
+const telemetry = await ensureTelemetryRuntime();
 const { app, context } = await createApp();
 registerGracefulShutdown(app, {
   cleanup: () => context.container.dispose(),
+});
+
+app.addHook('onClose', async () => {
+  try {
+    await telemetry.shutdown();
+  } catch (error) {
+    app.log.error({ err: error }, 'telemetry_shutdown_failed');
+  }
 });
 
 setOpenAILogger(app.log);
@@ -312,20 +323,33 @@ async function determineResidencyZone(
   access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>,
   requestedZone?: string | null,
 ): Promise<string> {
-  const requested = typeof requestedZone === 'string' ? requestedZone.trim().toLowerCase() : '';
-  const candidates = [
-    requested,
-    ...collectAllowedResidencyZones(access),
-  ].filter((value, index, array) => value && array.indexOf(value) === index);
-
-  const zone = (candidates[0] ?? 'eu').trim().toLowerCase();
-
-  const { data: isAllowedZone, error: allowedError } = await supabase.rpc('storage_residency_allowed', { code: zone });
-  if (allowedError) {
-    throw new ResidencyError('residency_validation_failed', 500);
-  }
-  if (isAllowedZone !== true) {
+  const allowedZones = collectAllowedResidencyZones(access);
+  let zone: string | null = null;
+  try {
+    zone = resolveResidencyZone(requestedZone ?? null, {
+      allowedZones,
+      fallbackZone: allowedZones[0] ?? 'eu',
+    });
+  } catch (error) {
+    const message = (error as Error).message ?? 'residency_zone_invalid';
+    if (message === 'residency_zone_restricted') {
+      throw new ResidencyError('residency_zone_restricted', 428);
+    }
     throw new ResidencyError('residency_zone_invalid', 400);
+  }
+
+  if (!zone) {
+    throw new ResidencyError('residency_zone_invalid', 400);
+  }
+
+  try {
+    await ensureResidencyAllowed(supabase, zone);
+  } catch (error) {
+    const message = (error as Error).message ?? '';
+    if (message.startsWith('residency_zone_invalid')) {
+      throw new ResidencyError('residency_zone_invalid', 400);
+    }
+    throw new ResidencyError('residency_validation_failed', 500);
   }
 
   const { data: orgAllowed, error: orgAllowedError } = await supabase.rpc('org_residency_allows', {
@@ -951,6 +975,126 @@ app.get<{
     latest: history[0] ?? null,
     history,
     totals,
+  });
+});
+
+app.get('/compliance/dashboard', async (request, reply) => {
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+  const orgHeader = request.headers['x-org-id'];
+  if (!orgHeader || typeof orgHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-org-id header is required' });
+  }
+
+  const query = (request.query ?? {}) as { hitlLimit?: string | number };
+  const hitlLimit = (() => {
+    const raw = query.hitlLimit;
+    const parsed = typeof raw === 'string' ? Number.parseInt(raw, 10) : typeof raw === 'number' ? raw : 500;
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return 500;
+    }
+    return Math.min(5000, Math.max(50, Math.floor(parsed)));
+  })();
+
+  try {
+    await authorizeRequestWithGuards('metrics:view', orgHeader, userHeader, request);
+  } catch (error) {
+    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
+    return reply.code(status).send({ error: 'forbidden' });
+  }
+
+  const now = new Date();
+  const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [hitlResult, retrievalResult, evaluationResult] = await Promise.all([
+    supabase
+      .from('hitl_cases')
+      .select('status, created_at, updated_at')
+      .eq('org_id', orgHeader)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(hitlLimit),
+    supabase
+      .from('org_retrieval_metrics')
+      .select('allowlisted_ratio, runs_with_translation_warnings, runs_without_citations, runs_total, last_run_at')
+      .eq('org_id', orgHeader)
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('org_evaluation_metrics')
+      .select('maghreb_banner_coverage, citation_precision_p95, temporal_validity_p95, evaluated_results, last_result_at')
+      .eq('org_id', orgHeader)
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (hitlResult.error) {
+    request.log.error({ err: hitlResult.error }, 'compliance dashboard hitl query failed');
+    return reply.code(500).send({ error: 'compliance_dashboard_hitl_failed' });
+  }
+  if (retrievalResult.error) {
+    request.log.error({ err: retrievalResult.error }, 'compliance dashboard retrieval query failed');
+    return reply.code(500).send({ error: 'compliance_dashboard_retrieval_failed' });
+  }
+  if (evaluationResult.error) {
+    request.log.error({ err: evaluationResult.error }, 'compliance dashboard evaluation query failed');
+    return reply.code(500).send({ error: 'compliance_dashboard_evaluation_failed' });
+  }
+
+  const hitlSummary = summariseHitl((hitlResult.data ?? []) as unknown as HitlRecord[]);
+  const retrievalRow = (retrievalResult.data ?? null) as
+    | {
+        allowlisted_ratio?: number | null;
+        runs_with_translation_warnings?: number | null;
+        runs_without_citations?: number | null;
+        runs_total?: number | null;
+        last_run_at?: string | null;
+      }
+    | null;
+  const evaluationRow = (evaluationResult.data ?? null) as
+    | {
+        maghreb_banner_coverage?: number | null;
+        citation_precision_p95?: number | null;
+        temporal_validity_p95?: number | null;
+        evaluated_results?: number | null;
+        last_result_at?: string | null;
+      }
+    | null;
+
+  const toNumber = (value: unknown): number | null => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  return reply.send({
+    orgId: orgHeader,
+    timeframe: { start: since, end: now.toISOString() },
+    limits: { hitl: hitlLimit },
+    hitl: {
+      total: hitlSummary.total,
+      pending: hitlSummary.pending,
+      resolved: hitlSummary.resolved,
+      medianResponseMinutes: hitlSummary.medianResponseMinutes,
+    },
+    allowlist: {
+      allowlistedRatio: toNumber(retrievalRow?.allowlisted_ratio),
+      translationWarnings: retrievalRow?.runs_with_translation_warnings ?? 0,
+      runsWithoutCitations: retrievalRow?.runs_without_citations ?? 0,
+      runsTotal: retrievalRow?.runs_total ?? 0,
+      lastRunAt: retrievalRow?.last_run_at ?? null,
+    },
+    maghreb: {
+      bannerCoverage: toNumber(evaluationRow?.maghreb_banner_coverage),
+      citationPrecisionP95: toNumber(evaluationRow?.citation_precision_p95),
+      temporalValidityP95: toNumber(evaluationRow?.temporal_validity_p95),
+      evaluatedResults: evaluationRow?.evaluated_results ?? 0,
+      lastResultAt: evaluationRow?.last_result_at ?? null,
+    },
   });
 });
 
