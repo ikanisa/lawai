@@ -2,11 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../../types/context.js';
 import { authorizeRequestWithGuards } from '../../http/authorization.js';
-import {
-  fetchWorkspaceCaseScores,
-  fetchWorkspaceCitations,
-  fetchWorkspaceOverview,
-} from './services.js';
+import { buildPhaseCProcessNavigator } from '../../workspace.js';
+import { fetchWorkspaceOverview } from './services.js';
 
 const orgQuerySchema = z.object({
   orgId: z.string().min(1),
@@ -238,169 +235,50 @@ const caseScoresResponseSchema = {
 } as const;
 
 export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
-  app.get<{ Querystring: z.infer<typeof orgQuerySchema> }>(
-    '/workspace',
-    {
-      schema: {
-        querystring: workspaceQuerystringSchema,
-        response: {
-          200: workspaceResponseSchema,
-          400: sharedErrorSchema,
-          403: sharedErrorSchema,
-          500: sharedErrorSchema,
-        },
-      },
-    },
-    async (request, reply) => {
-      const parse = orgQuerySchema.safeParse(request.query);
-      if (!parse.success) {
-        return reply.code(400).send({ error: 'orgId is required' });
+  app.get<{ Querystring: z.infer<typeof workspaceQuerySchema> }>('/workspace', async (request, reply) => {
+    const parse = workspaceQuerySchema.safeParse(request.query);
+    if (!parse.success) {
+      return reply.code(400).send({ error: 'Invalid query parameters' });
+    }
+
+    const { orgId } = parse.data;
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
+    const { supabase } = ctx;
+
+    try {
+      await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
+      const { data, errors } = await fetchWorkspaceOverview(supabase, orgId);
+
+      if (errors.jurisdictions) {
+        request.log.error(
+          { err: errors.jurisdictions, orgId },
+          'workspace_jurisdictions_query_failed',
+        );
+      }
+      if (errors.matters) {
+        request.log.error({ err: errors.matters, orgId }, 'workspace_matters_query_failed');
+      }
+      if (errors.compliance) {
+        request.log.error({ err: errors.compliance, orgId }, 'workspace_compliance_query_failed');
+      }
+      if (errors.hitl) {
+        request.log.error({ err: errors.hitl, orgId }, 'workspace_hitl_query_failed');
       }
 
-      const userHeader = request.headers['x-user-id'];
-      if (!userHeader || typeof userHeader !== 'string') {
-        return reply.code(400).send({ error: 'x-user-id header is required' });
-      }
-
-      const { orgId } = parse.data;
-
-      try {
-        await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
-      } catch (error) {
-        if (error instanceof Error && 'statusCode' in error && typeof (error as { statusCode?: number }).statusCode === 'number') {
-          return reply
-            .code((error as { statusCode: number }).statusCode)
-            .send({ error: (error as Error).message });
-        }
-        request.log.error({ err: error }, 'workspace authorization failed');
-        return reply.code(403).send({ error: 'forbidden' });
-      }
-
-      try {
-        const { data, errors } = await fetchWorkspaceOverview(ctx.supabase, orgId);
-
-        if (errors.jurisdictions) {
-          request.log.error({ err: errors.jurisdictions }, 'workspace jurisdictions query failed');
-        }
-        if (errors.matters) {
-          request.log.error({ err: errors.matters }, 'workspace matters query failed');
-        }
-        if (errors.compliance) {
-          request.log.error({ err: errors.compliance }, 'workspace compliance query failed');
-        }
-        if (errors.hitl) {
-          request.log.error({ err: errors.hitl }, 'workspace hitl query failed');
-        }
-
-        return data;
-      } catch (error) {
-        if (error instanceof Error && 'statusCode' in error && typeof (error as { statusCode?: number }).statusCode === 'number') {
-          return reply
-            .code((error as { statusCode: number }).statusCode)
-            .send({ error: (error as Error).message });
-        }
-        request.log.error({ err: error }, 'workspace overview failed');
-        return reply.code(500).send({ error: 'workspace_failed' });
-      }
-    },
-  );
-
-  app.get<{ Querystring: z.infer<typeof orgQuerySchema> }>(
-    '/citations',
-    {
-      schema: {
-        querystring: workspaceQuerystringSchema,
-        response: {
-          200: citationsResponseSchema,
-          400: sharedErrorSchema,
-          403: sharedErrorSchema,
-          500: sharedErrorSchema,
-        },
-      },
-    },
-    async (request, reply) => {
-      const parse = orgQuerySchema.safeParse(request.query);
-      if (!parse.success) {
-        return reply.code(400).send({ error: 'orgId is required' });
-      }
-
-      const userHeader = request.headers['x-user-id'];
-      if (!userHeader || typeof userHeader !== 'string') {
-        return reply.code(400).send({ error: 'x-user-id header is required' });
-      }
-
-      const { orgId } = parse.data;
-
-      try {
-        await authorizeRequestWithGuards('citations:view', orgId, userHeader, request);
-      } catch (error) {
-        if (error instanceof Error && 'statusCode' in error && typeof (error as { statusCode?: number }).statusCode === 'number') {
-          return reply
-            .code((error as { statusCode: number }).statusCode)
-            .send({ error: (error as Error).message });
-        }
-        request.log.error({ err: error }, 'citations authorization failed');
-        return reply.code(403).send({ error: 'forbidden' });
-      }
-
-      const { data, error } = await fetchWorkspaceCitations(ctx.supabase, orgId);
-
-      if (error) {
-        request.log.error({ err: error }, 'citations query failed');
-        return reply.code(500).send({ error: 'citations_failed' });
-      }
-
-      return data;
-    },
-  );
-
-  app.get<{ Querystring: z.infer<typeof caseScoresQuerySchema> }>(
-    '/case-scores',
-    {
-      schema: {
-        querystring: caseScoresQuerystringSchema,
-        response: {
-          200: caseScoresResponseSchema,
-          400: sharedErrorSchema,
-          403: sharedErrorSchema,
-          500: sharedErrorSchema,
-        },
-      },
-    },
-    async (request, reply) => {
-      const parse = caseScoresQuerySchema.safeParse(request.query);
-
-      if (!parse.success) {
-        return reply.code(400).send({ error: 'orgId is required' });
-      }
-
-      const userHeader = request.headers['x-user-id'];
-      if (!userHeader || typeof userHeader !== 'string') {
-        return reply.code(400).send({ error: 'x-user-id header is required' });
-      }
-
-      const { orgId, sourceId } = parse.data;
-
-      try {
-        await authorizeRequestWithGuards('cases:view', orgId, userHeader, request);
-      } catch (error) {
-        if (error instanceof Error && 'statusCode' in error && typeof (error as { statusCode?: number }).statusCode === 'number') {
-          return reply
-            .code((error as { statusCode: number }).statusCode)
-            .send({ error: (error as Error).message });
-        }
-        request.log.error({ err: error }, 'case_scores authorization failed');
-        return reply.code(403).send({ error: 'forbidden' });
-      }
-
-      const { data, error } = await fetchWorkspaceCaseScores(ctx.supabase, orgId, sourceId);
-
-      if (error) {
-        request.log.error({ err: error }, 'case_scores query failed');
-        return reply.code(500).send({ error: 'case_scores_failed' });
-      }
-
-      return data;
-    },
-  );
+      return {
+        jurisdictions: data.jurisdictions,
+        matters: data.matters,
+        complianceWatch: data.complianceWatch,
+        hitlInbox: data.hitlInbox,
+        desk: data.desk,
+        navigator: buildPhaseCProcessNavigator(),
+      };
+    } catch (error) {
+      request.log.error({ err: error, orgId }, 'workspace_overview_failed');
+      return reply.code(500).send({ error: 'workspace_failed' });
+    }
+  });
 }
