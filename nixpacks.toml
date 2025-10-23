@@ -2,11 +2,11 @@
 cmds = [
   "corepack enable",
   "corepack prepare pnpm@8.15.4 --activate",
-  "npm ci --workspaces --include-workspace-root"
+  "pnpm install --frozen-lockfile"
 ]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["pnpm run build"]
 
 [start]
-cmd = "npm start"
+cmd = "cd apps/web && HOSTNAME=0.0.0.0 PORT=${PORT:-3000} NODE_ENV=production node .next/standalone/server.js"
