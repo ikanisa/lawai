@@ -10,19 +10,51 @@ export type SupabaseEnv = z.infer<typeof envSchema>;
 
 let cachedClient: SupabaseClient | null = null;
 
-export function createServiceClient(env: SupabaseEnv): SupabaseClient {
-  const parsed = envSchema.parse(env);
+export type ServiceClientFactory = (
+  url: string,
+  serviceKey: string,
+  options?: Parameters<typeof createClient>[2],
+) => SupabaseClient;
 
-  if (cachedClient) {
+export interface CreateServiceClientOptions {
+  factory?: ServiceClientFactory;
+  reuseExisting?: boolean;
+  client?: SupabaseClient | null;
+}
+
+export function createServiceClient(
+  env: SupabaseEnv,
+  options: CreateServiceClientOptions = {},
+): SupabaseClient {
+  const parsed = envSchema.parse(env);
+  const reuseExisting = options.reuseExisting ?? true;
+
+  if (options.client) {
+    if (reuseExisting) {
+      cachedClient = options.client;
+    }
+    return options.client;
+  }
+
+  if (reuseExisting && cachedClient) {
     return cachedClient;
   }
 
-  cachedClient = createClient(parsed.SUPABASE_URL, parsed.SUPABASE_SERVICE_ROLE_KEY, {
+  const factory = options.factory ?? createClient;
+  const instance = factory(parsed.SUPABASE_URL, parsed.SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
     },
   });
 
-  return cachedClient;
+  if (reuseExisting) {
+    cachedClient = instance;
+  }
+
+  return instance;
+}
+
+export function resetServiceClientCache(): void {
+  cachedClient = null;
 }

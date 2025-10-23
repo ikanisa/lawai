@@ -1,32 +1,44 @@
-# Backend module map
+# API Module Map
 
-## Core domains
+This document maps the primary runtime modules in the API service and highlights the cross-cutting concerns that influence their design.
 
-### Orchestrator
-- Entry point: `apps/api/src/orchestrator.ts` implements command/session lifecycle (enqueue, safety review, job tracking) and is now consumed via the layered services in `apps/api/src/core/services/orchestrator-service.ts`.【F:apps/api/src/orchestrator.ts†L1-L520】【F:apps/api/src/core/services/orchestrator-service.ts†L1-L208】
-- HTTP transport registered through `apps/api/src/http/routes/orchestrator.ts`, which delegates to controllers/services to decouple transport from Supabase/OpenAI details.【F:apps/api/src/http/routes/orchestrator.ts†L1-L205】
+## Core Domains
 
-### Connectors
-- External systems handled in `apps/api/src/connectors/*` with typed clients for ERP, GRC, analytics, tax, etc.【F:apps/api/src/connectors/index.ts†L1-L88】
-- Connector registry surfaced to HTTP via orchestrator service coverage mapping (`mapConnectorCoverage`).【F:apps/api/src/core/services/orchestrator-service.ts†L64-L109】
+### Orchestrator (`apps/api/src/orchestrator.ts`, `apps/api/src/core/*`)
+* Coordinates finance-automation jobs, commands, safety assessments, and connector orchestration.
+* Uses the layered stack (`core/controllers`, `core/services`, `core/repositories`) with Supabase persistence (`core/infrastructure/supabase`) and OpenAI safety assessments (`core/infrastructure/openai`).
+* Cross-cutting concerns: structured logging (Pino instances injected through Fastify), safety/compliance metrics (`observability/metrics.ts`), request-scoped tracing (observability plugin), and rate limiting when exposed via HTTP routes (`http/routes/orchestrator.ts`).
 
-### Compliance & audit
-- Compliance acknowledgements and device/session guardrails implemented in `apps/api/src/compliance.ts` and `apps/api/src/device-sessions.ts` to enforce policy before orchestrator actions execute.【F:apps/api/src/compliance.ts†L1-L160】【F:apps/api/src/device-sessions.ts†L1-L160】
-- Audit trail writer lives at `apps/api/src/audit.ts`, invoked from orchestrator and SCIM flows for traceability.【F:apps/api/src/audit.ts†L1-L120】
+### Connectors (`apps/api/src/connectors/*`)
+* Normalises access to upstream ERP, regulatory, analytics, and tax systems.
+* Consumed by orchestrator jobs and finance tooling to satisfy dependency checks.
+* Cross-cutting concerns: authentication secrets sourced via configuration (`config.ts`), request logging/instrumentation handled by services that call these clients, and error propagation into orchestrator telemetry.
 
-### Finance
-- Finance manifest and workers are defined in `apps/api/src/finance-manifest.ts` and `apps/api/src/finance-workers.ts`, describing domain-specific connectors and async job handlers consumed by the orchestrator service when validating payloads/results.【F:apps/api/src/finance-manifest.ts†L1-L200】【F:apps/api/src/finance-workers.ts†L1-L160】
+### Compliance (`apps/api/src/compliance.ts`, `apps/api/src/audit.ts`)
+* Evaluates IRAC payloads for FRIA/CEPEJ obligations and records audit trails.
+* Relies on observability spans (`observability/spans.ts`) and Supabase RPC helpers (`supabase-client.ts`) for storage.
+* Cross-cutting concerns: logging, access control guards (`http/authorization.ts`), and metrics counters emitted for acknowledgement events.
 
-## Cross-cutting concerns
+### Finance (`apps/api/src/finance-*.ts`, `apps/api/src/launch.ts`)
+* Declares capability manifests, financial worker orchestration, and launch flows.
+* Uses orchestrator repositories for persistent queues, and shares access-control/rate-limiting with API routes.
+* Cross-cutting concerns: logging, safety-guard integration, rate limiting for telemetry endpoints, and OpenAI usage mediated through services (`openai.ts`).
 
-### Logging, tracing, metrics
-- Observability middleware (`apps/api/src/core/observability/observability-plugin.ts`) injects trace IDs, structures request logs, and increments counters per route; `withRequestSpan` enables ad hoc spans for deeper diagnostics.【F:apps/api/src/core/observability/observability-plugin.ts†L1-L63】【F:apps/api/src/observability/spans.ts†L1-L40】
+### Workspace (`apps/api/src/domain/workspace/*`)
+* Exposes workspace dashboards for finance runs and session state.
+* Now follows the layered architecture (routes → controller → service → repository) with Supabase isolated behind an interface.
+* Cross-cutting concerns: Fastify observability middleware (trace IDs, metrics), schema validation, and authorization guards when combined with other routes.
 
-### Authentication & rate limiting
-- Auth guard (`apps/api/src/http/authorization.ts`) combines access-control policy, device session recording, and compliance checks before controller logic executes; rate-limiting handled by `apps/api/src/rate-limit.ts`.【F:apps/api/src/http/authorization.ts†L1-L40】【F:apps/api/src/rate-limit.ts†L1-L120】
+## Cross-Cutting Concerns
 
-### Schema validation & types
-- Central Zod registry (`apps/api/src/core/schema/registry.ts`) registers HTTP schemas and generates static types to `apps/api/src/core/schema/registry-types.d.ts`, enabling DTO reuse across layers.【F:apps/api/src/core/schema/registry.ts†L1-L73】【F:apps/api/src/core/schema/registry-types.d.ts†L1-L80】
+| Concern             | Location(s) | Notes |
+| ------------------- | ----------- | ----- |
+| Structured logging  | `src/app.ts` (Fastify logger), `core/observability/observability-plugin.ts` | Provides trace-aware child loggers per request. |
+| Tracing IDs         | `core/observability/observability-plugin.ts` | Generates/propagates `x-trace-id`, records duration metrics. |
+| Metrics             | `observability/metrics.ts`, incremented in observability plugin and compliance spans | Facilitates Prometheus-style counters. |
+| Rate limiting       | `rate-limit.ts`, used in `server.ts` routes | In-memory limiter with per-endpoint policies. |
+| Authentication & Guards | `http/authorization.ts`, `access-control.ts` | Centralised access checks and guard rails for routes and workers. |
+| Schema validation   | `core/schema/registry.ts`, generated types in `registry-types.d.ts` | Ensures all HTTP payloads and services reuse defined Zod schemas. |
+| Graceful shutdown   | `core/lifecycle/graceful-shutdown.ts` | Hooks Fastify close on `SIGINT`/`SIGTERM`, now extended to dispose container resources. |
 
-### Graceful lifecycle
-- Signal-aware shutdown in `apps/api/src/core/lifecycle/graceful-shutdown.ts` closes Fastify cleanly, and `apps/api/src/app.ts` wires dependencies via the DI container to ensure Supabase/OpenAI integrations remain isolated to repositories/gateways.【F:apps/api/src/core/lifecycle/graceful-shutdown.ts†L1-L37】【F:apps/api/src/app.ts†L1-L65】
+Cross-module flows (e.g. orchestrator finance jobs) compose these concerns by acquiring controllers from the dependency-inverted container (`core/container.ts`), ensuring that external integrations (Supabase, OpenAI) remain swappable for testing and future platform shifts.

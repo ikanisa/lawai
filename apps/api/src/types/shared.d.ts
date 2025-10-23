@@ -21,4 +21,26 @@ declare module '@avocat-ai/shared' {
   export type IRACPayload = any;
   export type IRACSchema = any;
   export const OFFICIAL_DOMAIN_ALLOWLIST: string[];
+  export const DEFAULT_WEB_SEARCH_ALLOWLIST_MAX: number;
+  export interface BuildWebSearchAllowlistOptions {
+    fallback: readonly string[];
+    override?: readonly unknown[] | null | undefined;
+    maxDomains?: number;
+    onTruncate?: (details: {
+      truncatedCount: number;
+      totalDomains: number;
+      maxDomains: number;
+      source: 'override' | 'fallback';
+    }) => void;
+  }
+  export interface BuildWebSearchAllowlistResult {
+    allowlist: string[];
+    truncated: boolean;
+    truncatedCount: number;
+    totalDomains: number;
+    source: 'override' | 'fallback';
+  }
+  export function buildWebSearchAllowlist(
+    options: BuildWebSearchAllowlistOptions,
+  ): BuildWebSearchAllowlistResult;
 }

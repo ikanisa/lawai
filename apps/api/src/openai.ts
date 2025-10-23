@@ -12,8 +12,41 @@ const defaultConfig: OpenAIClientConfig = {
   requestTags: process.env.OPENAI_REQUEST_TAGS_API ?? process.env.OPENAI_REQUEST_TAGS ?? 'service=api,component=backend',
 };
 
+type OpenAIClient = ReturnType<typeof getOpenAIClient>;
+
+type VectorStoreClient = {
+  query: (input: Record<string, unknown>) => Promise<any>;
+};
+
+let openAIClientFactory: (() => OpenAIClient) | null = null;
+let vectorStoreClientFactory: (() => VectorStoreClient) | null = null;
+
+export function setOpenAIClientFactory(factory: (() => OpenAIClient) | null): void {
+  openAIClientFactory = factory;
+}
+
+export function setVectorStoreClientFactory(factory: (() => VectorStoreClient) | null): void {
+  vectorStoreClientFactory = factory;
+}
+
 export function getOpenAI() {
+  if (openAIClientFactory) {
+    return openAIClientFactory();
+  }
   return getOpenAIClient(defaultConfig);
+}
+
+export function getVectorStoreClient(): VectorStoreClient {
+  if (vectorStoreClientFactory) {
+    return vectorStoreClientFactory();
+  }
+
+  const client = getOpenAI() as any;
+  const vectorStore = client?.beta?.vectorStores;
+  if (!vectorStore) {
+    throw new Error('vector_store_client_unavailable');
+  }
+  return vectorStore as VectorStoreClient;
 }
 
 type Logger = {
@@ -58,4 +91,9 @@ export async function logOpenAIDebug(
   } else {
     console.error(`[openai-debug] ${operation}`, payload);
   }
+}
+
+export function resetOpenAIClientFactories(): void {
+  openAIClientFactory = null;
+  vectorStoreClientFactory = null;
 }
