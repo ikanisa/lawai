@@ -8,25 +8,22 @@ import { Switch } from '../@/ui/switch';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
-import { adminQueries } from '../api/client';
+import { adminQueries, upsertAdminPolicy } from '../api/client';
+import { useAdminSession } from '../session-context';
 
 export function AdminPoliciesPage() {
   const { activeOrg, searchQuery } = useAdminPanelContext();
+  const { session, loading: sessionLoading } = useAdminSession();
   const queryClient = useQueryClient();
-  const policyQuery = useQuery(adminQueries.policies(activeOrg.id));
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const policyQuery = useQuery({
+    ...adminQueries.policies(activeOrg.id),
+    enabled: isSessionReady,
+  });
 
   const upsertMutation = useMutation({
-    mutationFn: async (payload: { key: string; value: unknown }) => {
-      const response = await fetch('/api/admin/policies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: activeOrg.id, action: 'upsert', payload }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to update policy');
-      }
-      return response.json();
-    },
+    mutationFn: async (payload: { key: string; value: unknown }) =>
+      upsertAdminPolicy(activeOrg.id, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminQueries.policies(activeOrg.id).queryKey });
     },
@@ -76,6 +73,7 @@ export function AdminPoliciesPage() {
                   upsertMutation.mutate({ key: flag.key, value: next ? 'on' : 'off' })
                 }
                 aria-label={`Toggle ${flag.key}`}
+                disabled={!isSessionReady || upsertMutation.isPending}
               />
             </label>
           ))}

@@ -6,25 +6,22 @@ import { Button } from '../@/ui/button';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
-import { adminQueries, triggerAdminJob } from '../api/client';
+import { adminQueries, controlIngestion, triggerAdminJob } from '../api/client';
+import { useAdminSession } from '../session-context';
 
 export function AdminIngestionPage() {
   const { activeOrg, searchQuery } = useAdminPanelContext();
+  const { session, loading: sessionLoading } = useAdminSession();
   const queryClient = useQueryClient();
-  const ingestionQuery = useQuery(adminQueries.ingestion(activeOrg.id));
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const ingestionQuery = useQuery({
+    ...adminQueries.ingestion(activeOrg.id),
+    enabled: isSessionReady,
+  });
 
   const controlMutation = useMutation({
-    mutationFn: async (payload: { action: 'start' | 'stop' | 'backfill' }) => {
-      const response = await fetch('/api/admin/ingestion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: activeOrg.id, action: payload.action }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to control ingestion');
-      }
-      return response.json();
-    },
+    mutationFn: async (payload: { action: 'start' | 'stop' | 'backfill' }) =>
+      controlIngestion(activeOrg.id, payload.action),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminQueries.ingestion(activeOrg.id).queryKey });
       void queryClient.invalidateQueries({ queryKey: adminQueries.jobs(activeOrg.id).queryKey });
@@ -40,13 +37,31 @@ export function AdminIngestionPage() {
         description="Control backfills, OCR pipelines, and ingestion error remediation jobs."
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => controlMutation.mutate({ action: 'backfill' })}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => controlMutation.mutate({ action: 'backfill' })}
+              disabled={!isSessionReady || controlMutation.isPending}
+            >
               <RotateCcw className="h-4 w-4" /> Start backfill
             </Button>
-            <Button variant="secondary" size="sm" className="gap-2" onClick={() => controlMutation.mutate({ action: 'start' })}>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-2"
+              onClick={() => controlMutation.mutate({ action: 'start' })}
+              disabled={!isSessionReady || controlMutation.isPending}
+            >
               <Play className="h-4 w-4" /> Start pipeline
             </Button>
-            <Button variant="destructive" size="sm" className="gap-2" onClick={() => controlMutation.mutate({ action: 'stop' })}>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-2"
+              onClick={() => controlMutation.mutate({ action: 'stop' })}
+              disabled={!isSessionReady || controlMutation.isPending}
+            >
               <Pause className="h-4 w-4" /> Stop
             </Button>
           </div>
@@ -80,7 +95,13 @@ export function AdminIngestionPage() {
           Long-running OCR and vectorization stages emit progress to the job queue. The UI polls /api/admin/jobs for updates with
           SSE fallback planned.
         </p>
-        <Button variant="outline" size="sm" className="mt-4 gap-2" onClick={() => void triggerAdminJob('ingestion', activeOrg.id)}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4 gap-2"
+          onClick={() => void triggerAdminJob('ingestion', activeOrg.id)}
+          disabled={!isSessionReady}
+        >
           <Play className="h-4 w-4" /> Trigger ingestion job
         </Button>
       </section>

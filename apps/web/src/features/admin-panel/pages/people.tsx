@@ -8,8 +8,9 @@ import { Switch } from '../@/ui/switch';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
-import { adminQueries } from '../api/client';
-import { Sheet, SheetSection } from '../@/ui/sheet';
+import { adminQueries, inviteAdminUser, updateAdminUser } from '../api/client';
+import { useAdminSession } from '../session-context';
+import { Sheet, SheetSection } from '../../../components/ui/sheet';
 
 interface InvitationPayload {
   email: string;
@@ -18,8 +19,13 @@ interface InvitationPayload {
 
 export function AdminPeoplePage() {
   const { activeOrg, searchQuery } = useAdminPanelContext();
+  const { session, loading: sessionLoading } = useAdminSession();
   const queryClient = useQueryClient();
-  const peopleQuery = useQuery(adminQueries.people(activeOrg.id));
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const peopleQuery = useQuery({
+    ...adminQueries.people(activeOrg.id),
+    enabled: isSessionReady,
+  });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const selectedUser = useMemo(
     () => peopleQuery.data?.users.find((user) => user.id === selectedUserId) ?? null,
@@ -29,34 +35,15 @@ export function AdminPeoplePage() {
   const [draftCapabilities, setDraftCapabilities] = useState<string[]>([]);
 
   const inviteMutation = useMutation({
-    mutationFn: async (payload: InvitationPayload) => {
-      const response = await fetch('/api/admin/people', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: activeOrg.id, action: 'invite', payload }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to create invitation');
-      }
-      return response.json();
-    },
+    mutationFn: async (payload: InvitationPayload) => inviteAdminUser(activeOrg.id, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminQueries.people(activeOrg.id).queryKey });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { id: string; role: string; capabilities: string[] }) => {
-      const response = await fetch('/api/admin/people', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: activeOrg.id, action: 'update', payload }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to update user');
-      }
-      return response.json();
-    },
+    mutationFn: async (payload: { id: string; role: string; capabilities: string[] }) =>
+      updateAdminUser(activeOrg.id, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminQueries.people(activeOrg.id).queryKey });
       setSelectedUserId(null);
@@ -95,10 +82,22 @@ export function AdminPeoplePage() {
         description="Manage users, roles, invitations, and active sessions across your organization."
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => invite('member')}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => invite('member')}
+              disabled={!isSessionReady || inviteMutation.isPending}
+            >
               <Plus className="h-4 w-4" /> Invite user
             </Button>
-            <Button variant="secondary" size="sm" className="gap-2" onClick={() => invite('auditor')}>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-2"
+              onClick={() => invite('auditor')}
+              disabled={!isSessionReady || inviteMutation.isPending}
+            >
               <Shield className="h-4 w-4" /> Create auditor
             </Button>
           </div>
@@ -125,7 +124,7 @@ export function AdminPeoplePage() {
             <h2 className="text-sm font-semibold text-slate-200">Session controls</h2>
             <p className="text-xs text-slate-500">Toggle session hardening and device trust requirements per org.</p>
           </div>
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button variant="outline" size="sm" className="gap-2" disabled={!isSessionReady}>
             <RefreshCcw className="h-4 w-4" /> Refresh sessions
           </Button>
         </header>
