@@ -2,62 +2,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const encoder = new TextEncoder();
 
-const openAIResponsesCreateMock = vi.fn();
+const openAIResponsesParseMock = vi.fn();
 const openAIEmbeddingsCreateMock = vi.fn();
-const getOpenAIClientMock = vi.fn(() => ({
-  responses: { create: openAIResponsesCreateMock },
-  embeddings: { create: openAIEmbeddingsCreateMock },
+const OpenAIConstructorMock = vi
+  .fn()
+  .mockImplementation(() => ({
+    responses: { parse: openAIResponsesParseMock },
+    embeddings: { create: openAIEmbeddingsCreateMock },
+  }));
+
+vi.mock('openai', () => ({
+  default: OpenAIConstructorMock,
 }));
 
-const LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA = {
-  name: 'LegalDocumentSummary',
-  schema: {
-    type: 'object',
-    additionalProperties: false,
-    required: ['summary', 'highlights'],
-    properties: {
-      summary: { type: 'string' },
-      highlights: {
-        type: 'array',
-        minItems: 1,
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['heading', 'detail'],
-          properties: {
-            heading: { type: 'string' },
-            detail: { type: 'string' },
-          },
-        },
-      },
-    },
-  },
-  strict: true,
-} as const;
-
-function parseLegalDocumentSummaryPayload(payload: string) {
-  const parsed = JSON.parse(payload);
-  return {
-    summary: String(parsed.summary ?? ''),
-    highlights: Array.isArray(parsed.highlights)
-      ? parsed.highlights.map((item) => ({
-          heading: String(item.heading ?? ''),
-          detail: String(item.detail ?? ''),
-        }))
-      : [],
-  };
-}
-
-vi.mock('@avocat-ai/shared', () => ({
-  SUMMARISATION_CLIENT_TAGS: { cacheKeySuffix: 'summaries', requestTags: 'test-tags' },
-  LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA,
-  parseLegalDocumentSummaryPayload,
-  getOpenAIClient: getOpenAIClientMock,
-}));
-
-describe('summariseDocumentFromPayload (legacy)', () => {
+describe('summariseDocumentFromPayload', () => {
   beforeEach(() => {
-    vi.resetModules();
+    openAIResponsesParseMock.mockReset();
+    openAIEmbeddingsCreateMock.mockReset();
+    OpenAIConstructorMock.mockClear();
     process.env.OPENAI_API_KEY = 'test-key';
     process.env.AGENT_MODEL = 'gpt-test';
     process.env.EMBEDDING_MODEL = 'text-embedding-test';
@@ -67,15 +29,12 @@ describe('summariseDocumentFromPayload (legacy)', () => {
     process.env.AGENT_STUB_MODE = 'never';
     process.env.SUMMARISER_MODEL = 'gpt-summary';
     process.env.MAX_SUMMARY_CHARS = '8000';
-    openAIResponsesCreateMock.mockClear();
-    openAIEmbeddingsCreateMock.mockClear();
-    getOpenAIClientMock.mockClear();
-    openAIResponsesCreateMock.mockResolvedValue({ output: [], output_text: '' });
+    openAIResponsesParseMock.mockResolvedValue({ output: [], output_parsed: null });
     openAIEmbeddingsCreateMock.mockResolvedValue({ data: [] });
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     delete process.env.SUMMARISER_MODEL;
     delete process.env.MAX_SUMMARY_CHARS;
   });
@@ -108,20 +67,41 @@ describe('summariseDocumentFromPayload (legacy)', () => {
     openAIResponsesCreateMock.mockResolvedValue({
       output: [
         {
+          type: 'message',
+          role: 'assistant',
           content: [
             {
-              text: structured,
+              type: 'output_text',
+              text: 'Résumé structuré',
+              annotations: [],
+              parsed: {
+                summary: 'Synthèse',
+                highlights: [
+                  { heading: 'Objet', detail: 'Dispositions applicables.' },
+                  { heading: 'Dates', detail: 'Entrée en vigueur immédiate.' },
+                ],
+              },
             },
           ],
         },
       ],
-      output_text: structured,
-    });
-    openAIEmbeddingsCreateMock.mockResolvedValue({
+      output_parsed: {
+        summary: 'Synthèse',
+        highlights: [
+          { heading: 'Objet', detail: 'Dispositions applicables.' },
+          { heading: 'Dates', detail: 'Entrée en vigueur immédiate.' },
+        ],
+      },
+    };
+
+    const embeddingsReply = {
       data: [
         { embedding: new Array(3072).fill(0.2) },
       ],
-    });
+    };
+
+    openAIResponsesParseMock.mockResolvedValue(responsesReply);
+    openAIEmbeddingsCreateMock.mockResolvedValue(embeddingsReply);
 
     const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
 
@@ -135,8 +115,7 @@ describe('summariseDocumentFromPayload (legacy)', () => {
       maxSummaryChars: 4000,
     });
 
-    expect(getOpenAIClientMock).toHaveBeenCalled();
-    expect(openAIResponsesCreateMock).toHaveBeenCalledTimes(1);
+    expect(openAIResponsesParseMock).toHaveBeenCalledTimes(1);
     expect(openAIEmbeddingsCreateMock).toHaveBeenCalledTimes(Math.ceil(result.chunks.length / 16));
     expect(result.status).toBe('ready');
     expect(result.summary).toBe('Synthèse');
@@ -186,8 +165,8 @@ describe('summariseDocumentFromPayload (legacy)', () => {
   });
 
   it('returns failed when the summary call errors', async () => {
-    const quotaError = new Error('quota exceeded');
-    openAIResponsesCreateMock.mockRejectedValue(quotaError);
+    const error = new Error('quota exceeded');
+    openAIResponsesParseMock.mockRejectedValue(error);
 
     const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
 
@@ -201,5 +180,48 @@ describe('summariseDocumentFromPayload (legacy)', () => {
     expect(result.status).toBe('failed');
     expect(result.error).toBe('quota exceeded');
     expect(result.embeddings).toHaveLength(0);
+  });
+
+  it('returns failed when the model refuses to summarise', async () => {
+    openAIResponsesParseMock.mockResolvedValue({
+      output: [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'refusal', refusal: 'Refus' }],
+        },
+      ],
+      output_parsed: null,
+    });
+
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
+
+    const result = await summariseDocumentFromPayload({
+      payload: encoder.encode('Article 1 — Long texte '.repeat(30)),
+      mimeType: 'text/plain',
+      metadata: { title: 'Code', jurisdiction: 'FR', publisher: 'Légifrance' },
+      openaiApiKey: 'test-key',
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('Refus');
+    expect(openAIEmbeddingsCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns failed when no parsed payload is returned', async () => {
+    openAIResponsesParseMock.mockResolvedValue({ output: [], output_parsed: null });
+
+    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
+
+    const result = await summariseDocumentFromPayload({
+      payload: encoder.encode('Article 1 — Long texte '.repeat(30)),
+      mimeType: 'text/plain',
+      metadata: { title: 'Code', jurisdiction: 'FR', publisher: 'Légifrance' },
+      openaiApiKey: 'test-key',
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('Synthèse JSON invalide');
+    expect(openAIEmbeddingsCreateMock).not.toHaveBeenCalled();
   });
 });

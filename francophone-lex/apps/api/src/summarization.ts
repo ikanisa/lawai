@@ -1,9 +1,7 @@
-import {
-  LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA,
-  SUMMARISATION_CLIENT_TAGS,
-  getOpenAIClient,
-  parseLegalDocumentSummaryPayload,
-} from '@avocat-ai/shared';
+import OpenAI from 'openai';
+import { legalDocumentSummaryTextFormat } from '@avocat-ai/shared';
+import type { LegalDocumentSummary } from '@avocat-ai/shared';
+import type { ParsedResponse } from 'openai/resources/responses/responses';
 import { env } from './config.js';
 
 const textDecoder = new TextDecoder('utf-8', { fatal: false });
@@ -11,6 +9,21 @@ const textDecoder = new TextDecoder('utf-8', { fatal: false });
 const DEFAULT_SUMMARISER_MODEL = 'gpt-4o-mini';
 const DEFAULT_MAX_SUMMARY_CHARS = 12000;
 const MAX_CHUNKS = 40;
+
+const SUMMARISATION_CLIENT_TAGS = {
+  requestTags:
+    process.env.OPENAI_REQUEST_TAGS_SUMMARIES ??
+    process.env.OPENAI_REQUEST_TAGS ??
+    'service=api,component=summarisation',
+} as const;
+
+function createOpenAIClient(apiKey: string): OpenAI {
+  const headers: Record<string, string> = { 'OpenAI-Beta': 'assistants=v2' };
+  if (SUMMARISATION_CLIENT_TAGS.requestTags) {
+    headers['OpenAI-Request-Tags'] = SUMMARISATION_CLIENT_TAGS.requestTags;
+  }
+  return new OpenAI({ apiKey, defaultHeaders: headers });
+}
 
 export type TextChunk = { seq: number; content: string; marker: string | null };
 
@@ -146,6 +159,20 @@ export function chunkText(content: string, chunkSize = 1200, overlap = 200): Tex
   return chunks;
 }
 
+function findRefusalMessage(response: ParsedResponse<unknown>): string | null {
+  for (const item of response.output ?? []) {
+    if (item.type !== 'message') {
+      continue;
+    }
+    for (const content of item.content ?? []) {
+      if (content.type === 'refusal' && typeof content.refusal === 'string') {
+        return content.refusal;
+      }
+    }
+  }
+  return null;
+}
+
 async function generateStructuredSummary(
   text: string,
   metadata: { title: string; jurisdiction: string; publisher: string | null },
@@ -154,11 +181,11 @@ async function generateStructuredSummary(
   maxSummaryChars: number,
 ): Promise<{ summary: string; highlights: Array<{ heading: string; detail: string }> }> {
   const truncated = text.slice(0, maxSummaryChars);
-  const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
+  const openai = createOpenAIClient(openaiApiKey);
 
-  let response;
+  let response: ParsedResponse<LegalDocumentSummary>;
   try {
-    response = await openai.responses.create({
+    response = await openai.responses.parse({
       model,
       input: [
         {
@@ -181,7 +208,7 @@ async function generateStructuredSummary(
           ],
         },
       ],
-      response_format: { type: 'json_schema', json_schema: LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA },
+      text: { format: legalDocumentSummaryTextFormat },
       max_output_tokens: 800,
     });
   } catch (error) {
@@ -189,13 +216,25 @@ async function generateStructuredSummary(
     throw new Error(message);
   }
 
-  const outputText = extractStructuredOutputText(response);
-  if (!outputText) {
-    throw new Error('Réponse vide du modèle de synthèse');
+  const parsed = response.output_parsed;
+  if (!parsed) {
+    const refusal = findRefusalMessage(response);
+    if (refusal) {
+      throw new Error(refusal);
+    }
+    throw new Error('Synthèse JSON invalide');
   }
 
-  const parsed = parseLegalDocumentSummaryPayload(outputText);
-  return { summary: parsed.summary, highlights: parsed.highlights };
+  const summary = parsed.summary.trim();
+  const highlights = parsed.highlights
+    .map((entry) => ({ heading: entry.heading.trim(), detail: entry.detail.trim() }))
+    .filter((entry) => entry.heading.length > 0 && entry.detail.length > 0);
+
+  if (!summary) {
+    throw new Error('Synthèse JSON invalide');
+  }
+
+  return { summary, highlights };
 }
 
 async function generateEmbeddings(
@@ -208,19 +247,19 @@ async function generateEmbeddings(
   const batchSize = 16;
   const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
 
+  const openai = createOpenAIClient(openaiApiKey);
+
   for (let index = 0; index < texts.length; index += batchSize) {
     const slice = texts.slice(index, index + batchSize);
-    try {
-      const response = await openai.embeddings.create({
-        model,
-        input: slice,
-        ...(dimensions ? { dimensions } : {}),
-      });
+    const response = await openai.embeddings.create({
+      model,
+      input: slice,
+      ...(dimensions ? { dimensions } : {}),
+    });
 
-      for (const entry of response.data ?? []) {
-        if (Array.isArray(entry?.embedding)) {
-          embeddings.push(entry.embedding as number[]);
-        }
+    for (const entry of response.data ?? []) {
+      if (Array.isArray(entry.embedding)) {
+        embeddings.push(entry.embedding as number[]);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Échec de génération des embeddings';
