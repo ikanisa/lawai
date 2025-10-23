@@ -2019,6 +2019,23 @@ export declare const VoiceToolIntentSchema: z.ZodObject<{
     tool: string;
 }>;
 export type VoiceToolIntent = z.infer<typeof VoiceToolIntentSchema>;
+export declare const VoiceSessionIntentSchema: z.ZodObject<{
+    id: z.ZodString;
+    name: z.ZodString;
+    tool: z.ZodString;
+    status: z.ZodOptional<z.ZodEnum<["scheduled", "running", "completed", "requires_hitl"]>>;
+}, "strict", z.ZodTypeAny, {
+    status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+    id: string;
+    name: string;
+    tool: string;
+}, {
+    status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+    id: string;
+    name: string;
+    tool: string;
+}>;
+export type VoiceSessionIntent = z.infer<typeof VoiceSessionIntentSchema>;
 export declare const VoiceCitationSchema: z.ZodObject<{
     id: z.ZodString;
     label: z.ZodString;
@@ -2062,11 +2079,14 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
         id: z.ZodString;
         name: z.ZodString;
         tool: z.ZodString;
-    }, "strip", z.ZodTypeAny, {
+        status: z.ZodOptional<z.ZodEnum<["scheduled", "running", "completed", "requires_hitl"]>>;
+    }, "strict", z.ZodTypeAny, {
+        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
         id: string;
         name: string;
         tool: string;
     }, {
+        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
         id: string;
         name: string;
         tool: string;
@@ -2084,6 +2104,7 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
     durationMs: number;
     transcript: string;
     intents: {
+        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
         id: string;
         name: string;
         tool: string;
@@ -2101,6 +2122,7 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
     durationMs: number;
     transcript: string;
     intents: {
+        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
         id: string;
         name: string;
         tool: string;

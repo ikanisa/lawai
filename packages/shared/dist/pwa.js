@@ -341,6 +341,14 @@ export const VoiceToolIntentSchema = z
     detail: z.string(),
 })
     .strict();
+export const VoiceSessionIntentSchema = z
+    .object({
+    id: z.string(),
+    name: z.string(),
+    tool: z.string(),
+    status: VoiceToolIntentStatusSchema.optional(),
+})
+    .strict();
 export const VoiceCitationSchema = z
     .object({
     id: z.string(),
@@ -357,11 +365,7 @@ export const VoiceSessionSummarySchema = z
     transcript: z.string(),
     summary: z.string(),
     citations: z.array(VoiceCitationSchema),
-    intents: z.array(z.object({
-        id: z.string(),
-        name: z.string(),
-        tool: z.string(),
-    })),
+    intents: z.array(VoiceSessionIntentSchema),
 })
     .strict();
 export const VoiceConsoleContextSchema = z

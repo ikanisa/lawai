@@ -1,6 +1,5 @@
-import Fastify from 'fastify';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
 import { registerCorpusRoutes } from './routes/corpus/index.js';
@@ -17,13 +16,12 @@ import { supabase as serviceClient } from './supabase-client.js';
 import { createAppContainer, type AppContainerOverrides } from './core/container.js';
 import { observabilityPlugin } from './core/observability/observability-plugin.js';
 
-export interface CreateAppOptions {
-  supabase?: SupabaseClient;
-  overrides?: AppContainerOverrides;
-  registerWorkspaceRoutes?: boolean;
+interface AppBootstrap {
+  app: FastifyInstance;
+  context: AppContext;
 }
 
-export async function createApp(options: CreateAppOptions = {}) {
+export async function createApp(): Promise<AppBootstrap> {
   const app = Fastify({
     ajv: {
       customOptions: {
@@ -74,7 +72,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     container,
   };
 
-  await app.register(async (instance) => {
+  await app.register(async (instance: FastifyInstance) => {
     await registerAgentsRoutes(instance, context);
     await registerResearchRoutes(instance, context);
     await registerCitationsRoutes(instance, context);
