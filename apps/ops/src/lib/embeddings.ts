@@ -14,6 +14,7 @@ const OPS_EMBED_CLIENT_OPTIONS = {
 export interface EmbeddingEnv {
   OPENAI_API_KEY: string;
   EMBEDDING_MODEL: string;
+  EMBEDDING_DIMENSION?: number;
 }
 
 export interface Chunk {
@@ -78,6 +79,7 @@ export async function embedTexts(inputs: string[], env: EmbeddingEnv): Promise<n
     response = await openai.embeddings.create({
       model: env.EMBEDDING_MODEL,
       input: inputs,
+      ...(env.EMBEDDING_DIMENSION ? { dimensions: env.EMBEDDING_DIMENSION } : {}),
     });
   } catch (error) {
     if (isOpenAIDebugEnabled()) {

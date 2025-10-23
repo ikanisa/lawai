@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Download, BellRing, History } from 'lucide-react';
-import { Button } from './ui/button';
-import type { Locale, Messages } from '../lib/i18n';
-import { usePwaInstall } from '../hooks/use-pwa-install';
-import { useDigest } from '../hooks/use-digest';
-import { useOutbox } from '../hooks/use-outbox';
+import { Button } from '@/ui/button';
+import type { Locale, Messages } from '@/lib/i18n';
+import { usePwaInstall } from '@/hooks/use-pwa-install';
+import { useDigest } from '@/hooks/use-digest';
+import { useOutbox } from '@/hooks/use-outbox';
 import { toast } from 'sonner';
 import { sendTelemetryEvent } from '../lib/api';
+import { usePwaPreference } from '../hooks/use-pwa-preference';
+import { clientEnv } from '../env.client';
 
 interface PwaInstallPromptProps {
   messages?: Messages['app']['install'];
@@ -33,7 +35,13 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
   const { shouldPrompt, isAvailable, promptInstall, dismissPrompt } = usePwaInstall();
   const { enabled: digestEnabled, loading: digestLoading, enable: enableDigest } = useDigest();
   const { pendingCount, hasItems, stalenessMs } = useOutbox();
+  const { enabled: pwaOptIn, ready: pwaPreferenceReady } = usePwaPreference();
   const [notesOpen, setNotesOpen] = useState(false);
+  const optInMessages = messages?.optIn;
+
+  if (!clientEnv.NEXT_PUBLIC_ENABLE_PWA) {
+    return null;
+  }
 
   const releaseNotes = useMemo<ReleaseNotesCopy | null>(() => {
     if (!messages?.releaseNotes) return null;
@@ -61,6 +69,16 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
       releaseNotes: releaseNotes?.items?.length ?? 0,
     });
   }, [shouldPrompt, pendingCount, digestEnabled, releaseNotes?.items?.length]);
+
+  const outboxMessage = useMemo(() => {
+    if (!releaseNotes?.outboxLabel) {
+      return null;
+    }
+    if (!hasItems) {
+      return `${releaseNotes.outboxLabel}: ${releaseNotes.outboxEmpty ?? '0'}`;
+    }
+    return `${releaseNotes.outboxLabel}: ${pendingCount} · ${formatOutboxAge(stalenessMs, locale)}`;
+  }, [releaseNotes?.outboxLabel, releaseNotes?.outboxEmpty, hasItems, pendingCount, stalenessMs, locale]);
 
   if (!messages || !shouldPrompt) {
     return null;
@@ -105,16 +123,6 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
       console.warn('digest_opt_in_failed', error);
     }
   };
-
-  const outboxMessage = useMemo(() => {
-    if (!releaseNotes?.outboxLabel) {
-      return null;
-    }
-    if (!hasItems) {
-      return `${releaseNotes.outboxLabel}: ${releaseNotes.outboxEmpty ?? '0'}`;
-    }
-    return `${releaseNotes.outboxLabel}: ${pendingCount} · ${formatOutboxAge(stalenessMs, locale)}`;
-  }, [releaseNotes?.outboxLabel, releaseNotes?.outboxEmpty, hasItems, pendingCount, stalenessMs, locale]);
 
   return (
     <div className="fixed bottom-28 right-6 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-200">
@@ -175,7 +183,7 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
                     size="xs"
                     variant="secondary"
                     onClick={handleDigestOptIn}
-                    disabled={digestLoading || digestEnabled}
+                    disabled={digestLoading || digestEnabled || !pwaOptIn || !pwaPreferenceReady}
                   >
                     {digestEnabled
                       ? releaseNotes.digestEnabled ?? messages.success
@@ -183,6 +191,9 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
                   </Button>
                   {digestEnabled ? (
                     <span className="text-[11px] text-teal-200">✓</span>
+                  ) : null}
+                  {!pwaOptIn && pwaPreferenceReady && optInMessages?.description ? (
+                    <span className="basis-full text-[11px] text-slate-400">{optInMessages.description}</span>
                   ) : null}
                 </div>
                 {outboxMessage ? (
