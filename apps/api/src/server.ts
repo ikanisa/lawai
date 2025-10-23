@@ -1,7 +1,8 @@
 import { createApp } from './app.js';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
-import type { IRACPayload } from '@avocat-ai/shared';
+import { WebSearchModeSchema } from '@avocat-ai/shared';
+import type { IRACPayload, WebSearchMode } from '@avocat-ai/shared';
 import { z } from 'zod';
 import { env } from './config.js';
 import { IRACPayloadSchema } from './schemas/irac.js';
@@ -1054,7 +1055,14 @@ app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/di
 app.get('/healthz', async () => ({ status: 'ok' }));
 
 app.post<{
-  Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
+  Body: {
+    question: string;
+    context?: string;
+    orgId?: string;
+    userId?: string;
+    confidentialMode?: boolean;
+    webSearchMode?: WebSearchMode;
+  };
 }>('/runs', async (request, reply) => {
   const bodySchema = z.object({
     question: z.string().min(1),
@@ -1062,17 +1070,21 @@ app.post<{
     orgId: z.string().uuid(),
     userId: z.string().uuid(),
     confidentialMode: z.coerce.boolean().optional(),
+    webSearchMode: WebSearchModeSchema.optional(),
   });
   const parsed = bodySchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
   }
-  const { question, context, orgId, userId, confidentialMode } = parsed.data;
+  const { question, context, orgId, userId, confidentialMode, webSearchMode } = parsed.data;
 
   try {
     const access = await authorizeRequestWithGuards('runs:execute', orgId, userId, request);
     const effectiveConfidential = access.policies.confidentialMode || Boolean(confidentialMode);
-    const result = await runLegalAgent({ question, context, orgId, userId, confidentialMode: effectiveConfidential }, access);
+    const result = await runLegalAgent(
+      { question, context, orgId, userId, confidentialMode: effectiveConfidential, webSearchMode },
+      access,
+    );
     // Validate payload at the boundary with a conservative schema
     const safePayload = IRACPayloadSchema.safeParse(result.payload);
 
