@@ -1,3 +1,1 @@
-drop extension if exists "pg_net";
-
-
+DROP EXTENSION if EXISTS "pg_net";

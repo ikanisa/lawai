@@ -10,6 +10,10 @@ export const AgentRunStatusSchema = z.enum([
 
 export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
 
+export const WebSearchModeSchema = z.enum(['disabled', 'allowlist', 'broad']);
+
+export type WebSearchMode = z.infer<typeof WebSearchModeSchema>;
+
 export const AgentRunSchema = z
   .object({
     id: z.string(),
@@ -21,6 +25,7 @@ export const AgentRunSchema = z
     input: z.string(),
     jurisdiction: z.string().nullable().default(null),
     policyFlags: z.array(z.string()).default([]),
+    userLocation: z.string().nullable().default(null),
   })
   .strict();
 
@@ -47,6 +52,7 @@ export const AgentRunRequestSchema = z
     tools_enabled: z.array(z.string()).default([]),
     jurisdiction: z.string().optional().nullable(),
     policy_flags: z.array(z.string()).default([]),
+    user_location: z.string().optional(),
   })
   .strict();
 
@@ -59,6 +65,7 @@ export const AgentStreamRequestSchema = z
     run_id: z.string(),
     thread_id: z.string(),
     tools_enabled: z.array(z.string()).default([]),
+    user_location: z.string().optional(),
   })
   .strict();
 
@@ -512,6 +519,17 @@ export const VoiceToolIntentSchema = z
 
 export type VoiceToolIntent = z.infer<typeof VoiceToolIntentSchema>;
 
+export const VoiceSessionIntentSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    tool: z.string(),
+    status: VoiceToolIntentStatusSchema.optional(),
+  })
+  .strict();
+
+export type VoiceSessionIntent = z.infer<typeof VoiceSessionIntentSchema>;
+
 export const VoiceCitationSchema = z
   .object({
     id: z.string(),
@@ -531,13 +549,7 @@ export const VoiceSessionSummarySchema = z
     transcript: z.string(),
     summary: z.string(),
     citations: z.array(VoiceCitationSchema),
-    intents: z.array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        tool: z.string(),
-      }),
-    ),
+    intents: z.array(VoiceSessionIntentSchema),
   })
   .strict();
 

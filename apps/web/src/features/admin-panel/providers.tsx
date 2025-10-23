@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import type { Locale, Messages } from '../../lib/i18n';
+import type { Locale, Messages } from '@/lib/i18n';
 import { AdminPanelContextProvider } from './context';
 import { AdminPanelMessagesProvider } from './messages-context';
 

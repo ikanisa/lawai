@@ -1,7 +1,10 @@
 import {
+  LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA,
+  SUMMARISATION_CLIENT_TAGS,
   fetchOpenAIDebugDetails,
   getOpenAIClient,
   isOpenAIDebugEnabled,
+  parseLegalDocumentSummaryPayload,
 } from '@avocat-ai/shared';
 import { env } from './config.js';
 
@@ -10,12 +13,6 @@ const textDecoder = new TextDecoder('utf-8', { fatal: false });
 const DEFAULT_SUMMARISER_MODEL = 'gpt-4o-mini';
 const DEFAULT_MAX_SUMMARY_CHARS = 12000;
 const MAX_CHUNKS = 40;
-
-const SUMMARISATION_CLIENT_TAGS = {
-  cacheKeySuffix: 'summaries',
-  requestTags:
-    process.env.OPENAI_REQUEST_TAGS_SUMMARIES ?? process.env.OPENAI_REQUEST_TAGS ?? 'service=api,component=summarisation',
-} as const;
 
 export type TextChunk = { seq: number; content: string; marker: string | null };
 
@@ -46,6 +43,53 @@ async function logOpenAIDebugSummary(
   } else {
     console.error(`[openai-debug] ${operation}`, info);
   }
+}
+
+type OpenAIResponsesResult = {
+  output_text?: unknown;
+  output?: Array<{ content?: Array<{ text?: unknown }> }>;
+  output_json?: unknown;
+};
+
+function extractStructuredOutputText(result: OpenAIResponsesResult | null | undefined): string {
+  const direct = typeof result?.output_text === 'string' ? result.output_text.trim() : '';
+  if (direct) {
+    return direct;
+  }
+
+  if (Array.isArray(result?.output)) {
+    for (const item of result.output) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const content = Array.isArray(item.content) ? item.content : [];
+      for (const part of content) {
+        if (part && typeof part === 'object' && typeof part.text === 'string') {
+          const text = part.text.trim();
+          if (text) {
+            return text;
+          }
+        }
+      }
+    }
+  }
+
+  const jsonPayload = result?.output_json;
+  if (typeof jsonPayload === 'string' && jsonPayload.trim()) {
+    return jsonPayload.trim();
+  }
+  if (jsonPayload && typeof jsonPayload === 'object') {
+    try {
+      const stringified = JSON.stringify(jsonPayload);
+      if (stringified.trim()) {
+        return stringified.trim();
+      }
+    } catch {
+      // ignore serialization errors
+    }
+  }
+
+  return '';
 }
 
 function stripHtml(html: string): string {
@@ -142,35 +186,6 @@ async function generateStructuredSummary(
   logger?: SummarisationLogger,
 ): Promise<{ summary: string; highlights: Array<{ heading: string; detail: string }> }> {
   const truncated = text.slice(0, maxSummaryChars);
-  const schema = {
-    name: 'LegalDocumentSummary',
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['summary', 'highlights'],
-      properties: {
-        summary: {
-          type: 'string',
-          description:
-            "Résumé exécutif en français (3 à 5 phrases) mettant en avant l’objet, la portée et les dates clés du document.",
-        },
-        highlights: {
-          type: 'array',
-          minItems: 1,
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['heading', 'detail'],
-            properties: {
-              heading: { type: 'string' },
-              detail: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-    strict: true,
-  } as const;
 
   const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
 
@@ -199,7 +214,7 @@ async function generateStructuredSummary(
           ],
         },
       ],
-      response_format: { type: 'json_schema', json_schema: schema },
+      response_format: { type: 'json_schema', json_schema: LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA },
       max_output_tokens: 800,
     });
   } catch (error) {
@@ -208,32 +223,20 @@ async function generateStructuredSummary(
     throw new Error(message);
   }
 
-  const output = Array.isArray(json?.output) ? json.output : [];
-  const first = output[0]?.content?.[0]?.text ?? json?.output_text ?? '';
-  if (!first) {
+  const outputText = extractStructuredOutputText(json);
+  if (!outputText) {
     throw new Error('Réponse vide du modèle de synthèse');
   }
 
-  const parsed = JSON.parse(first) as { summary?: string; highlights?: Array<{ heading?: string; detail?: string }> };
-  const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
-  const highlights = Array.isArray(parsed.highlights)
-    ? parsed.highlights.filter(
-        (entry): entry is { heading: string; detail: string } =>
-          typeof entry?.heading === 'string' && typeof entry?.detail === 'string',
-      )
-    : [];
-
-  if (!summary) {
-    throw new Error('Synthèse JSON invalide');
-  }
-
-  return { summary, highlights };
+  const parsed = parseLegalDocumentSummaryPayload(outputText);
+  return { summary: parsed.summary, highlights: parsed.highlights };
 }
 
 async function generateEmbeddings(
   texts: string[],
   openaiApiKey: string,
   model: string,
+  dimensions: number | undefined,
   logger?: SummarisationLogger,
 ): Promise<number[][]> {
   const embeddings: number[][] = [];
@@ -244,7 +247,11 @@ async function generateEmbeddings(
     const slice = texts.slice(index, index + batchSize);
     let response;
     try {
-      response = await openai.embeddings.create({ model, input: slice });
+      response = await openai.embeddings.create({
+        model,
+        input: slice,
+        ...(dimensions ? { dimensions } : {}),
+      });
     } catch (error) {
       await logOpenAIDebugSummary(openai, 'document_embedding_batch', error, logger);
       const message = error instanceof Error ? error.message : 'Échec de génération des embeddings';
@@ -324,7 +331,13 @@ export async function summariseDocumentFromPayload(params: {
     const chunks = chunkText(plainText);
     const inputs = chunks.map((chunk) => chunk.content);
     const embeddings = inputs.length
-      ? await generateEmbeddings(inputs, openaiApiKey, embeddingModel ?? env.EMBEDDING_MODEL, logger)
+      ? await generateEmbeddings(
+          inputs,
+          openaiApiKey,
+          embeddingModel ?? env.EMBEDDING_MODEL,
+          env.EMBEDDING_DIMENSION,
+          logger,
+        )
       : [];
 
     return {
