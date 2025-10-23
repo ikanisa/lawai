@@ -2,6 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as shared from '@avocat-ai/shared';
 import { chunkText } from '../src/lib/embeddings.js';
 import { validateVectorStore } from '../src/lib/vector-store.js';
+import { getOpenAIClient } from '@avocat-ai/shared';
+
+vi.mock('@avocat-ai/shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@avocat-ai/shared')>();
+  return {
+    ...actual,
+    getOpenAIClient: vi.fn(),
+  };
+});
 
 describe('validateVectorStore', () => {
   afterEach(() => {
@@ -12,6 +21,8 @@ describe('validateVectorStore', () => {
     const result = await validateVectorStore('sk-test', '');
     expect(result).toBe(false);
   });
+
+  const mockedClient = vi.mocked(getOpenAIClient);
 
   it('returns true when OpenAI responds with 200', async () => {
     const retrieve = vi.fn().mockResolvedValue({ id: 'vs_123' });
@@ -30,6 +41,7 @@ describe('validateVectorStore', () => {
     } as unknown as { beta: { vectorStores: { retrieve: typeof retrieve } } });
 
     await expect(validateVectorStore('sk-test', 'vs_missing')).resolves.toBe(false);
+    expect(retrieve).toHaveBeenCalledWith('vs_missing');
   });
 
   it('throws on other OpenAI errors', async () => {
@@ -39,6 +51,7 @@ describe('validateVectorStore', () => {
     } as unknown as { beta: { vectorStores: { retrieve: typeof retrieve } } });
 
     await expect(validateVectorStore('sk-test', 'vs_fail')).rejects.toThrow('Upstream failure');
+    expect(retrieve).toHaveBeenCalledWith('vs_fail');
   });
 });
 

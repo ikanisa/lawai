@@ -1,5 +1,9 @@
 /// <reference lib="deno.unstable" />
 
+import {
+  formatTransparencyDigest,
+  type TransparencyReport,
+} from 'npm:@avocat-ai/shared/transparency';
 import { createEdgeClient, EdgeSupabaseClient, rowsAs } from '../lib/supabase.ts';
 import {
   formatTransparencyDigest,
@@ -121,7 +125,7 @@ Deno.serve(async (req) => {
       }
 
       const reports = rowsAs<TransparencyReportRow>(data);
-      const { markdown, summary } = buildDigest(reference, reports);
+      const { markdown, summary } = formatTransparencyDigest(reference, reports);
       const slug = `transparency-digest-${orgId}-${endIso}`;
       const docUrl = `https://docs.avocat-ai.example/transparency-digests/${orgId}/${endIso}`;
 

@@ -10,7 +10,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@avocat-ai/shared': resolveFromRoot('../../packages/shared/src/index.ts'),
+      '@avocat-ai/shared': resolveFromRoot('../../packages/shared/src'),
+      '@avocat-ai/shared/transparency': resolveFromRoot('../../packages/shared/src/transparency.ts'),
+      '@avocat-ai/shared/scheduling': resolveFromRoot('../../packages/shared/src/scheduling.ts'),
       '@avocat-ai/supabase': resolveFromRoot('../../packages/supabase/src/index.ts'),
     },
   },

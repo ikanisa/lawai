@@ -165,3 +165,7 @@ export async function validateResidencyGuards(supabase: SupabaseClient): Promise
 
   return issues;
 }
+
+export function createOpsAuditLogger(supabase: SupabaseClient) {
+  return new AuditLogger(supabase);
+}
