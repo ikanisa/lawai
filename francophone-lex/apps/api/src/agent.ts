@@ -15,9 +15,12 @@ import {
   AgentPlanStep,
   IRACPayload,
   IRACSchema,
+  buildWebSearchAllowlist,
   OFFICIAL_DOMAIN_ALLOWLIST,
+  type WebSearchAllowlistResult,
   getAgentDefinition,
   getAutonomousSuiteManifest,
+  getOpenAIClient,
 } from '@avocat-ai/shared';
 import type { AutonomousAgentCode, AutonomousJusticeSuiteManifest } from '@avocat-ai/shared';
 import { diffWordsWithSpace } from 'diff';
@@ -35,6 +38,18 @@ import {
 } from './access-control.js';
 import { evaluateCompliance } from './compliance.js';
 import type { ComplianceAssessment, DisclosureContext } from './compliance.js';
+
+const LEGACY_AGENT_CLIENT_TAGS = {
+  cacheKeySuffix: 'fr-lex-agent',
+  requestTags:
+    process.env.OPENAI_REQUEST_TAGS_FR_LEX_AGENT ??
+    process.env.OPENAI_REQUEST_TAGS ??
+    'service=fr-lex,component=agent',
+} as const;
+
+function getLegacyAgentOpenAI() {
+  return getOpenAIClient({ apiKey: env.OPENAI_API_KEY, ...LEGACY_AGENT_CLIENT_TAGS });
+}
 
 type ToolInvocationLog = {
   name: string;
@@ -271,6 +286,45 @@ const supabase = createServiceClient({
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
 });
 
+const WEB_SEARCH_ALLOWLIST = buildWebSearchAllowlist({
+  base: OFFICIAL_DOMAIN_ALLOWLIST,
+  override: loadAllowlistOverride(),
+  limit: 20,
+});
+
+function chunkDomains(domains: readonly string[], chunkSize = 5): string[][] {
+  if (chunkSize <= 0) {
+    return [domains.slice()];
+  }
+
+  const chunks: string[][] = [];
+  for (let index = 0; index < domains.length; index += chunkSize) {
+    chunks.push(domains.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+function logWebSearchAllowlist(agent: string, result: WebSearchAllowlistResult): void {
+  const payload = {
+    agent,
+    source: result.source,
+    total: result.total,
+    limit: result.limit,
+    truncated: result.truncated,
+    truncatedCount: result.truncatedDomains.length,
+    truncatedDomains: result.truncatedDomains,
+    chunks: chunkDomains(result.allowlist),
+  };
+
+  console.info('web_search_allowlist_config', payload);
+
+  if (result.truncated) {
+    console.warn('web_search_allowlist_truncated', payload);
+  }
+}
+
+logWebSearchAllowlist('francophone-suite', WEB_SEARCH_ALLOWLIST);
+
 const toStringArray = (input: unknown): string[] =>
   Array.isArray(input) ? input.filter((value): value is string => typeof value === 'string') : [];
 
@@ -410,7 +464,11 @@ async function buildComplianceSummary(
   } satisfies TrustPanelComplianceSummary;
 }
 
-const DOMAIN_ALLOWLIST = loadAllowlistOverride() ?? [...OFFICIAL_DOMAIN_ALLOWLIST];
+export const __TESTING__ = {
+  webSearchAllowlist: WEB_SEARCH_ALLOWLIST,
+};
+
+const DOMAIN_ALLOWLIST = WEB_SEARCH_ALLOWLIST.allowlist;
 
 const stubMode = env.AGENT_STUB_MODE;
 
@@ -2034,26 +2092,19 @@ function augmentQuestionWithSynonyms(question: string, map: Map<string, string[]
 }
 
 async function embedQuestionForHybrid(question: string): Promise<number[] | null> {
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  let response;
+  try {
+    response = await getLegacyAgentOpenAI().embeddings.create({
       model: env.EMBEDDING_MODEL,
       input: question,
       ...(env.EMBEDDING_DIMENSION ? { dimensions: env.EMBEDDING_DIMENSION } : {}),
-    }),
-  });
-
-  const json = await response.json();
-  if (!response.ok) {
-    const message = json?.error?.message ?? 'embedding_failed';
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'embedding_failed';
     throw new Error(message);
   }
 
-  const data = Array.isArray(json?.data) ? json.data : [];
+  const data = Array.isArray(response?.data) ? response.data : [];
   if (data.length === 0 || !Array.isArray(data[0]?.embedding)) {
     return null;
   }
@@ -2070,45 +2121,29 @@ async function queryFileSearchResults(
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: env.AGENT_MODEL,
-        input: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: question,
-              },
-            ],
-          },
-        ],
-        tools: [{ type: 'file_search' }],
-        tool_choice: { type: 'tool', function: { name: 'file_search' } },
-        tool_resources: {
-          file_search: {
-            vector_store_ids: [env.OPENAI_VECTOR_STORE_AUTHORITIES_ID],
-          },
+    const payload = await getLegacyAgentOpenAI().responses.create({
+      model: env.AGENT_MODEL,
+      input: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: question,
+            },
+          ],
         },
-        metadata: { purpose: 'hybrid_retrieval_probe' },
-        max_output_tokens: 1,
-      }),
+      ],
+      tools: [{ type: 'file_search' }],
+      tool_choice: { type: 'tool', function: { name: 'file_search' } },
+      tool_resources: {
+        file_search: {
+          vector_store_ids: [env.OPENAI_VECTOR_STORE_AUTHORITIES_ID],
+        },
+      },
+      metadata: { purpose: 'hybrid_retrieval_probe' },
+      max_output_tokens: 1,
     });
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      const message = errorBody?.error?.message ?? 'file_search_failed';
-      console.warn('file_search_request_failed', message);
-      return [];
-    }
-
-    const payload = await response.json();
     const results: Array<{ content: string; score: number; fileId: string | null }> = [];
 
     const visit = (node: unknown): void => {
@@ -2164,7 +2199,8 @@ async function queryFileSearchResults(
 
     return results.slice(0, maxResults);
   } catch (error) {
-    console.warn('file_search_query_error', error);
+    const message = error instanceof Error ? error.message : 'file_search_failed';
+    console.warn('file_search_request_failed', message);
     return [];
   }
 }

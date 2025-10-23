@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 
 export interface GracefulShutdownOptions {
   signals?: NodeJS.Signals[];
+  cleanup?: () => Promise<void> | void;
 }
 
 export function registerGracefulShutdown(app: FastifyInstance, options: GracefulShutdownOptions = {}) {
@@ -11,6 +12,9 @@ export function registerGracefulShutdown(app: FastifyInstance, options: Graceful
   const closeApp = async (signal: NodeJS.Signals) => {
     app.log.info({ signal }, 'shutdown_signal_received');
     try {
+      if (typeof options.cleanup === 'function') {
+        await options.cleanup();
+      }
       await app.close();
       app.log.info({ signal }, 'fastify_shutdown_complete');
       process.exit(0);
