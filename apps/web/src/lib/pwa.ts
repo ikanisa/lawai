@@ -4,39 +4,91 @@ import { Workbox } from 'workbox-window';
 import { clientEnv } from '../env.client';
 
 const DIGEST_KEY = 'avocat-ai-digest-enabled';
-export const PWA_OPT_IN_STORAGE_KEY = 'avocat-ai.pwa.opt-in';
+export const PWA_PREFERENCE_STORAGE_KEY = 'avocat-ai-pwa-preference';
+
+const envFlag = process.env.NEXT_PUBLIC_ENABLE_PWA;
+const pwaGloballyEnabled = envFlag ? !/^\s*(false|0|off|no)\s*$/i.test(envFlag) : true;
 
 let registrationPromise: Promise<ServiceWorkerRegistration> | null = null;
-let optInCache: boolean | null = null;
+let preferenceCache: boolean | null = null;
 
-function isBrowserEnvironment(): boolean {
-  return typeof window !== 'undefined';
+export function isPwaGloballyEnabled(): boolean {
+  return pwaGloballyEnabled;
 }
 
-export function isPwaFeatureEnabled(): boolean {
-  return Boolean(clientEnv.NEXT_PUBLIC_ENABLE_PWA);
+export function isPwaSupported(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return 'serviceWorker' in navigator;
 }
 
-export function getPwaOptInPreference(): boolean {
-  if (!isBrowserEnvironment()) {
-    return optInCache ?? false;
+function readPreferenceFromStorage(): boolean {
+  if (!pwaGloballyEnabled) {
+    preferenceCache = false;
+    return false;
+  }
+
+  if (preferenceCache !== null) {
+    return preferenceCache;
+  }
+
+  if (typeof window === 'undefined') {
+    preferenceCache = pwaGloballyEnabled;
+    return preferenceCache;
   }
 
   try {
-    const stored = window.localStorage.getItem(PWA_OPT_IN_STORAGE_KEY);
-    optInCache = stored === 'true';
-    return optInCache;
+    const stored = window.localStorage.getItem(PWA_PREFERENCE_STORAGE_KEY);
+    if (stored === 'disabled') {
+      preferenceCache = false;
+      return false;
+    }
+    if (stored === 'enabled') {
+      preferenceCache = true;
+      return true;
+    }
   } catch (error) {
-    console.warn('pwa_opt_in_read_failed', error);
-    optInCache = false;
-    return false;
+    console.warn('pwa_preference_read_failed', error);
+  }
+
+  preferenceCache = pwaGloballyEnabled;
+  return preferenceCache;
+}
+
+export function getPwaPreference(): boolean {
+  return readPreferenceFromStorage();
+}
+
+export function setPwaPreference(enabled: boolean) {
+  preferenceCache = enabled && pwaGloballyEnabled;
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (!pwaGloballyEnabled) {
+      window.localStorage.removeItem(PWA_PREFERENCE_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(PWA_PREFERENCE_STORAGE_KEY, preferenceCache ? 'enabled' : 'disabled');
+  } catch (error) {
+    console.warn('pwa_preference_write_failed', error);
   }
 }
 
-export function setPwaOptInPreference(enabled: boolean): void {
-  optInCache = enabled;
+export function registerPwa() {
+  if (!pwaGloballyEnabled) {
+    return;
+  }
 
-  if (!isBrowserEnvironment()) {
+  if (!isPwaSupported()) {
+    if (typeof window !== 'undefined') {
+      console.warn('pwa_unsupported_browser');
+    }
+    return;
+  }
+
+  if (!getPwaPreference()) {
     return;
   }
 
@@ -85,40 +137,27 @@ export function registerPwa(): Promise<ServiceWorkerRegistration> | null {
 }
 
 export function isDigestEnabled(): boolean {
-  if (!isBrowserEnvironment()) return false;
-
-  try {
-    return window.localStorage.getItem(DIGEST_KEY) === 'true';
-  } catch (error) {
-    console.warn('digest_pref_read_failed', error);
+  if (!pwaGloballyEnabled || typeof window === 'undefined') {
     return false;
   }
+  return window.localStorage.getItem(DIGEST_KEY) === 'true';
 }
 
 export async function enableDigestNotifications(): Promise<boolean> {
-  if (!isPwaFeatureEnabled()) {
-    console.info('digest_notifications_unavailable', { reason: 'pwa_disabled' });
+  if (!pwaGloballyEnabled) {
     return false;
   }
 
-  if (!isBrowserEnvironment()) {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
     return false;
   }
 
-  if (!('Notification' in window)) {
-    console.info('digest_notifications_unavailable', { reason: 'notification_api_unavailable' });
+  if (!isPwaSupported()) {
+    console.warn('pwa_digest_unsupported');
     return false;
   }
 
-  if (!('serviceWorker' in navigator)) {
-    console.info('digest_notifications_unavailable', { reason: 'service_worker_unsupported' });
-    return false;
-  }
-
-  if (!getPwaOptInPreference()) {
-    console.info('digest_notifications_unavailable', { reason: 'pwa_opt_in_required' });
-    return false;
-  }
+  setPwaPreference(true);
 
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {

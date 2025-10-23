@@ -70,6 +70,16 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
     });
   }, [shouldPrompt, pendingCount, digestEnabled, releaseNotes?.items?.length]);
 
+  const outboxMessage = useMemo(() => {
+    if (!releaseNotes?.outboxLabel) {
+      return null;
+    }
+    if (!hasItems) {
+      return `${releaseNotes.outboxLabel}: ${releaseNotes.outboxEmpty ?? '0'}`;
+    }
+    return `${releaseNotes.outboxLabel}: ${pendingCount} · ${formatOutboxAge(stalenessMs, locale)}`;
+  }, [releaseNotes?.outboxLabel, releaseNotes?.outboxEmpty, hasItems, pendingCount, stalenessMs, locale]);
+
   if (!messages || !shouldPrompt) {
     return null;
   }
@@ -113,16 +123,6 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
       console.warn('digest_opt_in_failed', error);
     }
   };
-
-  const outboxMessage = useMemo(() => {
-    if (!releaseNotes?.outboxLabel) {
-      return null;
-    }
-    if (!hasItems) {
-      return `${releaseNotes.outboxLabel}: ${releaseNotes.outboxEmpty ?? '0'}`;
-    }
-    return `${releaseNotes.outboxLabel}: ${pendingCount} · ${formatOutboxAge(stalenessMs, locale)}`;
-  }, [releaseNotes?.outboxLabel, releaseNotes?.outboxEmpty, hasItems, pendingCount, stalenessMs, locale]);
 
   return (
     <div className="fixed bottom-28 right-6 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-200">

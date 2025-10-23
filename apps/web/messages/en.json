@@ -92,6 +92,12 @@
         "releaseToggleHide": "Hide notes",
         "outboxLabel": "Offline queue",
         "outboxEmpty": "No pending items"
+      },
+      "preference": {
+        "label": "App mode",
+        "enabled": "App mode on",
+        "disabled": "App mode off",
+        "disabledHint": "PWAs are disabled by configuration."
       }
     },
     "statusBar": {

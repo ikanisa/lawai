@@ -37,8 +37,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useOutbox } from '@/hooks/use-outbox';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { PwaInstallPrompt } from './pwa-install-prompt';
-import { usePwaPreference } from '../hooks/use-pwa-preference';
-import { clientEnv } from '../env.client';
+import { PwaPreferenceToggle } from './pwa-preference-toggle';
 
 interface AppShellProps {
   children: ReactNode;
@@ -361,6 +360,10 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
               {statusBarMessages.offline}
             </span>
           ) : null}
+          <PwaPreferenceToggle
+            className="hidden xl:inline-flex"
+            messages={installMessages?.preference}
+          />
           {statusBarMessages && hasOutbox ? (
             <Link
               href={localizedHref('/research#outbox-panel')}

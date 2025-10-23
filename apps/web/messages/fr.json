@@ -92,6 +92,12 @@
         "releaseToggleHide": "Masquer les notes",
         "outboxLabel": "File hors ligne",
         "outboxEmpty": "Aucun élément en attente"
+      },
+      "preference": {
+        "label": "Mode application",
+        "enabled": "Mode application actif",
+        "disabled": "Mode application inactif",
+        "disabledHint": "Les PWA sont désactivées par la configuration."
       }
     },
     "statusBar": {

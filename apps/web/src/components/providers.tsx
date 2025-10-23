@@ -5,7 +5,20 @@ import { ReactNode, useEffect, useState } from 'react';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { PwaInstallProvider } from '../hooks/use-pwa-install';
-import { PwaPreferenceProvider } from '../hooks/use-pwa-preference';
+import { PwaPreferenceProvider, usePwaPreference } from '../hooks/use-pwa-preference';
+
+function PwaRegistrationGate() {
+  const { enabled, canToggle } = usePwaPreference();
+
+  useEffect(() => {
+    if (!enabled || !canToggle) {
+      return;
+    }
+    registerPwa();
+  }, [enabled, canToggle]);
+
+  return null;
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +53,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <PwaPreferenceProvider>
           <PwaInstallProvider>
+            <PwaRegistrationGate />
             {children}
             <Toaster position="bottom-right" richColors closeButton />
           </PwaInstallProvider>

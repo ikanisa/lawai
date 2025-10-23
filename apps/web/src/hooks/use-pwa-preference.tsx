@@ -1,68 +1,75 @@
 'use client';
 
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
-import {
-  PWA_OPT_IN_STORAGE_KEY,
-  getPwaOptInPreference,
-  isPwaFeatureEnabled,
-  registerPwa,
-  setPwaOptInPreference,
+  getPwaPreference,
+  isPwaGloballyEnabled,
+  setPwaPreference,
+  PWA_PREFERENCE_STORAGE_KEY,
 } from '../lib/pwa';
 
 interface PwaPreferenceContextValue {
   enabled: boolean;
-  ready: boolean;
-  setEnabled: (enabled: boolean) => void;
+  canToggle: boolean;
+  setEnabled: (value: boolean) => void;
 }
 
 const PwaPreferenceContext = createContext<PwaPreferenceContextValue | undefined>(undefined);
 
 export function PwaPreferenceProvider({ children }: { children: ReactNode }) {
-  const [enabled, setEnabledState] = useState(false);
-  const [ready, setReady] = useState(false);
+  const canToggle = isPwaGloballyEnabled();
+  const [enabled, setEnabledState] = useState<boolean>(() => {
+    if (!canToggle) {
+      return false;
+    }
+    return getPwaPreference();
+  });
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (!canToggle) {
+      setEnabledState(false);
+      return;
+    }
+    setEnabledState(getPwaPreference());
+  }, [canToggle]);
+
+  useEffect(() => {
+    if (!canToggle || typeof window === 'undefined') {
       return;
     }
 
-    setEnabledState(getPwaOptInPreference());
-    setReady(true);
-
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== PWA_OPT_IN_STORAGE_KEY) {
+      if (event.key !== PWA_PREFERENCE_STORAGE_KEY) {
         return;
       }
-      setEnabledState(event.newValue === 'true');
+      setEnabledState(event.newValue !== 'disabled');
     };
 
     window.addEventListener('storage', handleStorage);
     return () => {
       window.removeEventListener('storage', handleStorage);
     };
-  }, []);
+  }, [canToggle]);
 
-  useEffect(() => {
-    if (!ready) return;
-    if (!isPwaFeatureEnabled()) return;
-    if (!enabled) return;
-    registerPwa();
-  }, [enabled, ready]);
+  const setEnabled = useCallback(
+    (value: boolean) => {
+      if (!canToggle) {
+        return;
+      }
+      setPwaPreference(value);
+      setEnabledState(value);
+    },
+    [canToggle],
+  );
 
-  const setEnabled = useCallback((next: boolean) => {
-    setEnabledState(next);
-    setPwaOptInPreference(next);
-  }, []);
-
-  const value = useMemo<PwaPreferenceContextValue>(() => ({ enabled, ready, setEnabled }), [enabled, ready, setEnabled]);
+  const value = useMemo<PwaPreferenceContextValue>(
+    () => ({
+      enabled,
+      canToggle,
+      setEnabled,
+    }),
+    [enabled, canToggle, setEnabled],
+  );
 
   return <PwaPreferenceContext.Provider value={value}>{children}</PwaPreferenceContext.Provider>;
 }
@@ -74,3 +81,4 @@ export function usePwaPreference(): PwaPreferenceContextValue {
   }
   return context;
 }
+
