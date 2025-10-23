@@ -1,4 +1,5 @@
-import type { ServiceSupabaseClient } from './supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { FastifyRateLimitHook } from '../rate-limit.js';
 
 export interface AppContext {
   supabase: ServiceSupabaseClient;
@@ -8,9 +9,8 @@ export interface AppContext {
       baseUrl?: string;
     };
   };
-  rateLimiter: {
-    factory: RateLimiterFactory;
-    workspace: RateLimiter;
+  rateLimits?: {
+    workspace?: FastifyRateLimitHook;
   };
 }
 

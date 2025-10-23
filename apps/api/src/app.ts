@@ -1,5 +1,4 @@
 import Fastify from 'fastify';
-import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
 import { registerCorpusRoutes } from './routes/corpus/index.js';
@@ -71,10 +70,7 @@ export async function createApp(): Promise<CreateAppResult> {
         baseUrl: process.env.OPENAI_BASE_URL,
       },
     },
-    rateLimiter: {
-      factory: rateLimiterFactory,
-      workspace: rateLimiterFactory(rateLimitConfig.buckets.workspace),
-    },
+    rateLimits: {},
   };
 
   await app.register(async (instance: FastifyInstance) => {
@@ -89,13 +85,6 @@ export async function createApp(): Promise<CreateAppResult> {
     await registerVoiceRoutes(instance, context);
     await registerRealtimeRoutes(instance, context);
   }, { prefix: '/api' });
-
-  if (!(app as any).workspaceRoutesRegistered) {
-    if (shouldRegisterWorkspaceRoutes) {
-      await registerWorkspaceRoutes(app, context);
-      (app as any).workspaceRoutesRegistered = true;
-    }
-  }
 
   return { app, context };
 }

@@ -7,9 +7,13 @@ type WorkspaceQuery = z.infer<typeof workspaceQuerySchema>;
 type WorkspaceResponse = z.infer<typeof workspaceResponseSchema>;
 
 export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
-  const workspaceController = ctx.container.workspace;
-
-  app.get<{ Querystring: WorkspaceQuery }>('/workspace', async (request, reply) => {
+  app.get<{ Querystring: z.infer<typeof workspaceQuerySchema> }>('/workspace', async (request, reply) => {
+    if (ctx.rateLimits?.workspace) {
+      await ctx.rateLimits.workspace(request, reply);
+      if (reply.sent) {
+        return;
+      }
+    }
     const parse = workspaceQuerySchema.safeParse(request.query);
     if (!parse.success) {
       return reply.code(400).send({ error: 'Invalid query parameters' });

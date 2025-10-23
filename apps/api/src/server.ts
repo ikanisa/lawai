@@ -4,19 +4,18 @@ import { diffWordsWithSpace } from 'diff';
 import { WebSearchModeSchema } from '@avocat-ai/shared';
 import type { IRACPayload, WebSearchMode } from '@avocat-ai/shared';
 import { z } from 'zod';
-import { env, rateLimitConfig } from './config.js';
+import { env } from './config.js';
+import type Redis from 'ioredis';
 import { IRACPayloadSchema } from './schemas/irac.js';
 import { getOpenAI, logOpenAIDebug, setOpenAILogger } from './openai.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent-wrapper.js';
 import { summariseDocumentFromPayload } from './summarization.js';
 // Defer finance workers to runtime without affecting typecheck
-if (process.env.NODE_ENV !== 'test') {
-  try {
-    const dyn = new Function('p', 'return import(p)');
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    (dyn as any)('./finance-workers.js');
-  } catch {}
-}
+try {
+  const dyn = new Function('p', 'return import(p)');
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  (dyn as any)('./finance-workers.js').catch(() => undefined);
+} catch {}
 import { z as zod } from 'zod';
 import {
   buildTransparencyReport,
@@ -64,7 +63,12 @@ import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
 import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
-import { enforceRateLimit } from './rate-limit.js';
+import {
+  InMemoryRateLimiter,
+  createRateLimiter,
+  createRateLimitGuard,
+  type RateLimiterFactoryConfig,
+} from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
@@ -94,6 +98,114 @@ const telemetryLimiter = limiterFactory(rateLimitConfig.buckets.telemetry);
 const runsLimiter = limiterFactory(rateLimitConfig.buckets.runs);
 const complianceLimiter = limiterFactory(rateLimitConfig.buckets.compliance);
 const workspaceLimiter = context.rateLimiter.workspace;
+
+let redisClient: Redis | undefined;
+if (env.RATE_LIMIT_PROVIDER === 'redis') {
+  if (env.RATE_LIMIT_REDIS_URL) {
+    const { default: RedisConstructor } = await import('ioredis');
+    redisClient = new RedisConstructor(env.RATE_LIMIT_REDIS_URL, {
+      enableAutoPipelining: true,
+      lazyConnect: true,
+    });
+    redisClient.on('error', (error) => {
+      app.log.error({ err: error }, 'rate_limit_redis_error');
+    });
+  } else {
+    app.log.warn({ provider: env.RATE_LIMIT_PROVIDER }, 'rate_limit_redis_url_missing');
+  }
+}
+
+const distributedLimiterConfig: RateLimiterFactoryConfig = {
+  provider: env.RATE_LIMIT_PROVIDER,
+  redisClient,
+  supabase: context.supabase,
+  supabaseFunction: env.RATE_LIMIT_SUPABASE_FUNCTION,
+  logger: app.log,
+};
+
+const runsLimiter = await createRateLimiter(
+  { limit: env.RATE_LIMIT_RUNS_LIMIT, windowMs: env.RATE_LIMIT_RUNS_WINDOW_MS, identifier: 'runs' },
+  distributedLimiterConfig,
+);
+const runsRateLimitGuard = createRateLimitGuard(runsLimiter, {
+  identifier: 'runs',
+  logger: app.log,
+  keyGenerator: (request) => {
+    const body = (request.body ?? {}) as { orgId?: unknown; userId?: unknown };
+    const orgId = typeof body.orgId === 'string' ? body.orgId : null;
+    const userId = typeof body.userId === 'string' ? body.userId : null;
+    if (orgId && userId) {
+      return `${orgId}:${userId}`;
+    }
+    return request.ip || 'unknown';
+  },
+});
+
+const complianceLimiter = await createRateLimiter(
+  {
+    limit: env.RATE_LIMIT_COMPLIANCE_LIMIT,
+    windowMs: env.RATE_LIMIT_COMPLIANCE_WINDOW_MS,
+    identifier: 'compliance',
+  },
+  distributedLimiterConfig,
+);
+
+const complianceRateLimitGuard = createRateLimitGuard(complianceLimiter, {
+  identifier: 'compliance',
+  logger: app.log,
+  keyGenerator: (request) => {
+    const orgHeader = request.headers['x-org-id'];
+    const userHeader = request.headers['x-user-id'];
+    if (typeof orgHeader === 'string' && typeof userHeader === 'string') {
+      return `${orgHeader}:${userHeader}`;
+    }
+    return request.ip || 'unknown';
+  },
+});
+
+const launchRateLimitGuard = createRateLimitGuard(complianceLimiter, {
+  identifier: 'launch',
+  logger: app.log,
+  keyGenerator: (request) => {
+    const orgHeader = request.headers['x-org-id'];
+    const userHeader = request.headers['x-user-id'];
+    if (typeof orgHeader === 'string' && typeof userHeader === 'string') {
+      return `launch:${orgHeader}:${userHeader}`;
+    }
+    if (typeof orgHeader === 'string') {
+      return `launch:${orgHeader}`;
+    }
+    return request.ip || 'unknown';
+  },
+});
+
+const workspaceLimiter = await createRateLimiter(
+  {
+    limit: env.RATE_LIMIT_WORKSPACE_LIMIT,
+    windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_MS,
+    identifier: 'workspace',
+  },
+  distributedLimiterConfig,
+);
+
+const workspaceRateLimitGuard = createRateLimitGuard(workspaceLimiter, {
+  identifier: 'workspace',
+  logger: app.log,
+  keyGenerator: (request) => {
+    const query = (request.query ?? {}) as { orgId?: unknown };
+    const orgId = typeof query.orgId === 'string' ? query.orgId : null;
+    const userHeader = request.headers['x-user-id'];
+    if (orgId && typeof userHeader === 'string') {
+      return `${orgId}:${userHeader}`;
+    }
+    if (orgId) {
+      return orgId;
+    }
+    return request.ip || 'unknown';
+  },
+});
+
+context.rateLimits = { ...(context.rateLimits ?? {}), workspace: workspaceRateLimitGuard };
 
 async function embedQuery(text: string): Promise<number[]> {
   const openai = getOpenAI();
@@ -760,7 +872,10 @@ function resolveDateRange(startParam?: string, endParam?: string): { start: stri
   return { start: startIso, end: endIso };
 }
 
-app.get('/compliance/acknowledgements', async (request, reply) => {
+app.get(
+  '/compliance/acknowledgements',
+  { preHandler: complianceRateLimitGuard },
+  async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -810,9 +925,13 @@ app.get('/compliance/acknowledgements', async (request, reply) => {
     request.log.error({ err: error }, 'compliance_ack_fetch_failed');
     return reply.code(500).send({ error: 'compliance_ack_fetch_failed' });
   }
-});
+  },
+);
 
-app.post<{ Body: z.infer<typeof complianceAcknowledgementBodySchema> }>('/compliance/acknowledgements', async (request, reply) => {
+app.post<{ Body: z.infer<typeof complianceAckSchema> }>(
+  '/compliance/acknowledgements',
+  { preHandler: complianceRateLimitGuard },
+  async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -886,11 +1005,12 @@ app.post<{ Body: z.infer<typeof complianceAcknowledgementBodySchema> }>('/compli
 
   const acknowledgements = summariseAcknowledgements(access, events);
   return reply.send({ orgId: orgHeader, userId: userHeader, acknowledgements });
-});
+  },
+);
 
 app.get<{
   Querystring: { limit?: string };
-}>('/compliance/status', async (request, reply) => {
+}>('/compliance/status', { preHandler: complianceRateLimitGuard }, async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -997,127 +1117,10 @@ app.get<{
   });
 });
 
-app.get('/compliance/dashboard', async (request, reply) => {
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(401).send({ error: 'unauthorized' });
-  }
-  const orgHeader = request.headers['x-org-id'];
-  if (!orgHeader || typeof orgHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-org-id header is required' });
-  }
-
-  const query = (request.query ?? {}) as { hitlLimit?: string | number };
-  const hitlLimit = (() => {
-    const raw = query.hitlLimit;
-    const parsed = typeof raw === 'string' ? Number.parseInt(raw, 10) : typeof raw === 'number' ? raw : 500;
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      return 500;
-    }
-    return Math.min(5000, Math.max(50, Math.floor(parsed)));
-  })();
-
-  try {
-    await authorizeRequestWithGuards('metrics:view', orgHeader, userHeader, request);
-  } catch (error) {
-    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
-    return reply.code(status).send({ error: 'forbidden' });
-  }
-
-  const now = new Date();
-  const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-  const [hitlResult, retrievalResult, evaluationResult] = await Promise.all([
-    supabase
-      .from('hitl_cases')
-      .select('status, created_at, updated_at')
-      .eq('org_id', orgHeader)
-      .gte('created_at', since)
-      .order('created_at', { ascending: false })
-      .limit(hitlLimit),
-    supabase
-      .from('org_retrieval_metrics')
-      .select('allowlisted_ratio, runs_with_translation_warnings, runs_without_citations, runs_total, last_run_at')
-      .eq('org_id', orgHeader)
-      .limit(1)
-      .maybeSingle(),
-    supabase
-      .from('org_evaluation_metrics')
-      .select('maghreb_banner_coverage, citation_precision_p95, temporal_validity_p95, evaluated_results, last_result_at')
-      .eq('org_id', orgHeader)
-      .limit(1)
-      .maybeSingle(),
-  ]);
-
-  if (hitlResult.error) {
-    request.log.error({ err: hitlResult.error }, 'compliance dashboard hitl query failed');
-    return reply.code(500).send({ error: 'compliance_dashboard_hitl_failed' });
-  }
-  if (retrievalResult.error) {
-    request.log.error({ err: retrievalResult.error }, 'compliance dashboard retrieval query failed');
-    return reply.code(500).send({ error: 'compliance_dashboard_retrieval_failed' });
-  }
-  if (evaluationResult.error) {
-    request.log.error({ err: evaluationResult.error }, 'compliance dashboard evaluation query failed');
-    return reply.code(500).send({ error: 'compliance_dashboard_evaluation_failed' });
-  }
-
-  const hitlSummary = summariseHitl((hitlResult.data ?? []) as unknown as HitlRecord[]);
-  const retrievalRow = (retrievalResult.data ?? null) as
-    | {
-        allowlisted_ratio?: number | null;
-        runs_with_translation_warnings?: number | null;
-        runs_without_citations?: number | null;
-        runs_total?: number | null;
-        last_run_at?: string | null;
-      }
-    | null;
-  const evaluationRow = (evaluationResult.data ?? null) as
-    | {
-        maghreb_banner_coverage?: number | null;
-        citation_precision_p95?: number | null;
-        temporal_validity_p95?: number | null;
-        evaluated_results?: number | null;
-        last_result_at?: string | null;
-      }
-    | null;
-
-  const toNumber = (value: unknown): number | null => {
-    if (value === null || value === undefined) {
-      return null;
-    }
-    const num = Number(value);
-    return Number.isFinite(num) ? num : null;
-  };
-
-  return reply.send({
-    orgId: orgHeader,
-    timeframe: { start: since, end: now.toISOString() },
-    limits: { hitl: hitlLimit },
-    hitl: {
-      total: hitlSummary.total,
-      pending: hitlSummary.pending,
-      resolved: hitlSummary.resolved,
-      medianResponseMinutes: hitlSummary.medianResponseMinutes,
-    },
-    allowlist: {
-      allowlistedRatio: toNumber(retrievalRow?.allowlisted_ratio),
-      translationWarnings: retrievalRow?.runs_with_translation_warnings ?? 0,
-      runsWithoutCitations: retrievalRow?.runs_without_citations ?? 0,
-      runsTotal: retrievalRow?.runs_total ?? 0,
-      lastRunAt: retrievalRow?.last_run_at ?? null,
-    },
-    maghreb: {
-      bannerCoverage: toNumber(evaluationRow?.maghreb_banner_coverage),
-      citationPrecisionP95: toNumber(evaluationRow?.citation_precision_p95),
-      temporalValidityP95: toNumber(evaluationRow?.temporal_validity_p95),
-      evaluatedResults: evaluationRow?.evaluated_results ?? 0,
-      lastResultAt: evaluationRow?.last_result_at ?? null,
-    },
-  });
-});
-
-app.post<{ Body: z.infer<typeof regulatorDigestSchema> }>('/launch/digests', async (request, reply) => {
+app.post<{ Body: z.infer<typeof regulatorDigestSchema> }>(
+  '/launch/digests',
+  { preHandler: launchRateLimitGuard },
+  async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -1173,9 +1176,13 @@ app.post<{ Body: z.infer<typeof regulatorDigestSchema> }>('/launch/digests', asy
     request.log.error({ err: error }, 'regulator_digest_enqueue_failed');
     return reply.code(500).send({ error: 'regulator_digest_enqueue_failed' });
   }
-});
+  },
+);
 
-app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/digests', async (request, reply) => {
+app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>(
+  '/launch/digests',
+  { preHandler: launchRateLimitGuard },
+  async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -1218,20 +1225,14 @@ app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/di
   );
 
   return reply.send({ orgId: parsed.data.orgId, digests });
-});
+  },
+);
 
 app.get('/healthz', async () => ({ status: 'ok' }));
 
 app.post<{
-  Body: {
-    question: string;
-    context?: string;
-    orgId?: string;
-    userId?: string;
-    confidentialMode?: boolean;
-    userLocation?: string;
-  };
-}>('/runs', async (request, reply) => {
+  Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
+}>('/runs', { preHandler: runsRateLimitGuard }, async (request, reply) => {
   const bodySchema = z.object({
     question: z.string().min(1),
     context: z.string().optional(),
@@ -1301,6 +1302,7 @@ app.get<{ Querystring: { orgId?: string } }>(
       querystring: { type: 'object', properties: { orgId: { type: 'string' } }, required: ['orgId'] },
       headers: { type: 'object', properties: { 'x-user-id': { type: 'string' } }, required: ['x-user-id'] },
     },
+    preHandler: complianceRateLimitGuard,
   },
   async (request, reply) => {
   const querySchema = z.object({ orgId: z.string().uuid() });
@@ -4026,11 +4028,17 @@ app.post<{
     },
   },
   async (request, reply) => {
-    const ipHeader = (request.headers['x-forwarded-for'] ?? request.ip ?? '').toString();
-    const ip = ipHeader.split(',')[0]?.trim() || 'unknown';
-    const allowed = await enforceRateLimit(telemetryLimiter, request, reply, `telemetry:${ip}`);
-    if (!allowed) {
-      return;
+    // Rate-limit by IP (or x-forwarded-for fallback)
+    try {
+      const ipHeader = (request.headers['x-forwarded-for'] ?? request.ip ?? '').toString();
+      const ip = ipHeader.split(',')[0].trim();
+      const hit = await telemetryLimiter.hit(ip || 'unknown');
+      if (!hit.allowed) {
+        reply.header('Retry-After', Math.ceil((hit.resetAt - Date.now()) / 1000));
+        return reply.code(429).send({ error: 'rate_limited' });
+      }
+    } catch (_err) {
+      // ignore limiter failures
     }
     const { orgId, userId, eventName, payload } = request.body ?? {};
 
@@ -4064,7 +4072,10 @@ app.post<{
   },
 );
 
-app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply) => {
+app.get<{ Querystring: { orgId?: string } }>(
+  '/workspace',
+  { preHandler: workspaceRateLimitGuard },
+  async (request, reply) => {
   const { orgId } = request.query;
 
   if (!orgId) {
@@ -4107,7 +4118,8 @@ app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply
     request.log.error({ err: error }, 'workspace overview failed');
     return reply.code(500).send({ error: 'workspace_failed' });
   }
-});
+  },
+);
 
 app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply) => {
   const { orgId } = request.query;
