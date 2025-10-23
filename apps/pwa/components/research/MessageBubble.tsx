@@ -1,6 +1,7 @@
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+
+import { type ResearchCitation } from "@/lib/data/research";
 import { cn } from "@/lib/utils";
-import type { ResearchCitation } from "@/lib/data/research";
 
 export interface ChatMessage {
   id: string;
@@ -12,9 +13,10 @@ export interface ChatMessage {
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  onCitationClick?: (citation: ResearchCitation) => void;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onCitationClick }: MessageBubbleProps) {
   const isAssistant = message.role === "assistant";
 
   return (
@@ -32,17 +34,16 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       {message.citations.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {message.citations.map((citation) => (
-            <a
+            <Link
               key={citation.id}
               href={citation.href}
               target="_blank"
-              rel="noreferrer noopener"
-              className="focus-visible:outline-none"
+              rel="noreferrer"
+              className="rounded-full border border-white/30 bg-white/5 px-3 py-1 text-[11px] text-white/80 transition hover:border-white/60 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              onClick={() => onCitationClick?.(citation)}
             >
-              <Badge className="rounded-full border-white/30 bg-white/5 text-[11px] text-white/80" variant="outline">
-                {citation.label}
-              </Badge>
-            </a>
+              {citation.label}
+            </Link>
           ))}
         </div>
       ) : null}

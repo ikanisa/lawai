@@ -1,31 +1,37 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 
 import { MessageBubble, type ChatMessage } from "@/components/research/MessageBubble";
 
-const citation = {
-  id: "citation-1",
-  label: "Code civil",
-  href: "https://example.com",
-  type: "Officiel" as const,
-  snippet: "Article 1",
-  score: 92,
-  date: "2024-01-01T00:00:00Z"
+const baseMessage: ChatMessage = {
+  id: "message-1",
+  role: "assistant",
+  content: "Voici une décision pertinente.",
+  createdAt: Date.now(),
+  citations: [
+    {
+      id: "citation-1",
+      label: "Décret 2024-123",
+      href: "https://example.com/decret-2024-123",
+      type: "Officiel",
+      snippet: "Extrait du décret...",
+      score: 92,
+      date: new Date().toISOString()
+    }
+  ]
 };
 
 describe("MessageBubble", () => {
-  it("renders external citation links with rel attribute including noopener", () => {
-    const message: ChatMessage = {
-      id: "assistant-1",
-      role: "assistant",
-      content: "Consultez la source ci-dessous.",
-      citations: [citation],
-      createdAt: Date.now()
-    };
+  it("notifies when a citation link is activated", async () => {
+    const handleCitationClick = vi.fn();
 
-    render(<MessageBubble message={message} />);
+    render(<MessageBubble message={baseMessage} onCitationClick={handleCitationClick} />);
 
-    const link = screen.getByRole("link", { name: /code civil/i });
-    expect(link).toHaveAttribute("rel", "noreferrer noopener");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "Décret 2024-123" }));
+
+    expect(handleCitationClick).toHaveBeenCalledTimes(1);
+    expect(handleCitationClick).toHaveBeenCalledWith(baseMessage.citations[0]);
   });
 });

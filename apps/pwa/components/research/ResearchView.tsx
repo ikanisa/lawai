@@ -35,6 +35,7 @@ import { researchDeskContextQueryOptions } from "@/lib/queries/research";
 import { useTelemetry } from "@/lib/telemetry";
 import { jurisdictionOptions, useUIState, type JurisdictionCode } from "@/lib/state/ui-store";
 import { cn } from "@/lib/utils";
+
 import { MessageBubble, type ChatMessage } from "./MessageBubble";
 
 export function ResearchView() {
@@ -117,6 +118,13 @@ export function ResearchView() {
   }, [confidentialMode]);
 
   const suggestions = data?.suggestions ?? [];
+
+  const emitCitationClick = useCallback(
+    (citation: ResearchCitation) => {
+      telemetry.emit("citation_clicked", { citationId: citation.id, context: "chat" });
+    },
+    [telemetry]
+  );
 
   const handleStreamEvent = useCallback((event: ResearchStreamEvent, assistantId: string) => {
     if (event.type === "token" && event.data.token) {
@@ -326,7 +334,11 @@ export function ResearchView() {
               .slice()
               .sort((a, b) => a.createdAt - b.createdAt)
               .map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  onCitationClick={emitCitationClick}
+                />
               ))}
           </div>
           {activeTools.length > 0 ? (
@@ -348,12 +360,7 @@ export function ResearchView() {
         </div>
       </section>
 
-      <EvidencePane
-        citations={citations}
-        onCitationClick={(citation) =>
-          telemetry.emit("citation_clicked", { citationId: citation.id, context: "chat" })
-        }
-      />
+      <EvidencePane citations={citations} onCitationClick={emitCitationClick} />
 
       <PlanDrawer plan={{ ...plan, steps: plan.steps }} toolLogs={toolLogs} />
     </div>
