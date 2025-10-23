@@ -66,14 +66,20 @@
       "title": "Install Avocat-AI",
       "body": "Add the app to your home screen for faster access and offline-friendly workflows.",
       "cta": "Install app",
-      "dismiss": "Maybe later",
-      "success": "Avocat-AI is ready on your device.",
-      "snoozed": "We’ll remind you again soon.",
-      "unavailable": "Installation is unavailable on this device.",
-      "releaseNotes": {
-        "title": "What's new",
-        "items": [
-          "Service worker installs now wait for your approval with documented release notes.",
+    "dismiss": "Maybe later",
+    "success": "Avocat-AI is ready on your device.",
+    "snoozed": "We’ll remind you again soon.",
+    "unavailable": "Installation is unavailable on this device.",
+    "optIn": {
+      "label": "Offline-ready mode",
+      "on": "Offline-ready mode on",
+      "off": "Offline-ready mode off",
+      "description": "Enable the offline-ready service worker before installing the app or enabling digests."
+    },
+    "releaseNotes": {
+      "title": "What's new",
+      "items": [
+        "Service worker installs now wait for your approval with documented release notes.",
           "Regulator digest alerts map to your Avocat-AI profile notifications.",
           "Offline queue telemetry is scoped per user to respect compliance controls."
         ],
