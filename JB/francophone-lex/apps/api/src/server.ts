@@ -82,6 +82,7 @@ async function embedQuery(text: string): Promise<number[]> {
     body: JSON.stringify({
       model: env.EMBEDDING_MODEL,
       input: text,
+      ...(env.EMBEDDING_DIMENSION ? { dimensions: env.EMBEDDING_DIMENSION } : {}),
     }),
   });
 
