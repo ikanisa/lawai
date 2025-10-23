@@ -1,19 +1,100 @@
-# PDF File Inputs Rollout Guide
+# PDF File Inputs Agent Streaming Guide
 
-## Overview
-This guide documents the controls and sequencing required to introduce new PDF corpora into the finance agent suite while preserving provenance, compliance, and ingestion reliability.
+When streaming responses for large PDF ingestion tasks, we rely on deterministic
+logging and guardrails to keep the orchestration service observable. The loop
+below expands on the basic example to surface completion, tool-call, and error
+signals while still collecting usage metrics once the final response arrives.
 
-## Rollout Process
-1. **Source curation & tagging** – Confirm document ownership, residency constraints, and retention windows. Apply standard metadata schema (`jurisdiction`, `document_type`, `effective_date`) before upload.
-2. **Staging ingestion dry-run** – Use the ingestion orchestrator to process a representative sample in the staging vector store, recording parse fidelity metrics and redacting sensitive payloads that fail OCR or policy screening.
-3. **Validation & QA sign-off** – Route extracted chunks through automated policy checks and manual reviewer spot-audits. Log issues in the ingestion tracker and verify remediation prior to production promotion.
-4. **Production enablement** – Promote the approved dataset to production stores, backfill embeddings, and broadcast completion via the operations channel with updated guardrail mappings.
+```ts
+import OpenAI from "openai";
 
-## Success Criteria
-- ≥95% successful parsing across the pilot corpus with structured metadata populated for every document.
-- Zero unresolved P0 compliance or residency violations at the time of production promotion.
-- Automated regression checks scheduled nightly to monitor parse drift and compliance regressions.
+const client = new OpenAI();
 
-## Responsible Team
-- **Data Platform & Ingestion Team** – Owns ingestion tooling, dry-run execution, QA workflows, and production cutover communication.
-- **Finance Agent PMO** – Tracks adoption milestones and aligns roadmap updates with platform guardrails.
+async function streamPdfIngestion(prompt: string) {
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), 120_000);
+
+  const stream = await client.responses.stream(
+    {
+      model: "gpt-4.1",
+      input: prompt,
+      tools: [{ type: "file_search" }],
+      metadata: { workflow: "pdf-file-inputs" },
+    },
+    { signal: abortController.signal }
+  );
+
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
+  try {
+    for await (const event of stream) {
+      switch (event.type) {
+        case "response.created":
+          console.log(`response ${event.response.id} started`);
+          break;
+        case "response.completed":
+          console.log("response completed");
+          break;
+        case "response.error":
+          console.error("stream error", event.error);
+          throw new Error(event.error.message);
+        case "response.output_text.delta":
+          process.stdout.write(event.delta);
+          break;
+        case "response.output_text.done":
+          process.stdout.write("\n");
+          break;
+        case "response.tool_call.created":
+          console.log(
+            `tool call ${event.tool_call.type} → ${event.tool_call.name ?? "<anonymous>"}`
+          );
+          break;
+        case "response.tool_call.delta":
+          console.log("tool payload delta", event.delta);
+          break;
+        case "response.tool_call.done":
+          console.log("tool call result", event.tool_call);
+          break;
+        default:
+          console.debug("unhandled event", event.type);
+      }
+    }
+
+    const final = await stream.finalResponse();
+    totalInputTokens += final.usage?.input_tokens ?? 0;
+    totalOutputTokens += final.usage?.output_tokens ?? 0;
+
+    console.log({ totalInputTokens, totalOutputTokens });
+    return final;
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "name" in error &&
+      error.name === "AbortError"
+    ) {
+      console.warn("stream aborted", error);
+    } else {
+      throw error;
+    }
+  } finally {
+    clearTimeout(timeout);
+    abortController.abort();
+  }
+}
+
+await streamPdfIngestion(
+  "Summarise latest filings from the Banque de France bulletin PDF."
+);
+```
+
+The `AbortController` enables callers to cancel the long-running ingestion if
+orchestration detects staleness or upstream throttling, matching production
+safeguards that prevent runaway sessions. Handling `response.error`,
+`response.completed`, and the tool-call lifecycle keeps telemetry aligned with
+what the agent actually attempted; without those signals our monitoring would
+miss failed vector-store lookups, suppressed completions, or early
+terminations. Because we still call `finalResponse()` after the loop, token
+usage metrics remain accurate even when intermediate events trigger logging or
+cancellation logic.
