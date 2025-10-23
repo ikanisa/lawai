@@ -6,7 +6,14 @@ import {
   type VoiceToolIntent,
 } from '@avocat-ai/shared';
 
-const voiceCitations: VoiceRunResponse['citations'] = [
+interface VoiceCitation {
+  id: string;
+  label: string;
+  href: string;
+  snippet: string;
+}
+
+const voiceCitations: VoiceCitation[] = [
   {
     id: 'eli:ohada:procedure:2024:art:7',
     label: 'Acte uniforme OHADA Procédure, art. 7',
@@ -71,8 +78,18 @@ export const voiceConsoleContext: VoiceConsoleContext = {
         'Mesures conservatoires proposées avec rappel des obligations OHADA et articulation avec la loi française.',
       citations: [voiceCitations[0], voiceCitations[1]],
       intents: [
-        { id: 'intent_deadline', name: 'Calculer un délai', tool: 'deadlineCalculator' },
-        { id: 'intent_service', name: 'Planifier la signification', tool: 'service_of_process' },
+        {
+          id: 'intent_deadline',
+          name: 'Calculer un délai',
+          tool: 'deadlineCalculator',
+          status: 'completed',
+        },
+        {
+          id: 'intent_service',
+          name: 'Planifier la signification',
+          tool: 'service_of_process',
+          status: 'completed',
+        },
       ],
     },
     {
@@ -85,7 +102,12 @@ export const voiceConsoleContext: VoiceConsoleContext = {
         'Plan d’alerte immédiat avec rappel des obligations ICT Law Rwanda et proposition d’activation du mode confidentiel.',
       citations: [voiceCitations[2]],
       intents: [
-        { id: 'intent_guardrail', name: 'Activer le mode confidentiel', tool: 'confidential_mode' },
+        {
+          id: 'intent_guardrail',
+          name: 'Activer le mode confidentiel',
+          tool: 'confidential_mode',
+          status: 'requires_hitl',
+        },
       ],
     },
   ],
@@ -116,7 +138,7 @@ export function buildVoiceRunResponse(request: VoiceRunRequest): VoiceRunRespons
     return next;
   });
 
-  const selectedCitations = voiceCitations.filter((citation) => {
+  const selectedCitations = voiceCitations.filter((citation): boolean => {
     if (mentionsUrgency && citation.id.includes('procedure')) {
       return true;
     }
@@ -126,7 +148,9 @@ export function buildVoiceRunResponse(request: VoiceRunRequest): VoiceRunRespons
     return citation.id.includes('ohada');
   });
 
-  const effectiveCitations = selectedCitations.length ? selectedCitations : voiceCitations.slice(0, 2);
+  const effectiveCitations: VoiceCitation[] = selectedCitations.length
+    ? selectedCitations
+    : voiceCitations.slice(0, 2);
   const riskLevel = mentionsUrgency ? 'HIGH' : mentionsPrivacy ? 'MED' : 'LOW';
 
   const clarifications: string[] = [];

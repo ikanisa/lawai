@@ -1,7 +1,7 @@
 {
   "name": "avocat-ai-monorepo",
   "private": true,
-  "packageManager": "npm@11.4.2",
+  "packageManager": "pnpm@8.15.4",
   "engines": {
     "node": ">=20 <21"
   },
@@ -13,17 +13,18 @@
     "francophone-lex/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "build": "pnpm -r --if-present run build",
+    "lint": "pnpm -r --if-present run lint",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "pnpm -r --if-present run test",
     "check:migrations": "node ./scripts/check-migrations.mjs",
-    "dev:api": "npm run dev --workspace @apps/api",
-    "dev:ops": "npm run dev --workspace @apps/ops",
-    "dev:web": "npm run dev --workspace @avocat-ai/web",
-    "start": "npm run start --workspace @avocat-ai/web",
+    "dev:api": "pnpm --filter @apps/api dev",
+    "dev:ops": "pnpm --filter @apps/ops dev",
+    "dev:web": "pnpm --filter @avocat-ai/web dev",
+    "start": "pnpm --filter @avocat-ai/web start",
     "db:push": "supabase migration up",
     "db:migrate": "npm run migrate --workspace @apps/ops",
+    "db:migrate:staging": "npm run migrate --workspace @apps/ops -- --env staging",
     "ops:provision": "npm run provision --workspace @apps/ops",
     "ops:foundation": "npm run foundation --workspace @apps/ops",
     "ops:evaluate": "npm run evaluate --workspace @apps/ops",
@@ -39,9 +40,13 @@
     "ops:rls-smoke": "npm run rls-smoke --workspace @apps/ops",
     "ops:phase": "npm run phase --workspace @apps/ops",
     "seed": "npm run start --workspace @db/seed",
+    "seed:compliance-test": "node ./scripts/seed-compliance-test-data.mjs",
     "check:binaries": "node ./scripts/check-binaries.mjs"
   },
   "dependencies": {
     "next-pwa": "^5.6.0"
+  },
+  "devDependencies": {
+    "sql-formatter": "^15.6.10"
   }
 }

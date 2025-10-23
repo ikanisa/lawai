@@ -1,8 +1,10 @@
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { AppProviders } from '../../src/components/providers';
-import { AppShell } from '../../src/components/app-shell';
-import { getMessages, isLocale, locales, type Locale } from '../../src/lib/i18n';
+
+import { AppShell } from '@/components/app-shell';
+import { AppProviders } from '@/components/providers';
+import { AuthGuard } from '@/features/auth/components/auth-guard';
+import { getMessages, isLocale, locales, type Locale } from '@/lib/i18n';
 
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
@@ -23,9 +25,11 @@ export default function LocaleLayout({
 
   return (
     <AppProviders>
-      <AppShell messages={messages} locale={locale}>
-        {children}
-      </AppShell>
+      <AuthGuard locale={locale}>
+        <AppShell messages={messages} locale={locale}>
+          {children}
+        </AppShell>
+      </AuthGuard>
     </AppProviders>
   );
 }
