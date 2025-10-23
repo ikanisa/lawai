@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify from 'fastify';
 import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
@@ -13,14 +13,9 @@ import { registerVoiceRoutes } from './routes/voice/index.js';
 import type { AppContext } from './types/context';
 import { env, rateLimitConfig } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
-import { createRateLimiterFactory } from './rate-limit.js';
+import type { CreateAppResult } from './types/app';
 
-interface AppBootstrap {
-  app: FastifyInstance;
-  context: AppContext;
-}
-
-export async function createApp(): Promise<AppBootstrap> {
+export async function createApp(): Promise<CreateAppResult> {
   const app = Fastify({
     ajv: {
       customOptions: {

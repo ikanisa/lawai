@@ -1,27 +1,33 @@
 declare module '@avocat-ai/shared' {
-  export type WorkspaceDesk = Record<string, unknown>;
-  export interface OpenAIClientConfig {
-    apiKey?: string;
-    cacheKeySuffix?: string;
-    requestTags?: string;
-  }
-  export interface OpenAIEmbeddingsResponse {
-    data?: Array<{ embedding?: number[] }>;
-  }
-  export interface OpenAIResponsesResponse {
-    output?: Array<{ content?: Array<{ text?: string }> }>;
-    output_text?: string;
-    data?: Array<{ embedding?: number[] }>;
-  }
-  export interface OpenAIClient {
-    embeddings: {
-      create(params: Record<string, unknown>): Promise<OpenAIEmbeddingsResponse>;
-    };
-    responses: {
-      create(params: Record<string, unknown>): Promise<OpenAIResponsesResponse>;
-    };
-  }
-  export function getOpenAIClient(config?: OpenAIClientConfig): OpenAIClient;
+  export const AgentRunSchema: any;
+  export const AgentRunRequestSchema: any;
+  export const AgentStreamRequestSchema: any;
+  export type AgentRun = any;
+  export type ResearchStreamEvent = any;
+  export const ResearchStreamPayloadSchema: any;
+  export const ResearchDeskContextSchema: any;
+  export type ResearchDeskContext = any;
+  export type ResearchPlan = any;
+  export type ResearchCitation = any;
+  export const CitationsBrowserDataSchema: any;
+  export type CitationDocument = any;
+  export type CitationsBrowserData = any;
+  export const CorpusDashboardDataSchema: any;
+  export const HitlQueueDataSchema: any;
+  export type HitlQueueData = any;
+  export const MattersOverviewSchema: any;
+  export type MattersOverview = any;
+  export const PolicyConfigurationSchema: any;
+  export const UploadResponseSchema: any;
+  export const VoiceConsoleContextSchema: any;
+  export const VoiceRunRequestSchema: any;
+  export const VoiceRunResponseSchema: any;
+  export const VoiceSessionTokenSchema: any;
+  export type VoiceSessionToken = any;
+  export type ProcessNavigatorFlow = any;
+  export type WorkspaceDesk = any;
+  export type OpenAIClientConfig = any;
+  export function getOpenAIClient(config?: OpenAIClientConfig): any;
   export function isOpenAIDebugEnabled(): boolean;
   export interface OpenAIDebugInfo {
     requestId?: string;
