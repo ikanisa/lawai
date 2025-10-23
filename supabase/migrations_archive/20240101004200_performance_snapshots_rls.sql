@@ -1,8 +1,9 @@
-alter table public.performance_snapshots enable row level security;
+ALTER TABLE public.performance_snapshots enable ROW level security;
 
-create policy performance_snapshots_select on public.performance_snapshots
-for select using (public.is_org_member(org_id));
+CREATE POLICY performance_snapshots_select ON public.performance_snapshots FOR
+SELECT
+  USING (public.is_org_member (org_id));
 
-create policy performance_snapshots_modify on public.performance_snapshots
-for all using (public.is_org_member(org_id))
-with check (public.is_org_member(org_id));
+CREATE POLICY performance_snapshots_modify ON public.performance_snapshots FOR ALL USING (public.is_org_member (org_id))
+WITH
+  CHECK (public.is_org_member (org_id));

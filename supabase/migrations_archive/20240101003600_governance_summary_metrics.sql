@@ -1,82 +1,153 @@
 -- Refresh governance metrics view with document summary coverage fields
-create or replace view public.org_metrics as
-select
-  o.id as org_id,
+CREATE OR REPLACE VIEW public.org_metrics AS
+SELECT
+  o.id AS org_id,
   o.name,
-  coalesce(runs.total_runs, 0) as total_runs,
-  coalesce(runs.runs_last_30_days, 0) as runs_last_30_days,
-  coalesce(runs.high_risk_runs, 0) as high_risk_runs,
-  coalesce(runs.confidential_runs, 0) as confidential_runs,
-  coalesce(runs.avg_latency_ms, 0)::bigint as avg_latency_ms,
-  coalesce(runs.allowlisted_ratio, 0)::numeric as allowlisted_citation_ratio,
-  coalesce(hitl.pending, 0) as hitl_pending,
-  coalesce(hitl.median_response_minutes, 0)::numeric as hitl_median_response_minutes,
-  coalesce(ingestion.success_7d, 0) as ingestion_success_last_7_days,
-  coalesce(ingestion.failed_7d, 0) as ingestion_failed_last_7_days,
-  coalesce(eval_summary.total_cases, 0) as evaluation_cases,
-  coalesce(eval_summary.pass_rate, 0)::numeric as evaluation_pass_rate,
-  coalesce(documents.total_documents, 0) as documents_total,
-  coalesce(documents.ready_documents, 0) as documents_ready,
-  coalesce(documents.pending_documents, 0) as documents_pending,
-  coalesce(documents.failed_documents, 0) as documents_failed,
-  coalesce(documents.skipped_documents, 0) as documents_skipped,
-  coalesce(documents.chunked_documents, 0) as documents_chunked
-from public.organizations o
-left join (
-  select
-    r.org_id,
-    count(*) as total_runs,
-    count(*) filter (where r.started_at >= now() - interval '30 days') as runs_last_30_days,
-    count(*) filter (where coalesce(r.risk_level, 'LOW') = 'HIGH') as high_risk_runs,
-    count(*) filter (where r.confidential_mode) as confidential_runs,
-    avg(extract(epoch from (coalesce(r.finished_at, now()) - r.started_at)) * 1000) as avg_latency_ms,
-    case
-      when count(rc.id) = 0 then null
-      else sum(case when rc.domain_ok then 1 else 0 end)::numeric / nullif(count(rc.id), 0)
-    end as allowlisted_ratio
-  from public.agent_runs r
-  left join public.run_citations rc on rc.run_id = r.id
-  group by r.org_id
-) runs on runs.org_id = o.id
-left join (
-  select
-    org_id,
-    count(*) filter (where status = 'pending') as pending,
-    percentile_disc(0.5) within group (order by extract(epoch from (coalesce(updated_at, now()) - created_at)) / 60.0) as median_response_minutes
-  from public.hitl_queue
-  group by org_id
-) hitl on hitl.org_id = o.id
-left join (
-  select
-    org_id,
-    count(*) filter (where status = 'succeeded' and started_at >= now() - interval '7 days') as success_7d,
-    count(*) filter (where status <> 'succeeded' and started_at >= now() - interval '7 days') as failed_7d
-  from public.ingestion_runs
-  group by org_id
-) ingestion on ingestion.org_id = o.id
-left join (
-  select
-    c.org_id,
-    count(distinct c.id) as total_cases,
-    case
-      when count(r.id) = 0 then null
-      else sum(case when r.pass then 1 else 0 end)::numeric / nullif(count(r.id), 0)
-    end as pass_rate
-  from public.eval_cases c
-  left join public.eval_results r on r.case_id = c.id
-  group by c.org_id
-) eval_summary on eval_summary.org_id = o.id
-left join (
-  select
-    d.org_id,
-    count(*) as total_documents,
-    count(*) filter (where d.summary_status = 'ready') as ready_documents,
-    count(*) filter (where d.summary_status = 'pending') as pending_documents,
-    count(*) filter (where d.summary_status = 'failed') as failed_documents,
-    count(*) filter (where d.summary_status = 'skipped') as skipped_documents,
-    count(*) filter (where d.chunk_count > 0) as chunked_documents
-  from public.documents d
-  group by d.org_id
-) documents on documents.org_id = o.id;
+  coalesce(runs.total_runs, 0) AS total_runs,
+  coalesce(runs.runs_last_30_days, 0) AS runs_last_30_days,
+  coalesce(runs.high_risk_runs, 0) AS high_risk_runs,
+  coalesce(runs.confidential_runs, 0) AS confidential_runs,
+  coalesce(runs.avg_latency_ms, 0)::bigint AS avg_latency_ms,
+  coalesce(runs.allowlisted_ratio, 0)::numeric AS allowlisted_citation_ratio,
+  coalesce(hitl.pending, 0) AS hitl_pending,
+  coalesce(hitl.median_response_minutes, 0)::numeric AS hitl_median_response_minutes,
+  coalesce(ingestion.success_7d, 0) AS ingestion_success_last_7_days,
+  coalesce(ingestion.failed_7d, 0) AS ingestion_failed_last_7_days,
+  coalesce(eval_summary.total_cases, 0) AS evaluation_cases,
+  coalesce(eval_summary.pass_rate, 0)::numeric AS evaluation_pass_rate,
+  coalesce(documents.total_documents, 0) AS documents_total,
+  coalesce(documents.ready_documents, 0) AS documents_ready,
+  coalesce(documents.pending_documents, 0) AS documents_pending,
+  coalesce(documents.failed_documents, 0) AS documents_failed,
+  coalesce(documents.skipped_documents, 0) AS documents_skipped,
+  coalesce(documents.chunked_documents, 0) AS documents_chunked
+FROM
+  public.organizations o
+  LEFT JOIN (
+    SELECT
+      r.org_id,
+      count(*) AS total_runs,
+      count(*) FILTER (
+        WHERE
+          r.started_at >= now() - interval '30 days'
+      ) AS runs_last_30_days,
+      count(*) FILTER (
+        WHERE
+          coalesce(r.risk_level, 'LOW') = 'HIGH'
+      ) AS high_risk_runs,
+      count(*) FILTER (
+        WHERE
+          r.confidential_mode
+      ) AS confidential_runs,
+      avg(
+        extract(
+          epoch
+          FROM
+            (coalesce(r.finished_at, now()) - r.started_at)
+        ) * 1000
+      ) AS avg_latency_ms,
+      CASE
+        WHEN count(rc.id) = 0 THEN NULL
+        ELSE sum(
+          CASE
+            WHEN rc.domain_ok THEN 1
+            ELSE 0
+          END
+        )::numeric / nullif(count(rc.id), 0)
+      END AS allowlisted_ratio
+    FROM
+      public.agent_runs r
+      LEFT JOIN public.run_citations rc ON rc.run_id = r.id
+    GROUP BY
+      r.org_id
+  ) runs ON runs.org_id = o.id
+  LEFT JOIN (
+    SELECT
+      org_id,
+      count(*) FILTER (
+        WHERE
+          status = 'pending'
+      ) AS pending,
+      percentile_disc(0.5) WITHIN GROUP (
+        ORDER BY
+          extract(
+            epoch
+            FROM
+              (coalesce(updated_at, now()) - created_at)
+          ) / 60.0
+      ) AS median_response_minutes
+    FROM
+      public.hitl_queue
+    GROUP BY
+      org_id
+  ) hitl ON hitl.org_id = o.id
+  LEFT JOIN (
+    SELECT
+      org_id,
+      count(*) FILTER (
+        WHERE
+          status = 'succeeded'
+          AND started_at >= now() - interval '7 days'
+      ) AS success_7d,
+      count(*) FILTER (
+        WHERE
+          status <> 'succeeded'
+          AND started_at >= now() - interval '7 days'
+      ) AS failed_7d
+    FROM
+      public.ingestion_runs
+    GROUP BY
+      org_id
+  ) ingestion ON ingestion.org_id = o.id
+  LEFT JOIN (
+    SELECT
+      c.org_id,
+      count(DISTINCT c.id) AS total_cases,
+      CASE
+        WHEN count(r.id) = 0 THEN NULL
+        ELSE sum(
+          CASE
+            WHEN r.pass THEN 1
+            ELSE 0
+          END
+        )::numeric / nullif(count(r.id), 0)
+      END AS pass_rate
+    FROM
+      public.eval_cases c
+      LEFT JOIN public.eval_results r ON r.case_id = c.id
+    GROUP BY
+      c.org_id
+  ) eval_summary ON eval_summary.org_id = o.id
+  LEFT JOIN (
+    SELECT
+      d.org_id,
+      count(*) AS total_documents,
+      count(*) FILTER (
+        WHERE
+          d.summary_status = 'ready'
+      ) AS ready_documents,
+      count(*) FILTER (
+        WHERE
+          d.summary_status = 'pending'
+      ) AS pending_documents,
+      count(*) FILTER (
+        WHERE
+          d.summary_status = 'failed'
+      ) AS failed_documents,
+      count(*) FILTER (
+        WHERE
+          d.summary_status = 'skipped'
+      ) AS skipped_documents,
+      count(*) FILTER (
+        WHERE
+          d.chunk_count > 0
+      ) AS chunked_documents
+    FROM
+      public.documents d
+    GROUP BY
+      d.org_id
+  ) documents ON documents.org_id = o.id;
 
-alter view public.org_metrics set (security_invoker = true);
+ALTER VIEW public.org_metrics
+SET
+  (security_invoker = TRUE);
