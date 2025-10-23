@@ -13,6 +13,151 @@ export const API_BASE = clientEnv.NEXT_PUBLIC_API_BASE_URL;
 export const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000000';
 
+export type ChatkitChannel = 'web' | 'voice';
+export type ChatkitSessionStatus = 'active' | 'ended';
+
+export interface ChatkitSessionDetails {
+  sessionId: string;
+  status: string | null;
+  url: string | null;
+  expiresAt: string | null;
+  metadata: Record<string, unknown> | null;
+  clientSecret?: string | null;
+  clientSecretExpiresAt?: string | null;
+}
+
+export interface ChatkitSessionRecord {
+  id: string;
+  orgId: string;
+  userId: string;
+  agentName: string;
+  channel: ChatkitChannel;
+  status: ChatkitSessionStatus;
+  chatkitSessionId: string | null;
+  createdAt: string;
+  endedAt: string | null;
+  metadata: Record<string, unknown>;
+  chatkit?: ChatkitSessionDetails | null;
+}
+
+export interface ChatkitSessionListResponse {
+  sessions: ChatkitSessionRecord[];
+}
+
+export interface CreateChatkitSessionInput {
+  orgId?: string;
+  agentName?: string;
+  channel?: ChatkitChannel;
+  metadata?: Record<string, unknown>;
+}
+
+export async function createChatkitSession(
+  input: CreateChatkitSessionInput = {},
+): Promise<ChatkitSessionRecord> {
+  const response = await fetch(`${API_BASE}/chatkit/sessions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': DEMO_USER_ID,
+    },
+    body: JSON.stringify({
+      orgId: input.orgId ?? DEMO_ORG_ID,
+      agentName: input.agentName ?? 'avocat-francophone',
+      channel: input.channel ?? 'web',
+      metadata: input.metadata ?? {},
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to create ChatKit session');
+  }
+
+  return response.json();
+}
+
+export async function fetchChatkitSessions(
+  orgId: string,
+  status?: ChatkitSessionStatus,
+): Promise<ChatkitSessionListResponse> {
+  const search = new URLSearchParams({ orgId });
+  if (status) {
+    search.set('status', status);
+  }
+
+  const response = await fetch(`${API_BASE}/chatkit/sessions?${search.toString()}`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch ChatKit sessions');
+  }
+
+  return response.json();
+}
+
+export async function fetchChatkitSession(
+  sessionId: string,
+  options?: { includeSecret?: boolean },
+): Promise<ChatkitSessionRecord> {
+  const search = new URLSearchParams();
+  if (options?.includeSecret) {
+    search.set('includeSecret', '1');
+  }
+
+  const response = await fetch(
+    `${API_BASE}/chatkit/sessions/${encodeURIComponent(sessionId)}${search.size ? `?${search.toString()}` : ''}`,
+    {
+      headers: { 'x-user-id': DEMO_USER_ID },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch ChatKit session');
+  }
+
+  return response.json();
+}
+
+export async function cancelChatkitSession(sessionId: string): Promise<ChatkitSessionRecord> {
+  const response = await fetch(`${API_BASE}/chatkit/sessions/${encodeURIComponent(sessionId)}/cancel`, {
+    method: 'POST',
+    headers: { 'x-user-id': DEMO_USER_ID },
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to cancel ChatKit session');
+  }
+
+  return response.json();
+}
+
+export interface ChatkitEventInput {
+  type: string;
+  payload?: unknown;
+  actorType?: string;
+  actorId?: string;
+}
+
+export async function postChatkitEvent(
+  sessionId: string,
+  event: ChatkitEventInput,
+): Promise<{ status: string }> {
+  const response = await fetch(`${API_BASE}/chatkit/sessions/${encodeURIComponent(sessionId)}/events`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': DEMO_USER_ID,
+    },
+    body: JSON.stringify(event),
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to record ChatKit event');
+  }
+
+  return response.json();
+}
+
 export type VerificationSeverity = 'info' | 'warning' | 'critical';
 
 export interface VerificationNote {

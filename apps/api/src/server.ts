@@ -1,7 +1,8 @@
 import { createApp } from './app.js';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
-import type { IRACPayload } from '@avocat-ai/shared';
+import { WebSearchModeSchema } from '@avocat-ai/shared';
+import type { IRACPayload, WebSearchMode } from '@avocat-ai/shared';
 import { z } from 'zod';
 import { env } from './config.js';
 import { IRACPayloadSchema } from './schemas/irac.js';
@@ -70,7 +71,9 @@ import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js'
 import { registerGracefulShutdown } from './core/lifecycle/graceful-shutdown.js';
 
 const { app, context } = await createApp();
-registerGracefulShutdown(app);
+registerGracefulShutdown(app, {
+  cleanup: () => context.container.dispose(),
+});
 
 setOpenAILogger(app.log);
 
@@ -339,11 +342,11 @@ async function determineResidencyZone(
   return zone;
 }
 
-const complianceAckSchema = z
+const complianceAcknowledgementBodySchema = z
   .object({
     consent: z
       .object({
-        type: z.string().min(1),
+        type: z.literal(COMPLIANCE_ACK_TYPES.consent),
         version: z.string().min(1),
       })
       .nullable()
@@ -774,7 +777,7 @@ app.get('/compliance/acknowledgements', async (request, reply) => {
   }
 });
 
-app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledgements', async (request, reply) => {
+app.post<{ Body: z.infer<typeof complianceAcknowledgementBodySchema> }>('/compliance/acknowledgements', async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -784,7 +787,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     return reply.code(400).send({ error: 'x-org-id header is required' });
   }
 
-  const parsed = complianceAckSchema.safeParse(request.body ?? {});
+  const parsed = complianceAcknowledgementBodySchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
   }
@@ -809,7 +812,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     records.push({
       user_id: userHeader,
       org_id: orgHeader,
-      consent_type: parsed.data.consent.type,
+      consent_type: COMPLIANCE_ACK_TYPES.consent,
       version: parsed.data.consent.version,
     });
   }
@@ -1055,7 +1058,14 @@ app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/di
 app.get('/healthz', async () => ({ status: 'ok' }));
 
 app.post<{
-  Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
+  Body: {
+    question: string;
+    context?: string;
+    orgId?: string;
+    userId?: string;
+    confidentialMode?: boolean;
+    userLocation?: string;
+  };
 }>('/runs', async (request, reply) => {
   const bodySchema = z.object({
     question: z.string().min(1),
@@ -1063,17 +1073,28 @@ app.post<{
     orgId: z.string().uuid(),
     userId: z.string().uuid(),
     confidentialMode: z.coerce.boolean().optional(),
+    userLocation: z.string().optional(),
   });
   const parsed = bodySchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
   }
-  const { question, context, orgId, userId, confidentialMode } = parsed.data;
+  const { question, context, orgId, userId, confidentialMode, userLocation } = parsed.data;
 
   try {
     const access = await authorizeRequestWithGuards('runs:execute', orgId, userId, request);
     const effectiveConfidential = access.policies.confidentialMode || Boolean(confidentialMode);
-    const result = await runLegalAgent({ question, context, orgId, userId, confidentialMode: effectiveConfidential }, access);
+    const result = await runLegalAgent(
+      {
+        question,
+        context,
+        orgId,
+        userId,
+        confidentialMode: effectiveConfidential,
+        userLocationOverride: userLocation?.trim() ?? null,
+      },
+      access,
+    );
     // Validate payload at the boundary with a conservative schema
     const safePayload = IRACPayloadSchema.safeParse(result.payload);
 
