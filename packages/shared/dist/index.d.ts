@@ -5,7 +5,10 @@ export * from './constants/thresholds.js';
 export * from './plan.js';
 export * from './akoma.js';
 export * from './openai/client.js';
+export * from './openai/vector-stores.js';
 export * from './orchestrator.js';
 export * from './orchestrator-capabilities.js';
 export * from './orchestrator-mcp.js';
+export * from './pwa.js';
+export * from './workspace.js';
 //# sourceMappingURL=index.d.ts.map
