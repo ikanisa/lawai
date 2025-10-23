@@ -29,3 +29,8 @@ apps/pwa/cache/
 .pnpm-state/
 Library/
 apps/web/tsconfig.typecheck.tsbuildinfo
+
+# Cloudflare/Caddy local runtime
+.logs/
+infra/cloudflared/config.yml
+infra/cloudflared/credentials/
