@@ -10,11 +10,12 @@ import { IRACPayloadSchema } from './schemas/irac.js';
 import { getOpenAI, logOpenAIDebug, setOpenAILogger } from './openai.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent-wrapper.js';
 import { summariseDocumentFromPayload } from './summarization.js';
+import { registerComplianceRoutes } from './domain/compliance/routes.js';
 // Defer finance workers to runtime without affecting typecheck
 try {
   const dyn = new Function('p', 'return import(p)');
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  Promise.resolve((dyn as any)('./finance-workers.js')).catch(() => {});
+  void Promise.resolve((dyn as any)('./finance-workers.js')).catch(() => undefined);
 } catch {}
 import { z as zod } from 'zod';
 import {
@@ -62,7 +63,8 @@ import { authorizeRequestWithGuards } from './http/authorization.js';
 import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
-import { InMemoryRateLimiter } from './rate-limit.js';
+import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
+import { InMemoryRateLimiter, SupabaseRateLimiter, createRateLimitPreHandler } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
@@ -157,6 +159,73 @@ const complianceRateLimitGuard = createRateLimitGuard(
 context.rateLimits.workspace = workspaceRateLimitGuard;
 
 await registerWorkspaceRoutes(app, context);
+
+const sensitiveRateLimiter = new SupabaseRateLimiter({
+  supabase,
+  limit: 30,
+  windowSeconds: 60,
+  prefix: 'sensitive',
+});
+
+const complianceAcknowledgementsRateLimit = createRateLimitPreHandler({
+  limiter: sensitiveRateLimiter,
+  keyGenerator: (request) => {
+    const userHeader = request.headers['x-user-id'];
+    const orgHeader = request.headers['x-org-id'];
+    if (typeof userHeader === 'string' && typeof orgHeader === 'string') {
+      return `${orgHeader}:${userHeader}:compliance`;
+    }
+    return null;
+  },
+});
+
+const complianceStatusRateLimit = createRateLimitPreHandler({
+  limiter: sensitiveRateLimiter,
+  keyGenerator: (request) => {
+    const userHeader = request.headers['x-user-id'];
+    const orgHeader = request.headers['x-org-id'];
+    if (typeof userHeader === 'string' && typeof orgHeader === 'string') {
+      return `${orgHeader}:${userHeader}:compliance-status`;
+    }
+    return null;
+  },
+});
+
+const runExecutionRateLimit = createRateLimitPreHandler({
+  limiter: sensitiveRateLimiter,
+  keyGenerator: (request) => {
+    const body = request.body as { orgId?: unknown; userId?: unknown } | undefined;
+    const bodyOrg = typeof body?.orgId === 'string' ? body.orgId : undefined;
+    const bodyUser = typeof body?.userId === 'string' ? body.userId : undefined;
+    const orgHeader = typeof request.headers['x-org-id'] === 'string' ? (request.headers['x-org-id'] as string) : undefined;
+    const userHeader = typeof request.headers['x-user-id'] === 'string' ? (request.headers['x-user-id'] as string) : undefined;
+    const orgId = bodyOrg ?? orgHeader ?? null;
+    const userId = bodyUser ?? userHeader ?? null;
+    if (orgId && userId) {
+      return `${orgId}:${userId}:runs`;
+    }
+    return request.ip ? `${request.ip}:runs` : null;
+  },
+});
+
+const securityRateLimit = createRateLimitPreHandler({
+  limiter: sensitiveRateLimiter,
+  keyGenerator: (request) => {
+    const userHeader = request.headers['x-user-id'];
+    const orgHeader = request.headers['x-org-id'];
+    if (typeof userHeader === 'string' && typeof orgHeader === 'string') {
+      return `${orgHeader}:${userHeader}:security`;
+    }
+    return request.ip ? `${request.ip}:security` : null;
+  },
+});
+
+await registerComplianceRoutes(app, context, {
+  rateLimiters: {
+    acknowledgements: complianceAcknowledgementsRateLimit,
+    status: complianceStatusRateLimit,
+  },
+});
 
 async function embedQuery(text: string): Promise<number[]> {
   const openai = getOpenAI();
@@ -541,69 +610,7 @@ function resolveDateRange(startParam?: string, endParam?: string): { start: stri
   return { start: startIso, end: endIso };
 }
 
-app.post<{ Body: z.infer<typeof regulatorDigestSchema> }>('/launch/digests', async (request, reply) => {
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(401).send({ error: 'unauthorized' });
-  }
-  const orgHeader = request.headers['x-org-id'];
-  if (!orgHeader || typeof orgHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-org-id header is required' });
-  }
-
-  const parsed = regulatorDigestSchema.safeParse(request.body ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
-  }
-
-  try {
-    await authorizeRequestWithGuards('governance:dispatch', orgHeader, userHeader, request);
-  } catch (error) {
-    const status = (error as Error & { statusCode?: number }).statusCode ?? 403;
-    return reply.code(status).send({ error: 'forbidden' });
-  }
-
-  try {
-    const digest = await withRequestSpan(
-      request,
-      {
-        name: 'launch.regulator_digests.enqueue',
-        attributes: {
-          orgId: orgHeader,
-          userId: userHeader,
-          channel: parsed.data.channel,
-          frequency: parsed.data.frequency,
-        },
-      },
-      async ({ setAttribute }) => {
-        const entry = enqueueRegulatorDigest({
-          ...parsed.data,
-          orgId: orgHeader,
-          requestedBy: userHeader,
-        });
-        setAttribute('digestId', entry.id);
-        setAttribute('recipientCount', entry.recipients.length);
-        return entry;
-      },
-    );
-
-    incrementCounter('launch.regulator_digest.queued', {
-      channel: digest.channel,
-      frequency: digest.frequency,
-    });
-
-    return reply.code(201).send({ digest });
-  } catch (error) {
-    request.log.error({ err: error }, 'regulator_digest_enqueue_failed');
-    return reply.code(500).send({ error: 'regulator_digest_enqueue_failed' });
-  }
-  },
-);
-
-app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>(
-  '/launch/digests',
-  { preHandler: launchRateLimitGuard },
-  async (request, reply) => {
+app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/digests', async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -653,7 +660,7 @@ app.get('/healthz', async () => ({ status: 'ok' }));
 
 app.post<{
   Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
-}>('/runs', { preHandler: runsRateLimitGuard }, async (request, reply) => {
+}>('/runs', { preHandler: [runExecutionRateLimit] }, async (request, reply) => {
   const bodySchema = z.object({
     question: z.string().min(1),
     context: z.string().optional(),
@@ -5030,6 +5037,7 @@ app.get<{
       },
       headers: { type: 'object', properties: { 'x-user-id': { type: 'string' } }, required: ['x-user-id'] },
     },
+    preHandler: [securityRateLimit],
   },
   async (request, reply) => {
   const { orgId, userId, includeRevoked, limit } = request.query;
@@ -5104,7 +5112,7 @@ app.get<{
 app.post<{
   Body: { orgId?: string; sessionId?: string; reason?: string | null };
 }>('/security/devices/revoke',
-  { schema: { headers: { type: 'object', properties: { 'x-user-id': { type: 'string' } }, required: ['x-user-id'] } } },
+  { schema: { headers: { type: 'object', properties: { 'x-user-id': { type: 'string' } }, required: ['x-user-id'] } }, preHandler: [securityRateLimit] },
   async (request, reply) => {
   const bodySchema = z.object({
     orgId: z.string().uuid(),
