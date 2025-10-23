@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { FastifyRateLimitHook } from '../rate-limit.js';
+import type { RateLimitGuard } from '../rate-limit.js';
 
 export interface AppContext {
   supabase: ServiceSupabaseClient;
@@ -9,8 +9,8 @@ export interface AppContext {
       baseUrl?: string;
     };
   };
-  rateLimits?: {
-    workspace?: FastifyRateLimitHook;
+  rateLimits: {
+    workspace?: RateLimitGuard;
   };
 }
 

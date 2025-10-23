@@ -21,6 +21,7 @@
     "dotenv": "^16.4.5",
     "fastify": "^4.26.1",
     "fastify-plugin": "^4.5.1",
+    "ioredis": "^5.4.1",
     "ipaddr.js": "^2.1.0",
     "openai": "6.2.0",
     "pino": "^8.21.0",

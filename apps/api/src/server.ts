@@ -13,8 +13,10 @@ import { summariseDocumentFromPayload } from './summarization.js';
 // Defer finance workers to runtime without affecting typecheck
 try {
   const dyn = new Function('p', 'return import(p)');
-  // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  (dyn as any)('./finance-workers.js').catch(() => undefined);
+  const maybePromise = (dyn as any)('./finance-workers.js');
+  if (maybePromise && typeof maybePromise.then === 'function') {
+    void maybePromise.catch(() => {});
+  }
 } catch {}
 import { z as zod } from 'zod';
 import {
@@ -63,12 +65,8 @@ import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
 import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
-import {
-  InMemoryRateLimiter,
-  createRateLimiter,
-  createRateLimitGuard,
-  type RateLimiterFactoryConfig,
-} from './rate-limit.js';
+import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
+import { createRateLimitGuard, createRateLimiterFactory } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
@@ -92,120 +90,79 @@ app.addHook('onClose', async () => {
 
 setOpenAILogger(app.log);
 
-// Basic rate limits for public-ish endpoints
-const limiterFactory = context.rateLimiter.factory;
-const telemetryLimiter = limiterFactory(rateLimitConfig.buckets.telemetry);
-const runsLimiter = limiterFactory(rateLimitConfig.buckets.runs);
-const complianceLimiter = limiterFactory(rateLimitConfig.buckets.compliance);
-const workspaceLimiter = context.rateLimiter.workspace;
-
-let redisClient: Redis | undefined;
-if (env.RATE_LIMIT_PROVIDER === 'redis') {
-  if (env.RATE_LIMIT_REDIS_URL) {
-    const { default: RedisConstructor } = await import('ioredis');
-    redisClient = new RedisConstructor(env.RATE_LIMIT_REDIS_URL, {
-      enableAutoPipelining: true,
-      lazyConnect: true,
-    });
-    redisClient.on('error', (error) => {
-      app.log.error({ err: error }, 'rate_limit_redis_error');
-    });
-  } else {
-    app.log.warn({ provider: env.RATE_LIMIT_PROVIDER }, 'rate_limit_redis_url_missing');
-  }
-}
-
-const distributedLimiterConfig: RateLimiterFactoryConfig = {
+const limiterFactory = createRateLimiterFactory({
+  enabled: env.RATE_LIMIT_ENABLED,
   provider: env.RATE_LIMIT_PROVIDER,
-  redisClient,
-  supabase: context.supabase,
-  supabaseFunction: env.RATE_LIMIT_SUPABASE_FUNCTION,
+  redis:
+    env.RATE_LIMIT_PROVIDER === 'redis'
+      ? {
+          url: env.RATE_LIMIT_REDIS_URL,
+        }
+      : undefined,
+  supabase:
+    env.RATE_LIMIT_PROVIDER === 'supabase'
+      ? {
+          client: supabase,
+          functionName: env.RATE_LIMIT_SUPABASE_FUNCTION,
+        }
+      : undefined,
   logger: app.log,
-};
-
-const runsLimiter = await createRateLimiter(
-  { limit: env.RATE_LIMIT_RUNS_LIMIT, windowMs: env.RATE_LIMIT_RUNS_WINDOW_MS, identifier: 'runs' },
-  distributedLimiterConfig,
-);
-const runsRateLimitGuard = createRateLimitGuard(runsLimiter, {
-  identifier: 'runs',
-  logger: app.log,
-  keyGenerator: (request) => {
-    const body = (request.body ?? {}) as { orgId?: unknown; userId?: unknown };
-    const orgId = typeof body.orgId === 'string' ? body.orgId : null;
-    const userId = typeof body.userId === 'string' ? body.userId : null;
-    if (orgId && userId) {
-      return `${orgId}:${userId}`;
-    }
-    return request.ip || 'unknown';
-  },
 });
 
-const complianceLimiter = await createRateLimiter(
+const telemetryLimiter = limiterFactory.create('telemetry', {
+  limit: env.RATE_LIMIT_TELEMETRY_LIMIT,
+  windowMs: env.RATE_LIMIT_TELEMETRY_WINDOW_SECONDS * 1000,
+});
+
+const telemetryRateLimitGuard = createRateLimitGuard(telemetryLimiter, {
+  name: 'telemetry',
+  limit: env.RATE_LIMIT_TELEMETRY_LIMIT,
+  windowMs: env.RATE_LIMIT_TELEMETRY_WINDOW_SECONDS * 1000,
+  logger: app.log,
+});
+
+const runsRateLimitGuard = createRateLimitGuard(
+  limiterFactory.create('runs', {
+    limit: env.RATE_LIMIT_RUNS_LIMIT,
+    windowMs: env.RATE_LIMIT_RUNS_WINDOW_SECONDS * 1000,
+  }),
   {
-    limit: env.RATE_LIMIT_COMPLIANCE_LIMIT,
-    windowMs: env.RATE_LIMIT_COMPLIANCE_WINDOW_MS,
-    identifier: 'compliance',
+    name: 'runs',
+    limit: env.RATE_LIMIT_RUNS_LIMIT,
+    windowMs: env.RATE_LIMIT_RUNS_WINDOW_SECONDS * 1000,
+    logger: app.log,
   },
-  distributedLimiterConfig,
 );
 
-const complianceRateLimitGuard = createRateLimitGuard(complianceLimiter, {
-  identifier: 'compliance',
-  logger: app.log,
-  keyGenerator: (request) => {
-    const orgHeader = request.headers['x-org-id'];
-    const userHeader = request.headers['x-user-id'];
-    if (typeof orgHeader === 'string' && typeof userHeader === 'string') {
-      return `${orgHeader}:${userHeader}`;
-    }
-    return request.ip || 'unknown';
-  },
-});
-
-const launchRateLimitGuard = createRateLimitGuard(complianceLimiter, {
-  identifier: 'launch',
-  logger: app.log,
-  keyGenerator: (request) => {
-    const orgHeader = request.headers['x-org-id'];
-    const userHeader = request.headers['x-user-id'];
-    if (typeof orgHeader === 'string' && typeof userHeader === 'string') {
-      return `launch:${orgHeader}:${userHeader}`;
-    }
-    if (typeof orgHeader === 'string') {
-      return `launch:${orgHeader}`;
-    }
-    return request.ip || 'unknown';
-  },
-});
-
-const workspaceLimiter = await createRateLimiter(
-  {
+const workspaceRateLimitGuard = createRateLimitGuard(
+  limiterFactory.create('workspace', {
     limit: env.RATE_LIMIT_WORKSPACE_LIMIT,
-    windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_MS,
-    identifier: 'workspace',
+    windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_SECONDS * 1000,
+  }),
+  {
+    name: 'workspace',
+    limit: env.RATE_LIMIT_WORKSPACE_LIMIT,
+    windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_SECONDS * 1000,
+    logger: app.log,
   },
-  distributedLimiterConfig,
 );
 
-const workspaceRateLimitGuard = createRateLimitGuard(workspaceLimiter, {
-  identifier: 'workspace',
-  logger: app.log,
-  keyGenerator: (request) => {
-    const query = (request.query ?? {}) as { orgId?: unknown };
-    const orgId = typeof query.orgId === 'string' ? query.orgId : null;
-    const userHeader = request.headers['x-user-id'];
-    if (orgId && typeof userHeader === 'string') {
-      return `${orgId}:${userHeader}`;
-    }
-    if (orgId) {
-      return orgId;
-    }
-    return request.ip || 'unknown';
+const complianceRateLimitGuard = createRateLimitGuard(
+  limiterFactory.create('compliance', {
+    limit: env.RATE_LIMIT_COMPLIANCE_LIMIT,
+    windowMs: env.RATE_LIMIT_COMPLIANCE_WINDOW_SECONDS * 1000,
+  }),
+  {
+    name: 'compliance',
+    limit: env.RATE_LIMIT_COMPLIANCE_LIMIT,
+    windowMs: env.RATE_LIMIT_COMPLIANCE_WINDOW_SECONDS * 1000,
+    logger: app.log,
   },
-});
+);
 
-context.rateLimits = { ...(context.rateLimits ?? {}), workspace: workspaceRateLimitGuard };
+context.rateLimits.workspace = workspaceRateLimitGuard;
+
+await registerWorkspaceRoutes(app, context);
 
 async function embedQuery(text: string): Promise<number[]> {
   const openai = getOpenAI();
@@ -885,8 +842,7 @@ app.get(
     return reply.code(400).send({ error: 'x-org-id header is required' });
   }
 
-  const allowed = await enforceRateLimit(complianceLimiter, request, reply, `compliance:${orgHeader}:${userHeader}`);
-  if (!allowed) {
+  if (await complianceRateLimitGuard(request, reply, ['ack:get', orgHeader, userHeader])) {
     return;
   }
 
@@ -941,8 +897,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>(
     return reply.code(400).send({ error: 'x-org-id header is required' });
   }
 
-  const allowed = await enforceRateLimit(complianceLimiter, request, reply, `compliance:${orgHeader}:${userHeader}`);
-  if (!allowed) {
+  if (await complianceRateLimitGuard(request, reply, ['ack:post', orgHeader, userHeader])) {
     return;
   }
 
@@ -1020,8 +975,7 @@ app.get<{
     return reply.code(400).send({ error: 'x-org-id header is required' });
   }
 
-  const allowed = await enforceRateLimit(complianceLimiter, request, reply, `compliance:${orgHeader}:${userHeader}`);
-  if (!allowed) {
+  if (await complianceRateLimitGuard(request, reply, ['status:get', orgHeader, userHeader])) {
     return;
   }
 
@@ -1249,6 +1203,10 @@ app.post<{
 
   const allowed = await enforceRateLimit(runsLimiter, request, reply, `runs:${orgId}:${userId}`);
   if (!allowed) {
+    return;
+  }
+
+  if (await runsRateLimitGuard(request, reply, [orgId, userId])) {
     return;
   }
 
@@ -4028,17 +3986,10 @@ app.post<{
     },
   },
   async (request, reply) => {
-    // Rate-limit by IP (or x-forwarded-for fallback)
-    try {
-      const ipHeader = (request.headers['x-forwarded-for'] ?? request.ip ?? '').toString();
-      const ip = ipHeader.split(',')[0].trim();
-      const hit = await telemetryLimiter.hit(ip || 'unknown');
-      if (!hit.allowed) {
-        reply.header('Retry-After', Math.ceil((hit.resetAt - Date.now()) / 1000));
-        return reply.code(429).send({ error: 'rate_limited' });
-      }
-    } catch (_err) {
-      // ignore limiter failures
+    const ipHeader = (request.headers['x-forwarded-for'] ?? request.ip ?? '').toString();
+    const ip = ipHeader.split(',')[0].trim() || 'unknown';
+    if (await telemetryRateLimitGuard(request, reply, ['ip', ip])) {
+      return;
     }
     const { orgId, userId, eventName, payload } = request.body ?? {};
 
@@ -4087,8 +4038,7 @@ app.get<{ Querystring: { orgId?: string } }>(
     return reply.code(400).send({ error: 'x-user-id header is required' });
   }
 
-  const allowed = await enforceRateLimit(workspaceLimiter, request, reply, `workspace:${orgId}:${userHeader}`);
-  if (!allowed) {
+  if (await workspaceRateLimitGuard(request, reply, ['overview', orgId, userHeader])) {
     return;
   }
 

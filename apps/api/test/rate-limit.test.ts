@@ -22,7 +22,7 @@ describe('InMemoryRateLimiter', () => {
 
     await limiter.hit('ip');
     await limiter.hit('ip');
-    limiter.reset('ip');
+    await limiter.reset('ip');
 
     const next = await limiter.hit('ip');
     expect(next.allowed).toBe(true);
