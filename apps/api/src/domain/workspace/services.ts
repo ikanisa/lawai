@@ -212,10 +212,14 @@ export interface WorkspaceCaseScoresResponse {
     modelRef: string | null;
     notes: string | null;
     computedAt: string | null;
-    sourceTitle: string | null;
-    sourceUrl: string | null;
-    trustTier: string | null;
-    courtRank: string | null;
+    source:
+      | {
+          title: string | null;
+          url: string | null;
+          trustTier: string | null;
+          courtRank: string | null;
+        }
+      | null;
   }>;
 }
 
@@ -250,10 +254,14 @@ export async function fetchWorkspaceCaseScores(
     modelRef: row.model_ref,
     notes: row.notes,
     computedAt: row.computed_at,
-    sourceTitle: row.sources?.title ?? null,
-    sourceUrl: row.sources?.source_url ?? null,
-    trustTier: row.sources?.trust_tier ?? null,
-    courtRank: row.sources?.court_rank ?? null,
+    source: row.sources
+      ? {
+          title: row.sources.title ?? null,
+          url: row.sources.source_url ?? null,
+          trustTier: row.sources.trust_tier ?? null,
+          courtRank: row.sources.court_rank ?? null,
+        }
+      : null,
   }));
 
   return { data: { scores }, error: error ?? undefined };

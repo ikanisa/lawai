@@ -191,10 +191,7 @@ const caseScoresResponseSchema = {
           'modelRef',
           'notes',
           'computedAt',
-          'sourceTitle',
-          'sourceUrl',
-          'trustTier',
-          'courtRank',
+          'source',
         ],
         properties: {
           id: { type: 'string' },
@@ -216,10 +213,22 @@ const caseScoresResponseSchema = {
           modelRef: { type: ['string', 'null'] },
           notes: { type: ['string', 'null'] },
           computedAt: { type: ['string', 'null'] },
-          sourceTitle: { type: ['string', 'null'] },
-          sourceUrl: { type: ['string', 'null'] },
-          trustTier: { type: ['string', 'null'] },
-          courtRank: { type: ['string', 'null'] },
+          source: {
+            anyOf: [
+              { type: 'null' },
+              {
+                type: 'object',
+                required: ['title', 'url', 'trustTier', 'courtRank'],
+                properties: {
+                  title: { type: ['string', 'null'] },
+                  url: { type: ['string', 'null'] },
+                  trustTier: { type: ['string', 'null'] },
+                  courtRank: { type: ['string', 'null'] },
+                },
+                additionalProperties: false,
+              },
+            ],
+          },
         },
         additionalProperties: true,
       },
