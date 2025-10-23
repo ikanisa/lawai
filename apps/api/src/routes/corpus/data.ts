@@ -1,136 +1,223 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   CorpusDashboardDataSchema,
-  PolicyConfigurationSchema,
   type CorpusDashboardData,
-  type PolicyConfiguration,
+  type ResidencySummary,
 } from '@avocat-ai/shared';
 
-const corpusDashboardData = CorpusDashboardDataSchema.parse({
-  allowlist: [
-    {
-      id: 'legifrance',
-      name: 'Légifrance — Codes consolidés',
-      jurisdiction: 'FR',
-      enabled: true,
-      lastIndexed: '2024-05-27T09:12:00Z',
-      type: 'official',
-    },
-    {
-      id: 'ohada_official',
-      name: 'OHADA — Actes uniformes',
-      jurisdiction: 'OHADA',
-      enabled: true,
-      lastIndexed: '2024-05-26T18:45:00Z',
-      type: 'official',
-    },
-    {
-      id: 'ohada_gazette',
-      name: 'Journal Officiel OHADA',
-      jurisdiction: 'OHADA',
-      enabled: false,
-      lastIndexed: '2024-05-10T07:00:00Z',
-      type: 'secondary',
-    },
-    {
-      id: 'drive_internal',
-      name: 'Google Drive — Banque Helios',
-      jurisdiction: 'FR',
-      enabled: true,
-      lastIndexed: '2024-05-28T05:20:00Z',
-      type: 'internal',
-    },
-  ],
-  integrations: [
-    {
-      id: 'supabase-vector',
-      name: 'Vector Store — Supabase',
-      provider: 'Supabase',
-      status: 'connected',
-      lastSync: '2024-05-27T23:10:00Z',
-    },
-    {
-      id: 'drive-watch',
-      name: 'Google Drive Watcher',
-      provider: 'Google',
-      status: 'syncing',
-      message: 'Processus delta en cours sur 14 fichiers.',
-    },
-    {
-      id: 'ohada-fetcher',
-      name: 'OHADA Web Search',
-      provider: 'SerpAPI',
-      status: 'error',
-      message: 'Quota dépassé — réessayer après 01:00 UTC.',
-      lastSync: '2024-05-27T02:30:00Z',
-    },
-  ],
-  snapshots: [
-    {
-      id: 'snapshot_may',
-      label: 'Snapshot légal — Mai 2024',
-      createdAt: '2024-05-25T21:00:00Z',
-      author: 'Equipe Knowledge',
-      sizeMb: 4_096,
-    },
-    {
-      id: 'snapshot_ohada_q1',
-      label: 'Corpus OHADA — T1 2024',
-      createdAt: '2024-04-04T11:30:00Z',
-      author: 'Avocat-AI Pipeline',
-      sizeMb: 1_536,
-    },
-  ],
-  ingestionJobs: [
-    {
-      id: 'job_ohada_apr',
-      filename: 'ohada_uniform_act_2024-04-18.pdf',
-      status: 'processing',
-      submittedAt: '2024-05-27T07:10:00Z',
-      jurisdiction: 'OHADA',
-      progress: 58,
-      note: 'Extraction Akoma Ntoso en cours.',
-    },
-    {
-      id: 'job_ccja_audio',
-      filename: 'ccja_audience_2024-05-12.mp3',
-      status: 'failed',
-      submittedAt: '2024-05-26T19:45:00Z',
-      jurisdiction: 'OHADA',
-      progress: 20,
-      note: 'Transcription vocale à relancer (erreur 500).',
-    },
-    {
-      id: 'job_legifrance',
-      filename: 'legifrance_codes_2024-05-20.zip',
-      status: 'ready',
-      submittedAt: '2024-05-21T08:00:00Z',
-      jurisdiction: 'FR',
-      progress: 100,
-    },
-  ],
-});
-
-const policyConfiguration = PolicyConfigurationSchema.parse({
-  statute_first: true,
-  ohada_preemption_priority: true,
-  binding_language_guardrail: true,
-  sensitive_topic_hitl: true,
-  confidential_mode: false,
-});
-
-export interface CorpusDashboardResponse extends CorpusDashboardData {
-  policies: PolicyConfiguration;
+interface AuthorityDomainRow {
+  host: string;
+  jurisdiction_code?: string | null;
+  active?: boolean | null;
+  last_ingested_at?: string | null;
 }
 
-export const CorpusDashboardResponseSchema = CorpusDashboardDataSchema.extend({
-  policies: PolicyConfigurationSchema,
-});
+interface DocumentRow {
+  id: string;
+  name: string;
+  created_at?: string | null;
+  bytes?: number | null;
+  residency_zone?: string | null;
+}
 
-const response = CorpusDashboardResponseSchema.parse({
-  ...corpusDashboardData,
-  policies: policyConfiguration,
-});
+interface UploadJobRow {
+  id: string;
+  document_id: string;
+  status: string;
+  queued_at?: string | null;
+  progress?: number | null;
+  quarantine_reason?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
 
-export function cloneCorpusDashboardResponse(): CorpusDashboardResponse {
-  return JSON.parse(JSON.stringify(response)) as CorpusDashboardResponse;
+function normaliseDate(value?: string | null): string {
+  if (!value) {
+    return new Date(0).toISOString();
+  }
+  return new Date(value).toISOString();
+}
+
+function mapJobStatus(status: string): { status: 'processing' | 'failed' | 'ready'; progress: number } {
+  const normalized = status.toLowerCase();
+  if (normalized === 'completed') {
+    return { status: 'ready', progress: 100 };
+  }
+  if (normalized === 'failed') {
+    return { status: 'failed', progress: 100 };
+  }
+  if (normalized === 'quarantined') {
+    return { status: 'failed', progress: 0 };
+  }
+  return { status: 'processing', progress: 25 };
+}
+
+function summariseResidency(
+  policyRows: Array<{ key: string; value: unknown }>,
+  documents: DocumentRow[],
+): ResidencySummary | undefined {
+  const residencyPolicy = policyRows.find((row) => row.key === 'residency_zone');
+  let activeZone: string | null = null;
+  let allowedZones: string[] | null = null;
+
+  if (residencyPolicy) {
+    const value = residencyPolicy.value;
+    if (typeof value === 'string') {
+      activeZone = value.toLowerCase();
+    } else if (value && typeof value === 'object') {
+      if (Array.isArray(value)) {
+        const cleaned = value
+          .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase() : ''))
+          .filter((entry) => entry.length > 0);
+        if (cleaned.length > 0) {
+          allowedZones = cleaned;
+          activeZone = cleaned[0] ?? null;
+        }
+      } else if ('code' in (value as Record<string, unknown>)) {
+        const code = (value as Record<string, unknown>).code;
+        if (typeof code === 'string') {
+          activeZone = code.toLowerCase();
+        }
+      }
+    }
+  }
+
+  if (!allowedZones) {
+    const zoneSet = new Set<string>();
+    for (const doc of documents) {
+      if (typeof doc.residency_zone === 'string' && doc.residency_zone.trim()) {
+        zoneSet.add(doc.residency_zone.trim().toLowerCase());
+      }
+    }
+    allowedZones = zoneSet.size > 0 ? Array.from(zoneSet) : null;
+  }
+
+  if (!activeZone && Array.isArray(allowedZones) && allowedZones.length > 0) {
+    activeZone = allowedZones[0] ?? null;
+  }
+
+  if (!activeZone && !allowedZones) {
+    return undefined;
+  }
+
+  return {
+    activeZone,
+    allowedZones,
+  };
+}
+
+export async function fetchCorpusDashboard(
+  supabase: SupabaseClient,
+  orgId: string,
+): Promise<CorpusDashboardData> {
+  const [allowlistResult, snapshotResult, uploadDocsResult, uploadJobsResult, policyResult] = await Promise.all([
+    supabase
+      .from('authority_domains')
+      .select('host, jurisdiction_code, active, last_ingested_at')
+      .eq('org_id', orgId),
+    supabase
+      .from('documents')
+      .select('id, name, created_at, bytes, residency_zone')
+      .eq('org_id', orgId)
+      .eq('bucket_id', 'authorities')
+      .order('created_at', { ascending: false })
+      .limit(25),
+    supabase
+      .from('documents')
+      .select('id, name, created_at, residency_zone')
+      .eq('org_id', orgId)
+      .eq('bucket_id', 'uploads')
+      .order('created_at', { ascending: false })
+      .limit(25),
+    supabase
+      .from('upload_ingestion_jobs')
+      .select('id, document_id, status, queued_at, progress, quarantine_reason, metadata')
+      .eq('org_id', orgId)
+      .order('queued_at', { ascending: false })
+      .limit(50),
+    supabase.from('org_policies').select('key, value').eq('org_id', orgId),
+  ]);
+
+  if (allowlistResult.error) {
+    throw new Error(allowlistResult.error.message ?? 'allowlist_query_failed');
+  }
+  if (snapshotResult.error) {
+    throw new Error(snapshotResult.error.message ?? 'snapshot_query_failed');
+  }
+  if (uploadDocsResult.error) {
+    throw new Error(uploadDocsResult.error.message ?? 'upload_documents_query_failed');
+  }
+  if (uploadJobsResult.error) {
+    throw new Error(uploadJobsResult.error.message ?? 'upload_jobs_query_failed');
+  }
+  if (policyResult.error) {
+    throw new Error(policyResult.error.message ?? 'policy_query_failed');
+  }
+
+  const allowlist = (allowlistResult.data ?? []).map((row: AuthorityDomainRow) => ({
+    id: row.host,
+    name: row.host,
+    jurisdiction: row.jurisdiction_code ?? 'unknown',
+    enabled: row.active !== false,
+    lastIndexed: normaliseDate(row.last_ingested_at),
+    type: 'official' as const,
+  }));
+
+  const snapshots = (snapshotResult.data ?? []).map((row: DocumentRow) => ({
+    id: row.id,
+    label: row.name,
+    createdAt: normaliseDate(row.created_at ?? undefined),
+    author: 'Ingestion Pipeline',
+    sizeMb: row.bytes ? Number((row.bytes / (1024 * 1024)).toFixed(2)) : 0,
+  }));
+
+  const uploadDocuments = (uploadDocsResult.data ?? []) as DocumentRow[];
+  const uploadJobs = (uploadJobsResult.data ?? []) as UploadJobRow[];
+  const documentById = new Map(uploadDocuments.map((doc) => [doc.id, doc] as const));
+
+  const ingestionJobs = uploadJobs.map((job) => {
+    const doc = documentById.get(job.document_id);
+    const mappedStatus = mapJobStatus(job.status ?? 'pending');
+    const noteParts: string[] = [];
+    if (job.quarantine_reason) {
+      noteParts.push(`Quarantine: ${job.quarantine_reason}`);
+    }
+    return {
+      id: job.id,
+      filename:
+        doc?.name ??
+        (typeof job.metadata?.filename === 'string' ? (job.metadata.filename as string) : `upload-${job.id}`),
+      status: mappedStatus.status,
+      submittedAt: normaliseDate(job.queued_at ?? undefined),
+      jurisdiction:
+        typeof job.metadata?.jurisdiction === 'string'
+          ? (job.metadata.jurisdiction as string)
+          : doc?.residency_zone ?? 'unknown',
+      progress: job.progress ?? mappedStatus.progress,
+      note: noteParts.length > 0 ? noteParts.join(' | ') : undefined,
+    };
+  });
+
+  const uploads = uploadDocuments.map((doc) => {
+    const job = uploadJobs.find((entry) => entry.document_id === doc.id);
+    return {
+      id: doc.id,
+      name: doc.name,
+      createdAt: normaliseDate(doc.created_at ?? undefined),
+      residencyZone: doc.residency_zone ?? null,
+      status: job ? (job.status === 'completed' ? 'indexed' : job.status === 'failed' ? 'failed' : 'queued') : 'queued',
+    };
+  });
+
+  const residency = summariseResidency((policyResult.data ?? []) as Array<{ key: string; value: unknown }>, uploadDocuments);
+
+  const payload = {
+    allowlist,
+    integrations: [],
+    snapshots,
+    ingestionJobs,
+    uploads,
+    residency,
+  } satisfies CorpusDashboardData;
+
+  return CorpusDashboardDataSchema.parse(payload);
 }

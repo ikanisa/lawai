@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   AgentRunSchema,
   AgentStreamRequestSchema,
@@ -8,7 +8,6 @@ import {
   ResearchStreamPayloadSchema,
   HitlQueueDataSchema,
   MattersOverviewSchema,
-  PolicyConfigurationSchema,
   UploadResponseSchema,
   VoiceConsoleContextSchema,
   VoiceRunRequestSchema,
@@ -17,13 +16,187 @@ import {
 } from '@avocat-ai/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { createApp } from '../src/app.js';
+
+const storageUploadMock = vi.fn(async () => ({
+  data: { signedUrl: 'https://storage.example/upload', token: 'token-123' },
+  error: null,
+}));
+const storageFromMock = vi.fn(() => ({ createSignedUploadUrl: storageUploadMock }));
+
+const supabaseMock = {
+  from: vi.fn(),
+  rpc: vi.fn(),
+  storage: { from: storageFromMock },
+};
+
+vi.mock('@avocat-ai/supabase', () => ({
+  createServiceClient: () => supabaseMock,
+}));
+
+type QueryResolver<T> = () => Promise<{ data: T; error: null } | { data: null; error: { message: string } }>;
+
+function createQueryBuilder<T>(resolver: QueryResolver<T>) {
+  let currentResolver = resolver;
+  const builder: any = {
+    select: vi.fn(() => builder),
+    eq: vi.fn(() => builder),
+    order: vi.fn(() => builder),
+    limit: vi.fn(() => builder),
+    in: vi.fn(() => builder),
+    maybeSingle: vi.fn(() => currentResolver()),
+    single: vi.fn(() => currentResolver()),
+    insert: vi.fn(() => builder),
+    update: vi.fn(() => builder),
+    setResolver(next: QueryResolver<T>) {
+      currentResolver = next;
+      return builder;
+    },
+  };
+  builder.then = (onFulfilled: (value: Awaited<ReturnType<QueryResolver<T>>>) => unknown) =>
+    currentResolver().then(onFulfilled);
+  return builder;
+}
 
 describe('PWA agent-first routes', () => {
   let app: FastifyInstance;
+  const ORG_ID = '00000000-0000-0000-0000-000000000000';
+  const USER_ID = '11111111-1111-1111-1111-111111111111';
+
+  const allowlistRows = [
+    {
+      host: 'ohada.org',
+      jurisdiction_code: 'OHADA',
+      active: true,
+      last_ingested_at: '2024-05-27T09:12:00Z',
+    },
+  ];
+
+  const authorityDocuments = [
+    {
+      id: 'doc-snapshot-1',
+      name: 'Snapshot OHADA Mai 2024',
+      created_at: '2024-05-25T21:00:00Z',
+      bytes: 2_097_152,
+      residency_zone: 'ohada',
+    },
+  ];
+
+  const uploadDocuments = [
+    {
+      id: 'doc-upload-1',
+      name: 'Audience référé.pdf',
+      created_at: '2024-05-28T09:00:00Z',
+      residency_zone: 'eu',
+    },
+  ];
+
+  const uploadJobs: Array<{
+    id: string;
+    document_id: string;
+    status: string;
+    queued_at: string;
+    progress: number;
+    quarantine_reason?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }> = [
+    {
+      id: 'job-upload-1',
+      document_id: 'doc-upload-1',
+      status: 'completed',
+      queued_at: '2024-05-28T09:01:00Z',
+      progress: 100,
+      metadata: { jurisdiction: 'OHADA', filename: 'Audience référé.pdf' },
+    },
+  ];
 
   beforeAll(async () => {
-    const created = await createApp();
+    supabaseMock.rpc.mockImplementation(async (fn: string) => {
+      if (fn === 'storage_residency_allowed' || fn === 'org_residency_allows') {
+        return { data: true, error: null };
+      }
+      return { data: null, error: null };
+    });
+
+    supabaseMock.from.mockImplementation((table: string) => {
+      if (table === 'authority_domains') {
+        return createQueryBuilder(async () => ({ data: allowlistRows, error: null }));
+      }
+      if (table === 'documents') {
+        const builder = createQueryBuilder(async () => ({ data: [], error: null }));
+        builder.select.mockImplementation(() => builder);
+        builder.eq.mockImplementation((column: string, value: string) => {
+          if (column === 'bucket_id' && value === 'authorities') {
+            builder.setResolver(async () => ({ data: authorityDocuments, error: null }));
+          } else if (column === 'bucket_id' && value === 'uploads') {
+            builder.setResolver(async () => ({ data: uploadDocuments, error: null }));
+          }
+          return builder;
+        });
+        builder.order.mockImplementation(() => builder);
+        builder.limit.mockImplementation(() => builder);
+        builder.insert.mockImplementation((payload: any) => {
+          const record = Array.isArray(payload) ? payload[0] : payload;
+          if (record.bucket_id === 'uploads') {
+            uploadDocuments.unshift({
+              id: record.id,
+              name: record.name,
+              created_at: new Date().toISOString(),
+              residency_zone: record.residency_zone ?? null,
+            });
+          }
+          const insertBuilder = createQueryBuilder(async () => ({ data: { id: record.id }, error: null }));
+          insertBuilder.select.mockImplementation(() => insertBuilder);
+          insertBuilder.single.mockImplementation(() => Promise.resolve({ data: { id: record.id }, error: null }));
+          return insertBuilder;
+        });
+        builder.update.mockImplementation(() => createQueryBuilder(async () => ({ data: null, error: null })));
+        return builder;
+      }
+      if (table === 'upload_ingestion_jobs') {
+        const builder = createQueryBuilder(async () => ({ data: uploadJobs, error: null }));
+        builder.select.mockImplementation(() => builder);
+        builder.eq.mockImplementation(() => builder);
+        builder.order.mockImplementation(() => builder);
+        builder.limit.mockImplementation(() => builder);
+        builder.insert.mockImplementation((payload: any) => {
+          const record = Array.isArray(payload) ? payload[0] : payload;
+          const id = record.id ?? `job-${uploadJobs.length + 1}`;
+          const job = {
+            id,
+            document_id: record.document_id,
+            status: record.status ?? 'pending',
+            queued_at: new Date().toISOString(),
+            progress: record.progress ?? 5,
+            quarantine_reason: record.quarantine_reason ?? null,
+            metadata: record.metadata ?? null,
+          };
+          uploadJobs.unshift(job);
+          const insertBuilder = createQueryBuilder(async () => ({
+            data: { id, status: job.status, quarantine_reason: job.quarantine_reason },
+            error: null,
+          }));
+          insertBuilder.select.mockImplementation(() => insertBuilder);
+          insertBuilder.single.mockImplementation(() =>
+            Promise.resolve({ data: { id, status: job.status, quarantine_reason: job.quarantine_reason }, error: null }),
+          );
+          return insertBuilder;
+        });
+        builder.update.mockImplementation(() => createQueryBuilder(async () => ({ data: null, error: null })));
+        return builder;
+      }
+      if (table === 'ingestion_quarantine') {
+        return {
+          insert: vi.fn(() => Promise.resolve({ error: null })),
+        };
+      }
+      if (table === 'org_policies') {
+        return createQueryBuilder(async () => ({ data: [], error: null }));
+      }
+      return createQueryBuilder(async () => ({ data: [], error: null }));
+    });
+
+    const mod = await import('../src/app.js');
+    const created = await mod.createApp();
     app = created.app;
     await app.ready();
   });
@@ -72,7 +245,7 @@ describe('PWA agent-first routes', () => {
     const run = AgentRunSchema.parse(runPayload);
     expect(run.webSearchMode).toBe(mode);
 
-    const streamRequest = AgentStreamRequestSchema.parse({
+    const streamRequest = StubStreamRequestSchema.parse({
       input: 'Explique la procédure de résiliation dans un contrat OHADA',
       agent_id: run.agentId,
       run_id: run.id,
@@ -114,6 +287,70 @@ describe('PWA agent-first routes', () => {
     } else {
       expect(webSearchEvents).toHaveLength(0);
     }
+
+    const webSearchEvents = streamEvents.filter(
+      (event) => event.type === 'tool' && event.data.tool?.name === 'web_search'
+    );
+    expect(webSearchEvents).toHaveLength(2);
+    const [webSearchStart, webSearchSuccess] = webSearchEvents;
+    expect(webSearchStart.data.tool?.status).toBe('running');
+    expect(webSearchStart.data.tool?.detail).toBe(
+      researchToolSummaries.web_search[defaultWebSearchMode].start
+    );
+    expect(webSearchSuccess.data.tool?.status).toBe('success');
+    expect(webSearchSuccess.data.tool?.detail).toBe(
+      researchToolSummaries.web_search[defaultWebSearchMode].success
+    );
+  });
+
+  it('streams broad web search copy when requested', async () => {
+    const runResponse = await app.inject({
+      method: 'POST',
+      url: '/api/agents/run',
+      payload: {
+        input: 'Explique la procédure de résiliation dans un contrat OHADA',
+        agent_id: 'research',
+        tools_enabled: ['web_search', 'file_search'],
+      },
+    });
+
+    expect(runResponse.statusCode).toBe(200);
+    const runPayload = JSON.parse(runResponse.body);
+    const run = AgentRunSchema.parse(runPayload);
+
+    const streamRequest = StubStreamRequestSchema.parse({
+      input: 'Explique la procédure de résiliation dans un contrat OHADA',
+      agent_id: run.agentId,
+      run_id: run.id,
+      thread_id: run.threadId,
+      tools_enabled: ['web_search', 'file_search'],
+      web_search_mode: 'broad',
+    });
+
+    const streamResponse = await app.inject({
+      method: 'POST',
+      url: '/api/agents/stream',
+      payload: streamRequest,
+    });
+
+    expect(streamResponse.statusCode).toBe(200);
+    const lines = streamResponse.body
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+
+    expect(lines.at(-1)?.type).toBe('done');
+    const streamEvents = lines.slice(0, -1);
+
+    const webSearchEvents = streamEvents.filter(
+      (event) => event.type === 'tool' && event.data.tool?.name === 'web_search'
+    );
+    expect(webSearchEvents).toHaveLength(2);
+    const [webSearchStart, webSearchSuccess] = webSearchEvents;
+    expect(webSearchStart.data.tool?.detail).toBe(researchToolSummaries.web_search.broad.start);
+    expect(webSearchSuccess.data.tool?.detail).toBe(
+      researchToolSummaries.web_search.broad.success
+    );
   });
 
   it('exposes voice console context, session token, and run responses', async () => {
@@ -147,13 +384,14 @@ describe('PWA agent-first routes', () => {
   });
 
   it('serves corpus, citations, matters, hitl, upload, and deadline APIs', async () => {
-    const corpusResponse = await app.inject({ method: 'GET', url: '/api/corpus' });
+    const corpusResponse = await app.inject({
+      method: 'GET',
+      url: `/api/corpus?orgId=${encodeURIComponent(ORG_ID)}`,
+      headers: { 'x-user-id': USER_ID },
+    });
     expect(corpusResponse.statusCode).toBe(200);
     const corpusPayload = JSON.parse(corpusResponse.body);
-    const CorpusDashboardResponseSchema = CorpusDashboardDataSchema.extend({
-      policies: PolicyConfigurationSchema,
-    });
-    expect(() => CorpusDashboardResponseSchema.parse(corpusPayload)).not.toThrow();
+    expect(() => CorpusDashboardDataSchema.parse(corpusPayload)).not.toThrow();
 
     const citationsResponse = await app.inject({ method: 'GET', url: '/api/citations' });
     expect(citationsResponse.statusCode).toBe(200);
@@ -182,6 +420,10 @@ describe('PWA agent-first routes', () => {
     const uploadResponse = await app.inject({
       method: 'POST',
       url: '/api/upload',
+      headers: {
+        'x-org-id': ORG_ID,
+        'x-user-id': USER_ID,
+      },
       payload: {
         filename: 'ohada_decision.pdf',
         jurisdiction: 'OHADA',
@@ -192,7 +434,10 @@ describe('PWA agent-first routes', () => {
     });
     expect(uploadResponse.statusCode).toBe(200);
     const uploadPayload = JSON.parse(uploadResponse.body);
-    expect(() => UploadResponseSchema.parse(uploadPayload)).not.toThrow();
+    const parsed = UploadResponseSchema.parse(uploadPayload);
+    expect(parsed.upload.bucket).toBe('uploads');
+    expect(parsed.upload.url).toMatch(/^https:\/\//);
+    expect(parsed.upload.token).toBe('token-123');
 
     const deadlineResponse = await app.inject({
       method: 'POST',

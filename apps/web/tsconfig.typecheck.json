@@ -5,7 +5,7 @@
   },
   "include": [
     "src/lib/api.ts",
-    "src/components/admin/admin-view.tsx",
+    "src/features/admin/components/admin-view.tsx",
     "src/components/governance/operations-overview-card.tsx",
     "src/types/**/*.d.ts",
     "messages/en.json",
