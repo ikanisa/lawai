@@ -10,9 +10,35 @@ import {
 } from '../../chatkit.js';
 import { authorizeRequestWithGuards } from '../authorization.js';
 import { createChatSessionSchema, recordChatEventSchema } from '../schemas/chatkit.js';
+import { withRequestSpan } from '../../observability/spans.js';
+import { incrementCounter } from '../../observability/metrics.js';
 
 interface ChatkitRouteOptions {
   supabase: SupabaseClient;
+}
+
+interface SessionQuerystring {
+  includeSecret?: string;
+}
+
+type ListSessionsQuery = { orgId?: string; status?: ChatSessionStatus };
+
+type AuthorizationError = Error & { statusCode?: number };
+
+function isAuthorizationError(error: unknown): error is AuthorizationError {
+  return error instanceof Error && 'statusCode' in error && typeof (error as AuthorizationError).statusCode === 'number';
+}
+
+function parseIncludeSecret(value?: string): boolean {
+  if (!value) return false;
+  return value === '1' || value === 'true';
+}
+
+function toErrorResponse(error: unknown): { statusCode: number; body: { error: string } } {
+  if (isAuthorizationError(error)) {
+    return { statusCode: error.statusCode ?? 403, body: { error: error.message } };
+  }
+  return { statusCode: 403, body: { error: 'forbidden' } };
 }
 
 export function registerChatkitRoutes(app: FastifyInstance, { supabase }: ChatkitRouteOptions): void {
@@ -33,54 +59,84 @@ export function registerChatkitRoutes(app: FastifyInstance, { supabase }: Chatki
             channel: { type: 'string' },
             metadata: { type: ['object', 'null'] },
           },
-          required: ['orgId', 'agentName', 'channel'],
+          required: ['orgId'],
           additionalProperties: true,
         },
         response: { 201: { type: 'object', additionalProperties: true } },
       },
     },
     async (request, reply) => {
-    const parsed = createChatSessionSchema.safeParse(request.body ?? {});
-    if (!parsed.success) {
-      return reply.code(400).send({ error: 'invalid_session_payload' });
-    }
-
-    const userHeader = request.headers['x-user-id'];
-    if (!userHeader || typeof userHeader !== 'string') {
-      return reply.code(400).send({ error: 'x-user-id header is required' });
-    }
-
-    try {
-      await authorizeRequestWithGuards('runs:execute', parsed.data.orgId, userHeader, request);
-    } catch (error) {
-      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-        return reply.code(error.statusCode).send({ error: error.message });
+      const parsed = createChatSessionSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_session_payload' });
       }
-      request.log.error({ err: error }, 'chatkit session authorization failed');
-      return reply.code(403).send({ error: 'forbidden' });
-    }
 
-    try {
-      const session = await createChatSession(
-        supabase,
+      const userHeader = request.headers['x-user-id'];
+      if (!userHeader || typeof userHeader !== 'string') {
+        return reply.code(400).send({ error: 'x-user-id header is required' });
+      }
+
+      const channel = parsed.data.channel ?? 'web';
+      const agentName = parsed.data.agentName ?? 'avocat-francophone';
+      const metadata = parsed.data.metadata ?? {};
+
+      return withRequestSpan(
+        request,
         {
-          orgId: parsed.data.orgId,
-          userId: userHeader,
-          agentName: parsed.data.agentName,
-          channel: parsed.data.channel,
-          metadata: parsed.data.metadata,
+          name: 'chatkit.sessions.create',
+          attributes: { orgId: parsed.data.orgId, channel, agentName },
         },
-        request.log,
+        async ({ logger, setAttribute }) => {
+          try {
+            await authorizeRequestWithGuards('runs:execute', parsed.data.orgId, userHeader, request);
+            setAttribute('authorized', true);
+          } catch (error) {
+            const response = toErrorResponse(error);
+            logger.warn({ err: error }, 'chatkit_session_authorization_failed');
+            reply.code(response.statusCode);
+            return response.body;
+          }
+
+          try {
+            const session = await createChatSession(
+              supabase,
+              {
+                orgId: parsed.data.orgId,
+                userId: userHeader,
+                agentName,
+                channel,
+                metadata,
+              },
+              logger,
+            );
+            const chatkitSessionId = session.chatkit?.sessionId ?? session.chatkitSessionId ?? null;
+            setAttribute('sessionId', session.id);
+            setAttribute('chatkitSessionId', chatkitSessionId);
+            incrementCounter('chatkit.sessions.created', {
+              channel: session.channel,
+              agent: session.agentName,
+            });
+            logger.info(
+              {
+                supabaseSessionId: session.id,
+                chatkitSessionId,
+                status: session.status,
+              },
+              'chatkit_session_created',
+            );
+            reply.code(201);
+            return session;
+          } catch (error) {
+            logger.error({ err: error }, 'chatkit_session_creation_failed');
+            reply.code(500);
+            return { error: 'chat_session_failed' };
+          }
+        },
       );
-      return reply.code(201).send(session);
-    } catch (error) {
-      request.log.error({ err: error }, 'chatkit session creation failed');
-      return reply.code(500).send({ error: 'chat_session_failed' });
-    }
     },
   );
 
-  app.get<{ Querystring: { orgId?: string; status?: ChatSessionStatus } }>(
+  app.get<{ Querystring: ListSessionsQuery }>(
     '/chatkit/sessions',
     async (request, reply) => {
       const { orgId, status } = request.query;
@@ -93,46 +149,99 @@ export function registerChatkitRoutes(app: FastifyInstance, { supabase }: Chatki
         return reply.code(400).send({ error: 'x-user-id header is required' });
       }
 
-      try {
-        await authorizeRequestWithGuards('runs:execute', orgId, userHeader, request);
-        const sessions = await listSessionsForOrg(supabase, orgId, status);
-        return reply.send({ sessions });
-      } catch (error) {
-        if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-          return reply.code(error.statusCode).send({ error: error.message });
-        }
-        request.log.error({ err: error }, 'chatkit session list failed');
-        return reply.code(500).send({ error: 'chat_session_list_failed' });
-      }
+      return withRequestSpan(
+        request,
+        {
+          name: 'chatkit.sessions.list',
+          attributes: { orgId, status: status ?? 'all' },
+        },
+        async ({ logger, setAttribute }) => {
+          try {
+            await authorizeRequestWithGuards('runs:execute', orgId, userHeader, request);
+            setAttribute('authorized', true);
+          } catch (error) {
+            const response = toErrorResponse(error);
+            logger.warn({ err: error }, 'chatkit_session_list_authorization_failed');
+            reply.code(response.statusCode);
+            return response.body;
+          }
+
+          try {
+            const sessions = await listSessionsForOrg(supabase, orgId, status);
+            setAttribute('resultCount', sessions.length);
+            incrementCounter('chatkit.sessions.listed', { status: status ?? 'all' });
+            logger.info({ orgId, status, count: sessions.length }, 'chatkit_sessions_listed');
+            return { sessions };
+          } catch (error) {
+            logger.error({ err: error }, 'chatkit_session_list_failed');
+            reply.code(500);
+            return { error: 'chat_session_list_failed' };
+          }
+        },
+      );
     },
   );
 
-  app.get<{ Params: { id: string } }>('/chatkit/sessions/:id', async (request, reply) => {
-    const { id } = request.params;
-    const userHeader = request.headers['x-user-id'];
-    if (!userHeader || typeof userHeader !== 'string') {
-      return reply.code(400).send({ error: 'x-user-id header is required' });
-    }
-
-    try {
-      const session = await getChatSession(supabase, id, {
-        includeChatkit: true,
-        logger: request.log,
-      });
-      if (!session) {
-        return reply.code(404).send({ error: 'chat_session_not_found' });
+  app.get<{ Params: { id: string }; Querystring: SessionQuerystring }>(
+    '/chatkit/sessions/:id',
+    async (request, reply) => {
+      const { id } = request.params;
+      const includeSecret = parseIncludeSecret(request.query?.includeSecret);
+      const userHeader = request.headers['x-user-id'];
+      if (!userHeader || typeof userHeader !== 'string') {
+        return reply.code(400).send({ error: 'x-user-id header is required' });
       }
 
-      await authorizeRequestWithGuards('runs:execute', session.orgId, userHeader, request);
-      return reply.send(session);
-    } catch (error) {
-      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-        return reply.code(error.statusCode).send({ error: error.message });
-      }
-      request.log.error({ err: error }, 'chatkit session fetch failed');
-      return reply.code(500).send({ error: 'chat_session_fetch_failed' });
-    }
-  });
+      return withRequestSpan(
+        request,
+        {
+          name: 'chatkit.sessions.get',
+          attributes: { sessionId: id, includeSecret },
+        },
+        async ({ logger, setAttribute }) => {
+          try {
+            const session = await getChatSession(supabase, id, {
+              includeChatkit: true,
+              includeChatkitSecret: includeSecret,
+              logger,
+            });
+
+            if (!session) {
+              reply.code(404);
+              return { error: 'chat_session_not_found' };
+            }
+
+            await authorizeRequestWithGuards('runs:execute', session.orgId, userHeader, request);
+            setAttribute('authorized', true);
+            setAttribute('chatkitSessionId', session.chatkit?.sessionId ?? session.chatkitSessionId ?? null);
+            incrementCounter('chatkit.sessions.viewed', {
+              status: session.status,
+              channel: session.channel,
+            });
+            logger.info(
+              {
+                sessionId: session.id,
+                chatkitSessionId: session.chatkit?.sessionId ?? session.chatkitSessionId ?? null,
+                status: session.status,
+              },
+              'chatkit_session_fetched',
+            );
+            return session;
+          } catch (error) {
+            if (isAuthorizationError(error)) {
+              const response = toErrorResponse(error);
+              logger.warn({ err: error, sessionId: id }, 'chatkit_session_fetch_authorization_failed');
+              reply.code(response.statusCode);
+              return response.body;
+            }
+            logger.error({ err: error, sessionId: id }, 'chatkit_session_fetch_failed');
+            reply.code(500);
+            return { error: 'chat_session_fetch_failed' };
+          }
+        },
+      );
+    },
+  );
 
   app.post<{ Params: { id: string } }>(
     '/chatkit/sessions/:id/cancel',
@@ -143,39 +252,68 @@ export function registerChatkitRoutes(app: FastifyInstance, { supabase }: Chatki
       },
     },
     async (request, reply) => {
-    const { id } = request.params;
-    const userHeader = request.headers['x-user-id'];
-    if (!userHeader || typeof userHeader !== 'string') {
-      return reply.code(400).send({ error: 'x-user-id header is required' });
-    }
-
-    try {
-      const session = await getChatSession(supabase, id);
-      if (!session) {
-        return reply.code(404).send({ error: 'chat_session_not_found' });
+      const { id } = request.params;
+      const userHeader = request.headers['x-user-id'];
+      if (!userHeader || typeof userHeader !== 'string') {
+        return reply.code(400).send({ error: 'x-user-id header is required' });
       }
 
-      await authorizeRequestWithGuards('runs:execute', session.orgId, userHeader, request);
-      const updated = await cancelChatSession(supabase, id, { logger: request.log });
-      if (!updated) {
-        return reply.code(404).send({ error: 'chat_session_not_found' });
-      }
+      return withRequestSpan(
+        request,
+        {
+          name: 'chatkit.sessions.cancel',
+          attributes: { sessionId: id },
+        },
+        async ({ logger, setAttribute }) => {
+          try {
+            const session = await getChatSession(supabase, id, { logger });
+            if (!session) {
+              reply.code(404);
+              return { error: 'chat_session_not_found' };
+            }
 
-      await recordChatEvent(supabase, {
-        sessionId: id,
-        type: 'session.cancelled',
-        actorType: 'user',
-        actorId: userHeader,
-      });
+            await authorizeRequestWithGuards('runs:execute', session.orgId, userHeader, request);
+            setAttribute('authorized', true);
 
-      return reply.send(updated);
-    } catch (error) {
-      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-        return reply.code(error.statusCode).send({ error: error.message });
-      }
-      request.log.error({ err: error }, 'chatkit session cancel failed');
-      return reply.code(500).send({ error: 'chat_session_cancel_failed' });
-    }
+            const updated = await cancelChatSession(supabase, id, { logger });
+            if (!updated) {
+              reply.code(404);
+              return { error: 'chat_session_not_found' };
+            }
+
+            await recordChatEvent(supabase, {
+              sessionId: id,
+              type: 'session.cancelled',
+              actorType: 'user',
+              actorId: userHeader,
+            });
+
+            incrementCounter('chatkit.sessions.cancelled', {
+              channel: updated.channel,
+              agent: updated.agentName,
+            });
+            logger.info(
+              {
+                sessionId: updated.id,
+                chatkitSessionId: updated.chatkit?.sessionId ?? updated.chatkitSessionId ?? null,
+                status: updated.status,
+              },
+              'chatkit_session_cancelled',
+            );
+            return updated;
+          } catch (error) {
+            if (isAuthorizationError(error)) {
+              const response = toErrorResponse(error);
+              logger.warn({ err: error, sessionId: id }, 'chatkit_session_cancel_authorization_failed');
+              reply.code(response.statusCode);
+              return response.body;
+            }
+            logger.error({ err: error, sessionId: id }, 'chatkit_session_cancel_failed');
+            reply.code(500);
+            return { error: 'chat_session_cancel_failed' };
+          }
+        },
+      );
     },
   );
 
@@ -200,40 +338,65 @@ export function registerChatkitRoutes(app: FastifyInstance, { supabase }: Chatki
       },
     },
     async (request, reply) => {
-    const { id } = request.params;
-    const parsed = recordChatEventSchema.safeParse(request.body ?? {});
-    if (!parsed.success) {
-      return reply.code(400).send({ error: 'invalid_event_payload' });
-    }
-
-    const userHeader = request.headers['x-user-id'];
-    if (!userHeader || typeof userHeader !== 'string') {
-      return reply.code(400).send({ error: 'x-user-id header is required' });
-    }
-
-    try {
-      const session = await getChatSession(supabase, id);
-      if (!session) {
-        return reply.code(404).send({ error: 'chat_session_not_found' });
+      const { id } = request.params;
+      const parsed = recordChatEventSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_event_payload' });
       }
 
-      await authorizeRequestWithGuards('runs:execute', session.orgId, userHeader, request);
-      await recordChatEvent(supabase, {
-        sessionId: id,
-        type: parsed.data.type,
-        payload: parsed.data.payload,
-        actorType: parsed.data.actorType ?? 'user',
-        actorId: parsed.data.actorId ?? userHeader,
-      });
-
-      return reply.code(202).send({ status: 'accepted' });
-    } catch (error) {
-      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-        return reply.code(error.statusCode).send({ error: error.message });
+      const userHeader = request.headers['x-user-id'];
+      if (!userHeader || typeof userHeader !== 'string') {
+        return reply.code(400).send({ error: 'x-user-id header is required' });
       }
-      request.log.error({ err: error }, 'chatkit event record failed');
-      return reply.code(500).send({ error: 'chat_session_event_failed' });
-    }
+
+      return withRequestSpan(
+        request,
+        {
+          name: 'chatkit.sessions.event',
+          attributes: { sessionId: id, eventType: parsed.data.type },
+        },
+        async ({ logger, setAttribute }) => {
+          try {
+            const session = await getChatSession(supabase, id, { logger });
+            if (!session) {
+              reply.code(404);
+              return { error: 'chat_session_not_found' };
+            }
+
+            await authorizeRequestWithGuards('runs:execute', session.orgId, userHeader, request);
+            setAttribute('authorized', true);
+
+            await recordChatEvent(supabase, {
+              sessionId: id,
+              type: parsed.data.type,
+              payload: parsed.data.payload,
+              actorType: parsed.data.actorType ?? 'user',
+              actorId: parsed.data.actorId ?? userHeader,
+            });
+
+            incrementCounter('chatkit.session.events.recorded', { type: parsed.data.type });
+            logger.info(
+              {
+                sessionId: id,
+                eventType: parsed.data.type,
+              },
+              'chatkit_session_event_recorded',
+            );
+            reply.code(202);
+            return { status: 'accepted' };
+          } catch (error) {
+            if (isAuthorizationError(error)) {
+              const response = toErrorResponse(error);
+              logger.warn({ err: error, sessionId: id, eventType: parsed.data.type }, 'chatkit_event_authorization_failed');
+              reply.code(response.statusCode);
+              return response.body;
+            }
+            logger.error({ err: error, sessionId: id, eventType: parsed.data.type }, 'chatkit_event_record_failed');
+            reply.code(500);
+            return { error: 'chat_session_event_failed' };
+          }
+        },
+      );
     },
   );
 }

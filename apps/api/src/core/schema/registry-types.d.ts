@@ -67,3 +67,8 @@ export type chatkit_recordEventSchema = {
 };
 export type chatkit_recordEvent = z.infer<typeof chatkit_recordEventSchema>;
 
+export type workspace_querySchema = {
+    orgId: string;
+};
+export type workspace_query = z.infer<typeof workspace_querySchema>;
+
