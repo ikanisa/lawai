@@ -148,16 +148,6 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
     }
   };
 
-  const outboxMessage = useMemo(() => {
-    if (!releaseNotes?.outboxLabel) {
-      return null;
-    }
-    if (!hasItems) {
-      return `${releaseNotes.outboxLabel}: ${releaseNotes.outboxEmpty ?? '0'}`;
-    }
-    return `${releaseNotes.outboxLabel}: ${pendingCount} · ${formatOutboxAge(stalenessMs, locale)}`;
-  }, [releaseNotes?.outboxLabel, releaseNotes?.outboxEmpty, hasItems, pendingCount, stalenessMs, locale]);
-
   return (
     <div className="fixed bottom-28 right-6 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-200">
       <div className="glass-card border border-slate-800/60 p-5 shadow-2xl">
@@ -237,7 +227,7 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
                     size="xs"
                     variant="secondary"
                     onClick={handleDigestOptIn}
-                    disabled={digestLoading || digestEnabled}
+                    disabled={digestLoading || digestEnabled || !pwaOptIn || !pwaPreferenceReady}
                   >
                     {digestEnabled
                       ? releaseNotes.digestEnabled ?? messages.success
@@ -245,6 +235,9 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
                   </Button>
                   {digestEnabled ? (
                     <span className="text-[11px] text-teal-200">✓</span>
+                  ) : null}
+                  {!pwaOptIn && pwaPreferenceReady && optInMessages?.description ? (
+                    <span className="basis-full text-[11px] text-slate-400">{optInMessages.description}</span>
                   ) : null}
                 </div>
                 {outboxMessage ? (

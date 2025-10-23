@@ -27,8 +27,9 @@ CI configuration
      ```
 
 What it checks
-- Confirms critical tables have RLS enabled.
-- Verifies common roles cannot read other tenants’ rows.
+- Confirms critical tables (`admin_policies`, `admin_jobs`, `document_chunks`) exist and have RLS enabled.
+- Verifies the `vector` extension is installed and `public.match_chunks` executes with a synthetic embedding (pgvector wiring).
+- Validates `public.is_org_member` behaviour for tenant members vs outsiders and ensures admin policy inserts are blocked across tenants.
 - Ensures basic policy coverage for ingestion/quarantine/drive manifests and org-scoped metrics.
 
 Notes

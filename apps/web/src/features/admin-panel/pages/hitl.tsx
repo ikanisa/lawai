@@ -3,12 +3,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Check, MessageSquareWarning, XCircle } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
+import { Button } from '../@/ui/button';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
 import { adminQueries } from '../api/client';
-import { Sheet, SheetSection } from '../../../components/ui/sheet';
+import { Sheet, SheetSection } from '../@/ui/sheet';
 
 export function AdminHitlPage() {
   const { activeOrg, searchQuery } = useAdminPanelContext();

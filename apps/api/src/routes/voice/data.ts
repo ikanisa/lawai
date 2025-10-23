@@ -71,8 +71,18 @@ export const voiceConsoleContext: VoiceConsoleContext = {
         'Mesures conservatoires proposées avec rappel des obligations OHADA et articulation avec la loi française.',
       citations: [voiceCitations[0], voiceCitations[1]],
       intents: [
-        { id: 'intent_deadline', name: 'Calculer un délai', tool: 'deadlineCalculator' },
-        { id: 'intent_service', name: 'Planifier la signification', tool: 'service_of_process' },
+        {
+          id: 'intent_deadline',
+          name: 'Calculer un délai',
+          tool: 'deadlineCalculator',
+          status: 'completed',
+        },
+        {
+          id: 'intent_service',
+          name: 'Planifier la signification',
+          tool: 'service_of_process',
+          status: 'completed',
+        },
       ],
     },
     {
@@ -85,7 +95,12 @@ export const voiceConsoleContext: VoiceConsoleContext = {
         'Plan d’alerte immédiat avec rappel des obligations ICT Law Rwanda et proposition d’activation du mode confidentiel.',
       citations: [voiceCitations[2]],
       intents: [
-        { id: 'intent_guardrail', name: 'Activer le mode confidentiel', tool: 'confidential_mode' },
+        {
+          id: 'intent_guardrail',
+          name: 'Activer le mode confidentiel',
+          tool: 'confidential_mode',
+          status: 'requires_hitl',
+        },
       ],
     },
   ],
