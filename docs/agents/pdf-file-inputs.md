@@ -1,148 +1,52 @@
-# PDF File Inputs for Agent Runs
+# PDF File Inputs
 
-This guide shows how to ingest PDFs into the Responses API with a single OpenAI
-client. The examples cover remote URL fetches and direct uploads while staying
-package-agnostic so they can run inside background workers, API routes, or local
-scripts without importing internal helpers.
+Guidance for attaching PDF evidence and filings to OpenAI Agents runs.
 
-## Create a shared OpenAI client
+## Prerequisites
+- Node.js ≥18 to access the modern `fetch` implementation required by the official SDK.
+- Install the OpenAI Node SDK in your workspace:
+
+```bash
+npm install openai
+```
+
+- Export your API credential so the SDK can authenticate requests:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+- Review the [OpenAI Node SDK documentation](https://github.com/openai/openai-node#file-uploads) for file upload semantics and retry behaviour already established in our stack.
+
+## TypeScript Example
 
 ```ts
-import OpenAI, { toFile } from 'openai';
+import OpenAI from "openai";
+import fs from "node:fs";
 
-const apiKey = process.env.OPENAI_API_KEY;
-if (!apiKey) {
-  throw new Error('Set OPENAI_API_KEY before creating the OpenAI client.');
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+async function uploadPdf() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY must be set before uploading files.");
+  }
+
+  const pdf = await client.files.create({
+    file: fs.createReadStream("./evidence/exhibit-a.pdf"),
+    purpose: "agents"
+  });
+
+  // Attach the uploaded PDF to a thread or run once created.
+  await client.beta.threads.messages.create("thread_123", {
+    role: "user",
+    content: [
+      { type: "input_text", text: "Analyse the attached exhibit." },
+      { type: "input_file", file_id: pdf.id }
+    ]
+  });
 }
 
-const requestTags =
-  process.env.OPENAI_REQUEST_TAGS_PDF ??
-  process.env.OPENAI_REQUEST_TAGS ??
-  'service=agents,component=pdf-ingestion';
-const organization = process.env.OPENAI_ORGANIZATION;
-const project = process.env.OPENAI_PROJECT;
-
-const defaultHeaders: Record<string, string> = {
-  'OpenAI-Beta': 'assistants=v2',
-};
-
-if (requestTags) {
-  defaultHeaders['OpenAI-Request-Tags'] = requestTags;
-  // Optional: override with deployment specific request tags when needed.
-  // defaultHeaders['OpenAI-Request-Tags'] = 'service=my-app,component=pdf-loader';
-}
-if (organization) {
-  defaultHeaders['OpenAI-Organization'] = organization;
-  // Optional: scope usage to an organization when the API key spans orgs.
-}
-if (project) {
-  defaultHeaders['OpenAI-Project'] = project;
-  // Optional: attribute usage to a project for billing or analytics.
-}
-
-export const openai = new OpenAI({
-  apiKey,
-  maxRetries: 2,
-  timeout: 45_000,
-  defaultHeaders,
-  organization,
-  project,
+uploadPdf().catch((error) => {
+  console.error("Failed to upload PDF", error);
 });
 ```
-
-The same `openai` instance is reused by both ingestion flows to keep retries,
-timeouts, and headers consistent.
-
-## URL-based ingestion
-
-```ts
-async function createFileFromUrl(pdfUrl: string) {
-  const response = await fetch(pdfUrl);
-  if (!response.ok || !response.body) {
-    throw new Error(`Failed to download PDF: ${response.status} ${response.statusText}`);
-  }
-
-  const contentType = response.headers.get('content-type') ?? 'application/pdf';
-  const filename = new URL(pdfUrl).pathname.split('/').at(-1) ?? 'remote.pdf';
-  const buffer = Buffer.from(await response.arrayBuffer());
-  const file = await toFile(buffer, filename, {
-    contentType,
-  });
-
-  return openai.files.create({
-    file,
-    purpose: 'assistants',
-  });
-}
-```
-
-## Direct upload ingestion
-
-```ts
-import type { ReadStream } from 'node:fs';
-
-async function createFileFromUpload(stream: ReadStream, filename: string) {
-  const file = await toFile(stream, filename, {
-    contentType: 'application/pdf',
-  });
-
-  return openai.files.create({
-    file,
-    purpose: 'assistants',
-  });
-}
-```
-
-Both helpers return uploaded file metadata (including `id`) that can be reused in
-Responses API calls:
-
-```ts
-async function runWithPdf(agentId: string, fileId: string, prompt: string) {
-  const stream = await openai.responses.stream({
-    model: 'gpt-4.1-mini',
-    instructions: prompt,
-    metadata: { agentId },
-    input: [
-      {
-        role: 'user',
-        content: [
-          { type: 'input_text', text: prompt },
-          { type: 'input_file', file_id: fileId },
-        ],
-      },
-    ],
-  });
-
-  let output = '';
-  let inputTokens = 0;
-  let outputTokens = 0;
-
-  for await (const event of stream) {
-    if (event.type === 'response.output_text.delta') {
-      output += event.delta ?? '';
-    }
-    if (event.type === 'response.completed') {
-      inputTokens += event.response.usage?.input_tokens ?? 0;
-      outputTokens += event.response.usage?.output_tokens ?? 0;
-    }
-  }
-
-  return { output, inputTokens, outputTokens };
-}
-```
-
-### Streaming and token accounting guidance
-
-- Streaming keeps latency low for larger PDFs because `response.output_text.delta`
-  events emit incremental tokens that can be relayed directly to clients.
-- The `response.completed` event carries cumulative `usage` values. Capture both
-  `input_tokens` and `output_tokens` for billing dashboards and guardrail logic.
-- For background jobs, persist the final token counts with the PDF source so
-  reruns or escalations can reference the stored metrics without replaying the
-  stream.
-- When live tokens are not required, call `await stream.finalResponse()` to
-  retrieve the same totals after the stream closes.
-
-With this structure, the URL and upload workflows share a single, fully
-configured OpenAI client, optional headers remain easy to adjust, and the
-streaming/token guidance mirrors production usage patterns.
