@@ -16,6 +16,7 @@ This plan sequences the remaining scope required to satisfy the Avocat-AI launch
 - **Trust dashboards:** Deliver jurisdiction dashboards that combine link health, identifier coverage, Maghreb banner coverage, and case reliability scores with drill-down charts.
 - **Benchmark coverage:** Broaden LegalBench/LexGLUE suites, add temporal validity checks, and wire precision/recall thresholds into CI gates with nightly fairness trend analytics.
 - **Synonym & drift analytics:** Extend the learning worker to surface synonym intelligence, drift deltas, and reviewer feedback loops per jurisdiction, with alerts routed to the admin console.
+- **PDF ingestion rollout:** Data Platform & Ingestion team to execute the staged adoption outlined in the [PDF file inputs rollout guide](../agents/pdf-file-inputs.md), achieving ≥95% parse fidelity on the finance pilot corpus with no unresolved P0 compliance issues before production cutover.
 
 ## Phase 3 – Agent Workflows, HITL, and Drafting Experience (Week 3–5)
 - **Multi-agent desk completion:** Implement Process Navigator playbooks (civil claim FR, OHADA debt recovery, employment dismissal, OHADA company formation, Rwanda workflows) with telemetry and guardrails.
