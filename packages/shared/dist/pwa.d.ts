@@ -1742,14 +1742,14 @@ export declare const IntegrationStatusSchema: z.ZodObject<{
     lastSync: z.ZodOptional<z.ZodString>;
     message: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    status: "error" | "syncing" | "connected" | "disconnected";
+    status: "error" | "connected" | "syncing" | "disconnected";
     id: string;
     name: string;
     provider: string;
     message?: string | undefined;
     lastSync?: string | undefined;
 }, {
-    status: "error" | "syncing" | "connected" | "disconnected";
+    status: "error" | "connected" | "syncing" | "disconnected";
     id: string;
     name: string;
     provider: string;
@@ -1834,14 +1834,14 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         lastSync: z.ZodOptional<z.ZodString>;
         message: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
-        status: "error" | "syncing" | "connected" | "disconnected";
+        status: "error" | "connected" | "syncing" | "disconnected";
         id: string;
         name: string;
         provider: string;
         message?: string | undefined;
         lastSync?: string | undefined;
     }, {
-        status: "error" | "syncing" | "connected" | "disconnected";
+        status: "error" | "connected" | "syncing" | "disconnected";
         id: string;
         name: string;
         provider: string;
@@ -1902,7 +1902,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         lastIndexed: string;
     }[];
     integrations: {
-        status: "error" | "syncing" | "connected" | "disconnected";
+        status: "error" | "connected" | "syncing" | "disconnected";
         id: string;
         name: string;
         provider: string;
@@ -1935,7 +1935,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         lastIndexed: string;
     }[];
     integrations: {
-        status: "error" | "syncing" | "connected" | "disconnected";
+        status: "error" | "connected" | "syncing" | "disconnected";
         id: string;
         name: string;
         provider: string;

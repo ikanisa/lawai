@@ -16,9 +16,9 @@ import {
   AgentPlanStep,
   IRACPayload,
   IRACSchema,
-  OFFICIAL_DOMAIN_ALLOWLIST,
   buildWebSearchAllowlist,
-  DEFAULT_WEB_SEARCH_ALLOWLIST_MAX,
+  OFFICIAL_DOMAIN_ALLOWLIST,
+  type WebSearchAllowlistResult,
   WebSearchMode,
   getJurisdictionsForDomain,
 } from '@avocat-ai/shared';

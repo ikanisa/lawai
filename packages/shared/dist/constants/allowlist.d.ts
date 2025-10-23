@@ -1,25 +1,20 @@
 export declare const OFFICIAL_DOMAIN_REGISTRY: Readonly<Record<string, readonly string[]>>;
 export declare const OFFICIAL_DOMAIN_ALLOWLIST: readonly string[];
-export declare const DEFAULT_WEB_SEARCH_ALLOWLIST_MAX: number;
-export interface BuildWebSearchAllowlistOptions {
-    fallback: readonly string[];
-    override?: readonly unknown[] | null | undefined;
-    maxDomains?: number;
-    onTruncate?: (details: {
-        truncatedCount: number;
-        totalDomains: number;
-        maxDomains: number;
-        source: 'override' | 'fallback';
-    }) => void;
-}
-export interface BuildWebSearchAllowlistResult {
+export type WebSearchAllowlistSource = 'base' | 'override';
+export interface WebSearchAllowlistResult {
     allowlist: string[];
+    total: number;
     truncated: boolean;
-    truncatedCount: number;
-    totalDomains: number;
-    source: 'override' | 'fallback';
+    truncatedDomains: string[];
+    limit: number;
+    source: WebSearchAllowlistSource;
 }
-export declare function buildWebSearchAllowlist(options: BuildWebSearchAllowlistOptions): BuildWebSearchAllowlistResult;
+export interface BuildWebSearchAllowlistOptions {
+    base?: readonly string[];
+    override?: readonly unknown[] | null;
+    limit?: number;
+}
+export declare function buildWebSearchAllowlist(options?: BuildWebSearchAllowlistOptions): WebSearchAllowlistResult;
 export declare function isDomainAllowlisted(url: string): boolean;
 export declare function getJurisdictionsForDomain(hostname: string): string[];
 //# sourceMappingURL=allowlist.d.ts.map

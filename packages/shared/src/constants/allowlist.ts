@@ -25,89 +25,90 @@ export const OFFICIAL_DOMAIN_REGISTRY: Readonly<Record<string, readonly string[]
 
 export const OFFICIAL_DOMAIN_ALLOWLIST: readonly string[] = Object.keys(OFFICIAL_DOMAIN_REGISTRY);
 
-export const DEFAULT_WEB_SEARCH_ALLOWLIST_MAX = OFFICIAL_DOMAIN_ALLOWLIST.length;
+const DEFAULT_WEB_SEARCH_LIMIT = 20;
 
-type AllowlistInput = readonly unknown[] | null | undefined;
-
-function normalizeDomains(domains: AllowlistInput): string[] {
-  if (!domains || domains.length === 0) {
-    return [];
+function normaliseAllowlistInput(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
   }
 
-  const normalized: string[] = [];
-  const seen = new Set<string>();
-
-  for (const entry of domains) {
-    if (typeof entry !== 'string') {
-      continue;
-    }
-
-    const trimmed = entry.trim().toLowerCase();
-    if (!trimmed || seen.has(trimmed)) {
-      continue;
-    }
-
-    seen.add(trimmed);
-    normalized.push(trimmed);
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
   }
 
-  return normalized;
+  const candidate = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+    ? (() => {
+        try {
+          return new URL(trimmed).hostname;
+        } catch (error) {
+          return trimmed;
+        }
+      })()
+    : trimmed;
+
+  const lower = candidate.toLowerCase().replace(/^\.+/, '');
+  if (!lower) {
+    return null;
+  }
+
+  // Basic hostname validation – reject values with spaces or protocol separators.
+  if (/[\s/]/.test(lower)) {
+    return null;
+  }
+
+  return lower;
+}
+
+export type WebSearchAllowlistSource = 'base' | 'override';
+
+export interface WebSearchAllowlistResult {
+  allowlist: string[];
+  total: number;
+  truncated: boolean;
+  truncatedDomains: string[];
+  limit: number;
+  source: WebSearchAllowlistSource;
 }
 
 export interface BuildWebSearchAllowlistOptions {
-  fallback: readonly string[];
-  override?: AllowlistInput;
-  maxDomains?: number;
-  onTruncate?: (details: {
-    truncatedCount: number;
-    totalDomains: number;
-    maxDomains: number;
-    source: 'override' | 'fallback';
-  }) => void;
-}
-
-export interface BuildWebSearchAllowlistResult {
-  allowlist: string[];
-  truncated: boolean;
-  truncatedCount: number;
-  totalDomains: number;
-  source: 'override' | 'fallback';
+  base?: readonly string[];
+  override?: readonly unknown[] | null;
+  limit?: number;
 }
 
 export function buildWebSearchAllowlist(
-  options: BuildWebSearchAllowlistOptions,
-): BuildWebSearchAllowlistResult {
-  const fallback = normalizeDomains(options.fallback);
-  const override = normalizeDomains(options.override);
-  const source: 'override' | 'fallback' = override.length > 0 ? 'override' : 'fallback';
-  const candidate = source === 'override' ? override : fallback;
-  const maxDomains = options.maxDomains ?? DEFAULT_WEB_SEARCH_ALLOWLIST_MAX;
+  options: BuildWebSearchAllowlistOptions = {},
+): WebSearchAllowlistResult {
+  const limit = Math.max(1, options.limit ?? DEFAULT_WEB_SEARCH_LIMIT);
+  const base = Array.isArray(options.base) ? options.base : OFFICIAL_DOMAIN_ALLOWLIST;
 
-  if (candidate.length <= maxDomains) {
-    return {
-      allowlist: candidate,
-      truncated: false,
-      truncatedCount: 0,
-      totalDomains: candidate.length,
-      source,
-    };
+  const override = Array.isArray(options.override) ? options.override : null;
+  const hasOverride = override !== null;
+  const source: WebSearchAllowlistSource = hasOverride ? 'override' : 'base';
+  const inputs = hasOverride ? override : base;
+
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+
+  for (const value of inputs) {
+    const host = normaliseAllowlistInput(value);
+    if (!host || seen.has(host)) {
+      continue;
+    }
+    seen.add(host);
+    deduped.push(host);
   }
 
-  const allowlist = candidate.slice(0, maxDomains);
-  const truncatedCount = candidate.length - allowlist.length;
-
-  options.onTruncate?.({
-    truncatedCount,
-    totalDomains: candidate.length,
-    maxDomains,
-    source,
-  });
+  const allowlist = deduped.slice(0, limit);
+  const truncatedDomains = deduped.slice(limit);
 
   return {
     allowlist,
-    truncated: true,
-    truncatedCount,
-    totalDomains: candidate.length,
+    total: deduped.length,
+    truncated: truncatedDomains.length > 0,
+    truncatedDomains,
+    limit,
     source,
   };
 }
