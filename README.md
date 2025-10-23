@@ -26,7 +26,14 @@ packages/
    ```bash
    pnpm install
    ```
-2. Copy `.env.example` to `.env.local` and fill in required secrets. The `.env.local` file is gitignored so credentials stay local-only.
+2. Copy `.env.example` to `.env` and fill in required secrets.
+   The API now refuses to boot with placeholder defaults for production-critical
+   values – you must provide concrete credentials for `OPENAI_API_KEY`,
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
+   `OPENAI_VECTOR_STORE_AUTHORITIES_ID` in every deployed environment.
+   Placeholder strings such as `test-openai-key`, `vs_test`, or
+   `https://example.supabase.co` trigger a hard failure when `NODE_ENV` is set to
+   `production`.
 3. Apply database migrations directly against your Supabase instance (requires `SUPABASE_DB_URL`):
    ```bash
    pnpm db:migrate

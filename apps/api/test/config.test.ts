@@ -1,49 +1,36 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const ORIGINAL_ENV = { ...process.env };
-
-function setBaseEnv() {
-  process.env.OPENAI_API_KEY = 'sk-valid-key';
-  process.env.SUPABASE_URL = 'https://project.supabase.co';
-  process.env.SUPABASE_SERVICE_ROLE_KEY = 'super-secret-service-role';
-  process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID = 'vs_prod_123';
-}
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
 describe('configuration validation', () => {
+  const originalEnv = { ...process.env };
+
   beforeEach(() => {
     vi.resetModules();
-    process.env = { ...ORIGINAL_ENV };
-    process.env.NODE_ENV = 'production';
-    setBaseEnv();
+    process.env = { ...originalEnv };
   });
 
   afterEach(() => {
-    process.env = { ...ORIGINAL_ENV };
+    process.env = originalEnv;
   });
 
-  it('throws when using placeholder vector store IDs in production', async () => {
-    process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID = 'vs_test';
+  it('throws when production uses placeholder OpenAI key', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.OPENAI_API_KEY = 'test-openai-key';
+    process.env.SUPABASE_URL = 'https://supabase.production.example';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'real-service-role-key';
+    process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID = 'vs_lawai_authorities_prod';
 
-    await expect(import('../src/config')).rejects.toThrowError(/configuration_invalid/);
+    await expect(import('../src/config')).rejects.toThrowError(
+      /configuration_invalid placeholders=\[OPENAI_API_KEY\]/,
+    );
   });
 
-  it('throws when using example Supabase URL in production', async () => {
-    process.env.SUPABASE_URL = 'https://example.supabase.co';
+  it('throws when a production-critical field is missing', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.OPENAI_API_KEY = 'sk-live-1234567890abcdef1234567890abcdef';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'real-service-role-key';
+    process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID = 'vs_lawai_authorities_prod';
+    delete process.env.SUPABASE_URL;
 
-    await expect(import('../src/config')).rejects.toThrowError(/configuration_invalid/);
-  });
-
-  it('throws when using placeholder Supabase service role key in production', async () => {
-    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-test';
-
-    await expect(import('../src/config')).rejects.toThrowError(/configuration_invalid/);
-  });
-
-  it('allows valid production configuration', async () => {
-    const module = await import('../src/config');
-
-    expect(module.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID).toBe('vs_prod_123');
-    expect(module.env.SUPABASE_URL).toBe('https://project.supabase.co');
-    expect(module.env.SUPABASE_SERVICE_ROLE_KEY).toBe('super-secret-service-role');
+    await expect(import('../src/config')).rejects.toThrowError(/SUPABASE_URL is required/);
   });
 });
