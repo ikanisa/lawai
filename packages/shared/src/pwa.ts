@@ -10,7 +10,8 @@ export const AgentRunStatusSchema = z.enum([
 
 export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
 
-export const WebSearchModeSchema = z.enum(['allowlist', 'broad', 'disabled']);
+export const WebSearchModeSchema = z.enum(['disabled', 'allowlist', 'broad']);
+
 export type WebSearchMode = z.infer<typeof WebSearchModeSchema>;
 
 export const AgentRunSchema = z
@@ -64,6 +65,7 @@ export const AgentStreamRequestSchema = z
     run_id: z.string(),
     thread_id: z.string(),
     tools_enabled: z.array(z.string()).default([]),
+    web_search_mode: WebSearchModeSchema.default('allowlist'),
   })
   .strict();
 

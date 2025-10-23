@@ -1,7 +1,7 @@
 import { z } from 'zod';
 export declare const AgentRunStatusSchema: z.ZodEnum<["queued", "running", "succeeded", "failed", "requires_hitl"]>;
 export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
-export declare const WebSearchModeSchema: z.ZodEnum<["allowlist", "broad", "disabled"]>;
+export declare const WebSearchModeSchema: z.ZodEnum<["disabled", "allowlist", "broad"]>;
 export type WebSearchMode = z.infer<typeof WebSearchModeSchema>;
 export declare const AgentRunSchema: z.ZodObject<{
     id: z.ZodString;
@@ -13,7 +13,7 @@ export declare const AgentRunSchema: z.ZodObject<{
     input: z.ZodString;
     jurisdiction: z.ZodDefault<z.ZodNullable<z.ZodString>>;
     policyFlags: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
-    webSearchMode: z.ZodDefault<z.ZodEnum<["allowlist", "broad", "disabled"]>>;
+    webSearchMode: z.ZodDefault<z.ZodEnum<["disabled", "allowlist", "broad"]>>;
 }, "strict", z.ZodTypeAny, {
     status: "failed" | "queued" | "running" | "succeeded" | "requires_hitl";
     jurisdiction: string | null;
@@ -24,7 +24,7 @@ export declare const AgentRunSchema: z.ZodObject<{
     updatedAt: string;
     input: string;
     policyFlags: string[];
-    webSearchMode: "allowlist" | "broad" | "disabled";
+    webSearchMode: "disabled" | "allowlist" | "broad";
 }, {
     status: "failed" | "queued" | "running" | "succeeded" | "requires_hitl";
     id: string;
@@ -35,7 +35,7 @@ export declare const AgentRunSchema: z.ZodObject<{
     input: string;
     jurisdiction?: string | null | undefined;
     policyFlags?: string[] | undefined;
-    webSearchMode?: "allowlist" | "broad" | "disabled" | undefined;
+    webSearchMode?: "disabled" | "allowlist" | "broad" | undefined;
 }>;
 export type AgentRun = z.infer<typeof AgentRunSchema>;
 export declare const ToolEventSchema: z.ZodObject<{
@@ -70,13 +70,13 @@ export declare const AgentRunRequestSchema: z.ZodObject<{
     tools_enabled: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     jurisdiction: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     policy_flags: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
-    web_search_mode: z.ZodDefault<z.ZodEnum<["allowlist", "broad", "disabled"]>>;
+    web_search_mode: z.ZodDefault<z.ZodEnum<["disabled", "allowlist", "broad"]>>;
 }, "strict", z.ZodTypeAny, {
     input: string;
     agent_id: string;
     tools_enabled: string[];
     policy_flags: string[];
-    web_search_mode: "allowlist" | "broad" | "disabled";
+    web_search_mode: "disabled" | "allowlist" | "broad";
     jurisdiction?: string | null | undefined;
 }, {
     input: string;
@@ -84,7 +84,7 @@ export declare const AgentRunRequestSchema: z.ZodObject<{
     jurisdiction?: string | null | undefined;
     tools_enabled?: string[] | undefined;
     policy_flags?: string[] | undefined;
-    web_search_mode?: "allowlist" | "broad" | "disabled" | undefined;
+    web_search_mode?: "disabled" | "allowlist" | "broad" | undefined;
 }>;
 export type AgentRunRequest = z.infer<typeof AgentRunRequestSchema>;
 export declare const AgentStreamRequestSchema: z.ZodObject<{
@@ -93,10 +93,12 @@ export declare const AgentStreamRequestSchema: z.ZodObject<{
     run_id: z.ZodString;
     thread_id: z.ZodString;
     tools_enabled: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    web_search_mode: z.ZodDefault<z.ZodEnum<["disabled", "allowlist", "broad"]>>;
 }, "strict", z.ZodTypeAny, {
     input: string;
     agent_id: string;
     tools_enabled: string[];
+    web_search_mode: "disabled" | "allowlist" | "broad";
     run_id: string;
     thread_id: string;
 }, {
@@ -105,6 +107,7 @@ export declare const AgentStreamRequestSchema: z.ZodObject<{
     run_id: string;
     thread_id: string;
     tools_enabled?: string[] | undefined;
+    web_search_mode?: "disabled" | "allowlist" | "broad" | undefined;
 }>;
 export type AgentStreamRequest = z.infer<typeof AgentStreamRequestSchema>;
 export declare const VoiceSessionTokenSchema: z.ZodObject<{

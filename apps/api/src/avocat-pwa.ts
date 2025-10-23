@@ -69,7 +69,8 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const parsed = RunRequestSchema.parse(request.body ?? {});
+      const parsed = AgentRunRequestSchema.parse(request.body ?? {});
+      const webSearchMode = parsed.web_search_mode ?? 'allowlist';
       const now = new Date().toISOString();
       const run = AgentRunSchema.parse({
         id: `run_${randomUUID()}`,
@@ -81,6 +82,7 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
         input: parsed.input,
         jurisdiction: parsed.jurisdiction ?? null,
         policyFlags: parsed.policy_flags ?? [],
+        webSearchMode,
       });
       reply.code(201);
       return run;
@@ -106,7 +108,21 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const parsed = StreamRequestSchema.parse(request.body ?? {});
+      const parsed = AgentStreamRequestSchema.parse(request.body ?? {});
+      const webSearchMode = parsed.web_search_mode ?? 'allowlist';
+      const toolsEnabled = parsed.tools_enabled ?? [];
+      const includeWebSearch = webSearchMode !== 'disabled' && toolsEnabled.includes('web_search');
+
+      const webSearchSummaries = {
+        allowlist: {
+          start: 'Requête ciblée sur le JO OHADA et les bulletins officiels.',
+          success: 'Sources publiques vérifiées et ajoutées aux preuves.',
+        },
+        broad: {
+          start: 'Recherche web élargie sur les domaines publics surveillés.',
+          success: 'Résultats open web ajoutés avec bannière de prudence.',
+        },
+      } as const;
 
       reply.raw.setHeader('Content-Type', 'text/event-stream');
       reply.raw.setHeader('Cache-Control', 'no-cache');
@@ -114,37 +130,36 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
       reply.raw.flushHeaders?.();
       reply.hijack();
 
-      const requestedWebSearchMode = parsed.web_search_mode ?? defaultWebSearchMode;
-      const webSearchCopy =
-        researchToolSummaries.web_search[requestedWebSearchMode] ??
-        researchToolSummaries.web_search[defaultWebSearchMode];
-
       const baseToolEvents: StreamEvent[] = [
         {
           type: 'tool',
           data: {
             tool: {
-              id: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
-              name: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
+              id: toolsEnabled[0] ?? 'lookupCodeArticle',
+              name: toolsEnabled[0] ?? 'lookupCodeArticle',
               status: 'running',
               detail: researchToolSummaries.lookupCodeArticle.start,
               planStepId: 'step-intake',
             },
           },
         },
-        {
+      ];
+
+      if (includeWebSearch) {
+        const details = webSearchSummaries[webSearchMode === 'broad' ? 'broad' : 'allowlist'];
+        baseToolEvents.push({
           type: 'tool',
           data: {
             tool: {
               id: 'web_search',
               name: 'web_search',
               status: 'running',
-              detail: webSearchCopy.start,
+              detail: details.start,
               planStepId: 'step-risk',
             },
           },
-        },
-      ];
+        });
+      }
 
       const tokenEvents: StreamEvent[] = researchAnswerChunks.map((chunk) => ({
         type: 'token',
@@ -163,23 +178,11 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
           type: 'tool',
           data: {
             tool: {
-              id: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
-              name: parsed.tools_enabled[0] ?? 'lookupCodeArticle',
+              id: toolsEnabled[0] ?? 'lookupCodeArticle',
+              name: toolsEnabled[0] ?? 'lookupCodeArticle',
               status: 'success',
               detail: researchToolSummaries.lookupCodeArticle.success,
               planStepId: 'step-intake',
-            },
-          },
-        },
-        {
-          type: 'tool',
-          data: {
-            tool: {
-              id: 'web_search',
-              name: 'web_search',
-              status: 'success',
-              detail: webSearchCopy.success,
-              planStepId: 'step-risk',
             },
           },
         },
@@ -218,6 +221,22 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
         },
         { type: 'done', data: {} },
       ];
+
+      if (includeWebSearch) {
+        const details = webSearchSummaries[webSearchMode === 'broad' ? 'broad' : 'allowlist'];
+        completionEvents.splice(1, 0, {
+          type: 'tool',
+          data: {
+            tool: {
+              id: 'web_search',
+              name: 'web_search',
+              status: 'success',
+              detail: details.success,
+              planStepId: 'step-risk',
+            },
+          },
+        });
+      }
 
       const events = [...baseToolEvents, ...tokenEvents, ...citationEvents, ...completionEvents];
 

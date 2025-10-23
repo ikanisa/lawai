@@ -6,7 +6,7 @@ export const AgentRunStatusSchema = z.enum([
     'failed',
     'requires_hitl',
 ]);
-export const WebSearchModeSchema = z.enum(['allowlist', 'broad', 'disabled']);
+export const WebSearchModeSchema = z.enum(['disabled', 'allowlist', 'broad']);
 export const AgentRunSchema = z
     .object({
     id: z.string(),
@@ -49,6 +49,7 @@ export const AgentStreamRequestSchema = z
     run_id: z.string(),
     thread_id: z.string(),
     tools_enabled: z.array(z.string()).default([]),
+    web_search_mode: WebSearchModeSchema.default('allowlist'),
 })
     .strict();
 export const VoiceSessionTokenSchema = z
