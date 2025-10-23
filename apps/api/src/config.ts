@@ -1,9 +1,12 @@
-import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
+import { resolveDomainAllowlistOverride } from './allowlist-override.js';
 
-if (process.env.NODE_ENV !== 'production') {
-  loadEnv();
-}
+import {
+  loadServerEnv,
+  sharedOpenAiSchema,
+  sharedOptionalIntegrationsSchema,
+  sharedSupabaseSchema,
+} from '@avocat-ai/shared';
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
@@ -40,9 +43,25 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-const parsed = envSchema.parse({
-  ...process.env,
-});
+const parsed = loadServerEnv(envSchema);
+
+const SUPABASE_URL_PLACEHOLDER_PATTERNS = [
+  /example\.supabase\.co/i,
+  /project\.supabase\.co/i,
+  /localhost/i,
+];
+
+const OPENAI_KEY_PLACEHOLDER_PATTERNS = [
+  /CHANGEME/i,
+  /placeholder/i,
+  /test-openai-key/i,
+  /^sk-(?:test|demo|example|placeholder|dummy|sample)/i,
+];
+
+const SUPABASE_SERVICE_ROLE_PLACEHOLDER_PATTERNS = [
+  /placeholder/i,
+  /service-role-test/i,
+];
 
 function assertProductionEnv(e: Env) {
   if (process.env.NODE_ENV === 'production') {
@@ -53,6 +72,8 @@ function assertProductionEnv(e: Env) {
     if (!e.SUPABASE_URL) missing.push('SUPABASE_URL');
     if (!e.OPENAI_VECTOR_STORE_AUTHORITIES_ID) missing.push('OPENAI_VECTOR_STORE_AUTHORITIES_ID');
     if (!e.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (!e.OPENAI_CHATKIT_PROJECT) missing.push('OPENAI_CHATKIT_PROJECT');
+    if (!e.OPENAI_CHATKIT_SECRET) missing.push('OPENAI_CHATKIT_SECRET');
 
     // Basic placeholder detection
     const vectorStorePlaceholders = [/^vs(_|-)?(test|example|placeholder)$/i];
@@ -100,10 +121,7 @@ export function loadAllowlistOverride(): string[] | null {
 
   try {
     const value = JSON.parse(parsed.JURIS_ALLOWLIST_JSON);
-    if (!Array.isArray(value)) {
-      return null;
-    }
-    return value as string[];
+    return resolveDomainAllowlistOverride(value);
   } catch (error) {
     return null;
   }

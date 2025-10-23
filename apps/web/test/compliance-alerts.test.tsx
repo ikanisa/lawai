@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import messagesEn from '../messages/en.json';
 import type { ComplianceAssessment } from '../src/lib/api';
-import { ComplianceAlerts } from '../src/components/research/compliance-alerts';
+import { ComplianceAlerts } from '@/features/research/components/compliance-alerts';
 
 describe('ComplianceAlerts', () => {
   it('renders outstanding compliance issues', () => {
