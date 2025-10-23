@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
-import { CameraOcrButton, __resetOcrWorkerForTests } from '../src/components/research/camera-ocr-button';
+import { CameraOcrButton, __resetOcrWorkerForTests } from '@/features/research/components/camera-ocr-button';
 
 const recognize = vi.fn(async () => ({ data: { text: 'Article reconnu' } }));
 

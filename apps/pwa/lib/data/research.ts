@@ -1,6 +1,11 @@
 import { apiFetch } from "@/lib/apiClient";
 import { consumeEventStream, type StreamEvent } from "@/lib/openaiStream";
-import type { AgentRun, ResearchDeskContext, ResearchStreamPayload } from "@avocat-ai/shared";
+import type {
+  AgentRun,
+  ResearchDeskContext,
+  ResearchStreamPayload,
+  WebSearchMode
+} from "@avocat-ai/shared";
 
 export type {
   ResearchPlan,
@@ -8,7 +13,8 @@ export type {
   ResearchCitation,
   ResearchFilterOption,
   ResearchRiskLevel,
-  ResearchDeskContext
+  ResearchDeskContext,
+  WebSearchMode
 } from "@avocat-ai/shared";
 
 export type ResearchStreamEvent = StreamEvent<ResearchStreamPayload>;
@@ -18,6 +24,7 @@ interface StartResearchRunOptions {
   toolsEnabled?: string[];
   jurisdiction?: string | null;
   policyFlags?: string[];
+  userLocation?: string | null;
 }
 
 export async function fetchResearchDeskContext(): Promise<ResearchDeskContext> {
@@ -27,7 +34,13 @@ export async function fetchResearchDeskContext(): Promise<ResearchDeskContext> {
 export function startResearchRun(
   input: string,
   onEvent: (event: ResearchStreamEvent) => void,
-  { agentId = "research", toolsEnabled = [], jurisdiction, policyFlags = [] }: StartResearchRunOptions = {}
+  {
+    agentId = "research",
+    toolsEnabled = [],
+    jurisdiction,
+    policyFlags = [],
+    userLocation,
+  }: StartResearchRunOptions = {}
 ): () => void {
   const controller = new AbortController();
 
@@ -43,6 +56,7 @@ export function startResearchRun(
           tools_enabled: toolsEnabled,
           jurisdiction: jurisdiction ?? undefined,
           policy_flags: policyFlags,
+          user_location: userLocation ?? undefined,
         },
       });
     } catch (error) {
@@ -61,6 +75,7 @@ export function startResearchRun(
           run_id: run.id,
           thread_id: run.threadId,
           tools_enabled: toolsEnabled,
+          user_location: userLocation ?? undefined,
         }),
         signal: controller.signal,
       });

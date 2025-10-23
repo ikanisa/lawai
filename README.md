@@ -27,6 +27,13 @@ packages/
    pnpm install
    ```
 2. Copy `.env.example` to `.env` and fill in required secrets.
+   The API now refuses to boot with placeholder defaults for production-critical
+   values – you must provide concrete credentials for `OPENAI_API_KEY`,
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
+   `OPENAI_VECTOR_STORE_AUTHORITIES_ID` in every deployed environment.
+   Placeholder strings such as `test-openai-key`, `vs_test`, or
+   `https://example.supabase.co` trigger a hard failure when `NODE_ENV` is set to
+   `production`.
 3. Apply database migrations directly against your Supabase instance (requires `SUPABASE_DB_URL`):
    ```bash
    pnpm db:migrate
@@ -52,6 +59,15 @@ packages/
    pnpm dev:web
    ```
 
+## Deployment checklist (Vercel)
+
+Avant de fusionner une branche dans `main` ou de promouvoir un déploiement Vercel en production, vérifiez :
+
+- [ ] Le workflow **CI** GitHub Actions est passé (lint, typecheck, tests et builds). Vous pouvez reproduire localement via `pnpm -r lint`, `pnpm -r test`, `pnpm --filter @apps/api typecheck`, `pnpm --filter @avocat-ai/web typecheck`, puis les commandes `build` et `bundle:check`.
+- [ ] L'ensemble des variables d'environnement (OpenAI, Supabase, OTP, alertes) sont saisies dans Vercel conformément au [guide de déploiement détaillé](docs/deployment/vercel.md).
+- [ ] Les migrations Supabase et les buckets obligatoires sont en place (`pnpm ops:foundation`) et les données de référence ont été chargées (`pnpm seed`).
+- [ ] Les drapeaux de fonctionnalités critiques (ex. `FEAT_ADMIN_PANEL`) sont positionnés selon la stratégie d'exposition souhaitée.
+
 ### Assembler les fondations en une étape
 
 Lorsque vous préparez un nouvel environnement (local ou cloud), exécutez :
@@ -64,6 +80,16 @@ La commande applique toutes les migrations, vérifie la présence des extensions
 provisionne les buckets privés (`authorities`, `uploads`, `snapshots`), synchronise les zones de résidence et l'allowlist,
 valide les garde-fous de résidence puis crée le vector store `authorities-francophone` si nécessaire.
 Elle échoue immédiatement si un secret critique (OpenAI ou Supabase) reste en valeur par défaut.
+
+#### Garde-fous sur les secrets de production
+
+Au démarrage en production, l'API refusera les valeurs de configuration suivantes :
+
+- `SUPABASE_URL` pointant vers `https://example.supabase.co`, `https://project.supabase.co` ou toute URL `localhost`.
+- `OPENAI_API_KEY` contenant `CHANGEME`, `placeholder`, `test-openai-key` ou des clés factices commençant par `sk-test-`, `sk-demo-`, `sk-example-`, `sk-placeholder-`, `sk-dummy-` ou `sk-sample-`.
+- `SUPABASE_SERVICE_ROLE_KEY` contenant `placeholder` ou `service-role-test`.
+
+Mettez à jour vos secrets avant déploiement pour éviter l'échec `configuration_invalid`.
 
 ### Provisionner l'environnement complet
 
@@ -158,14 +184,24 @@ Afin de démontrer la robustesse (latence, précision des citations, couverture 
 pnpm ops:perf-snapshot --org 00000000-0000-0000-0000-000000000000 --user 00000000-0000-0000-0000-000000000000 --notes "post-red-team"
 ```
 
+### Planifier les rapports de conformité
+
+Les rapports de transparence, SLO et régulateur peuvent être programmés depuis Supabase en une seule commande :
+
+```bash
+pnpm --filter @apps/ops schedule-reports --org <org-id> --user <service-user> --api https://api.avocat.ai
+```
+
+Le CLI vérifie les garde-fous de résidence avant d’archiver les rapports dans `ops_report_runs`, journalise chaque succès dans `audit_events` et signale les échecs partiels (avec message d’erreur) dans la sortie standard.
+
 ## Panneau d'administration (feature flag FEAT_ADMIN_PANEL)
 
 Un nouveau panneau d'administration Next.js est livré derrière le flag `FEAT_ADMIN_PANEL`. Le flag est activé par défaut en
 développement et en préproduction, et reste désactivé en production tant que `FEAT_ADMIN_PANEL=1` n'est pas fourni.
 
 - **Activer localement** : ajoutez `FEAT_ADMIN_PANEL=1` à votre `.env.local`.
-- **Prévisualisation Vercel** : les environnements `preview` héritent d'un comportement activé par défaut.
-- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans les variables Vercel avant le déploiement.
+- **Prévisualisation** : les environnements avec `APP_ENV=preview` ou `APP_ENV=staging` héritent d'un comportement activé par défaut.
+- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans vos variables d'environnement de production.
 
 Les routes `/api/admin/*` valident systématiquement la présence des en-têtes `x-admin-actor` et `x-admin-org` (ou retombent sur
 les valeurs de configuration `ADMIN_PANEL_ACTOR`/`ADMIN_PANEL_ORG`).
@@ -343,6 +379,7 @@ Une suite Playwright valide le flux d'accusé de conformité entre le front (`ap
 La CI déclenche ces étapes dans le job `e2e` du workflow principal. En cas d'échec local, vérifiez que les en-têtes Supabase sont valides et que le script de seed s'exécute sans erreur avant de relancer Playwright.
 
 Consult `docs/avocat_ai_bell_system_plan.md` for the full BELL analysis and delivery roadmap.
+Review [`docs/vector-embeddings.md`](docs/vector-embeddings.md) for guidance on selecting, generating, and scaling semantic embeddings with the latest OpenAI models.
 
 ## Troubleshooting
 

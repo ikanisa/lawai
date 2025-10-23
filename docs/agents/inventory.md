@@ -1,5 +1,7 @@
 # Agent Inventory & Platform Assessment
 
+> Looking for the implementation backlog? Jump to the [Task Launchpad](repo-analysis.md#quick-start-task-launchpad) for ready-to-file issues.
+
 ## Existing Agents
 
 ### Avocat Francophone (apps/api/src/agent.ts)
@@ -44,13 +46,19 @@
 3. Draft ChatKit session schema and lifecycle (creation, resume, cancel) ahead of implementation.
 4. Identify evaluation scenarios per finance agent (taxonomy for later automation).
 5. Establish environment variables and secret mappings for organisation/project-specific deployments.
+6. [Enable PDF ingestion inputs across finance corpora](pdf-file-inputs.md) – success criteria: PDF ingestion pipeline achieves ≥99% success rate, guardrail telemetry confirms residency/compliance tagging, and finance evaluation suite passes post-rollout; **Responsible team:** Document Ingestion Guild.
 
 ## Prototype Artifacts
 - `apps/api/scripts/export-agent-definition.ts` – generates a JSON stub (`apps/dist/platform/avocat-francophone.json`) for ingestion into Agent Builder.
 - `apps/api/src/agent.ts` – exports `TOOL_NAMES`, a single source of truth for custom tool identifiers consumed by both runtime handlers and the manifest export; extend this map when introducing a new tool to avoid name drift.
 - `apps/api/src/chatkit.ts` – initial in-memory session scaffold outlining the future ChatKit integration surface.
 
+## Workflow Guides
+- [File Inputs](./pdf-inputs.md) – PDF intake and tagging workflow with implementation pointers to `/apps/api/src/routes/upload/` and Supabase ingestion tables so migrations keep File Search parity across environments.
+
 ## Shared Resources & Guardrail Roadmap
+
+- **File Inputs (PDF)**: Follow the [File Inputs (PDF) guide](./file-inputs-pdf.md) to prepare, OCR, and register artefacts before linking them to Agent Platform resources.
 
 | Resource / Guardrail | Status | Notes |
 | --- | --- | --- |
