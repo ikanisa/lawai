@@ -20,10 +20,16 @@ import { observabilityPlugin } from './core/observability/observability-plugin.j
 export interface CreateAppOptions {
   supabase?: SupabaseClient;
   overrides?: AppContainerOverrides;
+  includeWorkspaceDomainRoutes?: boolean;
 }
 
 export async function createApp(options: CreateAppOptions = {}) {
   const app = Fastify({
+    ajv: {
+      customOptions: {
+        removeAdditional: false,
+      },
+    },
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
       redact: [
@@ -47,10 +53,12 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   await app.register(observabilityPlugin);
 
-  const supabase = options.supabase ?? serviceClient;
+  const { supabase: supabaseOverride, overrides, includeWorkspaceDomainRoutes = false } = options;
+
+  const supabase = supabaseOverride ?? serviceClient;
   const container = createAppContainer({
     supabase,
-    ...(options.overrides ?? {}),
+    ...(overrides ?? {}),
   });
 
   const context: AppContext = {
@@ -77,7 +85,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     await registerRealtimeRoutes(instance, context);
   }, { prefix: '/api' });
 
-  if (!(app as any).workspaceRoutesRegistered) {
+  const workspaceRouteExists = typeof app.hasRoute === 'function' && app.hasRoute({ method: 'GET', url: '/workspace' });
+
+  if (
+    includeWorkspaceDomainRoutes &&
+    !workspaceRouteExists &&
+    !(app as any).workspaceRoutesRegistered
+  ) {
     await registerWorkspaceRoutes(app, context);
     (app as any).workspaceRoutesRegistered = true;
   }
