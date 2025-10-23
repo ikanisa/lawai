@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import type { AppContext } from '../../types/context.js';
-import { getWorkspaceOverview } from './overview.js';
+import { z } from 'zod';
+import type { AppContext } from '../../types/context';
+import { enforceRateLimit } from '../../rate-limit';
 
 type WorkspaceQuery = z.infer<typeof workspaceQuerySchema>;
 type WorkspaceResponse = z.infer<typeof workspaceResponseSchema>;
@@ -15,7 +16,14 @@ export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppCont
     }
 
     const { orgId } = parse.data;
-    const { supabase } = ctx;
+    const { supabase, rateLimiter } = ctx;
+
+    const userHeader = request.headers['x-user-id'];
+    const limiterKey = `${orgId}:${typeof userHeader === 'string' ? userHeader : request.ip ?? 'anonymous'}`;
+    const allowed = await enforceRateLimit(rateLimiter.workspace, request, reply, limiterKey);
+    if (!allowed) {
+      return;
+    }
 
     const { overview, errors } = await getWorkspaceOverview(supabase, orgId);
 

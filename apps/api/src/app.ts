@@ -10,11 +10,10 @@ import { registerRealtimeRoutes } from './routes/realtime/index.js';
 import { registerResearchRoutes } from './routes/research/index.js';
 import { registerUploadRoutes } from './routes/upload/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
-import type { AppContext } from './types/context.js';
-import { env } from './config.js';
+import type { AppContext } from './types/context';
+import { env, rateLimitConfig } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
-import { createAppContainer, type AppContainerOverrides } from './core/container.js';
-import { observabilityPlugin } from './core/observability/observability-plugin.js';
+import { createRateLimiterFactory } from './rate-limit.js';
 
 interface AppBootstrap {
   app: FastifyInstance;
@@ -61,6 +60,14 @@ export async function createApp(): Promise<AppBootstrap> {
 
   const shouldRegisterWorkspaceRoutes = options.registerWorkspaceRoutes ?? true;
 
+  const rateLimiterFactory = createRateLimiterFactory({
+    driver: rateLimitConfig.driver,
+    namespace: rateLimitConfig.namespace,
+    functionName: rateLimitConfig.functionName,
+    supabase: rateLimitConfig.driver === 'supabase' ? supabase : undefined,
+    logger: app.log,
+  });
+
   const context: AppContext = {
     supabase,
     config: {
@@ -69,7 +76,10 @@ export async function createApp(): Promise<AppBootstrap> {
         baseUrl: process.env.OPENAI_BASE_URL,
       },
     },
-    container,
+    rateLimiter: {
+      factory: rateLimiterFactory,
+      workspace: rateLimiterFactory(rateLimitConfig.buckets.workspace),
+    },
   };
 
   await app.register(async (instance: FastifyInstance) => {

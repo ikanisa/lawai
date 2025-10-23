@@ -1,4 +1,5 @@
-import type { ApiSupabaseClient } from './supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { RateLimiter, RateLimiterFactory } from '../rate-limit';
 
 export interface AppContext {
   supabase: ApiSupabaseClient;
@@ -8,6 +9,9 @@ export interface AppContext {
       baseUrl?: string;
     };
   };
-  container: AppContainer;
+  rateLimiter: {
+    factory: RateLimiterFactory;
+    workspace: RateLimiter;
+  };
 }
 
