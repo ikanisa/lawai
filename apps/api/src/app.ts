@@ -40,6 +40,7 @@ export async function createApp(): Promise<CreateAppResult> {
         'env.ALERTS_EMAIL_WEBHOOK_URL',
       ],
     },
+    trustProxy: true,
   });
 
   await app.register(observabilityPlugin);

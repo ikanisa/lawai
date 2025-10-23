@@ -1,5 +1,5 @@
 import { createApp } from './app.js';
-import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
 import { WebSearchModeSchema } from '@avocat-ai/shared';
 import type { IRACPayload, WebSearchMode } from '@avocat-ai/shared';
@@ -179,94 +179,6 @@ async function embedQuery(text: string): Promise<number[]> {
     const message = error instanceof Error ? error.message : 'embedding_failed';
     throw new Error(message);
   }
-}
-
-class ResidencyError extends Error {
-  statusCode: number;
-
-  constructor(message: string, statusCode: number) {
-    super(message);
-    this.statusCode = statusCode;
-  }
-}
-
-function extractResidencyFromPath(path?: string | null): string | null {
-  if (!path) {
-    return null;
-  }
-  const segments = path.split('/');
-  return segments.length > 1 ? segments[1] ?? null : null;
-}
-
-function collectAllowedResidencyZones(
-  access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>,
-): string[] {
-  const zones = new Set<string>();
-
-  const append = (value: string | null | undefined) => {
-    if (!value) return;
-    const normalized = value.trim().toLowerCase();
-    if (normalized) {
-      zones.add(normalized);
-    }
-  };
-
-  if (Array.isArray(access.policies.residencyZones)) {
-    for (const zone of access.policies.residencyZones) {
-      append(zone);
-    }
-  }
-  append(access.policies.residencyZone ?? null);
-
-  return zones.size > 0 ? Array.from(zones) : [];
-}
-
-async function determineResidencyZone(
-  orgId: string,
-  access: Awaited<ReturnType<typeof authorizeRequestWithGuards>>,
-  requestedZone?: string | null,
-): Promise<string> {
-  const allowedZones = collectAllowedResidencyZones(access);
-  let zone: string | null = null;
-  try {
-    zone = resolveResidencyZone(requestedZone ?? null, {
-      allowedZones,
-      fallbackZone: allowedZones[0] ?? 'eu',
-    });
-  } catch (error) {
-    const message = (error as Error).message ?? 'residency_zone_invalid';
-    if (message === 'residency_zone_restricted') {
-      throw new ResidencyError('residency_zone_restricted', 428);
-    }
-    throw new ResidencyError('residency_zone_invalid', 400);
-  }
-
-  if (!zone) {
-    throw new ResidencyError('residency_zone_invalid', 400);
-  }
-
-  try {
-    await ensureResidencyAllowed(supabase, zone);
-  } catch (error) {
-    const message = (error as Error).message ?? '';
-    if (message.startsWith('residency_zone_invalid')) {
-      throw new ResidencyError('residency_zone_invalid', 400);
-    }
-    throw new ResidencyError('residency_validation_failed', 500);
-  }
-
-  const { data: orgAllowed, error: orgAllowedError } = await supabase.rpc('org_residency_allows', {
-    org_uuid: orgId,
-    zone,
-  });
-  if (orgAllowedError) {
-    throw new ResidencyError('residency_validation_failed', 500);
-  }
-  if (orgAllowed !== true) {
-    throw new ResidencyError('residency_zone_restricted', 428);
-  }
-
-  return zone;
 }
 
 const regulatorDigestSchema = z
