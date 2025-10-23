@@ -3,6 +3,9 @@ import type { AppContext } from '../../types/context.js';
 import { workspaceQuerySchema } from './schemas.js';
 import type { WorkspaceQuery } from './schemas.js';
 
+type WorkspaceQuery = z.infer<typeof workspaceQuerySchema>;
+type WorkspaceResponse = z.infer<typeof workspaceResponseSchema>;
+
 export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
   const workspaceController = ctx.container.workspace;
 
