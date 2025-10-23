@@ -1,12 +1,15 @@
-alter table public.governance_publications enable row level security;
+ALTER TABLE public.governance_publications enable ROW level security;
 
 -- Publications are meant to be public; allow read access to all while
 -- delegating write access to service role flows controlled by Supabase.
-drop policy if exists "governance publications read" on public.governance_publications;
-create policy "governance publications read" on public.governance_publications
-  for select using (true);
+DROP POLICY if EXISTS "governance publications read" ON public.governance_publications;
 
-drop policy if exists "governance publications service write" on public.governance_publications;
-create policy "governance publications service write" on public.governance_publications
-  for all using (auth.role() = 'service_role')
-  with check (auth.role() = 'service_role');
+CREATE POLICY "governance publications read" ON public.governance_publications FOR
+SELECT
+  USING (TRUE);
+
+DROP POLICY if EXISTS "governance publications service write" ON public.governance_publications;
+
+CREATE POLICY "governance publications service write" ON public.governance_publications FOR ALL USING (auth.role () = 'service_role')
+WITH
+  CHECK (auth.role () = 'service_role');

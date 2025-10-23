@@ -13,6 +13,7 @@
       "close": "Fermer",
       "keyboardHint": "Utilisez ↑ et ↓ pour parcourir les résultats, Entrée pour exécuter une commande.",
       "resultsCount": "{count} commande(s) disponible(s).",
+      "semanticResultsCount": "{count} commande(s) correspondent à votre recherche.",
       "sections": {
         "actions": "Actions rapides",
         "navigate": "Navigation"
@@ -69,6 +70,12 @@
       "success": "Avocat-AI est installé sur votre appareil.",
       "snoozed": "Nous vous le rappellerons ultérieurement.",
       "unavailable": "L’installation n’est pas disponible sur cet appareil.",
+      "optIn": {
+        "label": "Mode hors ligne",
+        "on": "Mode hors ligne activé",
+        "off": "Mode hors ligne désactivé",
+        "description": "Activez le service worker hors ligne avant d’installer l’application ou d’activer les alertes."
+      },
       "releaseNotes": {
         "title": "Nouveautés",
         "items": [
@@ -448,6 +455,50 @@
       "monitoring": "Surveillance"
     }
   },
+  "chatkit": {
+    "title": "Sessions ChatKit en direct",
+    "subtitle": "Supervisez les fils ChatKit, suivez le flux d’événements et escaladez vers un reviewer dès que l’agent détecte un risque.",
+    "activeSessions": "Sessions actives",
+    "startSession": "Lancer une session",
+    "refresh": "Actualiser",
+    "cancel": "Terminer la session",
+    "tasksTitle": "File des tâches",
+    "escalate": "Escalader au HITL",
+    "escalateDescription": "Envoyer à un reviewer et suspendre l’automatisation jusqu’à sa décision.",
+    "metricsLabel": "Statut du flux",
+    "transportLabel": "Transport",
+    "lastEventLabel": "Dernier événement",
+    "eventIdle": "En attente d’événements…",
+    "sessionLabel": "Session {id}",
+    "startedAt": "Démarrée {time}",
+    "emptyStateDetail": "Les sessions ChatKit apparaîtront ici dès qu’une discussion en direct sera lancée.",
+    "loading": "Chargement des sessions…",
+    "loadError": "Impossible de charger les sessions ChatKit.",
+    "connection": {
+      "idle": "Inactif",
+      "connecting": "Connexion…",
+      "connected": "Connecté (SSE)",
+      "connectedWebrtc": "Connecté (WebRTC)",
+      "error": "Erreur de connexion"
+    },
+    "status": {
+      "active": "Active",
+      "ended": "Terminée",
+      "pending": "En attente",
+      "running": "En cours",
+      "completed": "Terminé",
+      "blocked": "Bloquée"
+    },
+    "defaultTasks": {
+      "genericTitle": "Tâche",
+      "intakeTitle": "Collecte & triage",
+      "intakeDescription": "Collecte des pièces et classification des signaux de risque.",
+      "analysisTitle": "Analyse de l’agent",
+      "analysisDescription": "Recherche des sources, rédaction et scoring du risque.",
+      "reviewTitle": "Passage au reviewer",
+      "reviewDescription": "En attente de validation humaine avant diffusion."
+    }
+  },
   "navigator": {
     "title": "Navigateur de procédures guidées",
     "subtitle": "Suivez les workflows par juridiction, les garde-fous et les passages en revue humaine pour chaque persona.",
@@ -736,6 +787,21 @@
     "empty": "Les paramètres de l’organisation seront affichés ici selon votre rôle.",
     "metricsTitle": "Tableau de pilotage",
     "metricsDescription": "Surveillez la précision des citations, la charge HITL et la santé de l’ingestion pour vos équipes.",
+    "complianceDashboardTitle": "Garde-fous conformité",
+    "complianceDashboardDescription": "Surveillez la couverture HITL, les sources en liste blanche et l’application de la bannière Maghreb.",
+    "complianceTimeframeLabel": "30 derniers jours",
+    "complianceHitlPending": "Relectures HITL en attente",
+    "complianceHitlResolved": "Résolues : {count}",
+    "complianceHitlMedian": "Délai médian",
+    "complianceAllowlistedRatio": "Part des citations en liste blanche",
+    "complianceAllowlistedWarnings": "Alertes de traduction : {count}",
+    "complianceAllowlistedRuns": "Exécutions sans citation : {count}",
+    "complianceMaghrebCoverage": "Couverture bannière Maghreb",
+    "complianceMaghrebPrecision": "Précision des citations p95",
+    "complianceMaghrebTemporal": "Validité temporelle p95",
+    "complianceDashboardLoading": "Chargement des garde-fous conformité…",
+    "complianceDashboardRefreshing": "Actualisation des garde-fous…",
+    "complianceDashboardUnavailable": "Garde-fous de conformité indisponibles. Vérifiez la télémétrie.",
     "runs30d": "Exécutions (30 jours)",
     "runsStatusHigh": "Volume élevé",
     "runsStatusMedium": "Moyen",

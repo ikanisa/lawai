@@ -1,5 +1,5 @@
 -- Align document chunk embeddings with 1536 dimension vectors
-do $$
+DO $$
 declare
   current_dim integer;
 begin
@@ -20,4 +20,4 @@ begin
 end
 $$;
 
-create index if not exists document_chunks_embedding_idx on public.document_chunks using hnsw (embedding vector_l2_ops);
+CREATE INDEX if NOT EXISTS document_chunks_embedding_idx ON public.document_chunks USING hnsw (embedding vector_l2_ops);

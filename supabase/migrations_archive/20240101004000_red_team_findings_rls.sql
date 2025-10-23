@@ -1,8 +1,9 @@
-alter table public.red_team_findings enable row level security;
+ALTER TABLE public.red_team_findings enable ROW level security;
 
-create policy red_team_findings_select on public.red_team_findings
-for select using (public.is_org_member(org_id));
+CREATE POLICY red_team_findings_select ON public.red_team_findings FOR
+SELECT
+  USING (public.is_org_member (org_id));
 
-create policy red_team_findings_modify on public.red_team_findings
-for all using (public.is_org_member(org_id))
-with check (public.is_org_member(org_id));
+CREATE POLICY red_team_findings_modify ON public.red_team_findings FOR ALL USING (public.is_org_member (org_id))
+WITH
+  CHECK (public.is_org_member (org_id));
