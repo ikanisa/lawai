@@ -63,6 +63,14 @@ For a full MacBook playbook (including production-style builds), consult [`docs/
   - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - Populate the OpenAI keys (`OPENAI_API_KEY`, `OPENAI_VECTOR_STORE_AUTHORITIES_ID`, etc.) to unlock ingestion, evaluations, and transparency tooling.
 
+### Observability & telemetry
+
+- Configure OpenTelemetry exporters so API services and edge functions stream traces/metrics to your collector:
+  - Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or the trace/metrics-specific variants) and `OTEL_EXPORTER_OTLP_HEADERS` so `@avocat-ai/observability` can initialise both Node and Deno runtimes.
+  - Use `OTEL_DIAGNOSTIC_LOG_LEVEL=INFO` locally to debug exporter connectivity without polluting production logs.
+  - Edge functions inherit the same variables via Supabase; populate `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`/`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` on the project to avoid missing spans when Deno deploys new revisions.
+- The API automatically calls `ensureTelemetryRuntime()` during bootstrap; run `pnpm dev:api` with the variables above to verify traces land in your backend before shipping to Vercel.
+
 ### Supabase usage recap
 
 - `pnpm db:migrate` applies SQL migrations to the configured Supabase project.
@@ -191,6 +199,16 @@ Afin de démontrer la robustesse (latence, précision des citations, couverture 
 ```bash
 pnpm ops:perf-snapshot --org 00000000-0000-0000-0000-000000000000 --user 00000000-0000-0000-0000-000000000000 --notes "post-red-team"
 ```
+
+### Planifier les rapports de conformité
+
+Les rapports de transparence, SLO et régulateur peuvent être programmés depuis Supabase en une seule commande :
+
+```bash
+pnpm --filter @apps/ops schedule-reports --org <org-id> --user <service-user> --api https://api.avocat.ai
+```
+
+Le CLI vérifie les garde-fous de résidence avant d’archiver les rapports dans `ops_report_runs`, journalise chaque succès dans `audit_events` et signale les échecs partiels (avec message d’erreur) dans la sortie standard.
 
 ## Panneau d'administration (feature flag FEAT_ADMIN_PANEL)
 

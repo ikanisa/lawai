@@ -8,6 +8,7 @@ const repoRoot = process.cwd();
 const migrationsDir = join(repoRoot, 'db', 'migrations');
 const manifestPath = join(migrationsDir, 'manifest.json');
 const strategiesPath = join(migrationsDir, 'rollback-strategies.json');
+const dependencyOverridesPath = join(migrationsDir, 'dependency-overrides.json');
 
 const allowedRollbackStrategies = new Set([
   'manual-restore',
@@ -54,9 +55,49 @@ const files = readdirSync(migrationsDir)
   .filter((name) => name.endsWith('.sql'))
   .sort();
 
+const fileIds = files.map((file) => {
+  const match = file.match(/^(\d{14})_([a-z0-9_]+)\.sql$/);
+  if (!match) {
+    throw new Error(`Migration file ${file} does not match expected pattern YYYYMMDDHHMMSS_slug.sql`);
+  }
+  const [, timestamp, slug] = match;
+  return `${timestamp}_${slug}`;
+});
+
 const overrides = existsSync(strategiesPath)
   ? JSON.parse(readFileSync(strategiesPath, 'utf8'))
   : {};
+
+const dependencyOverrides = existsSync(dependencyOverridesPath)
+  ? JSON.parse(readFileSync(dependencyOverridesPath, 'utf8'))
+  : {};
+
+for (const overrideId of Object.keys(dependencyOverrides)) {
+  if (!fileIds.includes(overrideId)) {
+    throw new Error(`dependency-overrides.json references unknown migration id ${overrideId}`);
+  }
+}
+
+function resolveDependencies(id, previousId) {
+  const override = dependencyOverrides[id];
+  if (override === undefined) {
+    return previousId ? [previousId] : [];
+  }
+  if (!Array.isArray(override)) {
+    throw new Error(`dependency override for ${id} must be an array of migration ids`);
+  }
+  const unique = Array.from(new Set(override.filter((value) => typeof value === 'string' && value.length > 0)));
+  unique.sort();
+  for (const dependency of unique) {
+    if (!fileIds.includes(dependency)) {
+      throw new Error(`dependency override for ${id} references unknown migration id ${dependency}`);
+    }
+    if (dependency === id) {
+      throw new Error(`dependency override for ${id} cannot reference itself`);
+    }
+  }
+  return unique;
+}
 
 const manifest = {
   generatedAt: new Date().toISOString(),
@@ -86,7 +127,7 @@ for (const file of files) {
     timestamp,
     slug,
     checksum: `sha256:${checksum(contents)}`,
-    dependsOn: previousId,
+    dependsOn: resolveDependencies(id, previousId),
     rollbackStrategy,
   });
   previousId = id;

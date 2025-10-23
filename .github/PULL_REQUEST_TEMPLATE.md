@@ -1,3 +1,5 @@
+> ℹ️  Review the expectations in [`CONTRIBUTING.md`](../CONTRIBUTING.md) before filing your PR.
+
 ## Summary
 - [ ] Linked issue or ticket: <!-- e.g., Closes #123 -->
 - [ ] Describe the change and the user impact.
