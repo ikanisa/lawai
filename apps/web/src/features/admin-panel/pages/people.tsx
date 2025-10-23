@@ -3,13 +3,13 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Shield, RefreshCcw, Save } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
-import { Switch } from '../../../components/ui/switch';
+import { Button } from '../@/ui/button';
+import { Switch } from '../@/ui/switch';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
 import { adminQueries } from '../api/client';
-import { Sheet, SheetSection } from '../../../components/ui/sheet';
+import { Sheet, SheetSection } from '../@/ui/sheet';
 
 interface InvitationPayload {
   email: string;

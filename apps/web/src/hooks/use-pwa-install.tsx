@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { grantPwaConsent } from '@/lib/pwa';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -123,6 +124,7 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
     };
 
     const handleAppInstalled = () => {
+      grantPwaConsent();
       setInstalled(true);
       setShouldPrompt(false);
       setDeferredPrompt(null);
@@ -187,6 +189,7 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
     setIsAvailable(false);
 
     if (outcome === 'accepted') {
+      grantPwaConsent();
       setInstalled(true);
       writeNumber(STORAGE_KEYS.installed, 1);
       return 'accepted';

@@ -5,7 +5,7 @@ import type { AppContext } from '../../types/context.js';
 import { cloneHitlQueueData } from './data.js';
 
 const hitlActionSchema = z.object({
-  action: z.enum(['approve', 'request_changes', 'reject']).default('acknowledged'),
+  action: z.enum(['approve', 'request_changes', 'reject', 'acknowledged']).default('acknowledged'),
 });
 
 export async function registerHitlRoutes(app: FastifyInstance, _ctx: AppContext) {

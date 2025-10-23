@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { ProcessNavigatorFlow } from '@avocat-ai/shared';
-import { ProcessNavigator } from '../src/components/workspace/process-navigator';
-import { getMessages } from '../src/lib/i18n';
+import { ProcessNavigator } from '@/features/workspace/components/process-navigator';
+import { getMessages } from '@/lib/i18n';
 
 const messages = getMessages('en');
 
