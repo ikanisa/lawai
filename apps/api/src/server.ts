@@ -63,6 +63,7 @@ import { authorizeRequestWithGuards } from './http/authorization.js';
 import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
+import { getWorkspaceOverview } from './domain/workspace/overview.js';
 import { InMemoryRateLimiter } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
@@ -3893,6 +3894,162 @@ app.post<{
   return reply.code(204).send();
   },
 );
+
+app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply) => {
+  const { orgId } = request.query;
+
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
+
+    const { overview, errors } = await getWorkspaceOverview(supabase, orgId);
+
+    if (errors.jurisdictions) {
+      request.log.error({ err: errors.jurisdictions }, 'workspace jurisdictions query failed');
+    }
+    if (errors.matters) {
+      request.log.error({ err: errors.matters }, 'workspace matters query failed');
+    }
+    if (errors.compliance) {
+      request.log.error({ err: errors.compliance }, 'workspace compliance query failed');
+    }
+    if (errors.hitl) {
+      request.log.error({ err: errors.hitl }, 'workspace hitl query failed');
+    }
+
+    return overview;
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error }, 'workspace overview failed');
+    return reply.code(500).send({ error: 'workspace_failed' });
+  }
+});
+
+app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply) => {
+  const { orgId } = request.query;
+
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('citations:view', orgId, userHeader, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error }, 'citations authorization failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const { data, error } = await supabase
+    .from('sources')
+    .select(
+      'id, title, source_type, jurisdiction_code, source_url, publisher, binding_lang, consolidated, language_note, effective_date, created_at, capture_sha256',
+    )
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (error) {
+    request.log.error({ err: error }, 'citations query failed');
+    return reply.code(500).send({ error: 'citations_failed' });
+  }
+
+  return {
+    entries: (data ?? []).map((row) => ({
+      id: row.id,
+      title: row.title,
+      sourceType: row.source_type,
+      jurisdiction: row.jurisdiction_code,
+      url: row.source_url,
+      publisher: row.publisher,
+      bindingLanguage: row.binding_lang,
+      consolidated: row.consolidated,
+      languageNote: row.language_note,
+      effectiveDate: row.effective_date,
+      capturedAt: row.created_at,
+      checksum: row.capture_sha256,
+    })),
+  };
+});
+
+app.get<{ Querystring: { orgId?: string; sourceId?: string } }>('/case-scores', async (request, reply) => {
+  const { orgId, sourceId } = request.query;
+  if (!orgId) {
+    return reply.code(400).send({ error: 'orgId is required' });
+  }
+
+  const userHeader = request.headers['x-user-id'];
+  if (!userHeader || typeof userHeader !== 'string') {
+    return reply.code(400).send({ error: 'x-user-id header is required' });
+  }
+
+  try {
+    await authorizeRequestWithGuards('cases:view', orgId, userHeader, request);
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+    request.log.error({ err: error }, 'case_scores authorization failed');
+    return reply.code(403).send({ error: 'forbidden' });
+  }
+
+  const query = supabase
+    .from('case_scores')
+    .select('id, source_id, juris_code, score_overall, axes, hard_block, version, model_ref, notes, computed_at, sources(title, source_url, trust_tier, court_rank)')
+    .eq('org_id', orgId)
+    .order('computed_at', { ascending: false })
+    .limit(50);
+
+  if (sourceId) {
+    query.eq('source_id', sourceId);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    request.log.error({ err: error }, 'case_scores query failed');
+    return reply.code(500).send({ error: 'case_scores_failed' });
+  }
+
+  return {
+    scores: (data ?? []).map((row) => ({
+      id: row.id,
+      sourceId: row.source_id,
+      jurisdiction: row.juris_code,
+      score: row.score_overall,
+      axes: row.axes,
+      hardBlock: row.hard_block,
+      version: row.version,
+      modelRef: row.model_ref,
+      notes: row.notes,
+      computedAt: row.computed_at,
+      source: (row as any).sources
+        ? {
+            title: (row as any).sources.title,
+            url: (row as any).sources.source_url,
+            trustTier: (row as any).sources.trust_tier,
+            courtRank: (row as any).sources.court_rank,
+          }
+        : null,
+    })),
+  };
+});
 
 app.get<{ Querystring: { orgId?: string; sourceId?: string } }>('/case-treatments', async (request, reply) => {
   const { orgId, sourceId } = request.query;
