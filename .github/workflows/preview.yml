@@ -2,7 +2,7 @@ name: Preview Build
 
 on:
   pull_request:
-    branches: [main]
+    branches: [work]
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 

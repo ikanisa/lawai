@@ -2,11 +2,13 @@ name: Monorepo CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ work ]
   pull_request:
+    branches: [ work ]
 
 jobs:
-  build:
+  full-workspace-ci:
+    name: Full Workspace CI
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,14 +27,5 @@ jobs:
       - name: Install (workspaces, root only)
         run: npm ci --workspaces --include-workspace-root
 
-      - name: Check migrations
-        run: npm run check:migrations
-
-      - name: SQL lint
-        run: npm run lint:sql
-
-      - name: Build
-        run: npm run build
-
-      - name: Test (optional)
-        run: npm test --workspaces --if-present
+      - name: Run monorepo CI suite
+        run: pnpm run ci
