@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
-import { AdminView } from '../../../src/components/admin/admin-view';
-import { getMessages, type Locale } from '../../../src/lib/i18n';
+import { AdminView } from '@/features/admin/components/admin-view';
+import { getMessages, type Locale } from '@/lib/i18n';
 import { isAdminPanelEnabled } from '../../../src/config/feature-flags';
 
 interface PageProps {
