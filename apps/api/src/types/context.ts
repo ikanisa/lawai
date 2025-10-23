@@ -8,5 +8,9 @@ export interface AppContext {
       baseUrl?: string;
     };
   };
+  rateLimiter: {
+    factory: RateLimiterFactory;
+    workspace: RateLimiter;
+  };
 }
 

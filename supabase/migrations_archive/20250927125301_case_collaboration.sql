@@ -1,7 +1,6 @@
 -- Support collaborative case work with shared participants and helper functions.
-
 -- Create collaborator role enum if missing.
-do $$
+DO $$
 begin
   if not exists (
     select 1 from pg_type t
@@ -15,24 +14,21 @@ end;
 $$;
 
 -- Store collaborators explicitly.
-create table if not exists public.case_collaborators (
-  case_id uuid not null references public.cases(id) on delete cascade,
-  profile_id uuid not null references public.profiles(id) on delete cascade,
-  role public.case_collaborator_role not null default 'client',
-  added_by uuid references public.profiles(id) on delete set null,
-  created_at timestamptz not null default now(),
-  primary key (case_id, profile_id)
+CREATE TABLE IF NOT EXISTS public.case_collaborators (
+  case_id uuid NOT NULL REFERENCES public.cases (id) ON DELETE CASCADE,
+  profile_id uuid NOT NULL REFERENCES public.profiles (id) ON DELETE CASCADE,
+  role public.case_collaborator_role NOT NULL DEFAULT 'client',
+  added_by uuid REFERENCES public.profiles (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (case_id, profile_id)
 );
 
-create index if not exists case_collaborators_profile_idx on public.case_collaborators(profile_id);
+CREATE INDEX if NOT EXISTS case_collaborators_profile_idx ON public.case_collaborators (profile_id);
 
 -- Helper to check if the current user owns the case.
-create or replace function public.user_is_case_owner(p_case_id uuid)
-returns boolean
-language plpgsql
-security definer
-set search_path = public
-as $$
+CREATE OR REPLACE FUNCTION public.user_is_case_owner (p_case_id uuid) returns boolean language plpgsql security definer
+SET
+  search_path = public AS $$
 begin
   return exists (
     select 1
@@ -44,12 +40,9 @@ end;
 $$;
 
 -- Helper to determine whether a user can access a case (owner or collaborator).
-create or replace function public.user_can_access_case(p_case_id uuid)
-returns boolean
-language plpgsql
-security definer
-set search_path = public
-as $$
+CREATE OR REPLACE FUNCTION public.user_can_access_case (p_case_id uuid) returns boolean language plpgsql security definer
+SET
+  search_path = public AS $$
 begin
   return exists (
     select 1
@@ -67,12 +60,9 @@ end;
 $$;
 
 -- Ensure every case owner also appears in the collaborator table.
-create or replace function public.add_case_owner_collaborator()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
+CREATE OR REPLACE FUNCTION public.add_case_owner_collaborator () returns trigger language plpgsql security definer
+SET
+  search_path = public AS $$
 begin
   insert into public.case_collaborators (case_id, profile_id, role, added_by)
   values (new.id, new.owner_id, 'lawyer', new.owner_id)
@@ -84,82 +74,94 @@ begin
 end;
 $$;
 
-drop trigger if exists insert_case_owner_collaborator on public.cases;
+DROP TRIGGER if EXISTS insert_case_owner_collaborator ON public.cases;
 
-create trigger insert_case_owner_collaborator
-  after insert on public.cases
-  for each row
-  execute procedure public.add_case_owner_collaborator();
+CREATE TRIGGER insert_case_owner_collaborator
+AFTER insert ON public.cases FOR each ROW
+EXECUTE procedure public.add_case_owner_collaborator ();
 
 -- Backfill existing cases into collaborator table.
-insert into public.case_collaborators (case_id, profile_id, role, added_by)
-select c.id, c.owner_id, 'lawyer', c.owner_id
-from public.cases c
-on conflict (case_id, profile_id) do nothing;
+INSERT INTO
+  public.case_collaborators (case_id, profile_id, role, added_by)
+SELECT
+  c.id,
+  c.owner_id,
+  'lawyer',
+  c.owner_id
+FROM
+  public.cases c
+ON CONFLICT (case_id, profile_id) DO NOTHING;
 
 -- Permissions for new enum type.
-grant usage on type public.case_collaborator_role to anon, authenticated, service_role;
+GRANT usage ON type public.case_collaborator_role TO anon,
+authenticated,
+service_role;
 
 -- Enable RLS and policies for collaborators table.
-alter table public.case_collaborators enable row level security;
+ALTER TABLE public.case_collaborators enable ROW level security;
 
-drop policy if exists "Collaborators view" on public.case_collaborators;
-drop policy if exists "Collaborators manage" on public.case_collaborators;
+DROP POLICY if EXISTS "Collaborators view" ON public.case_collaborators;
 
-create policy "Collaborators view"
-  on public.case_collaborators
-  for select using (public.user_can_access_case(case_id));
+DROP POLICY if EXISTS "Collaborators manage" ON public.case_collaborators;
 
-create policy "Collaborators manage"
-  on public.case_collaborators
-  using (public.user_is_case_owner(case_id))
-  with check (public.user_is_case_owner(case_id));
+CREATE POLICY "Collaborators view" ON public.case_collaborators FOR
+SELECT
+  USING (public.user_can_access_case (case_id));
+
+CREATE POLICY "Collaborators manage" ON public.case_collaborators USING (public.user_is_case_owner (case_id))
+WITH
+  CHECK (public.user_is_case_owner (case_id));
 
 -- Refresh existing policies to rely on helper functions.
-drop policy if exists "Cases visible to owner" on public.cases;
-drop policy if exists "Cases visible to members" on public.cases;
-drop policy if exists "Cases modifiable by owner" on public.cases;
-drop policy if exists "Cases deletable by owner" on public.cases;
-drop policy if exists "Cases owned by creator" on public.cases;
+DROP POLICY if EXISTS "Cases visible to owner" ON public.cases;
 
-create policy "Cases visible to members"
-  on public.cases
-  for select using (public.user_can_access_case(id));
+DROP POLICY if EXISTS "Cases visible to members" ON public.cases;
 
-create policy "Cases owned by creator"
-  on public.cases
-  for insert
-  with check (owner_id = auth.uid());
+DROP POLICY if EXISTS "Cases modifiable by owner" ON public.cases;
 
-create policy "Cases modifiable by owner"
-  on public.cases
-  for update using (public.user_is_case_owner(id))
-  with check (public.user_is_case_owner(id));
+DROP POLICY if EXISTS "Cases deletable by owner" ON public.cases;
 
-create policy "Cases deletable by owner"
-  on public.cases
-  for delete using (public.user_is_case_owner(id));
+DROP POLICY if EXISTS "Cases owned by creator" ON public.cases;
+
+CREATE POLICY "Cases visible to members" ON public.cases FOR
+SELECT
+  USING (public.user_can_access_case (id));
+
+CREATE POLICY "Cases owned by creator" ON public.cases FOR insert
+WITH
+  CHECK (owner_id = auth.uid ());
+
+CREATE POLICY "Cases modifiable by owner" ON public.cases
+FOR UPDATE
+  USING (public.user_is_case_owner (id))
+WITH
+  CHECK (public.user_is_case_owner (id));
+
+CREATE POLICY "Cases deletable by owner" ON public.cases FOR delete USING (public.user_is_case_owner (id));
 
 -- Documents policy refresh.
-drop policy if exists "Documents follow case ownership" on public.case_documents;
-drop policy if exists "Documents visible to members" on public.case_documents;
-create policy "Documents visible to members"
-  on public.case_documents
-  using (public.user_can_access_case(case_id))
-  with check (public.user_can_access_case(case_id));
+DROP POLICY if EXISTS "Documents follow case ownership" ON public.case_documents;
+
+DROP POLICY if EXISTS "Documents visible to members" ON public.case_documents;
+
+CREATE POLICY "Documents visible to members" ON public.case_documents USING (public.user_can_access_case (case_id))
+WITH
+  CHECK (public.user_can_access_case (case_id));
 
 -- Messages policy refresh.
-drop policy if exists "Messages follow case ownership" on public.case_messages;
-drop policy if exists "Messages visible to members" on public.case_messages;
-create policy "Messages visible to members"
-  on public.case_messages
-  using (public.user_can_access_case(case_id))
-  with check (public.user_can_access_case(case_id));
+DROP POLICY if EXISTS "Messages follow case ownership" ON public.case_messages;
+
+DROP POLICY if EXISTS "Messages visible to members" ON public.case_messages;
+
+CREATE POLICY "Messages visible to members" ON public.case_messages USING (public.user_can_access_case (case_id))
+WITH
+  CHECK (public.user_can_access_case (case_id));
 
 -- Tasks policy refresh.
-drop policy if exists "Tasks follow case ownership" on public.tasks;
-drop policy if exists "Tasks visible to members" on public.tasks;
-create policy "Tasks visible to members"
-  on public.tasks
-  using (public.user_can_access_case(case_id))
-  with check (public.user_can_access_case(case_id));
+DROP POLICY if EXISTS "Tasks follow case ownership" ON public.tasks;
+
+DROP POLICY if EXISTS "Tasks visible to members" ON public.tasks;
+
+CREATE POLICY "Tasks visible to members" ON public.tasks USING (public.user_can_access_case (case_id))
+WITH
+  CHECK (public.user_can_access_case (case_id));

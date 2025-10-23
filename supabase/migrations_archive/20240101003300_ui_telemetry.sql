@@ -1,23 +1,26 @@
-create table if not exists public.ui_telemetry_events (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  user_id uuid not null,
-  event_name text not null,
+CREATE TABLE IF NOT EXISTS public.ui_telemetry_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  user_id uuid NOT NULL,
+  event_name text NOT NULL,
   payload jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists ui_telemetry_org_idx on public.ui_telemetry_events (org_id, created_at desc);
-create index if not exists ui_telemetry_event_idx on public.ui_telemetry_events (event_name, created_at desc);
+CREATE INDEX if NOT EXISTS ui_telemetry_org_idx ON public.ui_telemetry_events (org_id, created_at DESC);
 
-alter table public.ui_telemetry_events enable row level security;
+CREATE INDEX if NOT EXISTS ui_telemetry_event_idx ON public.ui_telemetry_events (event_name, created_at DESC);
 
-drop policy if exists ui_telemetry_read on public.ui_telemetry_events;
-create policy ui_telemetry_read on public.ui_telemetry_events
-  for select
-  using (public.is_org_member(org_id));
+ALTER TABLE public.ui_telemetry_events enable ROW level security;
 
-drop policy if exists ui_telemetry_insert on public.ui_telemetry_events;
-create policy ui_telemetry_insert on public.ui_telemetry_events
-  for insert
-  with check (public.is_org_member(org_id));
+DROP POLICY if EXISTS ui_telemetry_read ON public.ui_telemetry_events;
+
+CREATE POLICY ui_telemetry_read ON public.ui_telemetry_events FOR
+SELECT
+  USING (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS ui_telemetry_insert ON public.ui_telemetry_events;
+
+CREATE POLICY ui_telemetry_insert ON public.ui_telemetry_events FOR insert
+WITH
+  CHECK (public.is_org_member (org_id));

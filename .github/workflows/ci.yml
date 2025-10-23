@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ work, main, master ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ work, main, master ]
 
 jobs:
   lint:
@@ -21,6 +21,8 @@ jobs:
           run_install: true
       - name: pnpm version
         run: pnpm -v
+      - name: SQL lint
+        run: pnpm lint:sql
       - name: Lint (workspace)
         run: pnpm -r lint
 

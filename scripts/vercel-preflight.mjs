@@ -15,6 +15,8 @@ const requiredEnv = new Map([
     [
       'OPENAI_API_KEY',
       'OPENAI_VECTOR_STORE_AUTHORITIES_ID',
+      'OPENAI_CHATKIT_PROJECT',
+      'OPENAI_CHATKIT_SECRET',
       'SUPABASE_URL',
       'SUPABASE_SERVICE_ROLE_KEY',
     ],
