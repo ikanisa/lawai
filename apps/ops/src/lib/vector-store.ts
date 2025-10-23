@@ -52,6 +52,7 @@ export async function validateVectorStore(apiKey: string, id: string | undefined
   const response = await fetch(`https://api.openai.com/v1/vector_stores/${id}`, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
+      'OpenAI-Beta': 'assistants=v2',
     },
   });
 
@@ -112,6 +113,7 @@ export async function ensureVectorStore(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'OpenAI-Beta': 'assistants=v2',
       },
       body: JSON.stringify({ name }),
     });
