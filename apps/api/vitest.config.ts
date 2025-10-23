@@ -7,11 +7,12 @@ export default defineConfig({
   test: {
     environment: 'node',
     env: {
-      OPENAI_API_KEY: 'sk-live-1234567890abcdef1234567890abcdef',
-      SUPABASE_URL: 'https://supabase.lawai.test',
-      SUPABASE_SERVICE_ROLE_KEY:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock-service-role-key-for-tests',
-      OPENAI_VECTOR_STORE_AUTHORITIES_ID: 'vs_lawai_authorities_mock',
+      OPENAI_API_KEY: 'test-key',
+      AGENT_MODEL: 'gpt-test',
+      EMBEDDING_MODEL: 'text-embedding-test',
+      OPENAI_VECTOR_STORE_AUTHORITIES_ID: 'vs_test',
+      SUPABASE_URL: 'https://example.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-role',
     },
     coverage: {
       reporter: ['text'],
