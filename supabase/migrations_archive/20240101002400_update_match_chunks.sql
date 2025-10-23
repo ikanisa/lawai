@@ -1,14 +1,13 @@
 -- Update match_chunks RPC to expose trust metadata
-drop function if exists public.match_chunks(uuid, vector(1536), int, float, text);
+DROP FUNCTION if EXISTS public.match_chunks (uuid, vector (1536), int, float, text);
 
-create or replace function public.match_chunks(
+CREATE OR REPLACE FUNCTION public.match_chunks (
   p_org uuid,
-  p_query_embedding vector(1536),
-  p_match_count int default 8,
-  p_min_sim float default 0.75,
-  p_jurisdiction text default null
-)
-returns table(
+  p_query_embedding vector (1536),
+  p_match_count int DEFAULT 8,
+  p_min_sim float DEFAULT 0.75,
+  p_jurisdiction text DEFAULT NULL
+) returns TABLE (
   chunk_id uuid,
   document_id uuid,
   source_id uuid,
@@ -17,10 +16,7 @@ returns table(
   source_type text,
   similarity float,
   content text
-)
-language sql
-stable
-as $$
+) language sql stable AS $$
   select
     dc.id as chunk_id,
     dc.document_id,

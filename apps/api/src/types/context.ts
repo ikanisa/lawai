@@ -8,5 +8,8 @@ export interface AppContext {
       baseUrl?: string;
     };
   };
+  rateLimits: {
+    workspace?: RateLimitGuard;
+  };
 }
 
