@@ -93,7 +93,7 @@ export interface AgentRunInput {
   orgId: string;
   userId: string;
   confidentialMode?: boolean;
-  webSearchMode?: WebSearchMode;
+  userLocationOverride?: string | null;
 }
 
 export interface AgentRunResult {
