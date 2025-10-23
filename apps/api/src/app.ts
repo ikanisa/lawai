@@ -66,7 +66,7 @@ export async function createApp(): Promise<CreateAppResult> {
     supabase,
     config: {
       openai: {
-        apiKey: env.OPENAI_API_KEY ?? '',
+        apiKey: env.OPENAI_API_KEY,
         baseUrl: process.env.OPENAI_BASE_URL,
       },
     },

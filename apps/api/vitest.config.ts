@@ -18,7 +18,7 @@ export default defineConfig({
       reporter: ['text'],
     },
     include: ['test/**/*.test.ts'],
-    setupFiles: ['test/setup.ts'],
+    setupFiles: ['test/setup-env.ts'],
   },
   resolve: {
     alias: {
