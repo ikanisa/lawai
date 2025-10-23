@@ -1,6 +1,7 @@
-alter table public.document_summaries enable row level security;
+ALTER TABLE public.document_summaries enable ROW level security;
 
-drop policy if exists "summaries_by_org" on public.document_summaries;
-create policy "summaries_by_org" on public.document_summaries
-for all using (public.is_org_member(org_id))
-with check (public.is_org_member(org_id));
+DROP POLICY if EXISTS "summaries_by_org" ON public.document_summaries;
+
+CREATE POLICY "summaries_by_org" ON public.document_summaries FOR ALL USING (public.is_org_member (org_id))
+WITH
+  CHECK (public.is_org_member (org_id));

@@ -1,13 +1,13 @@
 -- Create service-level objective snapshot storage
-create table if not exists public.slo_snapshots (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  captured_at timestamptz not null default now(),
-  api_uptime_percent numeric(5,2) not null,
-  hitl_response_p95_seconds numeric(6,2) not null,
-  retrieval_latency_p95_seconds numeric(6,2) not null,
-  citation_precision_p95 numeric(5,2),
+CREATE TABLE IF NOT EXISTS public.slo_snapshots (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  captured_at timestamptz NOT NULL DEFAULT now(),
+  api_uptime_percent numeric(5, 2) NOT NULL,
+  hitl_response_p95_seconds numeric(6, 2) NOT NULL,
+  retrieval_latency_p95_seconds numeric(6, 2) NOT NULL,
+  citation_precision_p95 numeric(5, 2),
   notes text,
-  created_by uuid not null,
-  created_at timestamptz not null default now()
+  created_by uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
 );

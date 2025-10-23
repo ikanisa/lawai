@@ -24,17 +24,18 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { Switch } from './ui/switch';
 import { cn } from '../lib/utils';
 import type { Messages, Locale } from '../lib/i18n';
 import { CommandPalette, type CommandPaletteAction } from './command-palette';
-import { sendTelemetryEvent } from '../lib/api';
+import { sendTelemetryEvent } from '@/lib/api';
 import { toast } from 'sonner';
 import { ConfidentialModeBanner } from './confidential-mode-banner';
 import { ComplianceBanner } from './compliance-banner';
-import { useConfidentialMode } from '../state/confidential-mode';
+import { useConfidentialMode } from '@/state/confidential-mode';
 import { useShallow } from 'zustand/react/shallow';
-import { useOutbox } from '../hooks/use-outbox';
-import { useOnlineStatus } from '../hooks/use-online-status';
+import { useOutbox } from '@/hooks/use-outbox';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 import { PwaInstallPrompt } from './pwa-install-prompt';
 import { PwaPreferenceToggle } from './pwa-preference-toggle';
 
@@ -75,6 +76,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   const { pendingCount: outboxCount, hasItems: hasOutbox, stalenessMs } = useOutbox();
   const online = useOnlineStatus();
   const statusBarMessages = messages.app.statusBar;
+  const { enabled: pwaOptIn, ready: pwaPreferenceReady, setEnabled: setPwaOptIn } = usePwaPreference();
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -223,6 +225,19 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   };
 
   const installMessages = messages.app.install;
+  const optInMessages = installMessages?.optIn;
+  const handlePwaToggle = useCallback(() => {
+    const next = !pwaOptIn;
+    setPwaOptIn(next);
+    const feedback = next
+      ? optInMessages?.on ?? optInMessages?.label
+      : optInMessages?.off ?? optInMessages?.label;
+    if (feedback) {
+      toast.info(feedback);
+    }
+    void sendTelemetryEvent('pwa_opt_in_toggled', { enabled: next });
+  }, [optInMessages, pwaOptIn, setPwaOptIn]);
+  const canTogglePwa = clientEnv.NEXT_PUBLIC_ENABLE_PWA && Boolean(optInMessages);
   const outboxAgeLabel = useMemo(() => {
     if (!statusBarMessages || !hasOutbox) {
       return null;
@@ -324,6 +339,21 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
             <p className="hidden text-xs text-slate-400 md:block">{messages.app.commandPlaceholder}</p>
         </div>
         <div className="flex items-center gap-3">
+          {canTogglePwa ? (
+            <Switch
+              type="button"
+              checked={pwaOptIn}
+              disabled={!pwaPreferenceReady}
+              onClick={handlePwaToggle}
+              label={
+                pwaOptIn
+                  ? optInMessages?.on ?? optInMessages?.label
+                  : optInMessages?.off ?? optInMessages?.label
+              }
+              className="hidden bg-slate-900/60 text-[11px] sm:inline-flex"
+              title={optInMessages?.description}
+            />
+          ) : null}
           {statusBarMessages && !online ? (
             <span className="hidden items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-200 sm:inline-flex">
               <WifiOff className="h-4 w-4" aria-hidden />

@@ -1,6 +1,7 @@
 'use client';
 
 import { Workbox } from 'workbox-window';
+import { clientEnv } from '../env.client';
 
 const DIGEST_KEY = 'avocat-ai-digest-enabled';
 export const PWA_PREFERENCE_STORAGE_KEY = 'avocat-ai-pwa-preference';
@@ -91,16 +92,48 @@ export function registerPwa() {
     return;
   }
 
+  try {
+    window.localStorage.setItem(PWA_OPT_IN_STORAGE_KEY, enabled ? 'true' : 'false');
+  } catch (error) {
+    console.warn('pwa_opt_in_write_failed', error);
+  }
+}
+
+export function registerPwa(): Promise<ServiceWorkerRegistration> | null {
+  if (!isPwaFeatureEnabled()) {
+    console.info('pwa_registration_skipped', { reason: 'environment_disabled' });
+    return null;
+  }
+
+  if (!getPwaOptInPreference()) {
+    console.info('pwa_registration_deferred', { reason: 'preference_opt_out' });
+    return null;
+  }
+
+  if (!isBrowserEnvironment()) {
+    return null;
+  }
+
+  if (!('serviceWorker' in navigator)) {
+    console.info('pwa_registration_skipped', { reason: 'unsupported_browser' });
+    return null;
+  }
+
   if (!registrationPromise) {
     const wb = new Workbox('/sw.js', { scope: '/' });
     wb.addEventListener('waiting', () => {
       wb.messageSW({ type: 'SKIP_WAITING' }).catch(() => undefined);
     });
-    registrationPromise = wb.register().catch((error) => {
-      console.error('sw_register_failed', error);
-      throw error;
-    });
+    registrationPromise = wb
+      .register()
+      .catch((error) => {
+        console.error('sw_register_failed', error);
+        registrationPromise = null;
+        throw error;
+      });
   }
+
+  return registrationPromise;
 }
 
 export function isDigestEnabled(): boolean {
@@ -131,8 +164,14 @@ export async function enableDigestNotifications(): Promise<boolean> {
     return false;
   }
 
+  grantPwaConsent();
+
   if (!registrationPromise) {
-    registerPwa();
+    const result = registerPwa();
+    if (!result) {
+      console.warn('digest_notification_failed', 'pwa_registration_unavailable');
+      return false;
+    }
   }
 
   try {

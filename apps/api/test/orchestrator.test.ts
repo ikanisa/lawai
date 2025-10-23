@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { FinanceDirectorPlan } from '@avocat-ai/shared';
+import { FinanceDirectorPlanSchema } from '@avocat-ai/shared';
 import {
   listCommandsForSession,
   listOrgConnectors,
@@ -18,6 +20,35 @@ function createQueryBuilder(result: { data: unknown; error: unknown }) {
   };
   return builder;
 }
+
+const sampleDirectorPlan: FinanceDirectorPlan = FinanceDirectorPlanSchema.parse({
+  version: '2025.02',
+  objective: 'Clôturer les comptes',
+  summary: 'Plan de clôture standard',
+  decisionLog: ['Analyse initiale'],
+  steps: [
+    {
+      id: 'step-1',
+      status: 'pending',
+      envelope: {
+        worker: 'domain',
+        commandType: 'finance.accounts_payable.reconcile',
+        title: 'Rapprocher le grand livre',
+        description: 'Vérifier les soldes AP vs GL',
+        domain: 'accounts_payable',
+        payload: {},
+        successCriteria: ['Soldes équilibrés'],
+        dependencies: [],
+        connectorDependencies: ['erp:general_ledger'],
+        telemetry: ['ap_reconciliation_latency'],
+        guardrails: { safetyPolicies: ['policy.ap_confidentiality'], residency: ['eu'] },
+        hitl: { required: false, reasons: [], mitigations: [] },
+      },
+      notes: [],
+    },
+  ],
+  globalHitl: { required: false, reasons: [], mitigations: [] },
+});
 
 describe('orchestrator helpers', () => {
   it('registers connectors via RPC', async () => {
@@ -50,13 +81,13 @@ describe('orchestrator helpers', () => {
 
     await updateSessionState(supabase, {
       sessionId: 'session-1',
-      directorState: { objective: 'close books' },
+      directorState: sampleDirectorPlan,
       currentObjective: 'close books',
     });
 
     expect(fromMock).toHaveBeenCalledWith('orchestrator_sessions');
     expect(updateMock).toHaveBeenCalledWith({
-      director_state: { objective: 'close books' },
+      director_state: sampleDirectorPlan,
       current_objective: 'close books',
     });
     expect(eqMock).toHaveBeenCalledWith('id', 'session-1');
