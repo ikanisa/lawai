@@ -29,9 +29,13 @@ const {
   };
 });
 
-vi.mock('workbox-window', () => ({
-  Workbox: workboxConstructorMock,
-}));
+vi.mock(
+  'workbox-window',
+  () => ({
+    Workbox: workboxConstructorMock,
+  }),
+  { virtual: true },
+);
 
 describe('pwa utilities', () => {
   const originalEnv = { ...process.env };
@@ -54,6 +58,7 @@ describe('pwa utilities', () => {
       requestPermission: vi.fn(async () => 'granted'),
     } as unknown as Notification);
 
+    window.localStorage.clear();
     process.env = { ...originalEnv, NEXT_PUBLIC_ENABLE_PWA: 'true' };
   });
 
@@ -63,9 +68,10 @@ describe('pwa utilities', () => {
   });
 
   it('registers the service worker only once', async () => {
-    const { registerPwa } = await import('../src/lib/pwa');
-    registerPwa();
-    registerPwa();
+    const { registerPwa, grantPwaConsent } = await import('../src/lib/pwa');
+    grantPwaConsent();
+    await registerPwa();
+    await registerPwa();
 
     expect(registerMock).toHaveBeenCalledTimes(1);
   });
@@ -90,9 +96,10 @@ describe('pwa utilities', () => {
 
   it('does not register the service worker when the feature flag is disabled', async () => {
     process.env.NEXT_PUBLIC_ENABLE_PWA = 'false';
-    const { registerPwa, isPwaFeatureEnabled } = await import('../src/lib/pwa');
+    const { registerPwa, isPwaFeatureEnabled, grantPwaConsent } = await import('../src/lib/pwa');
 
-    registerPwa();
+    grantPwaConsent();
+    await registerPwa();
 
     expect(isPwaFeatureEnabled()).toBe(false);
     expect(workboxConstructorMock).not.toHaveBeenCalled();
@@ -100,19 +107,64 @@ describe('pwa utilities', () => {
   });
 
   it('clears any cached registration promise when the feature flag toggles off', async () => {
-    const { registerPwa } = await import('../src/lib/pwa');
-    registerPwa();
+    const { registerPwa, grantPwaConsent } = await import('../src/lib/pwa');
+    grantPwaConsent();
+    await registerPwa();
 
     expect(registerMock).toHaveBeenCalledTimes(1);
 
     process.env.NEXT_PUBLIC_ENABLE_PWA = 'false';
-    registerPwa();
+    await registerPwa();
 
     expect(registerMock).toHaveBeenCalledTimes(1);
 
     process.env.NEXT_PUBLIC_ENABLE_PWA = 'true';
-    registerPwa();
+    await registerPwa();
 
     expect(registerMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not register the service worker when user consent is missing', async () => {
+    const { registerPwa } = await import('../src/lib/pwa');
+
+    await registerPwa();
+
+    expect(workboxConstructorMock).not.toHaveBeenCalled();
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('registers the service worker when notifications are unavailable but service workers are supported', async () => {
+    const {
+      registerPwa,
+      hasPwaConsent,
+      canRegisterPwaWithoutStoredConsent,
+    } = await import('../src/lib/pwa');
+
+    expect(hasPwaConsent()).toBe(false);
+
+    Reflect.deleteProperty(globalThis as Record<string, unknown>, 'Notification');
+    Reflect.deleteProperty(window as Record<string, unknown>, 'Notification');
+
+    expect(canRegisterPwaWithoutStoredConsent()).toBe(true);
+
+    await registerPwa();
+
+    expect(registerMock).toHaveBeenCalledTimes(1);
+    expect(hasPwaConsent()).toBe(true);
+  });
+
+  it('warns when the browser does not support service workers', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { registerPwa, grantPwaConsent } = await import('../src/lib/pwa');
+
+    grantPwaConsent();
+    vi.stubGlobal('navigator', {} as Navigator);
+
+    await registerPwa();
+
+    expect(warnSpy).toHaveBeenCalledWith('pwa_registration_unsupported_browser', {
+      reason: 'service_worker_unavailable',
+    });
+    warnSpy.mockRestore();
   });
 });

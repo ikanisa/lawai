@@ -9,5 +9,8 @@ export * from './openai/summarization.js';
 export * from './orchestrator.js';
 export * from './orchestrator-capabilities.js';
 export * from './orchestrator-mcp.js';
+export * from './orchestrator-schemas.js';
 export * from './pwa.js';
 export * from './workspace.js';
+export * from './transparency.js';
+export * from './scheduling.js';
