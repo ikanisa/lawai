@@ -1,8 +1,7 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { RateLimitGuard } from '../rate-limit.js';
+import type { SupabaseServiceClient } from './supabase.js';
 
 export interface AppContext {
-  supabase: ServiceSupabaseClient;
+  supabase: SupabaseServiceClient;
   config: {
     openai: {
       apiKey: string;

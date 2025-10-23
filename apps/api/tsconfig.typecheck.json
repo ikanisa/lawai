@@ -6,43 +6,20 @@
     "paths": {
       "@avocat-ai/shared": ["apps/api/src/types/module-stubs.d.ts"],
       "@avocat-ai/shared/*": ["apps/api/src/types/module-stubs.d.ts"],
+      "@avocat-ai/shared/pwa": ["apps/api/src/types/module-stubs.d.ts"],
       "@avocat-ai/supabase": ["apps/api/src/types/module-stubs.d.ts"]
     }
   },
   "include": [
+    "src/app.ts",
     "src/config.ts",
-    "src/openai.ts",
+    "src/supabase-client.ts",
     "src/types/context.ts",
     "src/types/supabase.ts",
     "src/types/**/*.d.ts",
-    "src/device-sessions.ts",
+    "src/routes/**/*.ts",
     "src/domain/workspace/routes.ts",
     "src/domain/workspace/services.ts",
-    "src/workspace.ts",
-    "src/supabase-client.ts",
-    "src/summarization.ts",
-    "src/orchestrator.ts",
-    "src/http/**/*.ts",
-    "src/routes/**/*.ts",
-    "src/server.ts",
-    "src/launch.ts",
-    "src/observability/**/*.ts",
-    "src/avocat-pwa.ts",
-    "src/reports.ts",
-    "src/sso.ts",
-    "src/scim.ts",
-    "src/storage.ts",
-    "src/rate-limit.ts",
-    
-    "src/access-control.ts",
-    "src/chatkit.ts",
-    "src/audit.ts",
-    "src/finance-manifest.ts",
-    "src/app.ts",
-    "src/agent-wrapper.ts",
-    "src/avocat-pwa-data.ts",
-    "src/schemas/**/*.ts",
-    "src/worker.ts",
-    
+    "src/workspace.ts"
   ]
 }
