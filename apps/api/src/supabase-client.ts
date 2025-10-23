@@ -1,8 +1,8 @@
 import { createServiceClient } from '@avocat-ai/supabase';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { env } from './config.js';
+import type { ServiceSupabaseClient } from './types/supabase';
 
-export const supabase: SupabaseClient = createServiceClient({
+export const supabase: ServiceSupabaseClient = createServiceClient({
   SUPABASE_URL: env.SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
-}) as unknown as SupabaseClient;
+});

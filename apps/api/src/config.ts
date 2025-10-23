@@ -1,9 +1,12 @@
-import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
+import { resolveDomainAllowlistOverride } from './allowlist-override.js';
 
-if (process.env.NODE_ENV !== 'production') {
-  loadEnv();
-}
+import {
+  loadServerEnv,
+  sharedOpenAiSchema,
+  sharedOptionalIntegrationsSchema,
+  sharedSupabaseSchema,
+} from '@avocat-ai/shared';
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
@@ -36,13 +39,57 @@ const envSchema = z.object({
   C2PA_SIGNING_KEY_ID: z.string().optional(),
   // Governance / policy tagging
   POLICY_VERSION: z.string().optional(),
+  // Rate limiter configuration
+  RATE_LIMITER_DRIVER: z.enum(['memory', 'supabase']).default('memory'),
+  RATE_LIMITER_NAMESPACE: z.string().default('api'),
+  RATE_LIMITER_SUPABASE_FUNCTION: z.string().default('increment_rate_limit'),
+  RATE_LIMIT_RUNS_LIMIT: z.coerce.number().default(30),
+  RATE_LIMIT_RUNS_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_COMPLIANCE_LIMIT: z.coerce.number().default(120),
+  RATE_LIMIT_COMPLIANCE_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_WORKSPACE_LIMIT: z.coerce.number().default(60),
+  RATE_LIMIT_WORKSPACE_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_TELEMETRY_LIMIT: z.coerce.number().default(60),
+  RATE_LIMIT_TELEMETRY_WINDOW_MS: z.coerce.number().default(60_000),
 });
 
 export type Env = z.infer<typeof envSchema>;
 
-const parsed = envSchema.parse({
-  ...process.env,
-});
+const parsed = loadServerEnv(envSchema);
+
+const SUPABASE_URL_PLACEHOLDER_PATTERNS = [
+  /example\.supabase\.co/i,
+  /project\.supabase\.co/i,
+  /localhost/i,
+];
+
+const OPENAI_KEY_PLACEHOLDER_PATTERNS = [
+  /CHANGEME/i,
+  /placeholder/i,
+  /test-openai-key/i,
+  /^sk-(?:test|demo|example|placeholder|dummy|sample)/i,
+];
+
+const SUPABASE_SERVICE_ROLE_PLACEHOLDER_PATTERNS = [
+  /placeholder/i,
+  /service-role-test/i,
+];
+
+const PRODUCTION_CRITICAL_KEYS = [
+  'OPENAI_API_KEY',
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'OPENAI_VECTOR_STORE_AUTHORITIES_ID',
+] as const;
+
+type ProductionCriticalKey = (typeof PRODUCTION_CRITICAL_KEYS)[number];
+
+const PLACEHOLDER_PATTERNS: Record<ProductionCriticalKey, RegExp[]> = {
+  OPENAI_API_KEY: [/(?:changeme|placeholder)/i, /test-openai-key/i],
+  SUPABASE_URL: [/example\.supabase\.co/i, /localhost/i, /127\.0\.0\.1/],
+  SUPABASE_SERVICE_ROLE_KEY: [/placeholder/i, /service-role-test/i],
+  OPENAI_VECTOR_STORE_AUTHORITIES_ID: [/^vs_?test$/i, /placeholder/i, /changeme/i],
+};
 
 const REQUIRED_PROD_KEYS: Array<keyof Env> = [
   'OPENAI_API_KEY',
@@ -96,11 +143,20 @@ export function loadAllowlistOverride(): string[] | null {
 
   try {
     const value = JSON.parse(parsed.JURIS_ALLOWLIST_JSON);
-    if (!Array.isArray(value)) {
-      return null;
-    }
-    return value as string[];
+    return resolveDomainAllowlistOverride(value);
   } catch (error) {
     return null;
   }
 }
+
+export const rateLimitConfig = {
+  driver: env.RATE_LIMITER_DRIVER,
+  namespace: env.RATE_LIMITER_NAMESPACE,
+  functionName: env.RATE_LIMITER_SUPABASE_FUNCTION,
+  buckets: {
+    runs: { limit: env.RATE_LIMIT_RUNS_LIMIT, windowMs: env.RATE_LIMIT_RUNS_WINDOW_MS },
+    compliance: { limit: env.RATE_LIMIT_COMPLIANCE_LIMIT, windowMs: env.RATE_LIMIT_COMPLIANCE_WINDOW_MS },
+    workspace: { limit: env.RATE_LIMIT_WORKSPACE_LIMIT, windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_MS },
+    telemetry: { limit: env.RATE_LIMIT_TELEMETRY_LIMIT, windowMs: env.RATE_LIMIT_TELEMETRY_WINDOW_MS },
+  },
+};

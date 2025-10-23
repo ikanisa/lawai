@@ -16,6 +16,9 @@ interface PendingDocument {
 }
 
 const env = requireEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'EMBEDDING_MODEL']);
+const rawEmbeddingDimension = process.env.EMBEDDING_DIMENSION;
+const parsedEmbeddingDimension = rawEmbeddingDimension ? Number.parseInt(rawEmbeddingDimension, 10) : NaN;
+const embeddingDimension = Number.isFinite(parsedEmbeddingDimension) && parsedEmbeddingDimension > 0 ? parsedEmbeddingDimension : undefined;
 const supabase = createSupabaseService(env);
 let vectorStoreId = process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID ?? '';
 const args = new Set(process.argv.slice(2));
@@ -199,6 +202,7 @@ async function uploadDocument(
   await upsertLocalChunks(doc, blob, {
     OPENAI_API_KEY: apiKey,
     EMBEDDING_MODEL: env.EMBEDDING_MODEL,
+    EMBEDDING_DIMENSION: embeddingDimension,
   });
 
   await supabase

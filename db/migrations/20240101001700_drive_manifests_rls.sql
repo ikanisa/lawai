@@ -1,46 +1,75 @@
-alter table public.drive_manifests enable row level security;
-alter table public.drive_manifest_items enable row level security;
+ALTER TABLE public.drive_manifests enable ROW level security;
 
-drop policy if exists "drive manifests readable" on public.drive_manifests;
-create policy "drive manifests readable"
-  on public.drive_manifests
-  for select using (
-    org_id is null or public.is_org_member(org_id)
+ALTER TABLE public.drive_manifest_items enable ROW level security;
+
+DROP POLICY if EXISTS "drive manifests readable" ON public.drive_manifests;
+
+CREATE POLICY "drive manifests readable" ON public.drive_manifests FOR
+SELECT
+  USING (
+    org_id IS NULL
+    OR public.is_org_member (org_id)
   );
 
-drop policy if exists "drive manifests writable" on public.drive_manifests;
-create policy "drive manifests writable"
-  on public.drive_manifests
-  for all using (
-    org_id is null or public.is_org_member(org_id)
-  ) with check (
-    org_id is null or public.is_org_member(org_id)
+DROP POLICY if EXISTS "drive manifests writable" ON public.drive_manifests;
+
+CREATE POLICY "drive manifests writable" ON public.drive_manifests FOR ALL USING (
+  org_id IS NULL
+  OR public.is_org_member (org_id)
+)
+WITH
+  CHECK (
+    org_id IS NULL
+    OR public.is_org_member (org_id)
   );
 
-drop policy if exists "drive manifest items readable" on public.drive_manifest_items;
-create policy "drive manifest items readable"
-  on public.drive_manifest_items
-  for select using (
-    exists(
-      select 1 from public.drive_manifests dm
-      where dm.id = manifest_id
-        and (dm.org_id is null or public.is_org_member(dm.org_id))
+DROP POLICY if EXISTS "drive manifest items readable" ON public.drive_manifest_items;
+
+CREATE POLICY "drive manifest items readable" ON public.drive_manifest_items FOR
+SELECT
+  USING (
+    EXISTS (
+      SELECT
+        1
+      FROM
+        public.drive_manifests dm
+      WHERE
+        dm.id = manifest_id
+        AND (
+          dm.org_id IS NULL
+          OR public.is_org_member (dm.org_id)
+        )
     )
   );
 
-drop policy if exists "drive manifest items writable" on public.drive_manifest_items;
-create policy "drive manifest items writable"
-  on public.drive_manifest_items
-  for all using (
-    exists(
-      select 1 from public.drive_manifests dm
-      where dm.id = manifest_id
-        and (dm.org_id is null or public.is_org_member(dm.org_id))
-    )
-  ) with check (
-    exists(
-      select 1 from public.drive_manifests dm
-      where dm.id = manifest_id
-        and (dm.org_id is null or public.is_org_member(dm.org_id))
+DROP POLICY if EXISTS "drive manifest items writable" ON public.drive_manifest_items;
+
+CREATE POLICY "drive manifest items writable" ON public.drive_manifest_items FOR ALL USING (
+  EXISTS (
+    SELECT
+      1
+    FROM
+      public.drive_manifests dm
+    WHERE
+      dm.id = manifest_id
+      AND (
+        dm.org_id IS NULL
+        OR public.is_org_member (dm.org_id)
+      )
+  )
+)
+WITH
+  CHECK (
+    EXISTS (
+      SELECT
+        1
+      FROM
+        public.drive_manifests dm
+      WHERE
+        dm.id = manifest_id
+        AND (
+          dm.org_id IS NULL
+          OR public.is_org_member (dm.org_id)
+        )
     )
   );
