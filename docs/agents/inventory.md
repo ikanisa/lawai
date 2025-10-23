@@ -1,5 +1,7 @@
 # Agent Inventory & Platform Assessment
 
+> Looking for the implementation backlog? Jump to the [Task Launchpad](repo-analysis.md#quick-start-task-launchpad) for ready-to-file issues.
+
 ## Existing Agents
 
 ### Avocat Francophone (apps/api/src/agent.ts)
@@ -51,7 +53,12 @@
 - `apps/api/src/agent.ts` – exports `TOOL_NAMES`, a single source of truth for custom tool identifiers consumed by both runtime handlers and the manifest export; extend this map when introducing a new tool to avoid name drift.
 - `apps/api/src/chatkit.ts` – initial in-memory session scaffold outlining the future ChatKit integration surface.
 
+## Workflow Guides
+- [File Inputs](./pdf-inputs.md) – PDF intake and tagging workflow with implementation pointers to `/apps/api/src/routes/upload/` and Supabase ingestion tables so migrations keep File Search parity across environments.
+
 ## Shared Resources & Guardrail Roadmap
+
+- **File Inputs (PDF)**: Follow the [File Inputs (PDF) guide](./file-inputs-pdf.md) to prepare, OCR, and register artefacts before linking them to Agent Platform resources.
 
 | Resource / Guardrail | Status | Notes |
 | --- | --- | --- |

@@ -16,7 +16,14 @@ export interface AgentRunResultLike {
 }
 
 export async function runLegalAgent(
-  input: { question: string; context?: string; orgId: string; userId: string; confidentialMode?: boolean },
+  input: {
+    question: string;
+    context?: string;
+    orgId: string;
+    userId: string;
+    confidentialMode?: boolean;
+    userLocationOverride?: string | null;
+  },
   access: unknown,
 ): Promise<AgentRunResultLike> {
   // Use dynamic import via Function to avoid pulling agent.ts into the typecheck program

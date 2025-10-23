@@ -1,5 +1,5 @@
-import { ResearchView } from '../../../src/components/research/research-view';
-import { getMessages, type Locale } from '../../../src/lib/i18n';
+import { ResearchView } from '@/features/research/components/research-view';
+import { getMessages, type Locale } from '@/lib/i18n';
 
 interface ResearchPageProps {
   params: { locale: Locale };
