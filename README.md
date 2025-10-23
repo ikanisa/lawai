@@ -52,37 +52,25 @@ packages/
    pnpm dev:web
    ```
 
-For a full MacBook playbook (including production-style builds), consult [`docs/local-hosting.md`](docs/local-hosting.md).
+### Production configuration guardrails
 
-### Environment configuration (local-first)
+The API now enforces stricter configuration checks in production environments.
+Deployments must provide real secrets for the following variables:
 
-- Store shared secrets in the repository root `.env.local`.
-- Each application (`apps/api`, `apps/web`, `apps/ops`) exposes its own `.env.example`; copy them to `.env.local` alongside the service when overrides are required.
-- Supply Supabase credentials everywhere they are referenced:
-  - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-  - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- Populate the OpenAI keys (`OPENAI_API_KEY`, `OPENAI_VECTOR_STORE_AUTHORITIES_ID`, etc.) to unlock ingestion, evaluations, and transparency tooling.
+- `OPENAI_API_KEY`
+- `OPENAI_VECTOR_STORE_AUTHORITIES_ID`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-### Observability & telemetry
+The runtime rejects common placeholder patterns such as:
 
-- Configure OpenTelemetry exporters so API services and edge functions stream traces/metrics to your collector:
-  - Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or the trace/metrics-specific variants) and `OTEL_EXPORTER_OTLP_HEADERS` so `@avocat-ai/observability` can initialise both Node and Deno runtimes.
-  - Use `OTEL_DIAGNOSTIC_LOG_LEVEL=INFO` locally to debug exporter connectivity without polluting production logs.
-  - Edge functions inherit the same variables via Supabase; populate `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`/`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` on the project to avoid missing spans when Deno deploys new revisions.
-- The API automatically calls `ensureTelemetryRuntime()` during bootstrap; run `pnpm dev:api` with the variables above to verify traces land in your backend before shipping to Vercel.
+- Vector store IDs like `vs_test`, `vs-example`, or `vs_placeholder`
+- Supabase URLs containing `example.supabase.co`
+- Service role keys containing `placeholder`, `service-role-key`, or `service-role-test`
 
-### Supabase usage recap
-
-- `pnpm db:migrate` applies SQL migrations to the configured Supabase project.
-- `pnpm --filter @apps/ops bootstrap` provisions buckets and allowlists.
-- `pnpm ops:foundation` performs a complete provisioning run (migrations, vector store creation, guardrail validation).
-- `pnpm ops:check` validates Supabase extensions, buckets, vector stores, and allowlists on demand.
-
-### Local-first replacements for legacy Vercel tooling
-
-- Environment examples now expose only Supabase and local hosting variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, etc.); all `VERCEL_*` placeholders were removed.
-- Scheduled tasks should be orchestrated locally following [`scripts/cron.md`](scripts/cron.md) (via `node-cron`, `launchd`, or your preferred scheduler).
-- Deployment metadata is derived from `APP_ENV`/`.env.local`; there are no implicit dependencies on Vercel-provided environment variables.
+CI executes `apps/api/test/config.test.ts` to guarantee these guardrails stay in
+place. Refresh your `.env` or deployment secrets with production values before
+running the API behind Vercel or any other production target.
 
 ### Assembler les fondations en une étape
 

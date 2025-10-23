@@ -8,38 +8,38 @@ import {
   sharedSupabaseSchema,
 } from '@avocat-ai/shared';
 
-const envSchema = sharedSupabaseSchema
-  .extend({
-    SUPABASE_URL: sharedSupabaseSchema.shape.SUPABASE_URL.default(
-      'https://example.supabase.co',
-    ),
-    SUPABASE_SERVICE_ROLE_KEY: sharedSupabaseSchema.shape.SUPABASE_SERVICE_ROLE_KEY.default(''),
-  })
-  .merge(
-    sharedOpenAiSchema.extend({
-      OPENAI_API_KEY: sharedOpenAiSchema.shape.OPENAI_API_KEY.default(''),
-      OPENAI_VECTOR_STORE_AUTHORITIES_ID: z.string().min(1).default('vs_test'),
-    }),
-  )
-  .merge(sharedOptionalIntegrationsSchema)
-  .extend({
-    PORT: z.coerce.number().default(3000),
-    AGENT_MODEL: z.string().default('gpt-5-pro'),
-    EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
-    EMBEDDING_DIMENSION: z.coerce
-      .number()
-      .int()
-      .positive()
-      .max(3072)
-      .optional(),
-    SUMMARISER_MODEL: z.string().optional(),
-    MAX_SUMMARY_CHARS: z.coerce.number().optional(),
-    AGENT_STUB_MODE: z
-      .enum(['auto', 'always', 'never'])
-      .default('auto'),
-    // Governance / policy tagging
-    POLICY_VERSION: z.string().optional(),
-  });
+const envSchema = z.object({
+  PORT: z.coerce.number().default(3000),
+  OPENAI_API_KEY: z.string().default(''),
+  AGENT_MODEL: z.string().default('gpt-5-pro'),
+  EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
+  SUMMARISER_MODEL: z.string().optional(),
+  MAX_SUMMARY_CHARS: z.coerce.number().optional(),
+  OPENAI_VECTOR_STORE_AUTHORITIES_ID: z
+    .union([z.string().min(1), z.literal('')])
+    .default(''),
+  OPENAI_CHATKIT_PROJECT: z.string().optional(),
+  OPENAI_CHATKIT_SECRET: z.string().optional(),
+  OPENAI_CHATKIT_BASE_URL: z.string().url().optional(),
+  OPENAI_CHATKIT_MODEL: z.string().optional(),
+  SUPABASE_URL: z.union([z.string().url(), z.literal('')]).default(''),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().default(''),
+  JURIS_ALLOWLIST_JSON: z.string().optional(),
+  AGENT_STUB_MODE: z
+    .enum(['auto', 'always', 'never'])
+    .default('auto'),
+  // Optional WhatsApp OTP integration
+  WA_TOKEN: z.string().optional(),
+  WA_PHONE_NUMBER_ID: z.string().optional(),
+  WA_TEMPLATE_OTP_NAME: z.string().optional(),
+  WA_TEMPLATE_LOCALE: z.string().optional(),
+  WA_PROVIDER: z.enum(['twilio', 'meta']).optional(),
+  // Optional C2PA signing keys for export
+  C2PA_SIGNING_PRIVATE_KEY: z.string().optional(),
+  C2PA_SIGNING_KEY_ID: z.string().optional(),
+  // Governance / policy tagging
+  POLICY_VERSION: z.string().optional(),
+});
 
 export type Env = z.infer<typeof envSchema>;
 
@@ -70,31 +70,32 @@ function assertProductionEnv(e: Env) {
 
     if (!e.OPENAI_API_KEY) missing.push('OPENAI_API_KEY');
     if (!e.SUPABASE_URL) missing.push('SUPABASE_URL');
+    if (!e.OPENAI_VECTOR_STORE_AUTHORITIES_ID) missing.push('OPENAI_VECTOR_STORE_AUTHORITIES_ID');
     if (!e.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
     if (!e.OPENAI_CHATKIT_PROJECT) missing.push('OPENAI_CHATKIT_PROJECT');
     if (!e.OPENAI_CHATKIT_SECRET) missing.push('OPENAI_CHATKIT_SECRET');
 
     // Basic placeholder detection
+    const vectorStorePlaceholders = [/^vs(_|-)?(test|example|placeholder)$/i];
+    const supabaseServiceRolePlaceholders = [
+      /placeholder/i,
+      /service[-_]?role[-_]?key/i,
+      /service[-_]?role[-_]?test/i,
+    ];
+
+    if (e.SUPABASE_URL && e.SUPABASE_URL.includes('example')) placeholders.push('SUPABASE_URL');
+    if (e.OPENAI_API_KEY && /CHANGEME|placeholder|test-openai-key/i.test(e.OPENAI_API_KEY)) placeholders.push('OPENAI_API_KEY');
     if (
-      e.SUPABASE_URL &&
-      SUPABASE_URL_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(e.SUPABASE_URL))
-    )
-      placeholders.push('SUPABASE_URL');
-    if (
-      e.OPENAI_API_KEY &&
-      OPENAI_KEY_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(e.OPENAI_API_KEY))
-    )
-      placeholders.push('OPENAI_API_KEY');
+      e.OPENAI_VECTOR_STORE_AUTHORITIES_ID &&
+      vectorStorePlaceholders.some((pattern) => pattern.test(e.OPENAI_VECTOR_STORE_AUTHORITIES_ID))
+    ) {
+      placeholders.push('OPENAI_VECTOR_STORE_AUTHORITIES_ID');
+    }
     if (
       e.SUPABASE_SERVICE_ROLE_KEY &&
-      SUPABASE_SERVICE_ROLE_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(e.SUPABASE_SERVICE_ROLE_KEY))
-    )
+      supabaseServiceRolePlaceholders.some((pattern) => pattern.test(e.SUPABASE_SERVICE_ROLE_KEY))
+    ) {
       placeholders.push('SUPABASE_SERVICE_ROLE_KEY');
-    if (e.OPENAI_CHATKIT_PROJECT && e.OPENAI_CHATKIT_PROJECT.trim().toLowerCase() === 'example') {
-      placeholders.push('OPENAI_CHATKIT_PROJECT');
-    }
-    if (e.OPENAI_CHATKIT_SECRET && /placeholder|example|changeme/i.test(e.OPENAI_CHATKIT_SECRET)) {
-      placeholders.push('OPENAI_CHATKIT_SECRET');
     }
 
     if (missing.length || placeholders.length) {
