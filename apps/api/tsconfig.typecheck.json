@@ -20,6 +20,31 @@
     "src/routes/**/*.ts",
     "src/domain/workspace/routes.ts",
     "src/domain/workspace/services.ts",
-    "src/workspace.ts"
+    "src/workspace.ts",
+    "src/supabase-client.ts",
+    "src/summarization.ts",
+    "src/orchestrator.ts",
+    "src/http/**/*.ts",
+    "src/observability/**/*.ts",
+    "src/server.ts",
+    "src/launch.ts",
+    "src/avocat-pwa.ts",
+    "src/reports.ts",
+    "src/sso.ts",
+    "src/scim.ts",
+    "src/storage.ts",
+    "src/rate-limit.ts",
+    
+    "src/access-control.ts",
+    "src/chatkit.ts",
+    "src/audit.ts",
+    "src/finance-manifest.ts",
+    "src/app.ts",
+    "src/agent-wrapper.ts",
+    "src/avocat-pwa-data.ts",
+    "src/schemas/**/*.ts",
+    "src/worker.ts",
+    "src/routes/**/*.ts",
+    "src/types/fastify.ts"
   ]
 }

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { AppFastifyInstance } from '../../types/fastify.js';
 import { z } from 'zod';
 
 import type { AppContext } from '../../types/context.js';
@@ -43,7 +43,7 @@ function diffInDays(from: Date, to: Date) {
   return Math.max(0, Math.ceil((to.getTime() - from.getTime()) / msPerDay));
 }
 
-export async function registerDeadlineRoutes(app: FastifyInstance, _ctx: AppContext) {
+export async function registerDeadlineRoutes(app: AppFastifyInstance, _ctx: AppContext) {
   app.post('/deadline', async (request, reply) => {
     const parsed = DeadlineRequestSchema.safeParse(request.body ?? {});
     if (!parsed.success) {

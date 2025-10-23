@@ -1,63 +1,12 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { authorizeRequestWithGuards } from '../../http/authorization.js';
-import { withRequestSpan } from '../../observability/spans.js';
-import { InMemoryRateLimiter } from '../../rate-limit.js';
+import { z } from 'zod';
 import type { AppContext } from '../../types/context';
-import {
-  fetchWorkspaceOverview as defaultFetchWorkspaceOverview,
-  type WorkspaceFetchErrors,
-} from './services.js';
+import type { AppFastifyInstance } from '../../types/fastify.js';
 
 type WorkspaceServices = {
   fetchWorkspaceOverview: typeof defaultFetchWorkspaceOverview;
 };
 
-const defaultServices: WorkspaceServices = {
-  fetchWorkspaceOverview: defaultFetchWorkspaceOverview,
-};
-
-const workspaceLimiter = new InMemoryRateLimiter({ limit: 20, windowMs: 60_000 });
-const complianceStatusLimiter = new InMemoryRateLimiter({ limit: 30, windowMs: 60_000 });
-const complianceAckLimiter = new InMemoryRateLimiter({ limit: 15, windowMs: 60_000 });
-
-const WORKSPACE_SECTIONS: Array<keyof WorkspaceFetchErrors> = [
-  'jurisdictions',
-  'matters',
-  'compliance',
-  'hitl',
-];
-
-const SECTION_LABELS: Record<keyof WorkspaceFetchErrors, string> = {
-  jurisdictions: 'jurisdictions',
-  matters: 'matters',
-  compliance: 'compliance watch',
-  hitl: 'HITL inbox',
-};
-
-type SerializedError = {
-  message: string;
-  code?: string;
-  details?: string;
-  hint?: string;
-};
-
-const serializeError = (input: unknown): SerializedError => {
-  if (input && typeof input === 'object') {
-    const candidate = input as Partial<SerializedError> & { message?: unknown };
-    const message = typeof candidate.message === 'string' ? candidate.message : 'Unknown error';
-    const code = typeof candidate.code === 'string' ? candidate.code : undefined;
-    const details = typeof candidate.details === 'string' ? candidate.details : undefined;
-    const hint = typeof candidate.hint === 'string' ? candidate.hint : undefined;
-    return { message, code, details, hint };
-  }
-  return { message: 'Unknown error' };
-};
-
-export async function registerWorkspaceRoutes(
-  app: FastifyInstance,
-  ctx: AppContext,
-  services: WorkspaceServices = defaultServices,
-) {
+export async function registerWorkspaceRoutes(app: AppFastifyInstance, ctx: AppContext) {
   app.get<{ Querystring: z.infer<typeof workspaceQuerySchema> }>('/workspace', async (request, reply) => {
     const parse = workspaceQuerySchema.safeParse(request.query);
     if (!parse.success) {
