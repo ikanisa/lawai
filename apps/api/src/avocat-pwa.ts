@@ -60,7 +60,7 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
             input: { type: 'string' },
             jurisdiction: { type: ['string', 'null'] },
             policy_flags: { type: 'array', items: { type: 'string' } },
-            web_search_mode: { type: 'string', enum: [...webSearchModes] },
+            user_location: { type: 'string' },
           },
           required: ['agent_id', 'input'],
           additionalProperties: true,
@@ -82,10 +82,10 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
         input: parsed.input,
         jurisdiction: parsed.jurisdiction ?? null,
         policyFlags: parsed.policy_flags ?? [],
-        webSearchMode,
+        userLocation: parsed.user_location ?? null,
       });
-      reply.code(201);
-      return run;
+    reply.code(201);
+    return run;
     },
   );
 
@@ -100,7 +100,7 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
             input: { type: 'string' },
             jurisdiction: { type: ['string', 'null'] },
             policy_flags: { type: 'array', items: { type: 'string' } },
-            web_search_mode: { type: 'string', enum: [...webSearchModes] },
+            user_location: { type: 'string' },
           },
           required: ['tools_enabled', 'input'],
           additionalProperties: true,

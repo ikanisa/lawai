@@ -116,6 +116,7 @@ const learningInsertMock = vi.fn(async () => ({ error: null }));
 const auditInsertMock = vi.fn(async () => ({ error: null }));
 const caseScoresInsertMock = vi.fn(async () => ({ error: null }));
 const supabaseRpcMock = vi.fn(async () => ({ data: [], error: null }));
+const webSearchToolMock = vi.fn(() => ({ type: 'hosted_tool', name: 'web_search' }));
 
 function createAsyncQuery(initialData: unknown[] = [], initialError: unknown = null) {
   const builder: any = {
@@ -190,7 +191,6 @@ const defaultAccessContext = {
     ipAllowlistEnforced: false,
     consentRequirement: null,
     councilOfEuropeRequirement: null,
-    sensitiveTopicHitl: false,
     residencyZone: null,
     residencyZones: null,
   },
@@ -268,6 +268,7 @@ beforeEach(() => {
   sourcesQuery.ilike.mockClear();
   sourcesQuery.order.mockClear();
   agentRunsSelectBuilder.select.mockImplementation(() => agentRunsSelectBuilder);
+  webSearchToolMock.mockClear();
   agentRunsSelectBuilder.eq.mockImplementation(() => agentRunsSelectBuilder);
   agentRunsSelectBuilder.order.mockImplementation(() => agentRunsSelectBuilder);
   agentRunsSelectBuilder.limit.mockImplementation(() => agentRunsSelectBuilder);
@@ -381,7 +382,7 @@ beforeEach(() => {
     run: runMock,
     tool: vi.fn((options) => ({ ...options })),
     defineOutputGuardrail: vi.fn((options) => options),
-    webSearchTool: vi.fn((options) => ({ type: 'hosted_tool', name: 'web_search', __options: options })),
+    webSearchTool: webSearchToolMock,
     fileSearchTool: vi.fn(() => ({ type: 'hosted_tool', name: 'file_search' })),
     setDefaultModelProvider: vi.fn(),
     setDefaultOpenAIKey: vi.fn(),
@@ -549,6 +550,51 @@ describe('runLegalAgent', () => {
     expect(result.trustPanel?.provenance.totalSources).toBeGreaterThan(0);
     expect(result.trustPanel?.provenance.withEli).toBeGreaterThan(0);
     expect(result.trustPanel?.provenance.akomaArticles).toBeGreaterThanOrEqual(1);
+  });
+
+  it('passes derived residency location to the web search tool', async () => {
+    runMock.mockResolvedValue({ finalOutput: validPayload });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
+
+    await runLegalAgent(
+      {
+        question: 'Recherche européenne',
+        orgId: defaultAccessContext.orgId,
+        userId: defaultAccessContext.userId,
+      },
+      makeContext({
+        rawPolicies: { residency_zone: 'eu' },
+        policies: {
+          ...defaultAccessContext.policies,
+          residencyZone: 'eu',
+          residencyZones: ['eu'],
+        },
+      }),
+    );
+
+    expect(webSearchToolMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userLocation: 'European Union' }),
+    );
+  });
+
+  it('prefers manual user location overrides when provided', async () => {
+    runMock.mockResolvedValue({ finalOutput: validPayload });
+
+    const { runLegalAgent } = await import('../src/agent.ts');
+
+    await runLegalAgent(
+      {
+        question: 'Analyse personnalisée',
+        orgId: defaultAccessContext.orgId,
+        userId: defaultAccessContext.userId,
+        userLocationOverride: 'Casablanca, Morocco',
+      },
+      makeContext(),
+    );
+
+    const lastCall = webSearchToolMock.mock.calls.at(-1) ?? [];
+    expect(lastCall[0]?.userLocation).toBe('Casablanca, Morocco');
   });
 
   it('forces a trust-panel HITL when case quality is blocked', async () => {

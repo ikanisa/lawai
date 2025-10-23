@@ -1063,7 +1063,7 @@ app.post<{
     orgId?: string;
     userId?: string;
     confidentialMode?: boolean;
-    webSearchMode?: WebSearchMode;
+    userLocation?: string;
   };
 }>('/runs', async (request, reply) => {
   const bodySchema = z.object({
@@ -1072,19 +1072,26 @@ app.post<{
     orgId: z.string().uuid(),
     userId: z.string().uuid(),
     confidentialMode: z.coerce.boolean().optional(),
-    webSearchMode: WebSearchModeSchema.optional(),
+    userLocation: z.string().optional(),
   });
   const parsed = bodySchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
   }
-  const { question, context, orgId, userId, confidentialMode, webSearchMode } = parsed.data;
+  const { question, context, orgId, userId, confidentialMode, userLocation } = parsed.data;
 
   try {
     const access = await authorizeRequestWithGuards('runs:execute', orgId, userId, request);
     const effectiveConfidential = access.policies.confidentialMode || Boolean(confidentialMode);
     const result = await runLegalAgent(
-      { question, context, orgId, userId, confidentialMode: effectiveConfidential, webSearchMode },
+      {
+        question,
+        context,
+        orgId,
+        userId,
+        confidentialMode: effectiveConfidential,
+        userLocationOverride: userLocation?.trim() ?? null,
+      },
       access,
     );
     // Validate payload at the boundary with a conservative schema
