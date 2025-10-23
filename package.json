@@ -41,7 +41,8 @@
     "ops:rls-smoke": "npm run rls-smoke --workspace @apps/ops",
     "ops:phase": "npm run phase --workspace @apps/ops",
     "seed": "npm run start --workspace @db/seed",
-    "check:binaries": "node ./scripts/check-binaries.mjs"
+    "check:binaries": "node ./scripts/check-binaries.mjs",
+    "supabase:types": "node ./scripts/generate-supabase-types.mjs"
   },
   "dependencies": {
     "next-pwa": "^5.6.0"

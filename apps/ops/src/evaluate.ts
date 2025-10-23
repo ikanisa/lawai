@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import ora, { type Ora } from 'ora';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { createRestClient } from '@avocat-ai/api-clients';
 import { loadRequiredEnv } from './lib/env.js';
 import { createSupabaseService } from './lib/supabase.js';
 import { evaluateExpectedTerms } from './lib/evaluation.js';
@@ -599,12 +600,18 @@ export async function runEvaluation(
   const errors: string[] = [];
   let passed = 0;
   let failed = 0;
-  const total = cases.length;
+  const scoreboard: Array<{
+    caseId: string;
+    name: string;
+    pass: boolean;
+    benchmark: string | null;
+    metrics?: CaseMetricsSummary | null;
+  }> = [];
 
-  for (let index = 0; index < total; index += 1) {
-    const evaluationCase = cases[index];
-    dependencies.onProgress?.({ index: index + 1, total, name: evaluationCase.name });
+  const api = createRestClient({ baseUrl: options.apiBaseUrl });
 
+  for (const evaluationCase of cases) {
+    const caseSpinner = options.ciMode ? null : ora(`Évaluation: ${evaluationCase.name}`).start();
     if (options.dryRun) {
       continue;
     }
@@ -615,30 +622,19 @@ export async function runEvaluation(
         : options.benchmark ?? null;
 
     try {
-      const response = await requestWithRetry(
-        dependencies.fetchImpl,
-        `${options.apiBaseUrl}/runs`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            question: evaluationCase.prompt,
-            orgId: options.orgId,
-            userId: options.userId,
-          }),
-        },
-        Math.max(1, dependencies.retries),
-        Math.max(0, dependencies.retryDelayMs),
-        (attempt, error) => {
-          dependencies.onRetry?.({ attempt, caseId: evaluationCase.id, error });
-        },
-      );
+      const result = await api.submitResearchQuestion({
+        question: evaluationCase.prompt,
+        orgId: options.orgId,
+        userId: options.userId,
+      });
 
-      if (!response.ok) {
-        const message = `API ${response.status}`;
-        await dependencies.dataSource.recordResult({
-          caseId: evaluationCase.id,
-          runId: null,
+      const payload = result.data;
+      if (!payload) {
+        const message = 'Réponse vide';
+        await recordResult(supabase, evaluationCase.id as string, null, false, message, undefined, caseBenchmark);
+        scoreboard.push({
+          caseId: evaluationCase.id as string,
+          name: evaluationCase.name as string,
           pass: false,
           notes: message,
           benchmark: caseBenchmark,
@@ -658,39 +654,15 @@ export async function runEvaluation(
         continue;
       }
 
-      const json = (await response.json()) as { runId?: string; data?: IRACPayload };
-      const payload = json.data;
-      if (!payload) {
-        await dependencies.dataSource.recordResult({
-          caseId: evaluationCase.id,
-          runId: json.runId ?? null,
-          pass: false,
-          notes: 'Réponse vide',
-          benchmark: caseBenchmark,
-        });
-        const score: EvaluationCaseScore = {
-          caseId: evaluationCase.id,
-          name: evaluationCase.name,
-          pass: false,
-          benchmark: caseBenchmark,
-          metrics: null,
-          error: 'Réponse vide',
-        };
-        scoreboard.push(score);
-        dependencies.onCaseResult?.(score);
-        errors.push(`${evaluationCase.name}: réponse vide`);
-        failed += 1;
-        continue;
-      }
-
-      const expectedTerms = evaluationCase.expected_contains ?? [];
+      const expectedTerms = (evaluationCase.expected_contains as string[] | null) ?? [];
       const evaluation = evaluateExpectedTerms(payload, expectedTerms);
       const metrics = computeMetrics(payload);
       const notes = evaluation.pass ? null : `Manquants: ${evaluation.missing.join(', ')}`;
-      await dependencies.dataSource.recordResult({
-        caseId: evaluationCase.id,
-        runId: json.runId ?? null,
-        pass: evaluation.pass,
+      await recordResult(
+        supabase,
+        evaluationCase.id as string,
+        result.runId ?? null,
+        evaluation.pass,
         notes,
         metrics,
         benchmark: caseBenchmark,
