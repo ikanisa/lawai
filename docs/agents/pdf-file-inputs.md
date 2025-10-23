@@ -1,68 +1,35 @@
-# PDF File Inputs
+# PDF File Inputs (Agents SDK)
 
-## cURL examples
+Use the Agents SDK to hand off PDFs to your legal workflows so that hosted File
+Search and guardrail checks stay consistent with the rest of the orchestrator.
 
-### file_url payload
+## Prerequisites
 
-```bash
-curl https://api.openai.com/v1/responses \
-  -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4.1-mini",
-    "input": [
-      {
-        "role": "user",
-        "content": [
-          {"type": "input_text", "text": "Summarise the attached PDF memo."},
-          {"type": "input_file", "file_url": "https://example.com/memo.pdf"}
-        ]
-      }
-    ]
-  }'
-```
+- Install the OpenAI Node SDK in your workspace: `npm install openai`.
+- Run on Node.js v18 or later (aligns with the minimum runtime supported by the
+  official Agents SDK and file APIs).
+- Export required environment variables: `OPENAI_API_KEY` (API authentication),
+  `OPENAI_ORG_ID` (if your project is scoped to an organisation), and
+  `OPENAI_PROJECT_ID` (project binding for Agents and file uploads).
+  - Refer to the official docs for deeper setup:
+    - [OpenAI Node SDK docs][node-sdk-docs]
+    - [Agents file inputs guide][agents-file-inputs]
 
-### file_id payload
-
-```bash
-# 1. Upload the PDF and capture the returned file id.
-curl https://api.openai.com/v1/files \
-  -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -F "file=@/path/to/memo.pdf" \
-  -F "purpose=assistants"
-
-# 2. Reference the uploaded file by id when creating the response.
-curl https://api.openai.com/v1/responses \
-  -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4.1-mini",
-    "input": [
-      {
-        "role": "user",
-        "content": [
-          {"type": "input_text", "text": "Extract deadlines from the uploaded brief."},
-          {"type": "input_file", "file_id": "file_abc123"}
-        ]
-      }
-    ]
-  }'
-```
-
-### Node.js / TypeScript (using the shared OpenAI client)
+## SDK snippet
 
 ```ts
 import fs from 'node:fs';
-import path from 'node:path';
-import { getOpenAIClient } from '@avocat-ai/shared';
+import OpenAI from 'openai';
 
-const openai = getOpenAIClient({
-  apiKey: process.env.OPENAI_API_KEY!,
-  requestTags: 'service=api,component=backend',
-});
+const client = new OpenAI();
 
-async function summarizeViaFileUrl() {
-  const response = await openai.responses.create({
+async function summarisePdf() {
+  const pdfFile = await client.files.create({
+    file: fs.createReadStream('evidence/dossier.pdf'),
+    purpose: 'assistants',
+  });
+
+  const response = await client.responses.create({
     model: 'gpt-4.1-mini',
     input: [
       {
@@ -70,54 +37,19 @@ async function summarizeViaFileUrl() {
         content: [
           {
             type: 'input_text',
-            text: 'Summarise the attached PDF memo in French.',
+            text: 'Analyse the PDF and list the regulatory deadlines.',
           },
-          {
-            type: 'input_file',
-            file_url: 'https://example.com/memo.pdf',
-          },
+          { type: 'input_file', file_id: pdfFile.id },
         ],
       },
     ],
-    // Default (non-streaming) create() keeps the request simple for jobs that can
-    // wait for the full response body before resuming workflow logic.
   });
 
   console.log(response.output_text);
 }
 
-async function streamFromUploadedPdf(localFile: string) {
-  const upload = await openai.files.create({
-    file: fs.createReadStream(path.resolve(localFile)),
-    purpose: 'assistants',
-  });
-
-  const stream = await openai.responses.stream({
-    model: 'gpt-4.1-mini',
-    input: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'input_text',
-            text: 'List the key deadlines found in the uploaded pleading.',
-          },
-          {
-            type: 'input_file',
-            file_id: upload.id,
-          },
-        ],
-      },
-    ],
-    // stream() opts into SSE for interactive surfaces; only use when the caller
-    // can consume incremental tokens to render partial output safely.
-  });
-
-  stream.on('response.output_text.delta', (event) => {
-    process.stdout.write(event.delta);
-  });
-
-  await stream.finalResponse();
-  console.log('\nDone.');
-}
+summarisePdf().catch(console.error);
 ```
+
+[node-sdk-docs]: https://github.com/openai/openai-node
+[agents-file-inputs]: https://platform.openai.com/docs/guides/agents/file-uploads
