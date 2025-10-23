@@ -125,6 +125,8 @@ export async function enableDigestNotifications(): Promise<boolean> {
     return false;
   }
 
+  grantPwaConsent();
+
   if (!registrationPromise) {
     const result = registerPwa();
     if (!result) {

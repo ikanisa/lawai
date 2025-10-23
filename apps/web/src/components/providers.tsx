@@ -18,6 +18,19 @@ const queryClient = new QueryClient({
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 1000 * 60,
+            refetchOnWindowFocus: false,
+            suspense: true,
+            retry: 1,
+          },
+        },
+      }),
+  );
   useEffect(() => {
     setMounted(true);
   }, []);

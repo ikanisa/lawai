@@ -31,6 +31,7 @@ type TelemetryRow = {
   latency_ms: number | null;
   success: boolean | null;
   error_code: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 type HitlRow = {
@@ -67,7 +68,7 @@ Deno.serve(async () => {
       .limit(500),
     supabase
       .from('tool_telemetry')
-      .select('id, org_id, tool_name, latency_ms, success, error_code, created_at')
+      .select('id, org_id, tool_name, latency_ms, success, error_code, metadata, created_at')
       .gte('created_at', sinceIso)
       .limit(500),
     supabase
@@ -122,6 +123,7 @@ Deno.serve(async () => {
         tool: row.tool_name,
         latency_ms: row.latency_ms,
         error_code: row.error_code ?? null,
+        metadata: row.metadata ?? null,
       },
     });
   }

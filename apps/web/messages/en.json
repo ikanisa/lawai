@@ -13,6 +13,7 @@
       "close": "Close",
       "keyboardHint": "Use ↑ and ↓ to move between results, Enter to run a command.",
       "resultsCount": "{count} available command(s).",
+      "semanticResultsCount": "Found {count} matching command(s).",
       "sections": {
         "actions": "Quick actions",
         "navigate": "Navigation"
@@ -454,6 +455,50 @@
       "monitoring": "Monitoring"
     }
   },
+  "chatkit": {
+    "title": "Live Chat Sessions",
+    "subtitle": "Monitor ChatKit threads, stream events, and escalate to human reviewers when the agent signals risk.",
+    "activeSessions": "Active sessions",
+    "startSession": "Start session",
+    "refresh": "Refresh",
+    "cancel": "Cancel session",
+    "tasksTitle": "Task queue",
+    "escalate": "Escalate to HITL",
+    "escalateDescription": "Send to a reviewer and pause automation until the decision is recorded.",
+    "metricsLabel": "Stream status",
+    "transportLabel": "Transport",
+    "lastEventLabel": "Last event",
+    "eventIdle": "Waiting for stream events…",
+    "sessionLabel": "Session {id}",
+    "startedAt": "Started {time}",
+    "emptyStateDetail": "ChatKit sessions will appear here once a workspace launches a live agent thread.",
+    "loading": "Loading chat sessions…",
+    "loadError": "Unable to load ChatKit sessions.",
+    "connection": {
+      "idle": "Idle",
+      "connecting": "Connecting…",
+      "connected": "Connected (SSE)",
+      "connectedWebrtc": "Connected (WebRTC)",
+      "error": "Connection error"
+    },
+    "status": {
+      "active": "Active",
+      "ended": "Ended",
+      "pending": "Pending",
+      "running": "In progress",
+      "completed": "Completed",
+      "blocked": "Blocked"
+    },
+    "defaultTasks": {
+      "genericTitle": "Task",
+      "intakeTitle": "Intake & triage",
+      "intakeDescription": "Collecting documents and classifying risk signals.",
+      "analysisTitle": "Agent analysis",
+      "analysisDescription": "Retrieving authorities, drafting responses, and scoring risk.",
+      "reviewTitle": "Reviewer hand-off",
+      "reviewDescription": "Awaiting reviewer confirmation before delivering the answer."
+    }
+  },
   "navigator": {
     "title": "Guided process navigator",
     "subtitle": "Track jurisdiction workflows, compliance guardrails, and human hand-offs for each persona.",
@@ -742,6 +787,21 @@
     "empty": "Organization settings appear here based on your role.",
     "metricsTitle": "Operations dashboard",
     "metricsDescription": "Monitor citation precision, HITL workload, and ingestion health across your teams.",
+    "complianceDashboardTitle": "Compliance guardrails",
+    "complianceDashboardDescription": "Live guardrails for HITL coverage, allowlisted sources, and Maghreb enforcement.",
+    "complianceTimeframeLabel": "Last 30 days",
+    "complianceHitlPending": "HITL reviews pending",
+    "complianceHitlResolved": "Resolved: {count}",
+    "complianceHitlMedian": "Median response",
+    "complianceAllowlistedRatio": "Allowlisted citation ratio",
+    "complianceAllowlistedWarnings": "Translation warnings: {count}",
+    "complianceAllowlistedRuns": "Runs without citations: {count}",
+    "complianceMaghrebCoverage": "Maghreb banner coverage",
+    "complianceMaghrebPrecision": "Citation precision p95",
+    "complianceMaghrebTemporal": "Temporal validity p95",
+    "complianceDashboardLoading": "Loading compliance guardrails…",
+    "complianceDashboardRefreshing": "Refreshing guardrails…",
+    "complianceDashboardUnavailable": "Compliance guardrails unavailable. Check telemetry configuration.",
     "runs30d": "Runs (30 days)",
     "runsStatusHigh": "High volume",
     "runsStatusMedium": "Medium",

@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Download, BellRing, History } from 'lucide-react';
-import { Button } from './ui/button';
-import type { Locale, Messages } from '../lib/i18n';
-import { usePwaInstall } from '../hooks/use-pwa-install';
-import { useDigest } from '../hooks/use-digest';
-import { useOutbox } from '../hooks/use-outbox';
+import { Button } from '@/ui/button';
+import type { Locale, Messages } from '@/lib/i18n';
+import { usePwaInstall } from '@/hooks/use-pwa-install';
+import { useDigest } from '@/hooks/use-digest';
+import { useOutbox } from '@/hooks/use-outbox';
 import { toast } from 'sonner';
 import { sendTelemetryEvent } from '../lib/api';
 import { usePwaPreference } from '../hooks/use-pwa-preference';

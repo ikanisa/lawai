@@ -1,5 +1,7 @@
 # Agent Inventory & Platform Assessment
 
+> Looking for the implementation backlog? Jump to the [Task Launchpad](repo-analysis.md#quick-start-task-launchpad) for ready-to-file issues.
+
 ## Existing Agents
 
 ### Avocat Francophone (apps/api/src/agent.ts)
@@ -51,6 +53,8 @@
 - `apps/api/src/chatkit.ts` – initial in-memory session scaffold outlining the future ChatKit integration surface.
 
 ## Shared Resources & Guardrail Roadmap
+
+- **File Inputs (PDF)**: Follow the [File Inputs (PDF) guide](./file-inputs-pdf.md) to prepare, OCR, and register artefacts before linking them to Agent Platform resources.
 
 | Resource / Guardrail | Status | Notes |
 | --- | --- | --- |

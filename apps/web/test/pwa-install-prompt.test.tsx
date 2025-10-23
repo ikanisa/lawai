@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Messages } from '../src/lib/i18n';
-import { PwaInstallPrompt } from '../src/components/pwa-install-prompt';
+import type { Messages } from '@/lib/i18n';
+import { PwaInstallPrompt } from '@/components/pwa-install-prompt';
 
 const promptInstallMock = vi.fn(async () => 'accepted' as const);
 const dismissPromptMock = vi.fn();
