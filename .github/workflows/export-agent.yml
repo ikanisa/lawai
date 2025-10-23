@@ -2,7 +2,7 @@ name: Export Agent Definition
 
 on:
   push:
-    branches: [ main ]
+    branches: [ work ]
     paths:
       - 'apps/api/src/**'
       - 'packages/shared/src/**'
