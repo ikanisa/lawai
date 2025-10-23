@@ -14,11 +14,13 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "ci": "pnpm lint:sql && pnpm check:migrations && pnpm lint && pnpm typecheck && pnpm build && pnpm test",
     "lint": "npm run lint --workspaces --if-present",
     "lint:sql": "node ./scripts/lint-sql.mjs",
     "lint:sql:fix": "node ./scripts/lint-sql.mjs --fix",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "lint:docs": "pnpm dlx markdownlint-cli2 docs/vector-embeddings.md",
     "check:migrations": "node ./scripts/check-migrations.mjs",
     "dev:api": "npm run dev --workspace @apps/api",
     "dev:ops": "npm run dev --workspace @apps/ops",
@@ -26,6 +28,7 @@
     "start": "npm run start --workspace @avocat-ai/web",
     "db:push": "supabase migration up",
     "db:migrate": "npm run migrate --workspace @apps/ops",
+    "db:migrate:staging": "npm run migrate --workspace @apps/ops -- --env staging",
     "ops:provision": "npm run provision --workspace @apps/ops",
     "ops:foundation": "npm run foundation --workspace @apps/ops",
     "ops:evaluate": "npm run evaluate --workspace @apps/ops",
@@ -41,6 +44,7 @@
     "ops:rls-smoke": "npm run rls-smoke --workspace @apps/ops",
     "ops:phase": "npm run phase --workspace @apps/ops",
     "seed": "npm run start --workspace @db/seed",
+    "test:smoke": "pnpm --filter @avocat-ai/web test:smoke",
     "check:binaries": "node ./scripts/check-binaries.mjs"
   },
   "dependencies": {

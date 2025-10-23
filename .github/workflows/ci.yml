@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ work, main, master ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ work, main, master ]
 
 jobs:
   lint:
@@ -25,6 +25,8 @@ jobs:
         run: pnpm lint:sql
       - name: Lint (workspace)
         run: pnpm -r lint
+      - name: Lint documentation
+        run: pnpm run lint:docs
 
   typecheck:
     runs-on: ubuntu-latest

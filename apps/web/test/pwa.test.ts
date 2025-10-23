@@ -29,49 +29,101 @@ const {
   };
 });
 
-vi.mock('workbox-window', () => ({
-  Workbox: workboxConstructorMock,
-}));
+vi.mock(
+  'workbox-window',
+  () => ({
+    Workbox: workboxConstructorMock,
+  }),
+  { virtual: true },
+);
 
 describe('pwa utilities', () => {
-  const originalEnv = { ...process.env };
+  const originalEnv = process.env.NEXT_PUBLIC_ENABLE_PWA;
 
   beforeEach(() => {
     vi.resetModules();
+    process.env.NEXT_PUBLIC_ENABLE_PWA = 'true';
     registerMock.mockClear();
     messageMock.mockClear();
     addEventListenerMock.mockClear();
     workboxConstructorMock.mockClear();
     serviceWorkerRegistration.showNotification = vi.fn(() => Promise.resolve());
 
-    vi.stubGlobal('navigator', {
+    const storage = new Map<string, string>();
+    const localStorageMock = {
+      getItem: vi.fn((key: string) => (storage.has(key) ? storage.get(key)! : null)),
+      setItem: vi.fn((key: string, value: string) => {
+        storage.set(key, value);
+      }),
+      removeItem: vi.fn((key: string) => {
+        storage.delete(key);
+      }),
+      clear: vi.fn(() => {
+        storage.clear();
+      }),
+    } as unknown as Storage;
+
+    vi.stubGlobal(
+      'window',
+      {
+        localStorage: localStorageMock,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as Window & typeof globalThis,
+    );
+
+    const navigatorMock = {
       serviceWorker: {
         ready: Promise.resolve(serviceWorkerRegistration),
       },
-    });
+    } as Navigator;
+
+    vi.stubGlobal('navigator', navigatorMock);
 
     vi.stubGlobal('Notification', {
       requestPermission: vi.fn(async () => 'granted'),
     } as unknown as Notification);
 
-    process.env = { ...originalEnv, NEXT_PUBLIC_ENABLE_PWA: 'true' };
+    (window as any).navigator = navigatorMock;
+    (window as any).Notification = globalThis.Notification;
   });
 
   afterEach(() => {
+    process.env.NEXT_PUBLIC_ENABLE_PWA = originalEnv;
     vi.unstubAllGlobals();
     process.env = { ...originalEnv };
   });
 
   it('registers the service worker only once', async () => {
-    const { registerPwa } = await import('../src/lib/pwa');
-    registerPwa();
-    registerPwa();
+    const { registerPwa, setPwaOptInPreference } = await import('../src/lib/pwa');
+    setPwaOptInPreference(true);
+    await registerPwa();
+    await registerPwa();
 
     expect(registerMock).toHaveBeenCalledTimes(1);
   });
 
+  it('skips registration when disabled via env flag', async () => {
+    process.env.NEXT_PUBLIC_ENABLE_PWA = 'false';
+    const { registerPwa } = await import('../src/lib/pwa');
+    registerPwa();
+
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('does not register during SSR execution', async () => {
+    vi.unstubAllGlobals();
+    process.env.NEXT_PUBLIC_ENABLE_PWA = 'true';
+    const { registerPwa } = await import('../src/lib/pwa');
+    registerPwa();
+
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
   it('enables digest notifications when permission granted', async () => {
-    const { enableDigestNotifications, isDigestEnabled } = await import('../src/lib/pwa');
+    const { enableDigestNotifications, isDigestEnabled, setPwaOptInPreference } = await import('../src/lib/pwa');
+
+    setPwaOptInPreference(true);
 
     const enabled = await enableDigestNotifications();
 
@@ -83,6 +135,31 @@ describe('pwa utilities', () => {
   it('returns false when notifications denied', async () => {
     const permissionMock = Notification.requestPermission as unknown as ReturnType<typeof vi.fn>;
     permissionMock.mockResolvedValueOnce('denied');
+    const { enableDigestNotifications, setPwaOptInPreference } = await import('../src/lib/pwa');
+    setPwaOptInPreference(true);
+    const enabled = await enableDigestNotifications();
+    expect(enabled).toBe(false);
+  });
+
+  it('skips registration when the environment flag is disabled', async () => {
+    process.env.NEXT_PUBLIC_ENABLE_PWA = 'false';
+    const { registerPwa, setPwaOptInPreference } = await import('../src/lib/pwa');
+    setPwaOptInPreference(true);
+    const result = registerPwa();
+    expect(result).toBeNull();
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('does not register during server-side rendering', async () => {
+    const { registerPwa, setPwaOptInPreference } = await import('../src/lib/pwa');
+    setPwaOptInPreference(true);
+    vi.stubGlobal('window', undefined);
+    const result = registerPwa();
+    expect(result).toBeNull();
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('requires pwa opt-in for digest notifications', async () => {
     const { enableDigestNotifications } = await import('../src/lib/pwa');
     const enabled = await enableDigestNotifications();
     expect(enabled).toBe(false);
@@ -90,9 +167,10 @@ describe('pwa utilities', () => {
 
   it('does not register the service worker when the feature flag is disabled', async () => {
     process.env.NEXT_PUBLIC_ENABLE_PWA = 'false';
-    const { registerPwa, isPwaFeatureEnabled } = await import('../src/lib/pwa');
+    const { registerPwa, isPwaFeatureEnabled, grantPwaConsent } = await import('../src/lib/pwa');
 
-    registerPwa();
+    grantPwaConsent();
+    await registerPwa();
 
     expect(isPwaFeatureEnabled()).toBe(false);
     expect(workboxConstructorMock).not.toHaveBeenCalled();
@@ -100,19 +178,64 @@ describe('pwa utilities', () => {
   });
 
   it('clears any cached registration promise when the feature flag toggles off', async () => {
-    const { registerPwa } = await import('../src/lib/pwa');
-    registerPwa();
+    const { registerPwa, grantPwaConsent } = await import('../src/lib/pwa');
+    grantPwaConsent();
+    await registerPwa();
 
     expect(registerMock).toHaveBeenCalledTimes(1);
 
     process.env.NEXT_PUBLIC_ENABLE_PWA = 'false';
-    registerPwa();
+    await registerPwa();
 
     expect(registerMock).toHaveBeenCalledTimes(1);
 
     process.env.NEXT_PUBLIC_ENABLE_PWA = 'true';
-    registerPwa();
+    await registerPwa();
 
     expect(registerMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not register the service worker when user consent is missing', async () => {
+    const { registerPwa } = await import('../src/lib/pwa');
+
+    await registerPwa();
+
+    expect(workboxConstructorMock).not.toHaveBeenCalled();
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('registers the service worker when notifications are unavailable but service workers are supported', async () => {
+    const {
+      registerPwa,
+      hasPwaConsent,
+      canRegisterPwaWithoutStoredConsent,
+    } = await import('../src/lib/pwa');
+
+    expect(hasPwaConsent()).toBe(false);
+
+    Reflect.deleteProperty(globalThis as Record<string, unknown>, 'Notification');
+    Reflect.deleteProperty(window as Record<string, unknown>, 'Notification');
+
+    expect(canRegisterPwaWithoutStoredConsent()).toBe(true);
+
+    await registerPwa();
+
+    expect(registerMock).toHaveBeenCalledTimes(1);
+    expect(hasPwaConsent()).toBe(true);
+  });
+
+  it('warns when the browser does not support service workers', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { registerPwa, grantPwaConsent } = await import('../src/lib/pwa');
+
+    grantPwaConsent();
+    vi.stubGlobal('navigator', {} as Navigator);
+
+    await registerPwa();
+
+    expect(warnSpy).toHaveBeenCalledWith('pwa_registration_unsupported_browser', {
+      reason: 'service_worker_unavailable',
+    });
+    warnSpy.mockRestore();
   });
 });

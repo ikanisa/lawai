@@ -52,29 +52,25 @@ packages/
    pnpm dev:web
    ```
 
-For a full MacBook playbook (including production-style builds), consult [`docs/local-hosting.md`](docs/local-hosting.md).
+### Production configuration guardrails
 
-### Environment configuration (local-first)
+The API now enforces stricter configuration checks in production environments.
+Deployments must provide real secrets for the following variables:
 
-- Store shared secrets in the repository root `.env.local`.
-- Each application (`apps/api`, `apps/web`, `apps/ops`) exposes its own `.env.example`; copy them to `.env.local` alongside the service when overrides are required.
-- Supply Supabase credentials everywhere they are referenced:
-  - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-  - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- Populate the OpenAI keys (`OPENAI_API_KEY`, `OPENAI_VECTOR_STORE_AUTHORITIES_ID`, etc.) to unlock ingestion, evaluations, and transparency tooling.
+- `OPENAI_API_KEY`
+- `OPENAI_VECTOR_STORE_AUTHORITIES_ID`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-### Supabase usage recap
+The runtime rejects common placeholder patterns such as:
 
-- `pnpm db:migrate` applies SQL migrations to the configured Supabase project.
-- `pnpm --filter @apps/ops bootstrap` provisions buckets and allowlists.
-- `pnpm ops:foundation` performs a complete provisioning run (migrations, vector store creation, guardrail validation).
-- `pnpm ops:check` validates Supabase extensions, buckets, vector stores, and allowlists on demand.
+- Vector store IDs like `vs_test`, `vs-example`, or `vs_placeholder`
+- Supabase URLs containing `example.supabase.co`
+- Service role keys containing `placeholder`, `service-role-key`, or `service-role-test`
 
-### Local-first replacements for legacy Vercel tooling
-
-- Environment examples now expose only Supabase and local hosting variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, etc.); all `VERCEL_*` placeholders were removed.
-- Scheduled tasks should be orchestrated locally following [`scripts/cron.md`](scripts/cron.md) (via `node-cron`, `launchd`, or your preferred scheduler).
-- Deployment metadata is derived from `APP_ENV`/`.env.local`; there are no implicit dependencies on Vercel-provided environment variables.
+CI executes `apps/api/test/config.test.ts` to guarantee these guardrails stay in
+place. Refresh your `.env` or deployment secrets with production values before
+running the API behind Vercel or any other production target.
 
 ### Assembler les fondations en une étape
 
@@ -191,6 +187,16 @@ Afin de démontrer la robustesse (latence, précision des citations, couverture 
 ```bash
 pnpm ops:perf-snapshot --org 00000000-0000-0000-0000-000000000000 --user 00000000-0000-0000-0000-000000000000 --notes "post-red-team"
 ```
+
+### Planifier les rapports de conformité
+
+Les rapports de transparence, SLO et régulateur peuvent être programmés depuis Supabase en une seule commande :
+
+```bash
+pnpm --filter @apps/ops schedule-reports --org <org-id> --user <service-user> --api https://api.avocat.ai
+```
+
+Le CLI vérifie les garde-fous de résidence avant d’archiver les rapports dans `ops_report_runs`, journalise chaque succès dans `audit_events` et signale les échecs partiels (avec message d’erreur) dans la sortie standard.
 
 ## Panneau d'administration (feature flag FEAT_ADMIN_PANEL)
 
@@ -366,6 +372,7 @@ curl -X POST http://localhost:3000/runs \
 Le workflow GitHub Actions `.github/workflows/ci.yml` installe les dépendances PNPM, exécute `pnpm lint`, applique les migrations contre une instance Postgres de test et lance la suite de tests (`pnpm test`). Ajoutez vos étapes de déploiement selon vos environnements cibles pour garantir la conformité du plan de mise en production.
 
 Consult `docs/avocat_ai_bell_system_plan.md` for the full BELL analysis and delivery roadmap.
+Review [`docs/vector-embeddings.md`](docs/vector-embeddings.md) for guidance on selecting, generating, and scaling semantic embeddings with the latest OpenAI models.
 
 ## Troubleshooting
 

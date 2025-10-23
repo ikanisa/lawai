@@ -7,6 +7,13 @@ import { PwaInstallPrompt } from '@/components/pwa-install-prompt';
 const promptInstallMock = vi.fn(async () => 'accepted' as const);
 const dismissPromptMock = vi.fn();
 const enableDigestMock = vi.fn(async () => true);
+const setPreferenceMock = vi.fn();
+
+vi.mock('../src/env.client', () => ({
+  clientEnv: {
+    NEXT_PUBLIC_ENABLE_PWA: true,
+  },
+}));
 
 vi.mock('../src/hooks/use-pwa-install', () => ({
   usePwaInstall: () => ({
@@ -14,6 +21,14 @@ vi.mock('../src/hooks/use-pwa-install', () => ({
     isAvailable: true,
     promptInstall: promptInstallMock,
     dismissPrompt: dismissPromptMock,
+  }),
+}));
+
+vi.mock('../src/hooks/use-pwa-preference', () => ({
+  usePwaPreference: () => ({
+    enabled: true,
+    ready: true,
+    setEnabled: setPreferenceMock,
   }),
 }));
 
@@ -48,6 +63,10 @@ vi.mock('sonner', () => ({
 }));
 
 describe('PwaInstallPrompt', () => {
+  beforeEach(() => {
+    setPreferenceMock.mockReset();
+  });
+
   it('renders release notes and handles actions', async () => {
     const user = userEvent.setup();
     const messages: Messages['app']['install'] = {

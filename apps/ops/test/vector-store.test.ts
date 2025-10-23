@@ -2,6 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as shared from '@avocat-ai/shared';
 import { chunkText } from '../src/lib/embeddings.js';
 import { validateVectorStore } from '../src/lib/vector-store.js';
+import { getOpenAIClient } from '@avocat-ai/shared';
+
+vi.mock('@avocat-ai/shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@avocat-ai/shared')>();
+  return {
+    ...actual,
+    getOpenAIClient: vi.fn(),
+  };
+});
 
 describe('validateVectorStore', () => {
   afterEach(() => {
@@ -12,6 +21,8 @@ describe('validateVectorStore', () => {
     const result = await validateVectorStore('sk-test', '');
     expect(result).toBe(false);
   });
+
+  const mockedClient = vi.mocked(getOpenAIClient);
 
   it('returns true when OpenAI responds with 200', async () => {
     const retrieve = vi.fn().mockResolvedValue({ id: 'vs_123' });

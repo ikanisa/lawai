@@ -1,6 +1,5 @@
 import Fastify from 'fastify';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
+import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
 import { registerCorpusRoutes } from './routes/corpus/index.js';
@@ -11,19 +10,18 @@ import { registerRealtimeRoutes } from './routes/realtime/index.js';
 import { registerResearchRoutes } from './routes/research/index.js';
 import { registerUploadRoutes } from './routes/upload/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
-import type { AppContext } from './types/context.js';
-import { env } from './config.js';
+import type { AppContext } from './types/context';
+import { env, rateLimitConfig } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
-import { createAppContainer, type AppContainerOverrides } from './core/container.js';
-import { observabilityPlugin } from './core/observability/observability-plugin.js';
+import type { CreateAppResult } from './types/app';
 
-export interface CreateAppOptions {
-  supabase?: SupabaseClient;
-  overrides?: AppContainerOverrides;
-}
-
-export async function createApp(options: CreateAppOptions = {}) {
+export async function createApp(): Promise<CreateAppResult> {
   const app = Fastify({
+    ajv: {
+      customOptions: {
+        removeAdditional: false,
+      },
+    },
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
       redact: [
@@ -47,10 +45,22 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   await app.register(observabilityPlugin);
 
-  const supabase = options.supabase ?? serviceClient;
+  const { supabase: supabaseOverride, overrides, includeWorkspaceDomainRoutes = false } = options;
+
+  const supabase = supabaseOverride ?? serviceClient;
   const container = createAppContainer({
     supabase,
-    ...(options.overrides ?? {}),
+    ...(overrides ?? {}),
+  });
+
+  const shouldRegisterWorkspaceRoutes = options.registerWorkspaceRoutes ?? true;
+
+  const rateLimiterFactory = createRateLimiterFactory({
+    driver: rateLimitConfig.driver,
+    namespace: rateLimitConfig.namespace,
+    functionName: rateLimitConfig.functionName,
+    supabase: rateLimitConfig.driver === 'supabase' ? supabase : undefined,
+    logger: app.log,
   });
 
   const context: AppContext = {
@@ -61,10 +71,13 @@ export async function createApp(options: CreateAppOptions = {}) {
         baseUrl: process.env.OPENAI_BASE_URL,
       },
     },
-    container,
+    rateLimiter: {
+      factory: rateLimiterFactory,
+      workspace: rateLimiterFactory(rateLimitConfig.buckets.workspace),
+    },
   };
 
-  await app.register(async (instance) => {
+  await app.register(async (instance: FastifyInstance) => {
     await registerAgentsRoutes(instance, context);
     await registerResearchRoutes(instance, context);
     await registerCitationsRoutes(instance, context);
@@ -78,8 +91,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   }, { prefix: '/api' });
 
   if (!(app as any).workspaceRoutesRegistered) {
-    await registerWorkspaceRoutes(app, context);
-    (app as any).workspaceRoutesRegistered = true;
+    if (shouldRegisterWorkspaceRoutes) {
+      await registerWorkspaceRoutes(app, context);
+      (app as any).workspaceRoutesRegistered = true;
+    }
   }
 
   return { app, context };

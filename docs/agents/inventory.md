@@ -1,5 +1,7 @@
 # Agent Inventory & Platform Assessment
 
+> Looking for the implementation backlog? Jump to the [Task Launchpad](repo-analysis.md#quick-start-task-launchpad) for ready-to-file issues.
+
 ## Existing Agents
 
 ### Avocat Francophone (apps/api/src/agent.ts)

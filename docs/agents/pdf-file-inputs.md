@@ -1,157 +1,120 @@
-# PDF File Inputs via the Responses API
+# PDF File Inputs
 
-The API server accepts PDF evidence from two entry points:
+Use these patterns to accept PDF documents with the Responses API when building Avocat agents.
 
-* A direct URL pointing to an external document.
-* Binary uploads that land in Supabase storage first.
+## cURL
 
-Both flows share the same OpenAI client configuration so request tagging, retry
-policies, and optional organisation/project headers remain consistent with
-`apps/api/src/openai.ts`.
+### Provide a PDF by URL
 
-## 1. Instantiate the shared OpenAI client
+```bash
+curl https://api.openai.com/v1/responses \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4.1-mini",
+    "input": [{
+      "role": "user",
+      "content": [
+        {"type": "input_text", "text": "Summarise the obligations in this contract."},
+        {"type": "input_file", "file_url": "https://example.com/contracts/nda.pdf", "filename": "nda.pdf"}
+      ]
+    }],
+    "tools": [{"type": "file_search"}],
+    "metadata": {"flow": "url"}
+  }'
+```
+
+### Upload a PDF and reference the file ID
+
+```bash
+FILE_ID=$(curl https://api.openai.com/v1/files \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -F "purpose=assistants" \
+  -F "file=@/path/to/contract.pdf" | jq -r '.id')
+
+curl https://api.openai.com/v1/responses \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4.1-mini",
+    "input": [{
+      "role": "user",
+      "content": [
+        {"type": "input_text", "text": "Highlight renewal clauses in the uploaded contract."},
+        {"type": "input_file", "file_id": "'"$FILE_ID"'"}
+      ]
+    }],
+    "tools": [{"type": "file_search"}],
+    "metadata": {"flow": "upload"}
+  }'
+```
+
+## Node.js / TypeScript Example (OpenAI SDK)
 
 ```ts
-import OpenAI from 'openai';
+import { createReadStream } from 'node:fs';
+import { basename } from 'node:path';
+import { getOpenAIClient } from '@avocat-ai/shared';
 
-const apiKey = process.env.OPENAI_API_KEY;
-if (!apiKey) {
-  throw new Error('OPENAI_API_KEY is required');
-}
-
-const requestTags =
-  process.env.OPENAI_REQUEST_TAGS_API ??
-  process.env.OPENAI_REQUEST_TAGS ??
-  'service=api,component=backend';
-
-const defaultHeaders: Record<string, string> = {
-  'OpenAI-Beta': 'assistants=v2',
-};
-
-if (requestTags) {
-  // Tag requests so observability dashboards stay segmented per component.
-  defaultHeaders['OpenAI-Request-Tags'] = requestTags;
-}
-if (process.env.OPENAI_ORGANIZATION) {
-  // Forward optional organisation scoping for billing or access control.
-  defaultHeaders['OpenAI-Organization'] = process.env.OPENAI_ORGANIZATION;
-}
-if (process.env.OPENAI_PROJECT) {
-  // Attach the project header when the workspace enforces project budgets.
-  defaultHeaders['OpenAI-Project'] = process.env.OPENAI_PROJECT;
-}
-
-export const openai = new OpenAI({
-  apiKey,
-  maxRetries: 2,
-  timeout: 45_000,
-  defaultHeaders,
-  organization: process.env.OPENAI_ORGANIZATION,
-  project: process.env.OPENAI_PROJECT,
+const openai = getOpenAIClient({
+  apiKey: process.env.OPENAI_API_KEY!,
+  cacheKeySuffix: 'docs-pdf-demo',
+  requestTags: process.env.OPENAI_REQUEST_TAGS ?? 'service=docs,component=pdf-inputs',
 });
-```
 
-> ℹ️ Keep the client singleton in module scope so URL uploads and streamed file
-> uploads reuse sockets and share retry budgeting.
-
-## 2. URL ingestion flow
-
-```ts
-export async function runPdfFromUrl({
-  url,
-  displayName,
-  prompt,
-  model,
-}: {
-  url: string;
-  displayName?: string;
-  prompt: string;
-  model: string;
-}) {
-  const stream = await openai.responses.stream({
-    model,
+export async function summarizePdfFromUrl(fileUrl: string) {
+  const response = await openai.responses.create({
+    model: 'gpt-4.1-mini',
     input: [
       {
         role: 'user',
         content: [
-          { type: 'input_text', text: prompt },
-          {
-            type: 'input_file',
-            file_url: url,
-            display_name: displayName ?? 'uploaded.pdf',
-          },
+          { type: 'input_text', text: 'List key obligations from the attached PDF.' },
+          { type: 'input_file', file_url: fileUrl, filename: basename(new URL(fileUrl).pathname) },
         ],
       },
     ],
-    metadata: { purpose: 'pdf_ingestion_url' },
+    tools: [{ type: 'file_search' }],
+    metadata: { flow: 'url' },
   });
 
-  return stream; // Caller should relay stream events to the SSE channel.
+  // Persist usage so internal dashboards stay in sync with billing.
+  console.info('URL flow tokens', response.usage);
+  return response.output_text;
 }
-```
 
-## 3. Upload flow (Supabase backed)
-
-```ts
-import type { Readable } from 'node:stream';
-
-export async function runPdfUpload({
-  file,
-  filename,
-  prompt,
-  model,
-}: {
-  file: Readable | Blob;
-  filename: string;
-  prompt: string;
-  model: string;
-}) {
-  const created = await openai.files.create({
-    file,
-    file_name: filename,
+export async function summarizeUploadedPdf(filePath: string) {
+  const file = await openai.files.create({
     purpose: 'assistants',
+    file: createReadStream(filePath),
   });
 
   const stream = await openai.responses.stream({
-    model,
+    model: 'gpt-4.1-mini',
     input: [
       {
         role: 'user',
         content: [
-          { type: 'input_text', text: prompt },
-          {
-            type: 'input_file',
-            file_id: created.id,
-            display_name: filename,
-          },
+          { type: 'input_text', text: 'Surface renewal clauses and cite page numbers.' },
+          { type: 'input_file', file_id: file.id },
         ],
       },
     ],
-    metadata: { purpose: 'pdf_ingestion_upload' },
+    tools: [{ type: 'file_search' }],
+    metadata: { flow: 'upload' },
   });
 
-  return stream;
+  let streamedText = '';
+  for await (const event of stream) {
+    if (event.type === 'response.output_text.delta') {
+      streamedText += event.delta;
+      process.stdout.write(event.delta);
+    }
+  }
+
+  const final = await stream.finalResponse();
+  // Token usage is only emitted in the final payload when streaming; cache it before returning.
+  console.info('Uploaded flow tokens', final.usage);
+  return { streamedText, usage: final.usage };
 }
 ```
-
-> ✅ Do not instantiate a second client in the upload helper—the same `openai`
-> instance handles both the file upload and the follow-up `responses.stream`
-> call.
-
-## Streaming & token accounting
-
-* Always stream responses so the frontend can surface interim thinking. The Node
-  SDK exposes an async iterator, so relay each `event.data` payload to the SSE
-  client.
-* Call `const final = await stream.finalResponse();` once streaming completes.
-  The `final.usage.total_tokens` field powers our Datadog dashboards and quota
-  reconciliation.
-* Persist `final.response_id`, request tags, and `final.usage` alongside the run
-  record so we can audit expensive PDFs later.
-* When a stream fails, forward the error to `logOpenAIDebug(...)` with the shared
-  client to capture the debugging payload from OpenAI before surfacing a
-  user-friendly retry message.
-
-These patterns keep the documentation aligned with the production wiring in
-`apps/api/src/openai.ts` while making the example self-contained for agent
-builders.

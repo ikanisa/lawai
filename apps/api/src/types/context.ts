@@ -1,14 +1,16 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { AppContainer } from '../core/container.js';
+import type { ServiceSupabaseClient } from './supabase';
 
 export interface AppContext {
-  supabase: SupabaseClient;
+  supabase: ServiceSupabaseClient;
   config: {
     openai: {
       apiKey: string;
       baseUrl?: string;
     };
   };
-  container: AppContainer;
+  rateLimiter: {
+    factory: RateLimiterFactory;
+    workspace: RateLimiter;
+  };
 }
 
