@@ -59,19 +59,30 @@ export function revokePwaConsent() {
   }
 }
 
+export function canRegisterPwaWithoutStoredConsent(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hasServiceWorker = typeof navigator !== 'undefined' && 'serviceWorker' in navigator;
+  const hasNotifications = 'Notification' in window;
+  return hasServiceWorker && !hasNotifications;
+}
+
 export function registerPwa(): Promise<ServiceWorkerRegistration | null> {
   if (!isPwaFeatureEnabled()) {
     registrationPromise = null;
     return Promise.resolve(null);
   }
 
-  if (!hasPwaConsent()) {
-    return Promise.resolve(null);
-  }
-
   if (typeof window === 'undefined') {
     console.warn('pwa_registration_skipped', { reason: 'window_unavailable' });
     return Promise.resolve(null);
+  }
+
+  if (!hasPwaConsent()) {
+    if (canRegisterPwaWithoutStoredConsent()) {
+      grantPwaConsent();
+    } else {
+      return Promise.resolve(null);
+    }
   }
 
   if (!('serviceWorker' in navigator)) {
