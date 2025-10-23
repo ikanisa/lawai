@@ -1,3 +1,5 @@
+import type { FinanceDirectorPlan, FinanceSafetyReview } from './orchestrator-schemas.js';
+
 export type OrchestratorSessionStatus = 'active' | 'suspended' | 'closed';
 
 export interface OrchestratorSessionRecord {
@@ -5,8 +7,8 @@ export interface OrchestratorSessionRecord {
   orgId: string;
   chatSessionId: string | null;
   status: OrchestratorSessionStatus;
-  directorState: Record<string, unknown>;
-  safetyState: Record<string, unknown>;
+  directorState: FinanceDirectorPlan | null;
+  safetyState: FinanceSafetyReview | null;
   metadata: Record<string, unknown>;
   currentObjective: string | null;
   lastDirectorRunId: string | null;

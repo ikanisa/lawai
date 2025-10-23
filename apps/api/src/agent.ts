@@ -16,7 +16,11 @@ import {
   AgentPlanStep,
   IRACPayload,
   IRACSchema,
+  buildWebSearchAllowlist,
   OFFICIAL_DOMAIN_ALLOWLIST,
+  type WebSearchAllowlistResult,
+  WebSearchMode,
+  getJurisdictionsForDomain,
 } from '@avocat-ai/shared';
 import { diffWordsWithSpace } from 'diff';
 import { createServiceClient } from '@avocat-ai/supabase';
@@ -24,6 +28,7 @@ import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { z } from 'zod';
 import { env, loadAllowlistOverride } from './config.js';
+import { buildWebSearchAllowlist } from './tools/web-search-allowlist.js';
 import { CASE_TRUST_WEIGHTS, evaluateCaseQuality, type CaseScoreAxis } from './case-quality.js';
 import { OrgAccessContext, isJurisdictionAllowed } from './access-control.js';
 import { evaluateCompliance } from './compliance.js';
@@ -41,6 +46,7 @@ type ToolTelemetry = {
   latencyMs: number;
   success: boolean;
   errorCode?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export const TOOL_NAMES = {
@@ -87,6 +93,7 @@ export interface AgentRunInput {
   orgId: string;
   userId: string;
   confidentialMode?: boolean;
+  webSearchMode?: WebSearchMode;
 }
 
 export interface AgentRunResult {
@@ -124,6 +131,7 @@ interface AgentExecutionContext {
   initialRouting: RoutingResult;
   lastJurisdiction: JurisdictionHint | null;
   confidentialMode: boolean;
+  webSearchMode: WebSearchMode;
   allowedJurisdictions: string[];
   toolUsage: Record<string, number>;
   toolBudgets: Record<string, number>;
@@ -254,7 +262,9 @@ const supabase = createServiceClient({
   SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
 });
 
-const DOMAIN_ALLOWLIST = loadAllowlistOverride() ?? [...OFFICIAL_DOMAIN_ALLOWLIST];
+const { allowlist: DOMAIN_ALLOWLIST } = buildWebSearchAllowlist({
+  domains: loadAllowlistOverride() ?? OFFICIAL_DOMAIN_ALLOWLIST,
+});
 
 const stubMode = env.AGENT_STUB_MODE;
 
@@ -744,6 +754,11 @@ async function planRun(
     synonymRecord[term] = expansions;
   }
 
+  const requestedWebSearchMode = input.webSearchMode ?? 'allowlist';
+  const effectiveWebSearchMode: WebSearchMode = enforcedConfidentialMode
+    ? 'disabled'
+    : requestedWebSearchMode;
+
   const context: AgentExecutionContext = {
     orgId: input.orgId,
     userId: input.userId,
@@ -753,6 +768,7 @@ async function planRun(
     initialRouting,
     lastJurisdiction: initialRouting.primary,
     confidentialMode: enforcedConfidentialMode,
+    webSearchMode: effectiveWebSearchMode,
     allowedJurisdictions,
     toolUsage: {},
     toolBudgets: { ...TOOL_BUDGET_DEFAULTS },
@@ -760,7 +776,7 @@ async function planRun(
     policyVersion,
   };
 
-  if (enforcedConfidentialMode) {
+  if (enforcedConfidentialMode || effectiveWebSearchMode === 'disabled') {
     context.toolBudgets.web_search = 0;
   }
 
@@ -851,6 +867,7 @@ async function executeAgentPlan(
   planner: PlannerOutcome,
   input: AgentRunInput,
   hybridSnippets: HybridSnippet[],
+  telemetry: ToolTelemetry[],
 ): Promise<{ payload: IRACPayload; allowlistViolations: string[]; attempts: number }>
 {
   const context = planner.context;
@@ -906,6 +923,7 @@ async function executeAgentPlan(
     attempts += 1;
     try {
       const result = await runAgent(agent, prompt, { context, maxTurns: 8 });
+      recordWebSearchTruncationTelemetry(context, telemetry, result?.newItems ?? null);
       if (!result.finalOutput) {
         throw new Error('Réponse vide du moteur d’agent.');
       }
@@ -2978,6 +2996,7 @@ async function persistRun(
       latency_ms: Math.round(entry.latencyMs),
       success: entry.success,
       error_code: entry.errorCode ?? null,
+      metadata: entry.metadata ?? null,
     }));
     const { error: telemetryError } = await supabase.from('tool_telemetry').insert(telemetryRecords);
     if (telemetryError) {
@@ -3354,6 +3373,254 @@ function recordTelemetry(
     return;
   }
   telemetry.push(entry);
+}
+
+function recordWebSearchTruncationTelemetry(
+  context: AgentExecutionContext,
+  telemetry: ToolTelemetry[],
+  items: unknown,
+): void {
+  if (context.confidentialMode || context.webSearchMode === 'disabled') {
+    return;
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return;
+  }
+
+  for (const item of items) {
+    const call = normaliseHostedToolCall(item);
+    if (!call) {
+      continue;
+    }
+    if (!call.name.toLowerCase().includes('web_search')) {
+      continue;
+    }
+    const summary = summariseWebSearchProviderData(call.providerData);
+    if (summary && summary.filtered > 0) {
+      recordTelemetry(context, telemetry, {
+        name: 'web_search_allowlist_truncation',
+        latencyMs: 0,
+        success: true,
+        errorCode: null,
+        metadata: {
+          total_results: summary.total,
+          allowlisted_results: summary.allowed,
+          filtered_results: summary.filtered,
+          mode: context.webSearchMode,
+        },
+      });
+      break;
+    }
+  }
+}
+
+function normaliseHostedToolCall(
+  item: unknown,
+): { name: string; providerData: Record<string, unknown> } | null {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+  const raw = (item as { rawItem?: unknown }).rawItem ?? item;
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  if ((record.type as string | undefined)?.toLowerCase() !== 'hosted_tool_call') {
+    return null;
+  }
+  const providerData = record.providerData;
+  if (!providerData || typeof providerData !== 'object') {
+    return null;
+  }
+  const name = typeof record.name === 'string' ? record.name : '';
+  return { name, providerData: providerData as Record<string, unknown> };
+}
+
+function summariseWebSearchProviderData(
+  providerData: Record<string, unknown>,
+): { total: number; allowed: number; filtered: number } | null {
+  const stats: {
+    total: number;
+    allowed: number;
+    filtered: number;
+    allUrls: Set<string>;
+    allowlistedUrls: Set<string>;
+  } = {
+    total: 0,
+    allowed: 0,
+    filtered: 0,
+    allUrls: new Set(),
+    allowlistedUrls: new Set(),
+  };
+
+  collectWebSearchStats(providerData, '', stats);
+
+  let total = stats.total;
+  let allowed = stats.allowed;
+  let filtered = stats.filtered;
+
+  if (stats.allUrls.size > 0) {
+    if (stats.allUrls.size > total) {
+      total = stats.allUrls.size;
+    }
+    if (stats.allowlistedUrls.size > allowed) {
+      allowed = stats.allowlistedUrls.size;
+    }
+    if (filtered === 0) {
+      filtered = Math.max(total - allowed, 0);
+    }
+  }
+
+  if (filtered <= 0) {
+    return null;
+  }
+
+  if (allowed + filtered > total) {
+    total = allowed + filtered;
+  }
+
+  if (total === 0) {
+    total = allowed + filtered;
+  }
+  if (allowed > total) {
+    allowed = Math.max(total - filtered, 0);
+  }
+
+  return { total, allowed, filtered };
+}
+
+const FILTERED_KEY_PATTERN = /(filtered|blocked|disallowed|truncated|removed|non_allowlisted|excluded)/i;
+const ALLOWED_KEY_PATTERN = /(allowlisted|allowed|whitelisted|permitted)/i;
+const RESULTS_KEY_PATTERN = /(results|documents|items|hits|total)/i;
+
+function collectWebSearchStats(
+  value: unknown,
+  path: string,
+  stats: {
+    total: number;
+    allowed: number;
+    filtered: number;
+    allUrls: Set<string>;
+    allowlistedUrls: Set<string>;
+  },
+): void {
+  if (value === null || value === undefined) {
+    return;
+  }
+
+  if (typeof value === 'number') {
+    applyNumericStat(value, path, stats);
+    return;
+  }
+
+  if (typeof value === 'string') {
+    const url = extractUrl(value);
+    if (url) {
+      stats.allUrls.add(url);
+      if (isUrlAllowlisted(url)) {
+        stats.allowlistedUrls.add(url);
+      }
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    applyArrayStat(value, path, stats);
+    return;
+  }
+
+  if (typeof value === 'object') {
+    for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+      const nextPath = path ? `${path}.${key}` : key;
+      if (typeof inner === 'string') {
+        const url = extractUrl(inner);
+        if (url) {
+          stats.allUrls.add(url);
+          if (isUrlAllowlisted(url)) {
+            stats.allowlistedUrls.add(url);
+          }
+        }
+      } else {
+        collectWebSearchStats(inner, nextPath, stats);
+      }
+    }
+  }
+}
+
+function applyNumericStat(
+  value: number,
+  path: string,
+  stats: { total: number; allowed: number; filtered: number },
+): void {
+  if (FILTERED_KEY_PATTERN.test(path)) {
+    stats.filtered = Math.max(stats.filtered, value);
+  } else if (ALLOWED_KEY_PATTERN.test(path)) {
+    stats.allowed = Math.max(stats.allowed, value);
+  } else if (RESULTS_KEY_PATTERN.test(path)) {
+    stats.total = Math.max(stats.total, value);
+  }
+}
+
+function applyArrayStat(
+  values: unknown[],
+  path: string,
+  stats: {
+    total: number;
+    allowed: number;
+    filtered: number;
+    allUrls: Set<string>;
+    allowlistedUrls: Set<string>;
+  },
+): void {
+  if (values.length === 0) {
+    return;
+  }
+
+  if (FILTERED_KEY_PATTERN.test(path)) {
+    stats.filtered = Math.max(stats.filtered, values.length);
+  } else if (ALLOWED_KEY_PATTERN.test(path)) {
+    stats.allowed = Math.max(stats.allowed, values.length);
+  } else if (RESULTS_KEY_PATTERN.test(path)) {
+    stats.total = Math.max(stats.total, values.length);
+  }
+
+  for (const entry of values) {
+    const url = extractUrl(entry);
+    if (url) {
+      stats.allUrls.add(url);
+      if (isUrlAllowlisted(url)) {
+        stats.allowlistedUrls.add(url);
+      }
+    }
+    if (entry && typeof entry === 'object') {
+      collectWebSearchStats(entry, path, stats);
+    }
+  }
+}
+
+function extractUrl(value: unknown): string | null {
+  if (typeof value === 'string') {
+    try {
+      const url = new URL(value);
+      return url.href;
+    } catch (error) {
+      return null;
+    }
+  }
+  if (value && typeof value === 'object') {
+    for (const key of ['url', 'link', 'href']) {
+      const candidate = (value as Record<string, unknown>)[key];
+      if (typeof candidate === 'string') {
+        try {
+          const url = new URL(candidate);
+          return url.href;
+        } catch (error) {
+          continue;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 function buildAgent(
@@ -4016,19 +4283,45 @@ function buildAgent(
 
   const hostedTools = [budgetedFileSearch];
 
-  if (!context.confidentialMode) {
-    const baseWebSearch = webSearchTool({
-      filters: { allowedDomains: DOMAIN_ALLOWLIST },
-      searchContextSize: 'medium',
-    });
-    const budgetedWebSearch = {
-      ...baseWebSearch,
-      execute: async (input: unknown, runContext: { context: AgentExecutionContext }) => {
-        consumeToolBudget(runContext.context, 'web_search');
-        return baseWebSearch.execute(input, runContext);
-      },
-    };
-    hostedTools.unshift(budgetedWebSearch);
+  if (!context.confidentialMode && context.webSearchMode !== 'disabled') {
+    const searchContextSize = context.webSearchMode === 'broad' ? 'large' : 'medium';
+
+    if (context.webSearchMode === 'allowlist') {
+      const allowlistChunks = (DOMAIN_ALLOWLIST_CHUNKS.length > 0 ? DOMAIN_ALLOWLIST_CHUNKS : [DOMAIN_ALLOWLIST]).filter(
+        (chunk) => chunk.length > 0,
+      );
+      if (allowlistChunks.length === 0) {
+        allowlistChunks.push([]);
+      }
+      const webSearchTools = allowlistChunks.map((chunk, index) => {
+        const baseWebSearch = webSearchTool({
+          name: index === 0 ? 'web_search' : `web_search_allowlist_${index + 1}`,
+          filters: { allowedDomains: chunk },
+          searchContextSize,
+        });
+        return {
+          ...baseWebSearch,
+          execute: async (input: unknown, runContext: { context: AgentExecutionContext }) => {
+            consumeToolBudget(runContext.context, 'web_search');
+            return baseWebSearch.execute(input, runContext);
+          },
+        };
+      });
+
+      for (let i = webSearchTools.length - 1; i >= 0; i -= 1) {
+        hostedTools.unshift(webSearchTools[i]);
+      }
+    } else {
+      const baseWebSearch = webSearchTool({ searchContextSize });
+      const budgetedWebSearch = {
+        ...baseWebSearch,
+        execute: async (input: unknown, runContext: { context: AgentExecutionContext }) => {
+          consumeToolBudget(runContext.context, 'web_search');
+          return baseWebSearch.execute(input, runContext);
+        },
+      };
+      hostedTools.unshift(budgetedWebSearch);
+    }
   }
 
   return new Agent<AgentExecutionContext, typeof IRACSchema>({
@@ -4335,7 +4628,13 @@ export async function runLegalAgent(
   }
 
   const agent = buildAgent(toolLogs, telemetryRecords, planner.context);
-  const execution = await executeAgentPlan(agent, planner, input, planner.hybridSnippets);
+  const execution = await executeAgentPlan(
+    agent,
+    planner,
+    input,
+    planner.hybridSnippets,
+    telemetryRecords,
+  );
   const payload = execution.payload;
 
   const verificationTask = async () =>
