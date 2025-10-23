@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import ora from 'ora';
+import ora, { type Ora } from 'ora';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadRequiredEnv } from './lib/env.js';
 import { createSupabaseService } from './lib/supabase.js';
@@ -101,6 +101,14 @@ const MAGHREB_JURISDICTION_SET = new Set<string>(
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BENCHMARKS_DIR = path.resolve(CURRENT_DIR, '../fixtures/benchmarks');
 
+export type EvaluationCaseDefinition = {
+  id: string;
+  name: string;
+  prompt: string;
+  expected_contains: string[];
+  benchmark?: string | null;
+};
+
 export async function loadBenchmarkCases(name: string): Promise<
   Array<{ id: string; name: string; prompt: string; expected_contains: string[]; benchmark: string }>
 > {
@@ -141,6 +149,94 @@ export interface CaseMetricsSummary {
   bindingWarnings: number;
   jurisdiction: string | null;
   maghrebBanner: boolean | null;
+}
+
+export interface EvaluationResultRecord {
+  caseId: string;
+  runId: string | null;
+  pass: boolean;
+  notes: string | null;
+  metrics?: CaseMetricsSummary;
+  benchmark?: string | null;
+}
+
+export interface EvaluationDataSource {
+  loadCases(orgId: string, limit: number, benchmark?: string | null): Promise<EvaluationCaseDefinition[]>;
+  recordResult(record: EvaluationResultRecord): Promise<void>;
+  loadLinkHealth(orgId: string): Promise<LinkHealthSummary | null>;
+}
+
+export interface EvaluationDependencies {
+  dataSource: EvaluationDataSource;
+  fetchImpl: typeof fetch;
+  retries: number;
+  retryDelayMs: number;
+  logger: Pick<typeof console, 'log' | 'warn' | 'error'>;
+  onProgress?: (payload: { index: number; total: number; name: string }) => void;
+  onCaseResult?: (score: EvaluationCaseScore) => void;
+  onRetry?: (payload: { attempt: number; caseId: string; error: unknown }) => void;
+}
+
+export interface EvaluationCaseScore {
+  caseId: string;
+  name: string;
+  pass: boolean;
+  benchmark: string | null;
+  metrics?: CaseMetricsSummary | null;
+  error?: string | null;
+}
+
+export interface EvaluationRunSummary {
+  totalCases: number;
+  passed: number;
+  failed: number;
+  scoreboard: EvaluationCaseScore[];
+  errors: string[];
+  coverageSnapshot: {
+    citationPrecision: number;
+    temporalValidity: number;
+    maghrebBanner: number;
+  } | null;
+  thresholdFailures: string[];
+  thresholdFailed: boolean;
+  linkHealthSummary: LinkHealthSummary | null;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function requestWithRetry(
+  fetchImpl: typeof fetch,
+  input: Parameters<typeof fetch>[0],
+  init: Parameters<typeof fetch>[1],
+  attempts: number,
+  delayMs: number,
+  onRetry?: (attempt: number, error: unknown, response?: Response) => void,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetchImpl(input, init);
+      if (response.ok || response.status < 500 || attempt === attempts - 1) {
+        return response;
+      }
+      lastError = new Error(`HTTP ${response.status}`);
+      onRetry?.(attempt + 1, lastError, response);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts - 1) {
+        throw error;
+      }
+      onRetry?.(attempt + 1, error);
+    }
+    if (attempt < attempts - 1) {
+      await delay(delayMs);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Retry attempts exhausted');
 }
 
 export function computeMetrics(payload: IRACPayload): CaseMetricsSummary {
@@ -295,6 +391,16 @@ export async function fetchLinkHealthSummary(
   };
 }
 
+export function createEvaluationDataSource(
+  supabase: SupabaseClient | null,
+): EvaluationDataSource {
+  return {
+    loadCases: (orgId, limit, benchmark) => fetchEvalCases(supabase, orgId, limit, benchmark),
+    recordResult: (record) => recordResult(supabase, record),
+    loadLinkHealth: (orgId) => fetchLinkHealthSummary(supabase, orgId),
+  };
+}
+
 export function checkLinkHealthThreshold(summary: LinkHealthSummary | null) {
   if (!summary || summary.totalSources === 0) {
     return { ok: true, failure: null as string | null };
@@ -372,7 +478,7 @@ async function fetchEvalCases(
   orgId: string,
   limit: number,
   benchmark?: string | null,
-) {
+): Promise<EvaluationCaseDefinition[]> {
   if (benchmark) {
     const cases = await loadBenchmarkCases(benchmark);
     const scoped = Number.isFinite(limit) ? cases.slice(0, limit) : cases;
@@ -413,43 +519,38 @@ async function fetchEvalCases(
 
 async function recordResult(
   supabase: SupabaseClient | null,
-  caseId: string,
-  runId: string | null,
-  pass: boolean,
-  notes: string | null,
-  metrics?: CaseMetricsSummary,
-  benchmark?: string | null,
+  record: EvaluationResultRecord,
 ) {
   if (!supabase) {
     return;
   }
   const payload: Record<string, unknown> = {
-    case_id: caseId,
-    run_id: runId,
-    pass,
-    notes,
+    case_id: record.caseId,
+    run_id: record.runId,
+    pass: record.pass,
+    notes: record.notes,
   };
 
-  if (metrics) {
+  if (record.metrics) {
     payload.metrics = {
-      citation_precision: metrics.citationPrecision,
-      temporal_validity: metrics.temporalValidity,
-      binding_warnings: metrics.bindingWarnings,
-      jurisdiction: metrics.jurisdiction,
-      maghreb_banner: metrics.maghrebBanner,
-      ...(benchmark ? { benchmark } : {}),
+      citation_precision: record.metrics.citationPrecision,
+      temporal_validity: record.metrics.temporalValidity,
+      binding_warnings: record.metrics.bindingWarnings,
+      jurisdiction: record.metrics.jurisdiction,
+      maghreb_banner: record.metrics.maghrebBanner,
+      ...(record.benchmark ? { benchmark: record.benchmark } : {}),
     };
-    payload.citation_precision = metrics.citationPrecision;
-    payload.temporal_validity = metrics.temporalValidity;
-    payload.binding_warnings = metrics.bindingWarnings;
-    payload.jurisdiction = metrics.jurisdiction;
-    if (typeof metrics.maghrebBanner === 'boolean') {
-      payload.maghreb_banner = metrics.maghrebBanner;
+    payload.citation_precision = record.metrics.citationPrecision;
+    payload.temporal_validity = record.metrics.temporalValidity;
+    payload.binding_warnings = record.metrics.bindingWarnings;
+    payload.jurisdiction = record.metrics.jurisdiction;
+    if (typeof record.metrics.maghrebBanner === 'boolean') {
+      payload.maghreb_banner = record.metrics.maghrebBanner;
     }
   }
 
-  if (benchmark && !metrics) {
-    payload.metrics = { benchmark };
+  if (record.benchmark && !record.metrics) {
+    payload.metrics = { benchmark: record.benchmark };
   }
 
   const { error } = await supabase.from('eval_results').insert(payload);
@@ -457,6 +558,241 @@ async function recordResult(
   if (error) {
     throw new Error(`Impossible d'enregistrer le résultat: ${error.message}`);
   }
+}
+
+export async function runEvaluation(
+  options: CliOptions,
+  dependencies: EvaluationDependencies,
+): Promise<EvaluationRunSummary> {
+  if (!options.orgId || !options.userId) {
+    throw new Error('OrgId et userId doivent être renseignés (utilisez --org et --user).');
+  }
+
+  const cases = await dependencies.dataSource.loadCases(
+    options.orgId,
+    options.limit,
+    options.benchmark ?? null,
+  );
+  dependencies.onProgress?.({ index: 0, total: cases.length, name: '' });
+
+  if (cases.length === 0) {
+    return {
+      totalCases: 0,
+      passed: 0,
+      failed: 0,
+      scoreboard: [],
+      errors: [],
+      coverageSnapshot: null,
+      thresholdFailures: [],
+      thresholdFailed: false,
+      linkHealthSummary: null,
+    };
+  }
+
+  if (options.ciMode) {
+    dependencies.logger.log(
+      `${cases.length} cas à évaluer pour l'organisation ${options.orgId}.`,
+    );
+  }
+
+  const scoreboard: EvaluationCaseScore[] = [];
+  const errors: string[] = [];
+  let passed = 0;
+  let failed = 0;
+  const total = cases.length;
+
+  for (let index = 0; index < total; index += 1) {
+    const evaluationCase = cases[index];
+    dependencies.onProgress?.({ index: index + 1, total, name: evaluationCase.name });
+
+    if (options.dryRun) {
+      continue;
+    }
+
+    const caseBenchmark =
+      typeof (evaluationCase as Record<string, unknown>).benchmark === 'string'
+        ? ((evaluationCase as Record<string, unknown>).benchmark as string)
+        : options.benchmark ?? null;
+
+    try {
+      const response = await requestWithRetry(
+        dependencies.fetchImpl,
+        `${options.apiBaseUrl}/runs`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: evaluationCase.prompt,
+            orgId: options.orgId,
+            userId: options.userId,
+          }),
+        },
+        Math.max(1, dependencies.retries),
+        Math.max(0, dependencies.retryDelayMs),
+        (attempt, error) => {
+          dependencies.onRetry?.({ attempt, caseId: evaluationCase.id, error });
+        },
+      );
+
+      if (!response.ok) {
+        const message = `API ${response.status}`;
+        await dependencies.dataSource.recordResult({
+          caseId: evaluationCase.id,
+          runId: null,
+          pass: false,
+          notes: message,
+          benchmark: caseBenchmark,
+        });
+        const score: EvaluationCaseScore = {
+          caseId: evaluationCase.id,
+          name: evaluationCase.name,
+          pass: false,
+          benchmark: caseBenchmark,
+          metrics: null,
+          error: message,
+        };
+        scoreboard.push(score);
+        dependencies.onCaseResult?.(score);
+        errors.push(`${evaluationCase.name}: ${message}`);
+        failed += 1;
+        continue;
+      }
+
+      const json = (await response.json()) as { runId?: string; data?: IRACPayload };
+      const payload = json.data;
+      if (!payload) {
+        await dependencies.dataSource.recordResult({
+          caseId: evaluationCase.id,
+          runId: json.runId ?? null,
+          pass: false,
+          notes: 'Réponse vide',
+          benchmark: caseBenchmark,
+        });
+        const score: EvaluationCaseScore = {
+          caseId: evaluationCase.id,
+          name: evaluationCase.name,
+          pass: false,
+          benchmark: caseBenchmark,
+          metrics: null,
+          error: 'Réponse vide',
+        };
+        scoreboard.push(score);
+        dependencies.onCaseResult?.(score);
+        errors.push(`${evaluationCase.name}: réponse vide`);
+        failed += 1;
+        continue;
+      }
+
+      const expectedTerms = evaluationCase.expected_contains ?? [];
+      const evaluation = evaluateExpectedTerms(payload, expectedTerms);
+      const metrics = computeMetrics(payload);
+      const notes = evaluation.pass ? null : `Manquants: ${evaluation.missing.join(', ')}`;
+      await dependencies.dataSource.recordResult({
+        caseId: evaluationCase.id,
+        runId: json.runId ?? null,
+        pass: evaluation.pass,
+        notes,
+        metrics,
+        benchmark: caseBenchmark,
+      });
+      const score: EvaluationCaseScore = {
+        caseId: evaluationCase.id,
+        name: evaluationCase.name,
+        pass: evaluation.pass,
+        benchmark: caseBenchmark,
+        metrics,
+        error: evaluation.pass ? null : notes,
+      };
+      scoreboard.push(score);
+      dependencies.onCaseResult?.(score);
+
+      if (evaluation.pass) {
+        passed += 1;
+      } else {
+        errors.push(`${evaluationCase.name}: attentes manquantes (${evaluation.missing.join(', ')})`);
+        failed += 1;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erreur inconnue';
+      await dependencies.dataSource.recordResult({
+        caseId: evaluationCase.id,
+        runId: null,
+        pass: false,
+        notes: message,
+        benchmark: caseBenchmark,
+      });
+      const score: EvaluationCaseScore = {
+        caseId: evaluationCase.id,
+        name: evaluationCase.name,
+        pass: false,
+        benchmark: caseBenchmark,
+        metrics: null,
+        error: message,
+      };
+      scoreboard.push(score);
+      dependencies.onCaseResult?.(score);
+      errors.push(`${evaluationCase.name}: ${message}`);
+      failed += 1;
+    }
+  }
+
+  if (options.dryRun) {
+    return {
+      totalCases: total,
+      passed: 0,
+      failed: 0,
+      scoreboard,
+      errors,
+      coverageSnapshot: null,
+      thresholdFailures: [],
+      thresholdFailed: false,
+      linkHealthSummary: null,
+    };
+  }
+
+  let thresholdFailed = false;
+  let thresholdFailures: string[] = [];
+  let coverageSnapshot: {
+    citationPrecision: number;
+    temporalValidity: number;
+    maghrebBanner: number;
+  } | null = null;
+  let linkHealthSummary: LinkHealthSummary | null = null;
+
+  if (scoreboard.length > 0) {
+    const metricsEntries = scoreboard
+      .map((entry) => entry.metrics)
+      .filter((entry): entry is CaseMetricsSummary => entry != null);
+    const thresholdResult = checkAcceptanceThresholds(metricsEntries);
+    thresholdFailed = !thresholdResult.ok;
+    thresholdFailures = thresholdResult.failures;
+    coverageSnapshot = thresholdResult.coverage;
+
+    try {
+      linkHealthSummary = await dependencies.dataSource.loadLinkHealth(options.orgId);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+
+    const linkHealthCheck = checkLinkHealthThreshold(linkHealthSummary);
+    if (!linkHealthCheck.ok) {
+      thresholdFailed = true;
+      const failureMessage = linkHealthCheck.failure ?? 'Liens officiels hors seuil';
+      thresholdFailures.push(failureMessage);
+    }
+  }
+
+  return {
+    totalCases: total,
+    passed,
+    failed,
+    scoreboard,
+    errors,
+    coverageSnapshot,
+    thresholdFailures,
+    thresholdFailed,
+    linkHealthSummary,
+  };
 }
 
 async function run(): Promise<void> {
@@ -471,288 +807,171 @@ async function run(): Promise<void> {
   if (!hasSupabase) {
     console.warn('Supabase credentials missing: running evaluation in local fallback mode.');
   }
-  const spinner = options.ciMode ? null : ora("Chargement des cas d'évaluation...").start();
-  const cases = await fetchEvalCases(supabase, options.orgId, options.limit, options.benchmark ?? null);
-  if (spinner) {
-    spinner.succeed(`${cases.length} cas à évaluer pour l'organisation ${options.orgId}.`);
-  } else {
-    console.log(`Loaded ${cases.length} evaluation cases.`);
+
+  let loadSpinner: ora.Ora | null = null;
+  if (!options.ciMode) {
+    loadSpinner = ora("Chargement des cas d'évaluation...").start();
   }
 
-  if (cases.length === 0) {
+  let caseSpinner: ora.Ora | null = null;
+  const summary = await runEvaluation(options, {
+    dataSource: createEvaluationDataSource(supabase),
+    fetchImpl: fetch,
+    retries: 3,
+    retryDelayMs: 5_000,
+    logger: console,
+    onProgress: ({ index, total, name }) => {
+      if (index === 0) {
+        if (loadSpinner) {
+          loadSpinner.succeed(`${total} cas à évaluer pour l'organisation ${options.orgId}.`);
+          loadSpinner = null;
+        } else if (options.ciMode) {
+          console.log(`${total} cas à évaluer pour l'organisation ${options.orgId}.`);
+        }
+        return;
+      }
+      if (options.ciMode) {
+        console.log(`[${index}/${total}] ${name}`);
+        return;
+      }
+      if (caseSpinner) {
+        caseSpinner.stop();
+      }
+      caseSpinner = ora(`Évaluation (${index}/${total}) : ${name}`).start();
+    },
+    onCaseResult: (score) => {
+      if (options.ciMode) {
+        if (score.error) {
+          console.error(`${score.name}: ${score.error}`);
+        }
+        return;
+      }
+      if (!caseSpinner) {
+        caseSpinner = ora(score.name).start();
+      }
+      if (score.metrics && score.pass) {
+        caseSpinner.succeed(
+          `${score.name}: ✅ (Précision ${(score.metrics.citationPrecision * 100).toFixed(0)}% | Temporalité ${(score.metrics.temporalValidity * 100).toFixed(0)}%)`,
+        );
+      } else if (score.metrics && !score.pass) {
+        caseSpinner.warn(`${score.name}: ${score.error ?? 'Attentes manquantes'}`);
+      } else if (score.error) {
+        caseSpinner.fail(`${score.name}: ${score.error}`);
+      } else {
+        caseSpinner.stop();
+      }
+    },
+    onRetry: ({ attempt, caseId, error }) => {
+      if (options.ciMode) {
+        console.warn(`Nouvelle tentative (${attempt}) pour le cas ${caseId}: ${error}`);
+      }
+    },
+  });
+
+  if (summary.totalCases === 0) {
+    if (loadSpinner) {
+      loadSpinner.succeed('Aucun cas à évaluer.');
+    }
     return;
   }
 
-  let passed = 0;
-  let failed = 0;
-  const scoreboard: Array<{
-    caseId: string;
-    name: string;
-    pass: boolean;
-    benchmark: string | null;
-    metrics?: CaseMetricsSummary | null;
-  }> = [];
+  if (summary.coverageSnapshot) {
+    console.log(
+      `Couverture précision >= ${(ACCEPTANCE_THRESHOLDS.citationsAllowlistedP95 * 100).toFixed(0)}%: ${(summary.coverageSnapshot.citationPrecision * 100).toFixed(1)}%`,
+    );
+    console.log(
+      `Couverture validité temporelle >= ${(ACCEPTANCE_THRESHOLDS.temporalValidityP95 * 100).toFixed(0)}%: ${(summary.coverageSnapshot.temporalValidity * 100).toFixed(1)}%`,
+    );
+    console.log(
+      `Couverture bannière Maghreb >= ${(ACCEPTANCE_THRESHOLDS.maghrebBindingBannerCoverage * 100).toFixed(0)}%: ${(summary.coverageSnapshot.maghrebBanner * 100).toFixed(1)}%`,
+    );
+  }
 
-  for (const evaluationCase of cases) {
-    const caseSpinner = options.ciMode ? null : ora(`Évaluation: ${evaluationCase.name}`).start();
-    if (options.dryRun) {
-      if (caseSpinner) {
-        caseSpinner.info('Mode simulation: exécution ignorée.');
-      } else {
-        console.log(`Skip (dry-run): ${evaluationCase.name}`);
-      }
-      continue;
+  if (summary.thresholdFailures.length > 0) {
+    for (const failure of summary.thresholdFailures) {
+      console.error(`Seuil non respecté: ${failure}`);
     }
+    process.exitCode = 1;
+  }
 
-    const caseBenchmark =
-      typeof (evaluationCase as Record<string, unknown>).benchmark === 'string'
-        ? ((evaluationCase as Record<string, unknown>).benchmark as string)
-        : options.benchmark ?? null;
+  if (summary.linkHealthSummary) {
+    console.log(
+      `Liens officiels contrôlés: ${summary.linkHealthSummary.totalSources} (en échec: ${summary.linkHealthSummary.failedSources}, stables: ${summary.linkHealthSummary.staleSources})`,
+    );
+  }
 
-    try {
-      const response = await fetch(`${options.apiBaseUrl}/runs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: evaluationCase.prompt,
-          orgId: options.orgId,
-          userId: options.userId,
-        }),
-      });
+  if (summary.errors.length > 0 && options.ciMode) {
+    for (const message of summary.errors) {
+      console.error(message);
+    }
+  } else if (summary.errors.length > 0) {
+    const warningSpinner = ora().warn('Certaines évaluations ont échoué.');
+    warningSpinner.start();
+    for (const message of summary.errors) {
+      console.error(message);
+    }
+    warningSpinner.stop();
+  }
 
-      if (!response.ok) {
-        const message = `API ${response.status}`;
-        await recordResult(supabase, evaluationCase.id as string, null, false, message, undefined, caseBenchmark);
-        scoreboard.push({
-          caseId: evaluationCase.id as string,
-          name: evaluationCase.name as string,
-          pass: false,
-          benchmark: caseBenchmark,
-          metrics: null,
-        });
-        if (caseSpinner) {
-          caseSpinner.fail(`${evaluationCase.name}: ${message}`);
-        } else {
-          console.error(`${evaluationCase.name}: ${message}`);
+  if (!options.dryRun && summary.scoreboard.length > 0) {
+    const aggregates = summary.scoreboard.reduce(
+      (acc, entry) => {
+        if (entry.metrics) {
+          acc.precisionSum += entry.metrics.citationPrecision;
+          acc.temporalSum += entry.metrics.temporalValidity;
+          acc.bindingWarnings += entry.metrics.bindingWarnings;
+          acc.metricsCount += 1;
         }
-        failed += 1;
-        continue;
-      }
+        return acc;
+      },
+      { precisionSum: 0, temporalSum: 0, bindingWarnings: 0, metricsCount: 0 },
+    );
 
-      const json = (await response.json()) as { runId?: string; data?: IRACPayload };
-      const payload = json.data;
-      if (!payload) {
-        await recordResult(
-          supabase,
-          evaluationCase.id as string,
-          json.runId ?? null,
-          false,
-          'Réponse vide',
-          undefined,
-          caseBenchmark,
-        );
-        scoreboard.push({
-          caseId: evaluationCase.id as string,
-          name: evaluationCase.name as string,
-          pass: false,
-          benchmark: caseBenchmark,
-          metrics: null,
-        });
-        if (caseSpinner) {
-          caseSpinner.fail(`${evaluationCase.name}: réponse vide`);
-        } else {
-          console.error(`${evaluationCase.name}: réponse vide`);
-        }
-        failed += 1;
-        continue;
-      }
-
-      const expectedTerms = (evaluationCase.expected_contains as string[] | null) ?? [];
-      const evaluation = evaluateExpectedTerms(payload, expectedTerms);
-      const metrics = computeMetrics(payload);
-      const notes = evaluation.pass ? null : `Manquants: ${evaluation.missing.join(', ')}`;
-      await recordResult(
-        supabase,
-        evaluationCase.id as string,
-        json.runId ?? null,
-        evaluation.pass,
-        notes,
-        metrics,
-        caseBenchmark,
-      );
-      scoreboard.push({
-        caseId: evaluationCase.id as string,
-        name: evaluationCase.name as string,
-        pass: evaluation.pass,
-        benchmark: caseBenchmark,
-        metrics,
-      });
-
-      if (evaluation.pass) {
-        if (caseSpinner) {
-          caseSpinner.succeed(
-            `${evaluationCase.name}: ✅ (Précision ${(metrics.citationPrecision * 100).toFixed(0)}% | Temporalité ${(metrics.temporalValidity * 100).toFixed(0)}%)`,
-          );
-        } else {
-          console.log(
-            `${evaluationCase.name}: PASS (precision ${(metrics.citationPrecision * 100).toFixed(0)}%, temporal ${(metrics.temporalValidity * 100).toFixed(0)}%)`,
-          );
-        }
-        passed += 1;
-      } else {
-        const warning = `${evaluationCase.name}: attentes manquantes (${evaluation.missing.join(', ')})`;
-        if (caseSpinner) {
-          caseSpinner.warn(warning);
-        } else {
-          console.error(warning);
-        }
-        failed += 1;
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erreur inconnue';
-      await recordResult(
-        supabase,
-        evaluationCase.id as string,
-        null,
-        false,
-        message,
-        undefined,
-        caseBenchmark,
-      );
-      scoreboard.push({
-        caseId: evaluationCase.id as string,
-        name: evaluationCase.name as string,
-        pass: false,
-        benchmark: caseBenchmark,
-        metrics: null,
-      });
-      if (caseSpinner) {
-        caseSpinner.fail(`${evaluationCase.name}: ${message}`);
-      } else {
-        console.error(`${evaluationCase.name}: ${message}`);
-      }
-      failed += 1;
+    const report = {
+      generated_at: new Date().toISOString(),
+      total_cases: summary.scoreboard.length,
+      passed: summary.passed,
+      failed: summary.failed,
+      average_citation_precision:
+        aggregates.metricsCount > 0 ? aggregates.precisionSum / aggregates.metricsCount : null,
+      average_temporal_validity:
+        aggregates.metricsCount > 0 ? aggregates.temporalSum / aggregates.metricsCount : null,
+      total_binding_warnings: aggregates.bindingWarnings,
+      coverage_citation_precision: summary.coverageSnapshot?.citationPrecision ?? null,
+      coverage_temporal_validity: summary.coverageSnapshot?.temporalValidity ?? null,
+      coverage_maghreb_banner: summary.coverageSnapshot?.maghrebBanner ?? null,
+      threshold_failures: summary.thresholdFailures,
+      link_health: summary.linkHealthSummary
+        ? {
+            total_sources: summary.linkHealthSummary.totalSources,
+            failed_sources: summary.linkHealthSummary.failedSources,
+            stale_sources: summary.linkHealthSummary.staleSources,
+            failure_ratio: summary.linkHealthSummary.failureRatio,
+          }
+        : null,
+      cases: summary.scoreboard,
+    };
+    const outputPath = path.resolve(process.cwd(), 'ops', 'reports', 'evaluation-summary.json');
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    if (!options.ciMode) {
+      console.log(`Tableau de bord enregistré dans ${outputPath}`);
     }
   }
 
-  if (!options.dryRun) {
-    let thresholdFailed = false;
-    let thresholdFailures: string[] = [];
-    let coverageSnapshot: {
-      citationPrecision: number;
-      temporalValidity: number;
-      maghrebBanner: number;
-    } | null = null;
-    let linkHealthSummary: LinkHealthSummary | null = null;
-
-    if (scoreboard.length > 0) {
-      const aggregates = scoreboard.reduce(
-        (acc, entry) => {
-          if (entry.metrics) {
-            acc.precisionSum += entry.metrics.citationPrecision;
-            acc.temporalSum += entry.metrics.temporalValidity;
-            acc.bindingWarnings += entry.metrics.bindingWarnings;
-            acc.metricsCount += 1;
-          }
-          return acc;
-        },
-        { precisionSum: 0, temporalSum: 0, bindingWarnings: 0, metricsCount: 0 },
-      );
-      const metricsEntries = scoreboard
-        .map((entry) => entry.metrics)
-        .filter((entry): entry is CaseMetricsSummary => entry != null);
-      const thresholdResult = checkAcceptanceThresholds(metricsEntries);
-      thresholdFailed = !thresholdResult.ok;
-      thresholdFailures = thresholdResult.failures;
-      coverageSnapshot = thresholdResult.coverage;
-
-      if (coverageSnapshot) {
-        console.log(
-          `Couverture précision >= ${(ACCEPTANCE_THRESHOLDS.citationsAllowlistedP95 * 100).toFixed(0)}%: ${(coverageSnapshot.citationPrecision * 100).toFixed(1)}%`,
-        );
-        console.log(
-          `Couverture validité temporelle >= ${(ACCEPTANCE_THRESHOLDS.temporalValidityP95 * 100).toFixed(0)}%: ${(coverageSnapshot.temporalValidity * 100).toFixed(1)}%`,
-        );
-        console.log(
-          `Couverture bannière Maghreb >= ${(ACCEPTANCE_THRESHOLDS.maghrebBindingBannerCoverage * 100).toFixed(0)}%: ${(coverageSnapshot.maghrebBanner * 100).toFixed(1)}%`,
-        );
-      }
-
-      if (thresholdFailed) {
-        for (const failure of thresholdFailures) {
-          console.error(`Seuil non respecté: ${failure}`);
-        }
-        process.exitCode = 1;
-      }
-
-      try {
-        linkHealthSummary = await fetchLinkHealthSummary(supabase, options.orgId);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(message);
-      }
-
-      const linkHealthCheck = checkLinkHealthThreshold(linkHealthSummary);
-      if (!linkHealthCheck.ok) {
-        thresholdFailed = true;
-        const linkFailure = linkHealthCheck.failure ?? 'Liens officiels hors seuil';
-        thresholdFailures.push(linkFailure);
-        console.error(`Seuil non respecté: ${linkFailure}`);
-        process.exitCode = 1;
-      }
-
-      if (linkHealthSummary) {
-        console.log(
-          `Liens officiels contrôlés: ${linkHealthSummary.totalSources} (en échec: ${linkHealthSummary.failedSources}, stables: ${linkHealthSummary.staleSources})`,
-        );
-      }
-
-      const report = {
-        generated_at: new Date().toISOString(),
-        total_cases: scoreboard.length,
-        passed,
-        failed,
-        average_citation_precision:
-          aggregates.metricsCount > 0 ? aggregates.precisionSum / aggregates.metricsCount : null,
-        average_temporal_validity:
-          aggregates.metricsCount > 0 ? aggregates.temporalSum / aggregates.metricsCount : null,
-        total_binding_warnings: aggregates.bindingWarnings,
-        coverage_citation_precision: coverageSnapshot?.citationPrecision ?? null,
-        coverage_temporal_validity: coverageSnapshot?.temporalValidity ?? null,
-        coverage_maghreb_banner: coverageSnapshot?.maghrebBanner ?? null,
-        acceptance_failures: thresholdFailures,
-        link_health: linkHealthSummary
-          ? {
-              total_sources: linkHealthSummary.totalSources,
-              failed_sources: linkHealthSummary.failedSources,
-              stale_sources: linkHealthSummary.staleSources,
-              failure_ratio: linkHealthSummary.failureRatio,
-            }
-          : null,
-        cases: scoreboard,
-      };
-      const outputPath = path.resolve(process.cwd(), 'ops', 'reports', 'evaluation-summary.json');
-      await mkdir(path.dirname(outputPath), { recursive: true });
-      await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-      if (!options.ciMode) {
-        console.log(`Tableau de bord enregistré dans ${outputPath}`);
-      }
-    }
-
-    const summaryBase = `Résultats: ${passed} réussi(s), ${failed} échec(s).`;
-    const summary = thresholdFailed ? `${summaryBase} (seuils non respectés)` : summaryBase;
-    if (failed > 0 || thresholdFailed) {
-      if (options.ciMode) {
-        console.error(summary);
-      } else {
-        ora().warn(summary);
-      }
-      process.exitCode = 1;
-    } else if (options.ciMode) {
-      console.log(summary);
+  const summaryBase = `Résultats: ${summary.passed} réussi(s), ${summary.failed} échec(s).`;
+  const summaryMessage = summary.thresholdFailed ? `${summaryBase} (seuils non respectés)` : summaryBase;
+  if (summary.failed > 0 || summary.thresholdFailed) {
+    if (options.ciMode) {
+      console.error(summaryMessage);
     } else {
-      ora().succeed(summary);
+      ora().warn(summaryMessage);
     }
+    process.exitCode = 1;
+  } else if (options.ciMode) {
+    console.log(summaryMessage);
+  } else {
+    ora().succeed(summaryMessage);
   }
 }
 

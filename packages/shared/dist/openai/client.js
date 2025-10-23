@@ -1,9 +1,37 @@
 import OpenAI, { APIError } from 'openai';
 const env = typeof process !== 'undefined' ? process.env : undefined;
 const clientCache = new Map();
+function normalizeHeaders(source) {
+    if (!source) {
+        return {};
+    }
+    if (typeof Headers !== 'undefined' && source instanceof Headers) {
+        const entries = {};
+        source.forEach((value, key) => {
+            entries[key] = value;
+        });
+        return entries;
+    }
+    if (Array.isArray(source)) {
+        return source.reduce((acc, [key, value]) => {
+            acc[key] = Array.isArray(value) ? value.join(',') : value;
+            return acc;
+        }, {});
+    }
+    return Object.entries(source).reduce((acc, [key, value]) => {
+        if (Array.isArray(value)) {
+            acc[key] = value.join(',');
+        }
+        else if (typeof value === 'string') {
+            acc[key] = value;
+        }
+        return acc;
+    }, {});
+}
 function buildCacheKey(config) {
     const { apiKey, baseURL, organization, project, timeout, maxRetries, defaultHeaders, cacheKeySuffix, } = config;
-    const headerEntries = defaultHeaders ? Object.entries(defaultHeaders).sort() : [];
+    const normalizedHeaders = normalizeHeaders(defaultHeaders);
+    const headerEntries = Object.entries(normalizedHeaders).sort();
     const headerFingerprint = headerEntries.map(([key, value]) => `${key}:${value}`).join('|');
     return [
         apiKey,
@@ -26,11 +54,12 @@ export function getOpenAIClient(config) {
         return cached;
     }
     const { apiKey, defaultHeaders, maxRetries = 2, timeout = 45_000, requestTags, organization, project, ...rest } = config;
+    const normalizedHeaders = normalizeHeaders(defaultHeaders);
     const computedHeaders = {
         'OpenAI-Beta': 'assistants=v2',
-        ...defaultHeaders,
+        ...normalizedHeaders,
     };
-    const headerTags = requestTags ?? defaultHeaders?.['OpenAI-Request-Tags'] ?? env?.OPENAI_REQUEST_TAGS ?? undefined;
+    const headerTags = requestTags ?? normalizedHeaders['OpenAI-Request-Tags'] ?? env?.OPENAI_REQUEST_TAGS ?? undefined;
     if (headerTags && !computedHeaders['OpenAI-Request-Tags']) {
         computedHeaders['OpenAI-Request-Tags'] = headerTags;
     }

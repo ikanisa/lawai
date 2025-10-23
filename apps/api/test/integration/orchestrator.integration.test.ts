@@ -1,5 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as Agents from '@openai/agents';
 import type {
+  FinanceDirectorPlan,
+  FinanceSafetyReview,
   OrchestratorCommandEnvelope,
   OrchestratorCommandRecord,
   OrchestratorJobRecord,
@@ -7,11 +10,193 @@ import type {
   OrgConnectorRecord,
   OrchestratorCommandResponse,
 } from '@avocat-ai/shared';
+import { FinanceDirectorPlanSchema, FinanceSafetyReviewSchema } from '@avocat-ai/shared';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createApp } from '../../src/app.js';
 import { registerOrchestratorRoutes } from '../../src/http/routes/orchestrator.js';
 import type { OrchestratorAIGateway, OrchestratorRepository } from '../../src/core/repositories/orchestrator-repository.js';
-import type { DirectorCommandInput, RegisterConnectorInput } from '../../src/orchestrator.js';
+import {
+  runDirectorPlanning,
+  runSafetyAssessment,
+  type DirectorCommandInput,
+  type RegisterConnectorInput,
+} from '../../src/orchestrator.js';
+
+vi.mock('@openai/agents', async () => {
+  const actual = await vi.importActual<typeof import('@openai/agents')>('@openai/agents');
+  return {
+    ...actual,
+    run: vi.fn(),
+  };
+});
+
+vi.mock('../../src/openai.ts', () => ({
+  getOpenAI: vi.fn(() => ({})),
+  logOpenAIDebug: vi.fn(async () => undefined),
+}));
+
+const validPlan: FinanceDirectorPlan = FinanceDirectorPlanSchema.parse({
+  version: '2025.02',
+  objective: 'Close Q1 books',
+  summary: 'Coordinate ledger reconciliation and disclosures.',
+  decisionLog: ['Objective validated'],
+  steps: [
+    {
+      id: 'plan-step-1',
+      status: 'pending',
+      envelope: {
+        worker: 'domain',
+        commandType: 'finance.accounts_payable.reconcile',
+        title: 'Reconcile AP ledger',
+        description: 'Match invoices to GL balances before closing.',
+        domain: 'accounts_payable',
+        payload: {},
+        successCriteria: ['Ledger balanced within tolerance'],
+        dependencies: [],
+        connectorDependencies: ['erp:general_ledger'],
+        telemetry: ['ap_reconciliation_latency'],
+        guardrails: { safetyPolicies: ['policy.ap_confidentiality'], residency: ['eu'] },
+        hitl: { required: false, reasons: [], mitigations: [] },
+      },
+      notes: [],
+    },
+  ],
+  globalHitl: { required: false, reasons: [], mitigations: [] },
+});
+
+describe('Finance agent schema enforcement', () => {
+  const supabase = {} as SupabaseClient;
+
+  function buildSession(): OrchestratorSessionRecord {
+    const now = new Date().toISOString();
+    return {
+      id: 'session-1',
+      orgId: 'org-1',
+      chatSessionId: null,
+      status: 'active',
+      directorState: null,
+      safetyState: null,
+      metadata: {},
+      currentObjective: null,
+      lastDirectorRunId: null,
+      lastSafetyRunId: null,
+      createdAt: now,
+      updatedAt: now,
+      closedAt: null,
+    };
+  }
+
+  function buildEnvelope(session: OrchestratorSessionRecord): OrchestratorCommandEnvelope {
+    const now = new Date().toISOString();
+    return {
+      command: {
+        id: 'cmd-1',
+        orgId: session.orgId,
+        sessionId: session.id,
+        commandType: 'finance.accounts_payable.reconcile',
+        payload: {},
+        status: 'queued',
+        priority: 100,
+        scheduledFor: now,
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        result: null,
+        lastError: null,
+        metadata: {},
+        createdAt: now,
+        updatedAt: now,
+      },
+      job: {
+        id: 'job-1',
+        orgId: session.orgId,
+        commandId: 'cmd-1',
+        worker: 'safety',
+        domainAgent: null,
+        status: 'pending',
+        attempts: 0,
+        scheduledAt: now,
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        lastError: null,
+        metadata: {},
+        createdAt: now,
+        updatedAt: now,
+      },
+      session,
+    };
+  }
+
+  it('returns the typed director plan when the agent complies with the schema', async () => {
+    const runMock = vi.mocked(Agents.run);
+    runMock.mockResolvedValueOnce({ finalOutput: validPlan } as any);
+    const session = buildSession();
+
+    const result = await runDirectorPlanning(supabase, session, 'Close Q1 books', {});
+
+    expect(runMock).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(validPlan);
+  });
+
+  it('maps safety refusals to rejected outcomes with reasons', async () => {
+    const runMock = vi.mocked(Agents.run);
+    runMock.mockResolvedValueOnce({ finalOutput: refusalReview } as any);
+    const session = buildSession();
+    const envelope = buildEnvelope(session);
+
+    const result = await runSafetyAssessment(supabase, envelope);
+
+    expect(runMock).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe('rejected');
+    expect(result.reasons).toContain('Policy finance.data_residency');
+    expect(result.reasons).toContain('Connector residency violation');
+    expect(result.mitigations).toEqual(['Route via EU mirror']);
+  });
+
+  it('escalates to HITL when the decision requires human review', async () => {
+    const runMock = vi.mocked(Agents.run);
+    runMock.mockResolvedValueOnce({ finalOutput: hitlReview } as any);
+    const session = buildSession();
+    const envelope = buildEnvelope(session);
+
+    const result = await runSafetyAssessment(supabase, envelope);
+
+    expect(runMock).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe('needs_hitl');
+    expect(result.reasons).toContain('Manual confirmation required');
+    expect(result.mitigations).toEqual(['Collect supporting evidence']);
+  });
+});
+
+const refusalReview: FinanceSafetyReview = FinanceSafetyReviewSchema.parse({
+  command: {
+    id: 'cmd-refuse-1',
+    worker: 'director',
+    commandType: 'finance.accounts_payable.reconcile',
+    payloadFingerprint: 'fingerprint-1',
+    hitl: { required: true, reasons: ['Sensitive data export'], mitigations: ['Mask PII before retry'] },
+  },
+  envelope: { sessionId: 'session-1', orgId: 'org-1', jobId: 'job-1' },
+  decision: { status: 'rejected', reasons: ['Connector residency violation'], mitigations: ['Route via EU mirror'], hitlRequired: true },
+  refusal: { reason: 'Policy finance.data_residency', policy: 'finance.data_residency' },
+});
+
+const hitlReview: FinanceSafetyReview = FinanceSafetyReviewSchema.parse({
+  command: {
+    id: 'cmd-hitl-1',
+    worker: 'director',
+    commandType: 'finance.audit.escalate',
+    payloadFingerprint: 'fingerprint-2',
+    hitl: { required: true, reasons: ['Critical audit exception'], mitigations: [] },
+  },
+  envelope: { sessionId: 'session-1', orgId: 'org-1', jobId: 'job-1' },
+  decision: { status: 'needs_hitl', reasons: ['Manual confirmation required'], mitigations: ['Collect supporting evidence'], hitlRequired: true },
+});
+
+afterEach(() => {
+  vi.resetAllMocks();
+});
 
 process.env.NODE_ENV = 'test';
 process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'test-service-role';
@@ -88,8 +273,8 @@ class StubRepository implements OrchestratorRepository {
       orgId: input.orgId,
       chatSessionId: null,
       status: 'active',
-      directorState: {},
-      safetyState: {},
+      directorState: null,
+      safetyState: null,
       metadata: {},
       currentObjective: null,
       lastDirectorRunId: null,
