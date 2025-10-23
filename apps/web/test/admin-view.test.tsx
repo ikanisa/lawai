@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Messages } from '../src/lib/i18n';
+import type { Messages } from '@/lib/i18n';
 
 const {
   fetchGovernanceMetricsMock,
@@ -60,7 +60,7 @@ vi.mock('../src/lib/api', async () => {
   } satisfies ApiModule;
 });
 
-const { AdminView } = await import('../src/components/admin/admin-view');
+const { AdminView } = await import('@/features/admin/components/admin-view');
 
 describe('AdminView provenance dashboard', () => {
   beforeEach(() => {

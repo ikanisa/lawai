@@ -46,6 +46,7 @@ G. Quality, Evals, and Telemetry
 
 - [ ] LegalBench/LexGLUE CI green; golden-set evals per jurisdiction.
 - [ ] Metrics thresholds met: ≥95% allowlisted citation precision; ≥95% temporal validity; 100% Maghreb warnings when applicable; ≥98% HITL recall on high-risk sets.
+- [ ] OpenAI Platform eval job (via `pnpm ops:evaluate`) completed for mapped datasets; results persisted to `agent_learning_jobs` and dashboards reflect pass/fail before launch.
 - [ ] Observability dashboards (citations accuracy, retrieval recall, HITL latency) live.
 
 H. Operations

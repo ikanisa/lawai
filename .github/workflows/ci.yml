@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ work, main, master ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ work, main, master ]
 
 jobs:
   lint:
@@ -21,8 +21,12 @@ jobs:
           run_install: true
       - name: pnpm version
         run: pnpm -v
+      - name: SQL lint
+        run: pnpm lint:sql
       - name: Lint (workspace)
         run: pnpm -r lint
+      - name: Lint documentation
+        run: pnpm run lint:docs
 
   typecheck:
     runs-on: ubuntu-latest
@@ -64,6 +68,10 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    needs:
+      - lint
+      - typecheck
+      - test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
