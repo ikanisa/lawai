@@ -9,6 +9,7 @@
 ## Agent Platform Setup
 - [ ] Import `avocat-francophone` JSON into Agent Builder (see checklist) and record Agent ID.
 - [ ] Register shared vector store (`OPENAI_VECTOR_STORE_AUTHORITIES_ID`) as a managed resource; capture its resource ID for future deployments.
+- [ ] Review the [File Inputs (PDF) guide](./file-inputs-pdf.md) and confirm new artefacts are processed before platform registration.
 - [ ] Configure guardrail bundles (France analytics, OHADA policies) and record version identifiers in the agent metadata checklist.
 - [ ] Update observability dashboards with the new Agent ID/request tags (Datadog/Splunk links).
 

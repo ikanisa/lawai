@@ -8,5 +8,6 @@ export interface AppContext {
       baseUrl?: string;
     };
   };
+  container: AppContainer;
 }
 

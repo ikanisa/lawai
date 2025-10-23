@@ -13,8 +13,16 @@ let cachedClient: ServiceSupabaseClient | null = null;
 
 export function createServiceClient(env: SupabaseEnv): ServiceSupabaseClient {
   const parsed = envSchema.parse(env);
+  const reuseExisting = options.reuseExisting ?? true;
 
-  if (cachedClient) {
+  if (options.client) {
+    if (reuseExisting) {
+      cachedClient = options.client;
+    }
+    return options.client;
+  }
+
+  if (reuseExisting && cachedClient) {
     return cachedClient;
   }
 
@@ -29,5 +37,13 @@ export function createServiceClient(env: SupabaseEnv): ServiceSupabaseClient {
     },
   );
 
-  return cachedClient;
+  if (reuseExisting) {
+    cachedClient = instance;
+  }
+
+  return instance;
+}
+
+export function resetServiceClientCache(): void {
+  cachedClient = null;
 }
