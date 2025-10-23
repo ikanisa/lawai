@@ -1,100 +1,50 @@
-# PDF File Inputs Agent Streaming Guide
+# PDF File Inputs
 
-When streaming responses for large PDF ingestion tasks, we rely on deterministic
-logging and guardrails to keep the orchestration service observable. The loop
-below expands on the basic example to surface completion, tool-call, and error
-signals while still collecting usage metrics once the final response arrives.
+This guide shows how to accept PDF uploads in an OpenAI Agent workflow and feed them into a response request.
 
+## Upload flow overview
+1. Upload the PDF to the Files API with the `assistants` purpose.
+2. Reference the uploaded file ID inside a response payload.
+3. Inspect the streamed or synchronous response for completions grounded in the PDF content.
+
+## Prerequisites
+- Install the official Node.js SDK: `npm install openai`.
+- Use Node.js 18 or newer so the native `fetch` and file APIs are available.
+- Set the `OPENAI_API_KEY` environment variable (for example, `export OPENAI_API_KEY=...`).
+
+For deeper context, review the [OpenAI Node SDK reference](https://github.com/openai/openai-node) and the internal integration guidance in [`docs/agents/platform-migration.md`](./platform-migration.md).
+
+## TypeScript example
 ```ts
 import OpenAI from "openai";
+import { createReadStream } from "node:fs";
 
-const client = new OpenAI();
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-async function streamPdfIngestion(prompt: string) {
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), 120_000);
+async function summarizePdf() {
+  const pdf = await client.files.create({
+    file: createReadStream("./briefs/sample.pdf"),
+    purpose: "assistants",
+  });
 
-  const stream = await client.responses.stream(
-    {
-      model: "gpt-4.1",
-      input: prompt,
-      tools: [{ type: "file_search" }],
-      metadata: { workflow: "pdf-file-inputs" },
-    },
-    { signal: abortController.signal }
-  );
+  const response = await client.responses.create({
+    model: "gpt-4.1-mini",
+    input: [
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: "Summarize the attached brief." },
+          { type: "input_file", file_id: pdf.id },
+        ],
+      },
+    ],
+  });
 
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
-
-  try {
-    for await (const event of stream) {
-      switch (event.type) {
-        case "response.created":
-          console.log(`response ${event.response.id} started`);
-          break;
-        case "response.completed":
-          console.log("response completed");
-          break;
-        case "response.error":
-          console.error("stream error", event.error);
-          throw new Error(event.error.message);
-        case "response.output_text.delta":
-          process.stdout.write(event.delta);
-          break;
-        case "response.output_text.done":
-          process.stdout.write("\n");
-          break;
-        case "response.tool_call.created":
-          console.log(
-            `tool call ${event.tool_call.type} → ${event.tool_call.name ?? "<anonymous>"}`
-          );
-          break;
-        case "response.tool_call.delta":
-          console.log("tool payload delta", event.delta);
-          break;
-        case "response.tool_call.done":
-          console.log("tool call result", event.tool_call);
-          break;
-        default:
-          console.debug("unhandled event", event.type);
-      }
-    }
-
-    const final = await stream.finalResponse();
-    totalInputTokens += final.usage?.input_tokens ?? 0;
-    totalOutputTokens += final.usage?.output_tokens ?? 0;
-
-    console.log({ totalInputTokens, totalOutputTokens });
-    return final;
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "name" in error &&
-      error.name === "AbortError"
-    ) {
-      console.warn("stream aborted", error);
-    } else {
-      throw error;
-    }
-  } finally {
-    clearTimeout(timeout);
-    abortController.abort();
-  }
+  console.log(response.output_text);
 }
 
-await streamPdfIngestion(
-  "Summarise latest filings from the Banque de France bulletin PDF."
-);
+summarizePdf().catch((error) => {
+  console.error("Failed to summarize PDF", error);
+  process.exit(1);
+});
 ```
-
-The `AbortController` enables callers to cancel the long-running ingestion if
-orchestration detects staleness or upstream throttling, matching production
-safeguards that prevent runaway sessions. Handling `response.error`,
-`response.completed`, and the tool-call lifecycle keeps telemetry aligned with
-what the agent actually attempted; without those signals our monitoring would
-miss failed vector-store lookups, suppressed completions, or early
-terminations. Because we still call `finalResponse()` after the loop, token
-usage metrics remain accurate even when intermediate events trigger logging or
-cancellation logic.
