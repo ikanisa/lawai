@@ -201,6 +201,7 @@ async function createRemoteChatKitSession(
 async function fetchRemoteChatKitSession(
   sessionId: string,
   logger?: Logger,
+  options?: { includeSecret?: boolean },
 ): Promise<ChatKitSessionDetails | null> {
   if (!isChatKitConfigured()) {
     return null;
@@ -215,7 +216,7 @@ async function fetchRemoteChatKitSession(
     'chatkit_session_fetch',
   );
 
-  return toChatKitDetails(response, false);
+  return toChatKitDetails(response, options?.includeSecret ?? false);
 }
 
 async function cancelRemoteChatKitSession(
@@ -299,7 +300,7 @@ export async function createChatSession(
 export async function getChatSession(
   supabase: SupabaseClient,
   sessionId: string,
-  options?: { includeChatkit?: boolean; logger?: Logger },
+  options?: { includeChatkit?: boolean; includeChatkitSecret?: boolean; logger?: Logger },
 ): Promise<ChatSessionRecord | null> {
   const { data, error } = await supabase
     .from('chat_sessions')
@@ -321,7 +322,9 @@ export async function getChatSession(
     return session;
   }
 
-  const remote = await fetchRemoteChatKitSession(session.chatkitSessionId, options.logger);
+  const remote = await fetchRemoteChatKitSession(session.chatkitSessionId, options.logger, {
+    includeSecret: options?.includeChatkitSecret,
+  });
   return remote ? { ...session, chatkit: remote } : session;
 }
 

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { createFastifySchemaFromZod } from '../../core/schema/zod-fastify.js';
 import type { AppContext } from '../../types/context.js';
+import { getWorkspaceSchema, workspaceQuerySchema, type WorkspaceQuery } from './schemas.js';
 
 const workspaceQuerySchema = z
   .object({

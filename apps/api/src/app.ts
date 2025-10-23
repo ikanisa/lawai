@@ -53,10 +53,12 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   await app.register(observabilityPlugin);
 
-  const supabase = options.supabase ?? serviceClient;
+  const { supabase: supabaseOverride, overrides, includeWorkspaceDomainRoutes = false } = options;
+
+  const supabase = supabaseOverride ?? serviceClient;
   const container = createAppContainer({
     supabase,
-    ...(options.overrides ?? {}),
+    ...(overrides ?? {}),
   });
 
   const shouldRegisterWorkspaceRoutes = options.registerWorkspaceRoutes ?? true;
