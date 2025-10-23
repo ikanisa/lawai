@@ -1,121 +1,90 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import Fastify from 'fastify';
+import { describe, expect, it, vi } from 'vitest';
 
-process.env.NODE_ENV = 'test';
+import { registerWorkspaceRoutes } from '../src/domain/workspace/routes.js';
+import type { AppContext } from '../src/types/context.js';
 
-const supabaseMock = { from: vi.fn(), rpc: vi.fn() };
+interface QueryResult {
+  data: unknown;
+  error: unknown;
+}
 
-vi.mock('@avocat-ai/supabase', () => ({
-  createServiceClient: () => supabaseMock,
-}));
+function createQueryBuilder(result: QueryResult) {
+  const builder: any = {};
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.limit = vi.fn(async () => result);
+  return builder;
+}
 
-const authorizeRequestWithGuards = vi.fn(async (_action: string, orgId: string, userId: string) => ({
-  orgId,
-  userId,
-  role: 'member',
-  policies: {
-    confidentialMode: false,
-    franceJudgeAnalyticsBlocked: false,
-    mfaRequired: false,
-    ipAllowlistEnforced: false,
-    consentRequirement: { type: 'ai_assist', version: '2024-10-01' },
-    councilOfEuropeRequirement: null,
-    sensitiveTopicHitl: false,
-    residencyZone: null,
-    residencyZones: null,
-  },
-  rawPolicies: {},
-  entitlements: new Map(),
-  ipAllowlistCidrs: [],
-  consent: { requirement: { type: 'ai_assist', version: '2024-10-01' }, latest: null },
-  councilOfEurope: { requirement: null, acknowledgedVersion: null },
-}));
-
-vi.mock('../src/http/authorization.ts', () => ({
-  authorizeRequestWithGuards,
-}));
-
-vi.mock('../src/device-sessions.ts', () => ({
-  recordDeviceSession: vi.fn(async () => undefined),
-}));
-
-const { app } = await import('../src/server.ts');
-
-const ORG_ID = '00000000-0000-0000-0000-000000000001';
-const USER_ID = '00000000-0000-0000-0000-000000000002';
-
-describe('workspace compliance acknowledgement routes', () => {
-  const recordedEvents: Array<{ consent_type: string; version: string }> = [];
-
-  beforeEach(() => {
-    recordedEvents.length = 0;
-    supabaseMock.from.mockReset();
-    supabaseMock.rpc.mockReset();
-    authorizeRequestWithGuards.mockClear();
-
-    supabaseMock.rpc.mockImplementation(async (fn: string, args: { events?: Array<{ consent_type: string; version: string }> }) => {
-      if (fn === 'record_consent_events') {
-        if (Array.isArray(args?.events)) {
-          recordedEvents.push(...args.events.map((event) => ({
-            consent_type: event.consent_type,
-            version: event.version,
-          })));
-        }
-        return { data: null, error: null };
-      }
-      return { data: null, error: null };
-    });
-
-    supabaseMock.from.mockImplementation((table: string) => {
-      if (table === 'consent_events') {
-        const builder: any = {};
-        builder.select = vi.fn(() => builder);
-        builder.eq = vi.fn(() => builder);
-        builder.or = vi.fn(() => builder);
-        builder.in = vi.fn(() => builder);
-        builder.order = vi.fn(() =>
-          Promise.resolve({
-            data: recordedEvents.map((event) => ({
-              consent_type: event.consent_type,
-              version: event.version,
-              created_at: new Date().toISOString(),
-            })),
-            error: null,
-          }),
-        );
-        return builder;
-      }
-      throw new Error(`Unexpected table ${table}`);
-    });
+async function setupApp(result: QueryResult) {
+  const app = Fastify({
+    ajv: {
+      customOptions: {
+        removeAdditional: false,
+      },
+    },
   });
+  const supabase = { from: vi.fn() };
+  const context: AppContext = {
+    supabase: supabase as unknown as AppContext['supabase'],
+    config: {
+      openai: {
+        apiKey: 'test-key',
+      },
+    },
+    container: {} as AppContext['container'],
+  };
 
-  it('records consent acknowledgements with canonical type', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/compliance/acknowledgements',
-      headers: { 'x-org-id': ORG_ID, 'x-user-id': USER_ID },
-      payload: { consent: { type: 'ai_assist', version: '2024-10-01' } },
-    });
+  const queryBuilder = createQueryBuilder(result);
+  supabase.from.mockReturnValue(queryBuilder);
+
+  await registerWorkspaceRoutes(app, context);
+  await app.ready();
+
+  return { app, supabase, queryBuilder };
+}
+
+describe('workspace routes', () => {
+  const orgId = '550e8400-e29b-41d4-a716-446655440000';
+
+  it('returns the recent workspace runs', async () => {
+    const { app, supabase, queryBuilder } = await setupApp({ data: [{ id: 'run-1' }], error: null });
+
+    const response = await app.inject({ method: 'GET', url: `/workspace?orgId=${orgId}` });
 
     expect(response.statusCode).toBe(200);
-    expect(supabaseMock.rpc).toHaveBeenCalledWith(
-      'record_consent_events',
-      expect.objectContaining({
-        events: expect.arrayContaining([
-          expect.objectContaining({ consent_type: 'ai_assist', version: '2024-10-01' }),
-        ]),
-      }),
-    );
+    expect(JSON.parse(response.body)).toEqual({ runs: [{ id: 'run-1' }] });
+    expect(supabase.from).toHaveBeenCalledWith('agent_runs');
+    expect(queryBuilder.select).toHaveBeenCalledWith('id');
+    expect(queryBuilder.eq).toHaveBeenCalledWith('org_id', orgId);
+    expect(queryBuilder.limit).toHaveBeenCalledWith(1);
+
+    await app.close();
   });
 
-  it('rejects unsupported consent types with 400', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/compliance/acknowledgements',
-      headers: { 'x-org-id': ORG_ID, 'x-user-id': USER_ID },
-      payload: { consent: { type: 'not-real', version: '2024-10-01' } },
-    });
+  it('returns an error when the query fails', async () => {
+    const { app } = await setupApp({ data: null, error: { message: 'boom' } });
+
+    const response = await app.inject({ method: 'GET', url: `/workspace?orgId=${orgId}` });
+
+    expect(response.statusCode).toBe(500);
+    expect(JSON.parse(response.body)).toEqual({ error: 'workspace_failed' });
+
+    await app.close();
+  });
+
+  it('rejects requests with unknown query parameters', async () => {
+    const { app, supabase } = await setupApp({ data: null, error: null });
+
+    const response = await app.inject({ method: 'GET', url: `/workspace?orgId=${orgId}&unexpected=value` });
 
     expect(response.statusCode).toBe(400);
-    expect(supabaseMock.rpc).not.toHaveBeenCalled();
+    const errorBody = JSON.parse(response.body);
+    expect(errorBody).toMatchObject({ statusCode: 400, error: 'Bad Request' });
+    expect(errorBody.message).toMatch(/additional properties/);
+    expect(supabase.from).not.toHaveBeenCalled();
+
+    await app.close();
   });
 });
