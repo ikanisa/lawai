@@ -9,7 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "prepare-sw": "node ./scripts/prepare-sw.mjs",
-    "start": "next start",
+    "start": "next start -p ${PORT:-3000}",
     "lint": "eslint --max-warnings=0 app src",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run",

@@ -47,4 +47,4 @@
 7. **Provide a Responses streaming helper.** Introduce a utility in `@avocat-ai/shared/openai` that wraps `client.responses.create` with SSE iteration, request tagging, and debug logging so both API and Edge workers share consistent behaviour. 【F:packages/shared/src/openai/client.ts†L1-L176】
 
 ## Cross-cutting opportunities
-- Align Supabase schemas, the Fastify API, Next.js admin views, and Ops tooling around a single source of truth for Responses API runs to meet CEPEJ transparency commitments and simplify Vercel deployment checks. 【F:README.md†L55-L160】【F:apps/api/src/agent.ts†L847-L935】【F:apps/web/src/server/admin/handlers.ts†L45-L145】
+- Align Supabase schemas, the Fastify API, Next.js admin views, and Ops tooling around a single source of truth for Responses API runs to meet CEPEJ transparency commitments and simplify legacy hosting platform deployment checks. 【F:README.md†L55-L160】【F:apps/api/src/agent.ts†L847-L935】【F:apps/web/src/server/admin/handlers.ts†L45-L145】

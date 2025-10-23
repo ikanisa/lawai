@@ -51,7 +51,7 @@ Each task links to a `start-task://` placeholder that workflow tooling can inter
 
 ## T6 – Add Responses health and quota diagnostics to ops toolkit
 - Extend the CLI beyond the current jurisdiction smoke test so operators can list active Responses runs, detect stuck streams, and compare aggregate token usage against quotas. 【F:apps/ops/src/index.ts†L1-L27】
-- Output machine-readable JSON for CI gating, ensuring Vercel deploy checks block when telemetry drifts from policy thresholds.
+- Output machine-readable JSON for CI gating, ensuring legacy hosting platform deploy checks block when telemetry drifts from policy thresholds.
 
 [▶️ Start Task](start-task://responses-ops-cli)
 

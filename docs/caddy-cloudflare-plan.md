@@ -22,7 +22,7 @@ This document captures the repository-wide assessment and phased execution plan 
 - **Ignore rules.** `.gitignore` blocks node modules, pnpm state, `.turbo`, `.next`, and logs (`*.log`) but does not account for PID or log directories that background services might create (e.g., `.logs/`). Update rules before introducing background scripts.
 
 ### Deployment context
-- **Vercel deployments.** The admin (`apps/web`) deploys to Vercel; the new proxy/tunnel tooling must remain local-only. Document that Vercel workflows are unaffected and include a post-merge smoke test against the production deployment.
+- **legacy hosting platform deployments.** The admin (`apps/web`) deploys to legacy hosting platform; the new proxy/tunnel tooling must remain local-only. Document that legacy hosting platform workflows are unaffected and include a post-merge smoke test against the production deployment.
 - **Supabase + Cloudflare.** Supabase provides auth/storage while Cloudflare DNS is authoritative for the public hostname. Any new hostname must be added to Supabase redirect/CORS settings and Cloudflare Access policies to maintain login flows.
 - **Ops alignment.** Existing runbooks in `docs/operations/` and `docs/runbooks/` emphasise reversible automation. The new plan should mirror that tone with explicit rollback steps and references to existing incident response guides where applicable.
 
@@ -119,13 +119,13 @@ This document captures the repository-wide assessment and phased execution plan 
 - Draft validation checklist for PR body (make deps, start admin, test Caddy, configure Cloudflare, run tunnel, enforce Access, update Supabase CORS, end-to-end auth).
 - Describe rollback (stop services, remove `.logs` if desired, `brew uninstall caddy cloudflared`).
 - Ensure final PR summarises additive infra changes and includes verification steps (screenshots unnecessary unless UI changes occur).
-- Coordinate with release managers to schedule merge during a low-traffic window and prepare a Vercel smoke test (visit production admin, confirm login).
+- Coordinate with release managers to schedule merge during a low-traffic window and prepare a legacy hosting platform smoke test (visit production admin, confirm login).
 - Outline monitoring signals (Cloudflare Zero Trust logs, Supabase auth logs) to watch post-merge.
 
 :::task-stub{title="Validate and land the feature"}
 1. Run through the local validation plan; capture any macOS-specific caveats for reviewers.
 2. Assemble PR body with checklist and rollback instructions; request review from infra owners.
-3. After approval and merge, monitor Vercel deployment (if admin app is deployed there) to confirm unaffected behaviour.
+3. After approval and merge, monitor legacy hosting platform deployment (if admin app is deployed there) to confirm unaffected behaviour.
 4. Document Cloudflare Access logs and Supabase metrics to review during rollout; link them in the PR for reviewers.
 :::
 

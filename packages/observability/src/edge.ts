@@ -3,7 +3,8 @@ import { context, trace, SpanStatusCode, diag, DiagConsoleLogger, DiagLogLevel, 
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { Resource } from '@opentelemetry/resources';
-import { PeriodicExportingMetricReader, MeterProvider, type Counter, type Histogram } from '@opentelemetry/sdk-metrics';
+import { PeriodicExportingMetricReader, MeterProvider } from '@opentelemetry/sdk-metrics';
+import type { Counter, Histogram } from '@opentelemetry/api';
 import { BasicTracerProvider, BatchSpanProcessor, type SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import type { EdgeTelemetryConfig, TelemetryRuntime } from './types.js';

@@ -56,7 +56,7 @@ secret or configuration knob is introduced.
 | --- | --- | --- |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Needed for server actions; must match shared values. | `apps/web/.env.example`, `apps/web/src/env.server.ts` |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Client-side Supabase initialisation. | Same |
-| `APP_ENV`, `VERCEL_ENV` | Distinguish deployment target. | Same |
+| `APP_ENV` | Distinguish deployment target (e.g., `local`, `staging`, `production`). | Same |
 | `ADMIN_PANEL_ACTOR`, `ADMIN_PANEL_ORG`, `FEAT_ADMIN_PANEL` | Toggles privileged UI features. | Same |
 | `NEXT_PUBLIC_*` thresholds | Dashboard tuning knobs for front-end. | `apps/web/.env.example`, `apps/web/src/env.client.ts` |
 | Divergence | Web does not read OpenAI credentials; only Supabase secrets flow through the shared helper with stricter validation on the service-role key. | `apps/web/src/env.server.ts` |
