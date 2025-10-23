@@ -190,6 +190,7 @@ const defaultAccessContext = {
     ipAllowlistEnforced: false,
     consentRequirement: null,
     councilOfEuropeRequirement: null,
+    sensitiveTopicHitl: false,
     residencyZone: null,
     residencyZones: null,
   },
@@ -706,33 +707,17 @@ describe('runLegalAgent', () => {
     expect(result.trustPanel?.caseQuality.items[0]?.score).toBeGreaterThan(0);
   });
 
-  it('generates distinct cache keys when the residency override changes', async () => {
+  it('generates distinct cache keys for different residency overrides', async () => {
     runMock.mockResolvedValue({
       finalOutput: validPayload,
     });
 
     const { runLegalAgent } = await import('../src/agent.ts');
 
-    await runLegalAgent(
-      {
-        question: 'Analyse en France',
-        orgId: '00000000-0000-0000-0000-000000000000',
-        userId: '00000000-0000-0000-0000-000000000000',
-      },
-      makeContext({
-        rawPolicies: { residency_zone: { zone: 'maghreb' } },
-        policies: {
-          ...defaultAccessContext.policies,
-          residencyZone: 'maghreb',
-          residencyZones: ['maghreb', 'eu'],
-        },
-      }),
-    );
-
-    const firstKey = extractRunKeyFromCalls();
-    expect(firstKey).toBeTruthy();
-
-    agentRunsSelectBuilder.eq.mockClear();
+    const euContext = makeContext({
+      rawPolicies: { residency_zone: 'eu' },
+      policies: { ...defaultAccessContext.policies, residencyZone: 'eu', residencyZones: ['eu'] },
+    });
 
     await runLegalAgent(
       {
@@ -740,23 +725,32 @@ describe('runLegalAgent', () => {
         orgId: '00000000-0000-0000-0000-000000000000',
         userId: '00000000-0000-0000-0000-000000000000',
       },
-      makeContext({
-        rawPolicies: { residency_zone: { zone: 'ca' } },
-        policies: {
-          ...defaultAccessContext.policies,
-          residencyZone: 'ca',
-          residencyZones: ['ca'],
-        },
-      }),
+      euContext,
     );
 
-    const secondKey = extractRunKeyFromCalls();
-    expect(secondKey).toBeTruthy();
+    const firstKey = runInsertMock.mock.calls[0]?.[0]?.run_key;
+    expect(typeof firstKey).toBe('string');
 
-    expect(firstKey).not.toBe(secondKey);
+    const caContext = makeContext({
+      rawPolicies: { residency_zone: 'ca' },
+      policies: { ...defaultAccessContext.policies, residencyZone: 'ca', residencyZones: ['ca'] },
+    });
+
+    await runLegalAgent(
+      {
+        question: 'Analyse en France',
+        orgId: '00000000-0000-0000-0000-000000000000',
+        userId: '00000000-0000-0000-0000-000000000000',
+      },
+      caContext,
+    );
+
+    const secondKey = runInsertMock.mock.calls[1]?.[0]?.run_key;
+    expect(typeof secondKey).toBe('string');
+    expect(secondKey).not.toBe(firstKey);
   });
 
-  it('generates distinct cache keys when residency mappings differ', async () => {
+  it('disables web search when confidential mode is active', async () => {
     runMock.mockResolvedValue({
       finalOutput: validPayload,
     });
