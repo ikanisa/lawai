@@ -36,3 +36,7 @@ The learning loop monitors production signals, diagnoses regressions, proposes a
 - **Proposed changes** (P1) – review queue for synonyms, hints, canonicalizer, denylist modifications.
 - **Policy versions** (P1) – history, diff, rollback button.
 
+## Additional resources
+
+- [Semantic Search](./LEARNING_SEMANTIC_SEARCH.md) – step-by-step reference covering query rewriting, filtering, ranking, and vector store operations for the Retrieval API.
+

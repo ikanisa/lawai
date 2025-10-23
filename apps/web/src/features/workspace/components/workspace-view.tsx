@@ -10,8 +10,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Badge } from '@/ui/badge';
 import { Separator } from '@/ui/separator';
 import { JurisdictionChip } from '@/components/jurisdiction-chip';
-import { usePlanDrawer } from @/state/plan-drawer';
+import { usePlanDrawer } from '@/state/plan-drawer';
 import { PlanDrawer } from '@/components/plan-drawer';
+import { ChatkitSessionPanel } from '@/features/chatkit/components/chatkit-session-panel';
 import { MultiAgentDesk } from './multi-agent-desk';
 import { ProcessNavigator } from './process-navigator';
 import { useWorkspaceOverview } from '../hooks/use-workspace-overview';
@@ -250,6 +251,8 @@ export function WorkspaceView({ messages, locale }: WorkspaceViewProps) {
           </div>
         </div>
       </section>
+
+      <ChatkitSessionPanel messages={messages} locale={locale} />
 
       {desk ? (
         <MultiAgentDesk
