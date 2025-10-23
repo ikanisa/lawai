@@ -384,6 +384,7 @@ curl -X POST http://localhost:3000/runs \
 Le workflow GitHub Actions `.github/workflows/ci.yml` installe les dépendances PNPM, exécute `pnpm lint`, applique les migrations contre une instance Postgres de test et lance la suite de tests (`pnpm test`). Ajoutez vos étapes de déploiement selon vos environnements cibles pour garantir la conformité du plan de mise en production.
 
 Consult `docs/avocat_ai_bell_system_plan.md` for the full BELL analysis and delivery roadmap.
+Review [`docs/vector-embeddings.md`](docs/vector-embeddings.md) for guidance on selecting, generating, and scaling semantic embeddings with the latest OpenAI models.
 
 ## Troubleshooting
 
