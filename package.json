@@ -20,6 +20,7 @@
     "lint:sql:fix": "node ./scripts/lint-sql.mjs --fix",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "lint:docs": "pnpm dlx markdownlint-cli2 docs/vector-embeddings.md",
     "check:migrations": "node ./scripts/check-migrations.mjs",
     "dev:api": "npm run dev --workspace @apps/api",
     "dev:ops": "npm run dev --workspace @apps/ops",
