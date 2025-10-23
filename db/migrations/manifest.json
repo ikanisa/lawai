@@ -900,6 +900,15 @@
       "checksum": "sha256:b6edc6015b78a358ade2c450cd4fc8d0e0665258374b2ffb5309c8cf3ca9eb02",
       "dependsOn": "20251010010000_provenance_alerts_cron",
       "rollbackStrategy": "reapply-migration"
+    },
+    {
+      "id": "20251010030000_tool_telemetry_metadata",
+      "file": "20251010030000_tool_telemetry_metadata.sql",
+      "timestamp": "20251010030000",
+      "slug": "tool_telemetry_metadata",
+      "checksum": "sha256:68afd425b74b4fe558f5569eb1e3c36d31ea5dfe5c92abac641ebb29bfc4c289",
+      "dependsOn": "20251010020000_compliance_ack_transaction",
+      "rollbackStrategy": "reapply-migration"
     }
   ]
 }

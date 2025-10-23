@@ -49,27 +49,45 @@ describe('PWA agent-first routes', () => {
     expect(() => ResearchDeskContextSchema.parse(payload)).not.toThrow();
   });
 
-  it('creates a simulated agent run and streams events', async () => {
+  it.each([
+    {
+      mode: 'allowlist' as const,
+      tools: ['web_search', 'file_search'],
+      expectedDetail: 'Requête ciblée sur le JO OHADA et les bulletins officiels.',
+    },
+    {
+      mode: 'broad' as const,
+      tools: ['web_search', 'file_search'],
+      expectedDetail: 'Recherche étendue incluant les sources publiques surveillées.',
+    },
+    {
+      mode: 'disabled' as const,
+      tools: ['file_search'],
+      expectedDetail: null,
+    },
+  ])('creates a simulated agent run and streams events for %s mode', async ({ mode, tools, expectedDetail }) => {
     const runResponse = await app.inject({
       method: 'POST',
       url: '/api/agents/run',
       payload: {
         input: 'Explique la procédure de résiliation dans un contrat OHADA',
         agent_id: 'research',
-        tools_enabled: ['web_search', 'file_search'],
+        tools_enabled: tools,
+        web_search_mode: mode,
       },
     });
 
     expect(runResponse.statusCode).toBe(200);
     const runPayload = JSON.parse(runResponse.body);
     const run = AgentRunSchema.parse(runPayload);
+    expect(run.webSearchMode).toBe(mode);
 
     const streamRequest = StubStreamRequestSchema.parse({
       input: 'Explique la procédure de résiliation dans un contrat OHADA',
       agent_id: run.agentId,
       run_id: run.id,
       thread_id: run.threadId,
-      tools_enabled: ['web_search', 'file_search'],
+      tools_enabled: tools,
     });
 
     const streamResponse = await app.inject({
@@ -88,11 +106,23 @@ describe('PWA agent-first routes', () => {
     const streamEvents = lines.slice(0, -1);
     expect(streamEvents.length).toBeGreaterThan(0);
 
-    for (const event of streamEvents) {
+    const parsedEvents = streamEvents.map((event) => {
       expect(typeof event.type).toBe('string');
       if (event.type !== 'done') {
         expect(() => ResearchStreamPayloadSchema.parse(event.data)).not.toThrow();
       }
+      return event;
+    });
+
+    const webSearchEvents = parsedEvents.filter(
+      (event) => event.type === 'tool' && event.data.tool?.name === 'web_search',
+    );
+
+    if (expectedDetail) {
+      expect(webSearchEvents).not.toHaveLength(0);
+      expect(webSearchEvents[0]?.data.tool?.detail).toBe(expectedDetail);
+    } else {
+      expect(webSearchEvents).toHaveLength(0);
     }
 
     const webSearchEvents = streamEvents.filter(
