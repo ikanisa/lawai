@@ -6,7 +6,7 @@ const resolveFromRoot = (relativePath: string) => path.resolve(__dirname, relati
 export default defineConfig({
   test: {
     environment: 'node',
-    setupFiles: ['./test/setup-env.ts'],
+    setupFiles: ['test/setup-env.ts'],
   },
   resolve: {
     alias: {

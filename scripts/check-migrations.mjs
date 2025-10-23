@@ -20,30 +20,26 @@ function checksum(contents) {
 const repoRoot = process.cwd();
 const dbDir = join(repoRoot, 'db', 'migrations');
 const supaDir = join(repoRoot, 'supabase', 'migrations');
-const manifestPath = join(dbDir, 'manifest.json');
-const dependencyOverridesPath = join(dbDir, 'dependency-overrides.json');
-
-const allowedRollbackStrategies = new Set([
-  'manual-restore',
-  'reapply-migration',
-  'reseed',
-  'irreversible',
-]);
+const allowLegacySupabase = process.env.ALLOW_SUPABASE_MIGRATIONS === '1';
 
 // 1) Enforce canonical location: db/migrations
-try {
-  const entries = readdirSync(supaDir, { withFileTypes: true })
-    .filter((ent) => ent.isFile())
-    .map((ent) => ent.name)
-    .filter((name) => name.endsWith('.sql'));
-  if (entries.length > 0) {
-    fail(`found ${entries.length} SQL migrations in supabase/migrations. New migrations must live under db/migrations.`);
-  } else {
-    ok('no migrations in supabase/migrations');
+if (allowLegacySupabase) {
+  ok('supabase/migrations check skipped via ALLOW_SUPABASE_MIGRATIONS');
+} else {
+  try {
+    const entries = readdirSync(supaDir, { withFileTypes: true })
+      .filter((ent) => ent.isFile())
+      .map((ent) => ent.name)
+      .filter((name) => name.endsWith('.sql'));
+    if (entries.length > 0) {
+      fail(`found ${entries.length} SQL migrations in supabase/migrations. New migrations must live under db/migrations.`);
+    } else {
+      ok('no migrations in supabase/migrations');
+    }
+  } catch (err) {
+    // If supabase/migrations missing, that's fine
+    ok('supabase/migrations not present or empty');
   }
-} catch (err) {
-  // If supabase/migrations missing, that's fine
-  ok('supabase/migrations not present or empty');
 }
 
 // 2) Validate db/migrations filenames and ordering

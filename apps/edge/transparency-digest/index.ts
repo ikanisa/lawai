@@ -5,6 +5,11 @@ import {
   type TransparencyReport,
 } from 'npm:@avocat-ai/shared/transparency';
 import { createEdgeClient, EdgeSupabaseClient, rowsAs } from '../lib/supabase.ts';
+import {
+  formatTransparencyDigest,
+  type TransparencyDigestRecord,
+  type TransparencyMetrics,
+} from '../../../packages/shared/src/transparency/digest.ts';
 
 type Env = {
   supabaseUrl?: string;
@@ -13,7 +18,7 @@ type Env = {
   days?: number;
 };
 
-type TransparencyReportRow = TransparencyReport;
+type TransparencyReportRow = TransparencyDigestRecord & { metrics: TransparencyMetrics };
 
 type PublicationResult = {
   orgId: string;
@@ -51,6 +56,14 @@ async function listOrganisationIds(client: EdgeSupabaseClient, orgId?: string): 
   return rows
     .map((row) => row.id)
     .filter((value): value is string => typeof value === 'string' && value.length > 0);
+}
+
+function buildReportLink(row: TransparencyReportRow): string {
+  return `https://docs.avocat-ai.example/transparency-reports/${row.org_id}/${row.id}`;
+}
+
+function buildDigest(reference: Date, reports: TransparencyReportRow[]): { markdown: string; summary: string } {
+  return formatTransparencyDigest(reference, reports, { linkBuilder: buildReportLink });
 }
 
 Deno.serve(async (req) => {
