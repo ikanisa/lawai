@@ -1,6 +1,11 @@
 import { apiFetch } from "@/lib/apiClient";
 import { consumeEventStream, type StreamEvent } from "@/lib/openaiStream";
-import type { AgentRun, ResearchDeskContext, ResearchStreamPayload } from "@avocat-ai/shared";
+import type {
+  AgentRun,
+  ResearchDeskContext,
+  ResearchStreamPayload,
+  WebSearchMode
+} from "@avocat-ai/shared";
 
 export type {
   ResearchPlan,
@@ -8,7 +13,8 @@ export type {
   ResearchCitation,
   ResearchFilterOption,
   ResearchRiskLevel,
-  ResearchDeskContext
+  ResearchDeskContext,
+  WebSearchMode
 } from "@avocat-ai/shared";
 
 export type ResearchStreamEvent = StreamEvent<ResearchStreamPayload>;

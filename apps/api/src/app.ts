@@ -1,6 +1,6 @@
-// @ts-nocheck
 import Fastify from 'fastify';
-import { registerWorkspaceRoutes } from './domain/workspace/routes';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
 import { registerCorpusRoutes } from './routes/corpus/index.js';
@@ -11,12 +11,25 @@ import { registerRealtimeRoutes } from './routes/realtime/index.js';
 import { registerResearchRoutes } from './routes/research/index.js';
 import { registerUploadRoutes } from './routes/upload/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
-import type { AppContext } from './types/context';
+import type { AppContext } from './types/context.js';
 import { env } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
+import { createAppContainer, type AppContainerOverrides } from './core/container.js';
+import { observabilityPlugin } from './core/observability/observability-plugin.js';
 
-export async function createApp() {
+export interface CreateAppOptions {
+  supabase?: SupabaseClient;
+  overrides?: AppContainerOverrides;
+  registerWorkspaceRoutes?: boolean;
+}
+
+export async function createApp(options: CreateAppOptions = {}) {
   const app = Fastify({
+    ajv: {
+      customOptions: {
+        removeAdditional: false,
+      },
+    },
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
       redact: [
@@ -38,7 +51,17 @@ export async function createApp() {
     },
   });
 
-  const supabase = serviceClient;
+  await app.register(observabilityPlugin);
+
+  const { supabase: supabaseOverride, overrides, includeWorkspaceDomainRoutes = false } = options;
+
+  const supabase = supabaseOverride ?? serviceClient;
+  const container = createAppContainer({
+    supabase,
+    ...(overrides ?? {}),
+  });
+
+  const shouldRegisterWorkspaceRoutes = options.registerWorkspaceRoutes ?? true;
 
   const context: AppContext = {
     supabase,
@@ -48,6 +71,7 @@ export async function createApp() {
         baseUrl: process.env.OPENAI_BASE_URL,
       },
     },
+    container,
   };
 
   await app.register(async (instance) => {
@@ -63,7 +87,12 @@ export async function createApp() {
     await registerRealtimeRoutes(instance, context);
   }, { prefix: '/api' });
 
-  await registerWorkspaceRoutes(app, context);
+  if (!(app as any).workspaceRoutesRegistered) {
+    if (shouldRegisterWorkspaceRoutes) {
+      await registerWorkspaceRoutes(app, context);
+      (app as any).workspaceRoutesRegistered = true;
+    }
+  }
 
   return { app, context };
 }

@@ -10,6 +10,10 @@ export const AgentRunStatusSchema = z.enum([
 
 export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
 
+export const WebSearchModeSchema = z.enum(['disabled', 'allowlist', 'broad']);
+
+export type WebSearchMode = z.infer<typeof WebSearchModeSchema>;
+
 export const AgentRunSchema = z
   .object({
     id: z.string(),

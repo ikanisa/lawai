@@ -1,7 +1,8 @@
 import { createApp } from './app.js';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
-import type { IRACPayload } from '@avocat-ai/shared';
+import { WebSearchModeSchema } from '@avocat-ai/shared';
+import type { IRACPayload, WebSearchMode } from '@avocat-ai/shared';
 import { z } from 'zod';
 import { env } from './config.js';
 import { IRACPayloadSchema } from './schemas/irac.js';
@@ -9,11 +10,13 @@ import { getOpenAI, logOpenAIDebug, setOpenAILogger } from './openai.js';
 import { getHybridRetrievalContext, runLegalAgent } from './agent-wrapper.js';
 import { summariseDocumentFromPayload } from './summarization.js';
 // Defer finance workers to runtime without affecting typecheck
-try {
-  const dyn = new Function('p', 'return import(p)');
-  // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  (dyn as any)('./finance-workers.js');
-} catch {}
+if (process.env.NODE_ENV !== 'test') {
+  try {
+    const dyn = new Function('p', 'return import(p)');
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    (dyn as any)('./finance-workers.js');
+  } catch {}
+}
 import { z as zod } from 'zod';
 import {
   buildTransparencyReport,
@@ -60,13 +63,14 @@ import { authorizeRequestWithGuards } from './http/authorization.js';
 import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
-import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
 import { InMemoryRateLimiter } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
+import { registerGracefulShutdown } from './core/lifecycle/graceful-shutdown.js';
 
-const { app, context } = await createApp();
+const { app, context } = await createApp({ registerWorkspaceRoutes: false });
+registerGracefulShutdown(app);
 
 setOpenAILogger(app.log);
 
@@ -80,6 +84,7 @@ async function embedQuery(text: string): Promise<number[]> {
     const response = await openai.embeddings.create({
       model: env.EMBEDDING_MODEL,
       input: text,
+      ...(env.EMBEDDING_DIMENSION ? { dimensions: env.EMBEDDING_DIMENSION } : {}),
     });
 
     const embedding = response.data?.[0]?.embedding;
@@ -334,11 +339,11 @@ async function determineResidencyZone(
   return zone;
 }
 
-const complianceAckSchema = z
+const complianceAcknowledgementBodySchema = z
   .object({
     consent: z
       .object({
-        type: z.string().min(1),
+        type: z.literal(COMPLIANCE_ACK_TYPES.consent),
         version: z.string().min(1),
       })
       .nullable()
@@ -401,7 +406,7 @@ interface ChangeLogRow {
 }
 
 registerChatkitRoutes(app, { supabase });
-registerOrchestratorRoutes(app, { supabase });
+registerOrchestratorRoutes(app, context);
 
 const GO_NO_GO_SECTIONS = new Set(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
 const GO_NO_GO_STATUSES = new Set(['pending', 'satisfied']);
@@ -769,7 +774,7 @@ app.get('/compliance/acknowledgements', async (request, reply) => {
   }
 });
 
-app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledgements', async (request, reply) => {
+app.post<{ Body: z.infer<typeof complianceAcknowledgementBodySchema> }>('/compliance/acknowledgements', async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -779,7 +784,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     return reply.code(400).send({ error: 'x-org-id header is required' });
   }
 
-  const parsed = complianceAckSchema.safeParse(request.body ?? {});
+  const parsed = complianceAcknowledgementBodySchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
   }
@@ -804,7 +809,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     records.push({
       user_id: userHeader,
       org_id: orgHeader,
-      consent_type: parsed.data.consent.type,
+      consent_type: COMPLIANCE_ACK_TYPES.consent,
       version: parsed.data.consent.version,
     });
   }
@@ -3886,243 +3891,6 @@ app.post<{
   return reply.code(204).send();
   },
 );
-
-app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply) => {
-  const { orgId } = request.query;
-
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
-    const [jurisdictionsResult, mattersResult, complianceResult, hitlResult] = await Promise.all([
-      supabase.from('jurisdictions').select('code, name, eu, ohada').order('name', { ascending: true }),
-      supabase
-        .from('agent_runs')
-        .select('id, question, risk_level, hitl_required, status, started_at, finished_at, jurisdiction_json')
-        .eq('org_id', orgId)
-        .order('started_at', { ascending: false })
-        .limit(8),
-      supabase
-        .from('sources')
-        .select('id, title, publisher, source_url, jurisdiction_code, consolidated, effective_date, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(8),
-      supabase
-        .from('hitl_queue')
-        .select('id, run_id, reason, status, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(8),
-    ]);
-
-    const jurisdictionRows = jurisdictionsResult.data ?? [];
-    const matterRows = mattersResult.data ?? [];
-    const complianceRows = complianceResult.data ?? [];
-    const hitlRows = hitlResult.data ?? [];
-
-    if (jurisdictionsResult.error) {
-      request.log.error({ err: jurisdictionsResult.error }, 'workspace jurisdictions query failed');
-    }
-    if (mattersResult.error) {
-      request.log.error({ err: mattersResult.error }, 'workspace matters query failed');
-    }
-    if (complianceResult.error) {
-      request.log.error({ err: complianceResult.error }, 'workspace compliance query failed');
-    }
-    if (hitlResult.error) {
-      request.log.error({ err: hitlResult.error }, 'workspace hitl query failed');
-    }
-
-    const matterCounts = new Map<string, number>();
-    for (const row of matterRows) {
-      const jurisdiction = extractCountry(row.jurisdiction_json);
-      const key = jurisdiction ?? 'UNK';
-      matterCounts.set(key, (matterCounts.get(key) ?? 0) + 1);
-    }
-
-    const jurisdictions = jurisdictionRows.map((row) => ({
-      code: row.code,
-      name: row.name,
-      eu: row.eu,
-      ohada: row.ohada,
-      matterCount: matterCounts.get(row.code) ?? 0,
-    }));
-
-    const matters = matterRows.map((row) => ({
-      id: row.id,
-      question: row.question,
-      status: row.status,
-      riskLevel: row.risk_level,
-      hitlRequired: row.hitl_required,
-      startedAt: row.started_at,
-      finishedAt: row.finished_at,
-      jurisdiction: extractCountry(row.jurisdiction_json),
-    }));
-
-    const complianceWatch = complianceRows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      publisher: row.publisher,
-      url: row.source_url,
-      jurisdiction: row.jurisdiction_code,
-      consolidated: row.consolidated,
-      effectiveDate: row.effective_date,
-      createdAt: row.created_at,
-    }));
-
-    const hitlInbox = hitlRows.map((row) => ({
-      id: row.id,
-      runId: row.run_id,
-      reason: row.reason,
-      status: row.status,
-      createdAt: row.created_at,
-    }));
-
-    const pendingCount = hitlInbox.filter((item) => item.status === 'pending').length;
-
-    return {
-      jurisdictions,
-      matters,
-      complianceWatch,
-      hitlInbox: {
-        items: hitlInbox,
-        pendingCount,
-      },
-      desk: buildPhaseCWorkspaceDesk(),
-      navigator: buildPhaseCProcessNavigator(),
-    };
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error }, 'workspace overview failed');
-    return reply.code(500).send({ error: 'workspace_failed' });
-  }
-});
-
-app.get<{ Querystring: { orgId?: string } }>('/citations', async (request, reply) => {
-  const { orgId } = request.query;
-
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('citations:view', orgId, userHeader, request);
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error }, 'citations authorization failed');
-    return reply.code(403).send({ error: 'forbidden' });
-  }
-
-  const { data, error } = await supabase
-    .from('sources')
-    .select(
-      'id, title, source_type, jurisdiction_code, source_url, publisher, binding_lang, consolidated, language_note, effective_date, created_at, capture_sha256',
-    )
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: false })
-    .limit(50);
-
-  if (error) {
-    request.log.error({ err: error }, 'citations query failed');
-    return reply.code(500).send({ error: 'citations_failed' });
-  }
-
-  return {
-    entries: (data ?? []).map((row) => ({
-      id: row.id,
-      title: row.title,
-      sourceType: row.source_type,
-      jurisdiction: row.jurisdiction_code,
-      url: row.source_url,
-      publisher: row.publisher,
-      bindingLanguage: row.binding_lang,
-      consolidated: row.consolidated,
-      languageNote: row.language_note,
-      effectiveDate: row.effective_date,
-      capturedAt: row.created_at,
-      checksum: row.capture_sha256,
-    })),
-  };
-});
-
-app.get<{ Querystring: { orgId?: string; sourceId?: string } }>('/case-scores', async (request, reply) => {
-  const { orgId, sourceId } = request.query;
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('cases:view', orgId, userHeader, request);
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error }, 'case_scores authorization failed');
-    return reply.code(403).send({ error: 'forbidden' });
-  }
-
-  const query = supabase
-    .from('case_scores')
-    .select('id, source_id, juris_code, score_overall, axes, hard_block, version, model_ref, notes, computed_at, sources(title, source_url, trust_tier, court_rank)')
-    .eq('org_id', orgId)
-    .order('computed_at', { ascending: false })
-    .limit(50);
-
-  if (sourceId) {
-    query.eq('source_id', sourceId);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    request.log.error({ err: error }, 'case_scores query failed');
-    return reply.code(500).send({ error: 'case_scores_failed' });
-  }
-
-  return {
-    scores: (data ?? []).map((row) => ({
-      id: row.id,
-      sourceId: row.source_id,
-      jurisdiction: row.juris_code,
-      score: row.score_overall,
-      axes: row.axes,
-      hardBlock: row.hard_block,
-      version: row.version,
-      modelRef: row.model_ref,
-      notes: row.notes,
-      computedAt: row.computed_at,
-      source: (row as any).sources
-        ? {
-            title: (row as any).sources.title,
-            url: (row as any).sources.source_url,
-            trustTier: (row as any).sources.trust_tier,
-            courtRank: (row as any).sources.court_rank,
-          }
-        : null,
-    })),
-  };
-});
 
 app.get<{ Querystring: { orgId?: string; sourceId?: string } }>('/case-treatments', async (request, reply) => {
   const { orgId, sourceId } = request.query;

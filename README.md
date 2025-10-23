@@ -26,7 +26,7 @@ packages/
    ```bash
    pnpm install
    ```
-2. Copy `.env.example` to `.env` and fill in required secrets.
+2. Copy `.env.example` to `.env.local` and fill in required secrets. The `.env.local` file is gitignored so credentials stay local-only.
 3. Apply database migrations directly against your Supabase instance (requires `SUPABASE_DB_URL`):
    ```bash
    pnpm db:migrate
@@ -52,6 +52,30 @@ packages/
    pnpm dev:web
    ```
 
+For a full MacBook playbook (including production-style builds), consult [`docs/local-hosting.md`](docs/local-hosting.md).
+
+### Environment configuration (local-first)
+
+- Store shared secrets in the repository root `.env.local`.
+- Each application (`apps/api`, `apps/web`, `apps/ops`) exposes its own `.env.example`; copy them to `.env.local` alongside the service when overrides are required.
+- Supply Supabase credentials everywhere they are referenced:
+  - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+  - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- Populate the OpenAI keys (`OPENAI_API_KEY`, `OPENAI_VECTOR_STORE_AUTHORITIES_ID`, etc.) to unlock ingestion, evaluations, and transparency tooling.
+
+### Supabase usage recap
+
+- `pnpm db:migrate` applies SQL migrations to the configured Supabase project.
+- `pnpm --filter @apps/ops bootstrap` provisions buckets and allowlists.
+- `pnpm ops:foundation` performs a complete provisioning run (migrations, vector store creation, guardrail validation).
+- `pnpm ops:check` validates Supabase extensions, buckets, vector stores, and allowlists on demand.
+
+### Local-first replacements for legacy Vercel tooling
+
+- Environment examples now expose only Supabase and local hosting variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, etc.); all `VERCEL_*` placeholders were removed.
+- Scheduled tasks should be orchestrated locally following [`scripts/cron.md`](scripts/cron.md) (via `node-cron`, `launchd`, or your preferred scheduler).
+- Deployment metadata is derived from `APP_ENV`/`.env.local`; there are no implicit dependencies on Vercel-provided environment variables.
+
 ### Assembler les fondations en une étape
 
 Lorsque vous préparez un nouvel environnement (local ou cloud), exécutez :
@@ -64,6 +88,16 @@ La commande applique toutes les migrations, vérifie la présence des extensions
 provisionne les buckets privés (`authorities`, `uploads`, `snapshots`), synchronise les zones de résidence et l'allowlist,
 valide les garde-fous de résidence puis crée le vector store `authorities-francophone` si nécessaire.
 Elle échoue immédiatement si un secret critique (OpenAI ou Supabase) reste en valeur par défaut.
+
+#### Garde-fous sur les secrets de production
+
+Au démarrage en production, l'API refusera les valeurs de configuration suivantes :
+
+- `SUPABASE_URL` pointant vers `https://example.supabase.co`, `https://project.supabase.co` ou toute URL `localhost`.
+- `OPENAI_API_KEY` contenant `CHANGEME`, `placeholder`, `test-openai-key` ou des clés factices commençant par `sk-test-`, `sk-demo-`, `sk-example-`, `sk-placeholder-`, `sk-dummy-` ou `sk-sample-`.
+- `SUPABASE_SERVICE_ROLE_KEY` contenant `placeholder` ou `service-role-test`.
+
+Mettez à jour vos secrets avant déploiement pour éviter l'échec `configuration_invalid`.
 
 ### Provisionner l'environnement complet
 
@@ -164,8 +198,8 @@ Un nouveau panneau d'administration Next.js est livré derrière le flag `FEAT_A
 développement et en préproduction, et reste désactivé en production tant que `FEAT_ADMIN_PANEL=1` n'est pas fourni.
 
 - **Activer localement** : ajoutez `FEAT_ADMIN_PANEL=1` à votre `.env.local`.
-- **Prévisualisation Vercel** : les environnements `preview` héritent d'un comportement activé par défaut.
-- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans les variables Vercel avant le déploiement.
+- **Prévisualisation (staging, recettes)** : définissez `APP_ENV=preview` ou exportez `FEAT_ADMIN_PANEL=1` dans votre orchestrateur (Docker Compose, Kubernetes, etc.).
+- **Production** : activez explicitement le flag via les variables d'environnement de votre plateforme de déploiement.
 
 Les routes `/api/admin/*` valident systématiquement la présence des en-têtes `x-admin-actor` et `x-admin-org` (ou retombent sur
 les valeurs de configuration `ADMIN_PANEL_ACTOR`/`ADMIN_PANEL_ORG`).

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-import { readdirSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 function fail(msg) {
@@ -12,9 +13,21 @@ function ok(msg) {
   console.log(`migrations_check_ok: ${msg}`);
 }
 
+function checksum(contents) {
+  return createHash('sha256').update(contents).digest('hex');
+}
+
 const repoRoot = process.cwd();
 const dbDir = join(repoRoot, 'db', 'migrations');
 const supaDir = join(repoRoot, 'supabase', 'migrations');
+const manifestPath = join(dbDir, 'manifest.json');
+
+const allowedRollbackStrategies = new Set([
+  'manual-restore',
+  'reapply-migration',
+  'reseed',
+  'irreversible',
+]);
 
 // 1) Enforce canonical location: db/migrations
 try {
@@ -33,34 +46,96 @@ try {
 }
 
 // 2) Validate db/migrations filenames and ordering
-const files = readdirSync(dbDir).filter((f) => f.endsWith('.sql')).sort();
+const files = readdirSync(dbDir)
+  .filter((f) => f.endsWith('.sql'))
+  .sort();
 if (files.length === 0) {
   ok('no db migrations found');
   process.exit(0);
 }
 
 const seen = new Set();
-let lastPrefix = '';
-for (const f of files) {
-  // Accept numeric prefixes, timestamps, or a numeric prefix with a single-letter suffix (e.g. 0006a_*)
-  const match = f.match(/^(\d{4,}[a-z]?|\d{14}|\d+)_/);
+let previousId = null;
+const manifestEntries = [];
+
+for (const file of files) {
+  const match = file.match(/^(\d{14})_([a-z0-9_]+)\.sql$/);
   if (!match) {
-    fail(`migration filename should start with a numeric or timestamp prefix: ${f}`);
+    fail(`migration filename must follow YYYYMMDDHHMMSS_slug.sql: ${file}`);
   }
-  const prefix = match[1];
-  if (seen.has(prefix)) {
-    fail(`duplicate migration prefix detected: ${prefix} (${f})`);
+  const [, timestamp, slug] = match;
+  const id = `${timestamp}_${slug}`;
+  if (seen.has(id)) {
+    fail(`duplicate migration identifier detected: ${id}`);
   }
-  seen.add(prefix);
-  if (lastPrefix && prefix < lastPrefix) {
-    fail(`migration ordering issue: ${f} has a lower prefix than previous ${lastPrefix}`);
+  seen.add(id);
+
+  const fileInfo = statSync(join(dbDir, file));
+  if (fileInfo.size === 0) {
+    fail(`empty migration file: ${file}`);
   }
-  lastPrefix = prefix;
-  // sanity: file not empty
-  const full = statSync(join(dbDir, f));
-  if (full.size === 0) {
-    fail(`empty migration file: ${f}`);
+
+  const contents = readFileSync(join(dbDir, file), 'utf8');
+  manifestEntries.push({
+    id,
+    timestamp,
+    slug,
+    file,
+    checksum: `sha256:${checksum(contents)}`,
+    dependsOn: previousId,
+  });
+  previousId = id;
+}
+
+ok(`validated ${files.length} db/migrations filenames and ordering`);
+
+// 3) Ensure manifest matches the filesystem view
+let manifest;
+try {
+  manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+} catch (error) {
+  fail(`unable to read migration manifest at ${manifestPath}: ${error instanceof Error ? error.message : error}`);
+}
+
+if (!manifest || !Array.isArray(manifest.migrations)) {
+  fail('migration manifest missing "migrations" array');
+}
+
+if (manifest.migrations.length !== manifestEntries.length) {
+  fail(
+    `manifest entry count ${manifest.migrations.length} does not match filesystem count ${manifestEntries.length}. Run node scripts/generate-migration-manifest.mjs`,
+  );
+}
+
+for (let index = 0; index < manifestEntries.length; index += 1) {
+  const expected = manifestEntries[index];
+  const actual = manifest.migrations[index];
+  if (!actual) {
+    fail(`manifest missing entry for ${expected.id}`);
+  }
+  if (actual.id !== expected.id) {
+    fail(`manifest entry ${index} id mismatch: expected ${expected.id}, received ${actual.id}`);
+  }
+  if (actual.file !== expected.file) {
+    fail(`manifest entry ${actual.id} file mismatch: expected ${expected.file}, received ${actual.file}`);
+  }
+  if (actual.timestamp !== expected.timestamp) {
+    fail(`manifest entry ${actual.id} timestamp mismatch: expected ${expected.timestamp}, received ${actual.timestamp}`);
+  }
+  if (actual.slug !== expected.slug) {
+    fail(`manifest entry ${actual.id} slug mismatch: expected ${expected.slug}, received ${actual.slug}`);
+  }
+  if (actual.dependsOn !== expected.dependsOn) {
+    fail(`manifest entry ${actual.id} dependsOn mismatch: expected ${expected.dependsOn}, received ${actual.dependsOn}`);
+  }
+  if (actual.checksum !== expected.checksum) {
+    fail(
+      `manifest entry ${actual.id} checksum mismatch: expected ${expected.checksum}, received ${actual.checksum}. Run node scripts/generate-migration-manifest.mjs`,
+    );
+  }
+  if (!allowedRollbackStrategies.has(actual.rollbackStrategy)) {
+    fail(`manifest entry ${actual.id} has unsupported rollback strategy ${actual.rollbackStrategy}`);
   }
 }
 
-ok(`validated ${files.length} db/migrations`);
+ok('migration manifest matches filesystem');
