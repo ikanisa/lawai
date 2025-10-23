@@ -1,7 +1,8 @@
 import { createApp } from './app.js';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { diffWordsWithSpace } from 'diff';
-import type { IRACPayload } from '@avocat-ai/shared';
+import { WebSearchModeSchema } from '@avocat-ai/shared';
+import type { IRACPayload, WebSearchMode } from '@avocat-ai/shared';
 import { z } from 'zod';
 import { env } from './config.js';
 import { IRACPayloadSchema } from './schemas/irac.js';
@@ -62,7 +63,7 @@ import { authorizeRequestWithGuards } from './http/authorization.js';
 import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
-import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
+import { getWorkspaceOverview } from './domain/workspace/overview.js';
 import { InMemoryRateLimiter } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
@@ -70,7 +71,9 @@ import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js'
 import { registerGracefulShutdown } from './core/lifecycle/graceful-shutdown.js';
 
 const { app, context } = await createApp();
-registerGracefulShutdown(app);
+registerGracefulShutdown(app, {
+  cleanup: () => context.container.dispose(),
+});
 
 setOpenAILogger(app.log);
 
@@ -339,19 +342,21 @@ async function determineResidencyZone(
   return zone;
 }
 
-const complianceAckSchema = z
+const complianceAcknowledgementBodySchema = z
   .object({
     consent: z
       .object({
-        type: z.string().min(1),
+        type: z.literal(COMPLIANCE_ACK_TYPES.consent),
         version: z.string().min(1),
       })
+      .strict()
       .nullable()
       .optional(),
     councilOfEurope: z
       .object({
         version: z.string().min(1),
       })
+      .strict()
       .nullable()
       .optional(),
   })
@@ -774,7 +779,7 @@ app.get('/compliance/acknowledgements', async (request, reply) => {
   }
 });
 
-app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledgements', async (request, reply) => {
+app.post<{ Body: z.infer<typeof complianceAcknowledgementBodySchema> }>('/compliance/acknowledgements', async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -784,7 +789,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     return reply.code(400).send({ error: 'x-org-id header is required' });
   }
 
-  const parsed = complianceAckSchema.safeParse(request.body ?? {});
+  const parsed = complianceAcknowledgementBodySchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
   }
@@ -809,7 +814,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     records.push({
       user_id: userHeader,
       org_id: orgHeader,
-      consent_type: parsed.data.consent.type,
+      consent_type: COMPLIANCE_ACK_TYPES.consent,
       version: parsed.data.consent.version,
     });
   }
@@ -1055,7 +1060,14 @@ app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/di
 app.get('/healthz', async () => ({ status: 'ok' }));
 
 app.post<{
-  Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
+  Body: {
+    question: string;
+    context?: string;
+    orgId?: string;
+    userId?: string;
+    confidentialMode?: boolean;
+    userLocation?: string;
+  };
 }>('/runs', async (request, reply) => {
   const bodySchema = z.object({
     question: z.string().min(1),
@@ -1063,17 +1075,28 @@ app.post<{
     orgId: z.string().uuid(),
     userId: z.string().uuid(),
     confidentialMode: z.coerce.boolean().optional(),
+    userLocation: z.string().optional(),
   });
   const parsed = bodySchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
   }
-  const { question, context, orgId, userId, confidentialMode } = parsed.data;
+  const { question, context, orgId, userId, confidentialMode, userLocation } = parsed.data;
 
   try {
     const access = await authorizeRequestWithGuards('runs:execute', orgId, userId, request);
     const effectiveConfidential = access.policies.confidentialMode || Boolean(confidentialMode);
-    const result = await runLegalAgent({ question, context, orgId, userId, confidentialMode: effectiveConfidential }, access);
+    const result = await runLegalAgent(
+      {
+        question,
+        context,
+        orgId,
+        userId,
+        confidentialMode: effectiveConfidential,
+        userLocationOverride: userLocation?.trim() ?? null,
+      },
+      access,
+    );
     // Validate payload at the boundary with a conservative schema
     const safePayload = IRACPayloadSchema.safeParse(result.payload);
 
@@ -3888,104 +3911,23 @@ app.get<{ Querystring: { orgId?: string } }>('/workspace', async (request, reply
 
   try {
     await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
-    const [jurisdictionsResult, mattersResult, complianceResult, hitlResult] = await Promise.all([
-      supabase.from('jurisdictions').select('code, name, eu, ohada').order('name', { ascending: true }),
-      supabase
-        .from('agent_runs')
-        .select('id, question, risk_level, hitl_required, status, started_at, finished_at, jurisdiction_json')
-        .eq('org_id', orgId)
-        .order('started_at', { ascending: false })
-        .limit(8),
-      supabase
-        .from('sources')
-        .select('id, title, publisher, source_url, jurisdiction_code, consolidated, effective_date, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(8),
-      supabase
-        .from('hitl_queue')
-        .select('id, run_id, reason, status, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(8),
-    ]);
 
-    const jurisdictionRows = jurisdictionsResult.data ?? [];
-    const matterRows = mattersResult.data ?? [];
-    const complianceRows = complianceResult.data ?? [];
-    const hitlRows = hitlResult.data ?? [];
+    const { overview, errors } = await getWorkspaceOverview(supabase, orgId);
 
-    if (jurisdictionsResult.error) {
-      request.log.error({ err: jurisdictionsResult.error }, 'workspace jurisdictions query failed');
+    if (errors.jurisdictions) {
+      request.log.error({ err: errors.jurisdictions }, 'workspace jurisdictions query failed');
     }
-    if (mattersResult.error) {
-      request.log.error({ err: mattersResult.error }, 'workspace matters query failed');
+    if (errors.matters) {
+      request.log.error({ err: errors.matters }, 'workspace matters query failed');
     }
-    if (complianceResult.error) {
-      request.log.error({ err: complianceResult.error }, 'workspace compliance query failed');
+    if (errors.compliance) {
+      request.log.error({ err: errors.compliance }, 'workspace compliance query failed');
     }
-    if (hitlResult.error) {
-      request.log.error({ err: hitlResult.error }, 'workspace hitl query failed');
+    if (errors.hitl) {
+      request.log.error({ err: errors.hitl }, 'workspace hitl query failed');
     }
 
-    const matterCounts = new Map<string, number>();
-    for (const row of matterRows) {
-      const jurisdiction = extractCountry(row.jurisdiction_json);
-      const key = jurisdiction ?? 'UNK';
-      matterCounts.set(key, (matterCounts.get(key) ?? 0) + 1);
-    }
-
-    const jurisdictions = jurisdictionRows.map((row) => ({
-      code: row.code,
-      name: row.name,
-      eu: row.eu,
-      ohada: row.ohada,
-      matterCount: matterCounts.get(row.code) ?? 0,
-    }));
-
-    const matters = matterRows.map((row) => ({
-      id: row.id,
-      question: row.question,
-      status: row.status,
-      riskLevel: row.risk_level,
-      hitlRequired: row.hitl_required,
-      startedAt: row.started_at,
-      finishedAt: row.finished_at,
-      jurisdiction: extractCountry(row.jurisdiction_json),
-    }));
-
-    const complianceWatch = complianceRows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      publisher: row.publisher,
-      url: row.source_url,
-      jurisdiction: row.jurisdiction_code,
-      consolidated: row.consolidated,
-      effectiveDate: row.effective_date,
-      createdAt: row.created_at,
-    }));
-
-    const hitlInbox = hitlRows.map((row) => ({
-      id: row.id,
-      runId: row.run_id,
-      reason: row.reason,
-      status: row.status,
-      createdAt: row.created_at,
-    }));
-
-    const pendingCount = hitlInbox.filter((item) => item.status === 'pending').length;
-
-    return {
-      jurisdictions,
-      matters,
-      complianceWatch,
-      hitlInbox: {
-        items: hitlInbox,
-        pendingCount,
-      },
-      desk: buildPhaseCWorkspaceDesk(),
-      navigator: buildPhaseCProcessNavigator(),
-    };
+    return overview;
   } catch (error) {
     if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
       return reply.code(error.statusCode).send({ error: error.message });
