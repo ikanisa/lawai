@@ -63,16 +63,17 @@ export function registerAvocatPwaRoutes(app: FastifyInstance) {
       const run = AgentRunSchema.parse({
         id: `run_${randomUUID()}`,
         agentId: parsed.agent_id,
-      threadId: `thread_${randomUUID()}`,
-      status: 'running',
-      createdAt: now,
-      updatedAt: now,
-      input: parsed.input,
-      jurisdiction: parsed.jurisdiction ?? null,
-      policyFlags: parsed.policy_flags ?? [],
-    });
-    reply.code(201);
-    return run;
+        threadId: `thread_${randomUUID()}`,
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+        input: parsed.input,
+        jurisdiction: parsed.jurisdiction ?? null,
+        policyFlags: parsed.policy_flags ?? [],
+        webSearchMode: parsed.web_search_mode ?? 'allowlist',
+      });
+      reply.code(201);
+      return run;
     },
   );
 
