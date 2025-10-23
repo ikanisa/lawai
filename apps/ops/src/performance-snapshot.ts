@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import ora from 'ora';
+import { createRestClient } from '@avocat-ai/api-clients';
 import { requireEnv } from './lib/env.js';
 import { createSupabaseService } from './lib/supabase.js';
 
@@ -57,43 +58,8 @@ function parseArgs(): CliOptions {
 }
 
 async function fetchMetrics(options: CliOptions) {
-  const response = await fetch(`${options.apiBaseUrl}/metrics/governance?orgId=${options.orgId}`, {
-    headers: {
-      'x-user-id': options.userId,
-    },
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Echec récupération métriques (${response.status}): ${body}`);
-  }
-
-  const json = (await response.json()) as {
-    overview: {
-      orgId: string;
-      totalRuns: number;
-      runsLast30Days: number;
-      highRiskRuns: number;
-      confidentialRuns: number;
-      avgLatencyMs: number;
-      allowlistedCitationRatio: number | null;
-      hitlPending: number;
-      hitlMedianResponseMinutes: number | null;
-      evaluationCases: number;
-      evaluationPassRate: number | null;
-    } | null;
-    tools: Array<{
-      toolName: string;
-      totalInvocations: number;
-      successCount: number;
-      failureCount: number;
-      avgLatencyMs: number;
-      p95LatencyMs: number | null;
-      lastInvokedAt: string | null;
-    }>;
-  };
-
-  return json;
+  const api = createRestClient({ baseUrl: options.apiBaseUrl });
+  return api.fetchGovernanceMetrics(options.orgId, options.userId);
 }
 
 async function recordSnapshot(

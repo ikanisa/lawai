@@ -39,6 +39,17 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
 
+      - name: Run platform evals (OpenAI Evals)
+        run: pnpm ops:evaluate -- --ci
+        env:
+          SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
+          EVAL_ORG_ID: ${{ secrets.EVAL_ORG_ID }}
+          EVAL_USER_ID: ${{ secrets.EVAL_USER_ID }}
+          OPENAI_EVAL_AGENT_ID: ${{ secrets.OPENAI_EVAL_AGENT_ID }}
+          OPENAI_EVAL_DATASET_MAP: ${{ secrets.OPENAI_EVAL_DATASET_MAP }}
+
       - name: Update link-health telemetry (HEAD checks)
         run: pnpm ops:link-health
         env:

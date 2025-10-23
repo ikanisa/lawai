@@ -1,48 +1,83 @@
-alter table public.org_policies enable row level security;
-alter table public.jurisdiction_entitlements enable row level security;
-alter table public.audit_events enable row level security;
-alter table public.consent_events enable row level security;
-alter table public.invitations enable row level security;
-alter table public.billing_accounts enable row level security;
+ALTER TABLE public.org_policies enable ROW level security;
 
-drop policy if exists org_policies_select on public.org_policies;
-create policy org_policies_select on public.org_policies
-  for select using (public.is_org_member(org_id));
-drop policy if exists org_policies_modify on public.org_policies;
-create policy org_policies_modify on public.org_policies
-  for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
+ALTER TABLE public.jurisdiction_entitlements enable ROW level security;
 
-drop policy if exists jurisdiction_entitlements_select on public.jurisdiction_entitlements;
-create policy jurisdiction_entitlements_select on public.jurisdiction_entitlements
-  for select using (public.is_org_member(org_id));
-drop policy if exists jurisdiction_entitlements_modify on public.jurisdiction_entitlements;
-create policy jurisdiction_entitlements_modify on public.jurisdiction_entitlements
-  for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
+ALTER TABLE public.audit_events enable ROW level security;
 
-drop policy if exists audit_events_select on public.audit_events;
-create policy audit_events_select on public.audit_events
-  for select using (public.is_org_member(org_id));
-drop policy if exists audit_events_insert on public.audit_events;
-create policy audit_events_insert on public.audit_events
-  for insert with check (public.is_org_member(org_id));
+ALTER TABLE public.consent_events enable ROW level security;
 
-drop policy if exists consent_events_select on public.consent_events;
-create policy consent_events_select on public.consent_events
-  for select using (public.is_org_member(org_id));
-drop policy if exists consent_events_insert on public.consent_events;
-create policy consent_events_insert on public.consent_events
-  for insert with check (public.is_org_member(org_id));
+ALTER TABLE public.invitations enable ROW level security;
 
-drop policy if exists invitations_select on public.invitations;
-create policy invitations_select on public.invitations
-  for select using (public.is_org_member(org_id));
-drop policy if exists invitations_modify on public.invitations;
-create policy invitations_modify on public.invitations
-  for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
+ALTER TABLE public.billing_accounts enable ROW level security;
 
-drop policy if exists billing_accounts_select on public.billing_accounts;
-create policy billing_accounts_select on public.billing_accounts
-  for select using (public.is_org_member(org_id));
-drop policy if exists billing_accounts_modify on public.billing_accounts;
-create policy billing_accounts_modify on public.billing_accounts
-  for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
+DROP POLICY if EXISTS org_policies_select ON public.org_policies;
+
+CREATE POLICY org_policies_select ON public.org_policies FOR
+SELECT
+  USING (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS org_policies_modify ON public.org_policies;
+
+CREATE POLICY org_policies_modify ON public.org_policies FOR ALL USING (public.is_org_member (org_id))
+WITH
+  CHECK (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS jurisdiction_entitlements_select ON public.jurisdiction_entitlements;
+
+CREATE POLICY jurisdiction_entitlements_select ON public.jurisdiction_entitlements FOR
+SELECT
+  USING (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS jurisdiction_entitlements_modify ON public.jurisdiction_entitlements;
+
+CREATE POLICY jurisdiction_entitlements_modify ON public.jurisdiction_entitlements FOR ALL USING (public.is_org_member (org_id))
+WITH
+  CHECK (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS audit_events_select ON public.audit_events;
+
+CREATE POLICY audit_events_select ON public.audit_events FOR
+SELECT
+  USING (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS audit_events_insert ON public.audit_events;
+
+CREATE POLICY audit_events_insert ON public.audit_events FOR insert
+WITH
+  CHECK (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS consent_events_select ON public.consent_events;
+
+CREATE POLICY consent_events_select ON public.consent_events FOR
+SELECT
+  USING (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS consent_events_insert ON public.consent_events;
+
+CREATE POLICY consent_events_insert ON public.consent_events FOR insert
+WITH
+  CHECK (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS invitations_select ON public.invitations;
+
+CREATE POLICY invitations_select ON public.invitations FOR
+SELECT
+  USING (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS invitations_modify ON public.invitations;
+
+CREATE POLICY invitations_modify ON public.invitations FOR ALL USING (public.is_org_member (org_id))
+WITH
+  CHECK (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS billing_accounts_select ON public.billing_accounts;
+
+CREATE POLICY billing_accounts_select ON public.billing_accounts FOR
+SELECT
+  USING (public.is_org_member (org_id));
+
+DROP POLICY if EXISTS billing_accounts_modify ON public.billing_accounts;
+
+CREATE POLICY billing_accounts_modify ON public.billing_accounts FOR ALL USING (public.is_org_member (org_id))
+WITH
+  CHECK (public.is_org_member (org_id));
