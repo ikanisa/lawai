@@ -1780,6 +1780,26 @@ export declare const SnapshotEntrySchema: z.ZodObject<{
     sizeMb: number;
 }>;
 export type SnapshotEntry = z.infer<typeof SnapshotEntrySchema>;
+export declare const UploadDocumentEntrySchema: z.ZodObject<{
+    id: z.ZodString;
+    name: z.ZodString;
+    createdAt: z.ZodString;
+    residencyZone: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    status: z.ZodOptional<z.ZodEnum<["queued", "processing", "indexed", "quarantined", "failed"]>>;
+}, "strict", z.ZodTypeAny, {
+    id: string;
+    createdAt: string;
+    name: string;
+    status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+    residencyZone?: string | null | undefined;
+}, {
+    id: string;
+    createdAt: string;
+    name: string;
+    status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+    residencyZone?: string | null | undefined;
+}>;
+export type UploadDocumentEntry = z.infer<typeof UploadDocumentEntrySchema>;
 export declare const IngestionJobSchema: z.ZodObject<{
     id: z.ZodString;
     filename: z.ZodString;
@@ -1806,6 +1826,17 @@ export declare const IngestionJobSchema: z.ZodObject<{
     note?: string | undefined;
 }>;
 export type IngestionJob = z.infer<typeof IngestionJobSchema>;
+export declare const ResidencySummarySchema: z.ZodObject<{
+    activeZone: z.ZodNullable<z.ZodString>;
+    allowedZones: z.ZodNullable<z.ZodArray<z.ZodString, "many">>;
+}, "strict", z.ZodTypeAny, {
+    activeZone: string | null;
+    allowedZones: string[] | null;
+}, {
+    activeZone: string | null;
+    allowedZones: string[] | null;
+}>;
+export type ResidencySummary = z.infer<typeof ResidencySummarySchema>;
 export declare const CorpusDashboardDataSchema: z.ZodObject<{
     allowlist: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
@@ -1895,6 +1926,35 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         progress: number;
         note?: string | undefined;
     }>, "many">;
+    uploads: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        name: z.ZodString;
+        createdAt: z.ZodString;
+        residencyZone: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        status: z.ZodOptional<z.ZodEnum<["queued", "processing", "indexed", "quarantined", "failed"]>>;
+    }, "strict", z.ZodTypeAny, {
+        id: string;
+        createdAt: string;
+        name: string;
+        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        residencyZone?: string | null | undefined;
+    }, {
+        id: string;
+        createdAt: string;
+        name: string;
+        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        residencyZone?: string | null | undefined;
+    }>, "many">;
+    residency: z.ZodOptional<z.ZodObject<{
+        activeZone: z.ZodNullable<z.ZodString>;
+        allowedZones: z.ZodNullable<z.ZodArray<z.ZodString, "many">>;
+    }, "strict", z.ZodTypeAny, {
+        activeZone: string | null;
+        allowedZones: string[] | null;
+    }, {
+        activeZone: string | null;
+        allowedZones: string[] | null;
+    }>>;
 }, "strict", z.ZodTypeAny, {
     allowlist: {
         type: "official" | "secondary" | "internal";
@@ -1928,6 +1988,17 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         progress: number;
         note?: string | undefined;
     }[];
+    uploads: {
+        id: string;
+        createdAt: string;
+        name: string;
+        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        residencyZone?: string | null | undefined;
+    }[];
+    residency?: {
+        activeZone: string | null;
+        allowedZones: string[] | null;
+    } | undefined;
 }, {
     allowlist: {
         type: "official" | "secondary" | "internal";
@@ -1961,6 +2032,17 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         progress: number;
         note?: string | undefined;
     }[];
+    uploads: {
+        id: string;
+        createdAt: string;
+        name: string;
+        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        residencyZone?: string | null | undefined;
+    }[];
+    residency?: {
+        activeZone: string | null;
+        allowedZones: string[] | null;
+    } | undefined;
 }>;
 export type CorpusDashboardData = z.infer<typeof CorpusDashboardDataSchema>;
 export declare const PolicyConfigurationSchema: z.ZodObject<{
@@ -1983,18 +2065,89 @@ export declare const PolicyConfigurationSchema: z.ZodObject<{
     confidential_mode: boolean;
 }>;
 export type PolicyConfiguration = z.infer<typeof PolicyConfigurationSchema>;
+export declare const UploadContractSchema: z.ZodObject<{
+    bucket: z.ZodString;
+    path: z.ZodString;
+    url: z.ZodString;
+    token: z.ZodString;
+    expiresAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    path: string;
+    url: string;
+    token: string;
+    bucket: string;
+    expiresAt: string;
+}, {
+    path: string;
+    url: string;
+    token: string;
+    bucket: string;
+    expiresAt: string;
+}>;
+export type UploadContract = z.infer<typeof UploadContractSchema>;
 export declare const UploadResponseSchema: z.ZodObject<{
     uploadId: z.ZodString;
     status: z.ZodEnum<["queued", "processing", "indexed"]>;
     receivedAt: z.ZodString;
+    upload: z.ZodObject<{
+        bucket: z.ZodString;
+        path: z.ZodString;
+        url: z.ZodString;
+        token: z.ZodString;
+        expiresAt: z.ZodString;
+    }, "strict", z.ZodTypeAny, {
+        path: string;
+        url: string;
+        token: string;
+        bucket: string;
+        expiresAt: string;
+    }, {
+        path: string;
+        url: string;
+        token: string;
+        bucket: string;
+        expiresAt: string;
+    }>;
+    quarantine: z.ZodOptional<z.ZodObject<{
+        reason: z.ZodString;
+        status: z.ZodDefault<z.ZodEnum<["pending", "resolved"]>>;
+    }, "strip", z.ZodTypeAny, {
+        status: "pending" | "resolved";
+        reason: string;
+    }, {
+        reason: string;
+        status?: "pending" | "resolved" | undefined;
+    }>>;
 }, "strict", z.ZodTypeAny, {
     status: "queued" | "processing" | "indexed";
     uploadId: string;
     receivedAt: string;
+    upload: {
+        path: string;
+        url: string;
+        token: string;
+        bucket: string;
+        expiresAt: string;
+    };
+    quarantine?: {
+        status: "pending" | "resolved";
+        reason: string;
+    } | undefined;
 }, {
     status: "queued" | "processing" | "indexed";
     uploadId: string;
     receivedAt: string;
+    upload: {
+        path: string;
+        url: string;
+        token: string;
+        bucket: string;
+        expiresAt: string;
+    };
+    quarantine?: {
+        reason: string;
+        status?: "pending" | "resolved" | undefined;
+    } | undefined;
 }>;
 export type UploadResponse = z.infer<typeof UploadResponseSchema>;
 export declare const VoiceToolIntentStatusSchema: z.ZodEnum<["scheduled", "running", "completed", "requires_hitl"]>;
