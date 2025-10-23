@@ -66,6 +66,7 @@ async function embedQuery(text: string): Promise<number[]> {
     const response = await openai.embeddings.create({
       model: env.EMBEDDING_MODEL,
       input: text,
+      ...(env.EMBEDDING_DIMENSION ? { dimensions: env.EMBEDDING_DIMENSION } : {}),
     });
 
     const embedding = response.data?.[0]?.embedding;
@@ -270,11 +271,11 @@ async function determineResidencyZone(
   return zone;
 }
 
-const complianceAckSchema = z
+const complianceAcknowledgementBodySchema = z
   .object({
     consent: z
       .object({
-        type: z.string().min(1),
+        type: z.literal(COMPLIANCE_ACK_TYPES.consent),
         version: z.string().min(1),
       })
       .nullable()
@@ -667,7 +668,7 @@ app.get('/compliance/acknowledgements', async (request, reply) => {
   }
 });
 
-app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledgements', async (request, reply) => {
+app.post<{ Body: z.infer<typeof complianceAcknowledgementBodySchema> }>('/compliance/acknowledgements', async (request, reply) => {
   const userHeader = request.headers['x-user-id'];
   if (!userHeader || typeof userHeader !== 'string') {
     return reply.code(401).send({ error: 'unauthorized' });
@@ -677,7 +678,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     return reply.code(400).send({ error: 'x-org-id header is required' });
   }
 
-  const parsed = complianceAckSchema.safeParse(request.body ?? {});
+  const parsed = complianceAcknowledgementBodySchema.safeParse(request.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ error: 'invalid_body', details: parsed.error.flatten() });
   }
@@ -695,7 +696,7 @@ app.post<{ Body: z.infer<typeof complianceAckSchema> }>('/compliance/acknowledge
     records.push({
       user_id: userHeader,
       org_id: orgHeader,
-      consent_type: parsed.data.consent.type,
+      consent_type: COMPLIANCE_ACK_TYPES.consent,
       version: parsed.data.consent.version,
     });
   }

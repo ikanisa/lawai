@@ -1,79 +1,147 @@
 -- Aggregated governance and performance metrics for dashboards
-create or replace view public.org_metrics as
-select
-  o.id as org_id,
+CREATE OR REPLACE VIEW public.org_metrics AS
+SELECT
+  o.id AS org_id,
   o.name,
-  coalesce(runs.total_runs, 0) as total_runs,
-  coalesce(runs.runs_last_30_days, 0) as runs_last_30_days,
-  coalesce(runs.high_risk_runs, 0) as high_risk_runs,
-  coalesce(runs.confidential_runs, 0) as confidential_runs,
-  coalesce(runs.avg_latency_ms, 0)::bigint as avg_latency_ms,
-  coalesce(runs.allowlisted_ratio, 0)::numeric as allowlisted_citation_ratio,
-  coalesce(hitl.pending, 0) as hitl_pending,
-  coalesce(hitl.median_response_minutes, 0)::numeric as hitl_median_response_minutes,
-  coalesce(ingestion.success_7d, 0) as ingestion_success_last_7_days,
-  coalesce(ingestion.failed_7d, 0) as ingestion_failed_last_7_days,
-  coalesce(eval_summary.total_cases, 0) as evaluation_cases,
-  coalesce(eval_summary.pass_rate, 0)::numeric as evaluation_pass_rate
-from public.organizations o
-left join (
-  select
-    r.org_id,
-    count(*) as total_runs,
-    count(*) filter (where r.started_at >= now() - interval '30 days') as runs_last_30_days,
-    count(*) filter (where coalesce(r.risk_level, 'LOW') = 'HIGH') as high_risk_runs,
-    count(*) filter (where r.confidential_mode) as confidential_runs,
-    avg(extract(epoch from (coalesce(r.finished_at, now()) - r.started_at)) * 1000) as avg_latency_ms,
-    case
-      when count(rc.id) = 0 then null
-      else sum(case when rc.domain_ok then 1 else 0 end)::numeric / nullif(count(rc.id), 0)
-    end as allowlisted_ratio
-  from public.agent_runs r
-  left join public.run_citations rc on rc.run_id = r.id
-  group by r.org_id
-) runs on runs.org_id = o.id
-left join (
-  select
-    org_id,
-    count(*) filter (where status = 'pending') as pending,
-    percentile_disc(0.5) within group (order by extract(epoch from (coalesce(updated_at, now()) - created_at)) / 60.0) as median_response_minutes
-  from public.hitl_queue
-  group by org_id
-) hitl on hitl.org_id = o.id
-left join (
-  select
-    org_id,
-    count(*) filter (where status = 'succeeded' and started_at >= now() - interval '7 days') as success_7d,
-    count(*) filter (where status <> 'succeeded' and started_at >= now() - interval '7 days') as failed_7d
-  from public.ingestion_runs
-  group by org_id
-) ingestion on ingestion.org_id = o.id
-left join (
-  select
-    c.org_id,
-    count(distinct c.id) as total_cases,
-    case
-      when count(r.id) = 0 then null
-      else sum(case when r.pass then 1 else 0 end)::numeric / nullif(count(r.id), 0)
-    end as pass_rate
-  from public.eval_cases c
-  left join public.eval_results r on r.case_id = c.id
-  group by c.org_id
-) eval_summary on eval_summary.org_id = o.id;
+  coalesce(runs.total_runs, 0) AS total_runs,
+  coalesce(runs.runs_last_30_days, 0) AS runs_last_30_days,
+  coalesce(runs.high_risk_runs, 0) AS high_risk_runs,
+  coalesce(runs.confidential_runs, 0) AS confidential_runs,
+  coalesce(runs.avg_latency_ms, 0)::bigint AS avg_latency_ms,
+  coalesce(runs.allowlisted_ratio, 0)::numeric AS allowlisted_citation_ratio,
+  coalesce(hitl.pending, 0) AS hitl_pending,
+  coalesce(hitl.median_response_minutes, 0)::numeric AS hitl_median_response_minutes,
+  coalesce(ingestion.success_7d, 0) AS ingestion_success_last_7_days,
+  coalesce(ingestion.failed_7d, 0) AS ingestion_failed_last_7_days,
+  coalesce(eval_summary.total_cases, 0) AS evaluation_cases,
+  coalesce(eval_summary.pass_rate, 0)::numeric AS evaluation_pass_rate
+FROM
+  public.organizations o
+  LEFT JOIN (
+    SELECT
+      r.org_id,
+      count(*) AS total_runs,
+      count(*) FILTER (
+        WHERE
+          r.started_at >= now() - interval '30 days'
+      ) AS runs_last_30_days,
+      count(*) FILTER (
+        WHERE
+          coalesce(r.risk_level, 'LOW') = 'HIGH'
+      ) AS high_risk_runs,
+      count(*) FILTER (
+        WHERE
+          r.confidential_mode
+      ) AS confidential_runs,
+      avg(
+        extract(
+          epoch
+          FROM
+            (coalesce(r.finished_at, now()) - r.started_at)
+        ) * 1000
+      ) AS avg_latency_ms,
+      CASE
+        WHEN count(rc.id) = 0 THEN NULL
+        ELSE sum(
+          CASE
+            WHEN rc.domain_ok THEN 1
+            ELSE 0
+          END
+        )::numeric / nullif(count(rc.id), 0)
+      END AS allowlisted_ratio
+    FROM
+      public.agent_runs r
+      LEFT JOIN public.run_citations rc ON rc.run_id = r.id
+    GROUP BY
+      r.org_id
+  ) runs ON runs.org_id = o.id
+  LEFT JOIN (
+    SELECT
+      org_id,
+      count(*) FILTER (
+        WHERE
+          status = 'pending'
+      ) AS pending,
+      percentile_disc(0.5) WITHIN GROUP (
+        ORDER BY
+          extract(
+            epoch
+            FROM
+              (coalesce(updated_at, now()) - created_at)
+          ) / 60.0
+      ) AS median_response_minutes
+    FROM
+      public.hitl_queue
+    GROUP BY
+      org_id
+  ) hitl ON hitl.org_id = o.id
+  LEFT JOIN (
+    SELECT
+      org_id,
+      count(*) FILTER (
+        WHERE
+          status = 'succeeded'
+          AND started_at >= now() - interval '7 days'
+      ) AS success_7d,
+      count(*) FILTER (
+        WHERE
+          status <> 'succeeded'
+          AND started_at >= now() - interval '7 days'
+      ) AS failed_7d
+    FROM
+      public.ingestion_runs
+    GROUP BY
+      org_id
+  ) ingestion ON ingestion.org_id = o.id
+  LEFT JOIN (
+    SELECT
+      c.org_id,
+      count(DISTINCT c.id) AS total_cases,
+      CASE
+        WHEN count(r.id) = 0 THEN NULL
+        ELSE sum(
+          CASE
+            WHEN r.pass THEN 1
+            ELSE 0
+          END
+        )::numeric / nullif(count(r.id), 0)
+      END AS pass_rate
+    FROM
+      public.eval_cases c
+      LEFT JOIN public.eval_results r ON r.case_id = c.id
+    GROUP BY
+      c.org_id
+  ) eval_summary ON eval_summary.org_id = o.id;
 
-alter view public.org_metrics set (security_invoker = true);
+ALTER VIEW public.org_metrics
+SET
+  (security_invoker = TRUE);
 
-create or replace view public.tool_performance_metrics as
-select
+CREATE OR REPLACE VIEW public.tool_performance_metrics AS
+SELECT
   org_id,
   tool_name,
-  count(*) as total_invocations,
-  count(*) filter (where success) as success_count,
-  count(*) filter (where not success) as failure_count,
-  avg(latency_ms)::numeric as avg_latency_ms,
-  percentile_disc(0.95) within group (order by latency_ms) as p95_latency_ms,
-  max(created_at) as last_invoked_at
-from public.tool_telemetry
-group by org_id, tool_name;
+  count(*) AS total_invocations,
+  count(*) FILTER (
+    WHERE
+      success
+  ) AS success_count,
+  count(*) FILTER (
+    WHERE
+      NOT success
+  ) AS failure_count,
+  avg(latency_ms)::numeric AS avg_latency_ms,
+  percentile_disc(0.95) WITHIN GROUP (
+    ORDER BY
+      latency_ms
+  ) AS p95_latency_ms,
+  max(created_at) AS last_invoked_at
+FROM
+  public.tool_telemetry
+GROUP BY
+  org_id,
+  tool_name;
 
-alter view public.tool_performance_metrics set (security_invoker = true);
+ALTER VIEW public.tool_performance_metrics
+SET
+  (security_invoker = TRUE);

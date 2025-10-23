@@ -1,5 +1,4 @@
 import Fastify from 'fastify';
-import { registerWorkspaceRoutes } from './domain/workspace/routes';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
 import { registerCorpusRoutes } from './routes/corpus/index.js';
@@ -14,6 +13,7 @@ import type { AppContext } from './types/context';
 import type { AppAssembly, AppFastifyInstance } from './types/fastify.js';
 import { env } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
+import type { CreateAppResult } from './types/app';
 
 export async function createApp(): Promise<AppAssembly> {
   const app: AppFastifyInstance = Fastify({
@@ -36,21 +36,41 @@ export async function createApp(): Promise<AppAssembly> {
         'env.ALERTS_EMAIL_WEBHOOK_URL',
       ],
     },
+    trustProxy: true,
   });
 
-  const supabase = serviceClient;
+  await app.register(observabilityPlugin);
+
+  const { supabase: supabaseOverride, overrides, includeWorkspaceDomainRoutes = false } = options;
+
+  const supabase = supabaseOverride ?? serviceClient;
+  const container = createAppContainer({
+    supabase,
+    ...(overrides ?? {}),
+  });
+
+  const shouldRegisterWorkspaceRoutes = options.registerWorkspaceRoutes ?? true;
+
+  const rateLimiterFactory = createRateLimiterFactory({
+    driver: rateLimitConfig.driver,
+    namespace: rateLimitConfig.namespace,
+    functionName: rateLimitConfig.functionName,
+    supabase: rateLimitConfig.driver === 'supabase' ? supabase : undefined,
+    logger: app.log,
+  });
 
   const context: AppContext = {
     supabase,
     config: {
       openai: {
-        apiKey: env.OPENAI_API_KEY ?? '',
+        apiKey: env.OPENAI_API_KEY,
         baseUrl: process.env.OPENAI_BASE_URL,
       },
     },
+    rateLimits: {},
   };
 
-  await app.register(async (instance) => {
+  await app.register(async (instance: FastifyInstance) => {
     await registerAgentsRoutes(instance, context);
     await registerResearchRoutes(instance, context);
     await registerCitationsRoutes(instance, context);
@@ -62,8 +82,6 @@ export async function createApp(): Promise<AppAssembly> {
     await registerVoiceRoutes(instance, context);
     await registerRealtimeRoutes(instance, context);
   }, { prefix: '/api' });
-
-  await registerWorkspaceRoutes(app, context);
 
   return { app, context };
 }

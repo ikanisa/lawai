@@ -10,6 +10,7 @@ const scriptPath = path.resolve(repoRoot, 'scripts', 'check-migrations.mjs');
 
 describe('migration hygiene script', () => {
   it('runs without errors on current tree', () => {
+    process.env.ALLOW_SUPABASE_MIGRATIONS = '1';
     const result = spawnSync('node', [scriptPath], {
       cwd: repoRoot,
       encoding: 'utf-8',
