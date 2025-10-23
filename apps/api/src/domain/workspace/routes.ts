@@ -1,48 +1,35 @@
-import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { InMemoryRateLimiter } from '../../rate-limit.js';
 import type { AppContext } from '../../types/context';
-import { enforceRateLimit } from '../../rate-limit';
+import { registerWorkspaceOverviewRoute } from './workspace-overview';
+import { registerComplianceAcknowledgementsRoutes } from './compliance-acknowledgements';
+import { registerComplianceStatusRoute } from './compliance-status';
 
-type WorkspaceQuery = z.infer<typeof workspaceQuerySchema>;
-type WorkspaceResponse = z.infer<typeof workspaceResponseSchema>;
+function createRateLimitHook(
+  limiter: InMemoryRateLimiter,
+  bucket: string,
+): (request: FastifyRequest, reply: FastifyReply) => Promise<unknown> {
+  return async (request, reply) => {
+    const headerUser = request.headers['x-user-id'];
+    const keyBase =
+      typeof headerUser === 'string' && headerUser.trim().length > 0 ? headerUser.trim() : request.ip ?? 'anonymous';
+    const hit = limiter.hit(`${bucket}:${keyBase}`);
+    if (!hit.allowed) {
+      reply.header('Retry-After', Math.max(1, Math.ceil((hit.resetAt - Date.now()) / 1000)));
+      return reply.code(429).send({ error: 'rate_limited' });
+    }
+    return undefined;
+  };
+}
 
 export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
-  const guard = ctx.rateLimits.workspace ?? null;
+  const workspaceLimiter = new InMemoryRateLimiter({ limit: 30, windowMs: 60_000 });
+  const complianceLimiter = new InMemoryRateLimiter({ limit: 60, windowMs: 60_000 });
 
-  try {
-    app.get<{ Querystring: z.infer<typeof workspaceQuerySchema> }>('/domain/workspace', async (request, reply) => {
-      const parse = workspaceQuerySchema.safeParse(request.query);
-      if (!parse.success) {
-        return reply.code(400).send({ error: 'Invalid query parameters' });
-      }
+  const workspaceRateLimitHook = createRateLimitHook(workspaceLimiter, 'workspace');
+  const complianceRateLimitHook = createRateLimitHook(complianceLimiter, 'compliance');
 
-      const { orgId } = parse.data;
-      const userHeader = typeof request.headers['x-user-id'] === 'string' ? request.headers['x-user-id'] : 'anonymous';
-
-      if (guard && (await guard(request, reply, ['domain', orgId, userHeader]))) {
-        return;
-      }
-
-      const { supabase } = ctx;
-
-      // TODO: move existing implementation from server.ts here.
-      const { data, error } = await supabase
-        .from('agent_runs')
-        .select('id')
-        .eq('org_id', orgId)
-        .limit(1);
-
-      if (error) {
-        request.log.error({ err: error }, 'workspace query failed');
-        return reply.code(500).send({ error: 'workspace_failed' });
-      }
-
-      return { runs: data ?? [] };
-    });
-  } catch (error) {
-    if ((error as { code?: string }).code !== 'FST_ERR_DUPLICATED_ROUTE') {
-      throw error;
-    }
-    app.log.debug('workspace route already registered, skipping domain binding');
-  }
+  registerWorkspaceOverviewRoute(app, ctx, workspaceRateLimitHook);
+  registerComplianceAcknowledgementsRoutes(app, ctx, complianceRateLimitHook);
+  registerComplianceStatusRoute(app, ctx, complianceRateLimitHook);
 }

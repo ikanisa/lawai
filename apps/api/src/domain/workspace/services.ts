@@ -1,14 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildPhaseCWorkspaceDesk } from '../../workspace.js';
-import {
-  collectWorkspaceFetchErrors,
-  normalizeWorkspaceOverview,
-  queryWorkspaceOverview,
-  type WorkspaceFetchErrors,
-  type WorkspaceOverview,
-} from './overview.js';
-
-export { type WorkspaceFetchErrors, type WorkspaceOverview } from './overview.js';
+import { extractCountry } from '../../utils/jurisdictions.js';
 
 export async function fetchWorkspaceOverview(
   supabase: SupabaseClient,
