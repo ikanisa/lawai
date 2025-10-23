@@ -1,10 +1,43 @@
 import {
-  AgentPlanNotice,
-  AgentPlanStep,
-  IRACPayload,
-  ProcessNavigatorFlow,
-  WorkspaceDesk,
-} from '@avocat-ai/shared';
+  DEMO_ORG_ID,
+  DEMO_USER_ID,
+  createRestClient,
+  type AgentPlanNotice,
+  type AgentPlanStep,
+  type AgentRunResponse,
+  type ComplianceAcknowledgements,
+  type ComplianceAssessmentSummary,
+  type ComplianceStatusEntry,
+  type ComplianceStatusResponse,
+  type DeviceSession,
+  type EvaluationMetricsResponse,
+  type GovernanceMetricsResponse,
+  type GovernancePublication,
+  type GovernancePublicationsResponse,
+  type HitlDetailResponse,
+  type HitlMetricsResponse,
+  type OperationsChangeLogEntry,
+  type OperationsGoNoGoCriterion,
+  type OperationsIncident,
+  type OperationsOverviewResponse,
+  type OperationsSloSnapshot,
+  type OperationsSloSummary,
+  type RetrievalMetricsResponse,
+  type SloMetricsResponse,
+  type SloSnapshot,
+  type SloSummary,
+  type TrustPanelCaseQualitySummary,
+  type TrustPanelCitationSummary,
+  type TrustPanelPayload,
+  type TrustPanelProvenanceSummary,
+  type TrustPanelRetrievalSummary,
+  type TrustPanelRiskSummary,
+  type VerificationNote,
+  type VerificationResult,
+  type VerificationSeverity,
+  type VerificationStatus,
+  type WorkspaceDesk,
+} from '@avocat-ai/api-clients';
 
 import { clientEnv } from '../env.client';
 
@@ -363,6 +396,32 @@ export interface ComplianceStatusResponse {
     cepejViolations: number;
     statuteViolations: number;
     disclosureGaps: number;
+  };
+}
+
+export interface ComplianceDashboardResponse {
+  orgId: string;
+  timeframe: { start: string; end: string };
+  limits: { hitl: number };
+  hitl: {
+    total: number;
+    pending: number;
+    resolved: number;
+    medianResponseMinutes: number | null;
+  };
+  allowlist: {
+    allowlistedRatio: number | null;
+    translationWarnings: number;
+    runsWithoutCitations: number;
+    runsTotal: number;
+    lastRunAt: string | null;
+  };
+  maghreb: {
+    bannerCoverage: number | null;
+    citationPrecisionP95: number | null;
+    temporalValidityP95: number | null;
+    evaluatedResults: number;
+    lastResultAt: string | null;
   };
 }
 
@@ -894,6 +953,19 @@ export async function acknowledgeCompliance(
     throw new Error('compliance_ack_failed');
   }
   return response.json();
+}
+
+export async function fetchComplianceDashboard(orgId: string, options?: { userId?: string }) {
+  const response = await fetch(`${API_BASE}/compliance/dashboard`, {
+    headers: {
+      'x-user-id': options?.userId ?? DEMO_USER_ID,
+      'x-org-id': orgId,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('compliance_dashboard_failed');
+  }
+  return response.json() as Promise<ComplianceDashboardResponse>;
 }
 
 export async function fetchAuditEvents(orgId: string, limit = 50) {
