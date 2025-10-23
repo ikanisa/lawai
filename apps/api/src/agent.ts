@@ -400,11 +400,49 @@ function summariseHybridSnippets(snippets: HybridSnippet[]): Record<string, unkn
   };
 }
 
+function resolveResidencySignature(accessContext: OrgAccessContext | null | undefined): string | null {
+  if (!accessContext) {
+    return null;
+  }
+
+  const segments = new Set<string>();
+  const override = resolveResidencyZone(accessContext);
+  if (override) {
+    segments.add(override);
+  }
+
+  const primary =
+    typeof accessContext.policies?.residencyZone === 'string'
+      ? accessContext.policies.residencyZone.trim().toLowerCase()
+      : null;
+  if (primary) {
+    segments.add(primary);
+  }
+
+  const mapped = Array.isArray(accessContext.policies?.residencyZones)
+    ? accessContext.policies.residencyZones
+    : [];
+  for (const zone of mapped) {
+    if (typeof zone === 'string') {
+      const normalized = zone.trim().toLowerCase();
+      if (normalized) {
+        segments.add(normalized);
+      }
+    }
+  }
+
+  if (segments.size === 0) {
+    return null;
+  }
+
+  return Array.from(segments).sort().join('|');
+}
+
 function createRunKey(
   input: AgentRunInput,
   routing: RoutingResult,
   confidentialMode: boolean,
-  webSearchMode: WebSearchMode,
+  residencySignature: string | null,
 ): string {
   const hash = createHash('sha256');
   hash.update(input.orgId);
@@ -421,6 +459,10 @@ function createRunKey(
   if (routing.primary?.country) {
     hash.update('|');
     hash.update(routing.primary.country);
+  }
+  if (residencySignature) {
+    hash.update('|');
+    hash.update(residencySignature);
   }
   return hash.digest('hex');
 }
@@ -4313,11 +4355,12 @@ export async function runLegalAgent(
   const useStub = shouldUseStubAgent();
   const planner = await planRun(input, accessContext ?? null, useStub, toolLogs);
 
+  const residencySignature = resolveResidencySignature(accessContext ?? null);
   const runKey = createRunKey(
     input,
     planner.initialRouting,
     planner.context.confidentialMode,
-    planner.context.webSearchMode,
+    residencySignature,
   );
   const existing = await findExistingRun(runKey, input.orgId);
   if (existing) {
