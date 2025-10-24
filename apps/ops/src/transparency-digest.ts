@@ -1,16 +1,14 @@
 #!/usr/bin/env node
 import {
-  formatTransparencyDigest as formatSharedDigest,
-  type TransparencyReport,
-} from '@avocat-ai/shared/transparency';
+  formatTransparencyDigest as renderTransparencyDigest,
+  type TransparencyDigestRecord,
+} from '@avocat-ai/shared';
 
-export type TransparencyDigestRecord = TransparencyReport;
-
-export function formatTransparencyDigest(
-  reference: Date,
-  reports: TransparencyDigestRecord[],
-): { markdown: string; summary: string } {
-  return formatSharedDigest(reference, reports);
+export function formatTransparencyDigest(reference: Date, reports: TransparencyDigestRecord[]): {
+  markdown: string;
+  summary: string;
+} {
+  return renderTransparencyDigest(reference, reports);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

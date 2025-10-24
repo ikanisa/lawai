@@ -6,7 +6,14 @@ import {
   type VoiceToolIntent,
 } from '@avocat-ai/shared';
 
-const voiceCitations: VoiceRunResponse['citations'] = [
+interface VoiceCitation {
+  id: string;
+  label: string;
+  href: string;
+  snippet: string;
+}
+
+const voiceCitations: VoiceCitation[] = [
   {
     id: 'eli:ohada:procedure:2024:art:7',
     label: 'Acte uniforme OHADA Procédure, art. 7',
@@ -131,7 +138,7 @@ export function buildVoiceRunResponse(request: VoiceRunRequest): VoiceRunRespons
     return next;
   });
 
-  const selectedCitations = voiceCitations.filter((citation) => {
+  const selectedCitations = voiceCitations.filter((citation): boolean => {
     if (mentionsUrgency && citation.id.includes('procedure')) {
       return true;
     }
@@ -141,7 +148,9 @@ export function buildVoiceRunResponse(request: VoiceRunRequest): VoiceRunRespons
     return citation.id.includes('ohada');
   });
 
-  const effectiveCitations = selectedCitations.length ? selectedCitations : voiceCitations.slice(0, 2);
+  const effectiveCitations: VoiceCitation[] = selectedCitations.length
+    ? selectedCitations
+    : voiceCitations.slice(0, 2);
   const riskLevel = mentionsUrgency ? 'HIGH' : mentionsPrivacy ? 'MED' : 'LOW';
 
   const clarifications: string[] = [];

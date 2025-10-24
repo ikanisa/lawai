@@ -10,17 +10,13 @@ import { registerResearchRoutes } from './routes/research/index.js';
 import { registerUploadRoutes } from './routes/upload/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
 import type { AppContext } from './types/context';
-import { env, rateLimitConfig } from './config.js';
+import type { AppAssembly, AppFastifyInstance } from './types/fastify.js';
+import { env } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
 import type { CreateAppResult } from './types/app';
 
-export async function createApp(): Promise<CreateAppResult> {
-  const app = Fastify({
-    ajv: {
-      customOptions: {
-        removeAdditional: false,
-      },
-    },
+export async function createApp(): Promise<AppAssembly> {
+  const app: AppFastifyInstance = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
       redact: [

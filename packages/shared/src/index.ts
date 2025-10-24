@@ -10,4 +10,5 @@ export * from './orchestrator-capabilities.js';
 export * from './orchestrator-mcp.js';
 export * from './pwa.js';
 export * from './workspace.js';
-export * from './schemas/summarization.js';
+export * from './transparency/digest.js';
+export * from './scheduling/scheduler.js';

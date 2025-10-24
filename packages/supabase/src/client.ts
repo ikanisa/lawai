@@ -21,13 +21,13 @@ export function createServiceClient(
   options: CreateServiceClientOptions = {},
 ): ServiceSupabaseClient {
   const parsed = envSchema.parse(env);
-  const reuseExisting = options.reuseExisting ?? true;
+  const { reuseExisting = true, client } = options;
 
-  if (options.client) {
+  if (client) {
     if (reuseExisting) {
-      cachedClient = options.client;
+      cachedClient = client;
     }
-    return options.client;
+    return client;
   }
 
   if (reuseExisting && cachedClient) {

@@ -8,13 +8,19 @@ import { Textarea } from '../@/ui/textarea';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
-import { adminQueries } from '../api/client';
-import { Sheet, SheetSection } from '../@/ui/sheet';
+import { adminQueries, updateWorkflowStatus } from '../api/client';
+import { useAdminSession } from '../session-context';
+import { Sheet, SheetSection } from '../../../components/ui/sheet';
 
 export function AdminAgentsPage() {
   const { activeOrg, searchQuery } = useAdminPanelContext();
+  const { session, loading: sessionLoading } = useAdminSession();
   const queryClient = useQueryClient();
-  const agentsQuery = useQuery(adminQueries.agents(activeOrg.id));
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const agentsQuery = useQuery({
+    ...adminQueries.agents(activeOrg.id),
+    enabled: isSessionReady,
+  });
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [testPrompt, setTestPrompt] = useState('Test how the drafting agent summarizes last 3 filings for Matter-42.');
 
@@ -24,17 +30,7 @@ export function AdminAgentsPage() {
     : undefined;
 
   const promoteMutation = useMutation({
-    mutationFn: async (agentId: string) => {
-      const response = await fetch('/api/admin/workflows', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: activeOrg.id, action: 'promote', payload: { workflowId: agentId } }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to queue promotion');
-      }
-      return response.json();
-    },
+    mutationFn: async (agentId: string) => updateWorkflowStatus(activeOrg.id, 'promote', agentId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminQueries.workflows(activeOrg.id).queryKey });
     },
@@ -55,7 +51,7 @@ export function AdminAgentsPage() {
             size="sm"
             className="gap-2"
             onClick={() => setSelectedAgentId(agents[0]?.id ?? null)}
-            disabled={agents.length === 0}
+            disabled={agents.length === 0 || !isSessionReady}
           >
             <TestTube2 className="h-4 w-4" /> Run test
           </Button>
@@ -117,7 +113,7 @@ export function AdminAgentsPage() {
                   size="sm"
                   className="gap-2"
                   onClick={() => promoteMutation.mutate(selectedAgent.id)}
-                  disabled={promoteMutation.isPending}
+                  disabled={!isSessionReady || promoteMutation.isPending}
                 >
                   <Sparkles className="h-4 w-4" /> Promote to production
                 </Button>

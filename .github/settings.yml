@@ -14,7 +14,7 @@ branches:
           - "Monorepo CI / Full Workspace CI"
           - "Supabase Migration Smoke / Supabase Migration Smoke"
           - "Staging Smoke Tests / Staging Smoke Tests"
-          - "Vercel Preview Build / Auto-create Preview"
+          - "legacy hosting platform Preview Build / Auto-create Preview"
           - "QA Sign-off / Require qa-signoff label"
       enforce_admins: true
       required_linear_history: true

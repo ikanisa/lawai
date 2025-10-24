@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
+import { SupabaseScheduler } from '../../../packages/shared/src/scheduling/scheduler.ts';
 
 type ManifestEntry = {
   file_id: string;
@@ -273,15 +274,15 @@ Deno.serve(async (request) => {
     }
 
     if (payload.orgId) {
-      await supabase.from('ingestion_runs').insert({
-        org_id: payload.orgId,
-        adapter_id: 'drive-watcher',
+      const scheduler = new SupabaseScheduler(supabase);
+      await scheduler.recordIngestionSummary({
+        adapterId: 'drive-watcher',
+        orgId: payload.orgId,
         status: errorCount === 0 ? 'completed' : 'failed',
-        inserted_count: validCount,
-        failed_count: errorCount,
-        skipped_count: 0,
-        finished_at: new Date().toISOString(),
-        error_message: errorCount === 0 ? null : 'Manifest contains invalid entries',
+        insertedCount: validCount,
+        failedCount: errorCount,
+        skippedCount: 0,
+        errorMessage: errorCount === 0 ? null : 'Manifest contains invalid entries',
       });
     }
   }

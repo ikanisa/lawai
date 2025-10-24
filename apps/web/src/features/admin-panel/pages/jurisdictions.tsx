@@ -7,25 +7,22 @@ import { Switch } from '../@/ui/switch';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
-import { adminQueries } from '../api/client';
+import { adminQueries, toggleJurisdictionEntitlement } from '../api/client';
+import { useAdminSession } from '../session-context';
 
 export function AdminJurisdictionsPage() {
   const { activeOrg } = useAdminPanelContext();
+  const { session, loading: sessionLoading } = useAdminSession();
   const queryClient = useQueryClient();
-  const entitlementsQuery = useQuery(adminQueries.jurisdictions(activeOrg.id));
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const entitlementsQuery = useQuery({
+    ...adminQueries.jurisdictions(activeOrg.id),
+    enabled: isSessionReady,
+  });
 
   const toggleMutation = useMutation({
-    mutationFn: async (payload: { jurisdiction: string; entitlement: string; enabled: boolean }) => {
-      const response = await fetch('/api/admin/jurisdictions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: activeOrg.id, action: 'toggle', payload }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to update entitlement');
-      }
-      return response.json();
-    },
+    mutationFn: async (payload: { jurisdiction: string; entitlement: string; enabled: boolean }) =>
+      toggleJurisdictionEntitlement(activeOrg.id, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminQueries.jurisdictions(activeOrg.id).queryKey });
     },
@@ -64,6 +61,7 @@ export function AdminJurisdictionsPage() {
                   })
                 }
                 aria-label={`Toggle ${row.entitlement} for ${row.jurisdiction}`}
+                disabled={!isSessionReady || toggleMutation.isPending}
               />
             ),
             align: 'center',

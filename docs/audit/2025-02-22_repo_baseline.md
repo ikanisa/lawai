@@ -63,7 +63,7 @@ graph LR
   SupabaseDB --> API
   EdgeFuncs -.->|Schedulers| SupabaseDB
   CI[CI Workflows] -->|lint/test/build| npmScripts[Workspace Scripts]
-  CI -->|Deploys| Vercel[Vercel Projects]
+  CI -->|Deploys| legacy hosting platform[legacy hosting platform Projects]
 ```
 
 ## 4. Environment Variable Inventory & Gaps
@@ -81,7 +81,7 @@ graph LR
 ## 5. Repository Conventions & Alignment Plan
 - **Commit governance** – No CODEOWNERS or documented commit message policy exists; establish CODEOWNERS to gate critical paths and adopt a Conventional Commits (or similar) guide to standardise history before large refactors.【7d0dab†L1-L2】
 - **CI gates** – `ci.yml` enforces workspace linting, typechecking (API + Web), migrations check, tests, and builds; `monorepo-ci.yml` provides an npm-based build/test fallback. Rationalise to a single workflow (prefer pnpm) and ensure new refactors keep migrations check and ops smoke tests enabled.【691d98†L11-L84】【ba7e04†L14-L29】
-- **Preview/Deployment** – Additional workflows (`preview.yml`, `vercel-preview-build.yml`, `deploy.yml`) manage preview artefacts and Vercel deployments. Validate that future PRs surface the correct preview artefacts and align with Vercel’s production branch (`main`).【3a8a0b†L1-L1】
+- **Preview/Deployment** – Additional workflows (e.g., `preview.yml`, `deploy.yml`) manage preview artefacts and production deployments. Validate that future PRs surface the correct preview artefacts and align with the production branch (`main`).【3a8a0b†L1-L1】
 - **Recommended actions**:
   1. Publish a CONTRIBUTING guide covering package manager choice, commit style, and PR checklist (lint/typecheck/test + `pnpm check:binaries`).
   2. Adopt workspace-level dependency constraints (e.g., pnpm `overrides`) to eliminate current version drift.

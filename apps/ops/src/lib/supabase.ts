@@ -15,7 +15,7 @@ export interface SupabaseServiceOptions extends Omit<CreateServiceClientOptions,
 
 export function createSupabaseService(
   env: Record<string, string>,
-  options: SupabaseServiceOptions = {},
+  factory: SupabaseClientFactory = createServiceClient,
 ): SupabaseClient {
   const { client, ...rest } = options;
   return createServiceClient(

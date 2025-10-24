@@ -7,10 +7,16 @@ import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
 import { adminQueries } from '../api/client';
+import { useAdminSession } from '../session-context';
 
 export function AdminCorpusPage() {
   const { activeOrg, searchQuery } = useAdminPanelContext();
-  const corpusQuery = useQuery(adminQueries.corpus(activeOrg.id));
+  const { session, loading: sessionLoading } = useAdminSession();
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const corpusQuery = useQuery({
+    ...adminQueries.corpus(activeOrg.id),
+    enabled: isSessionReady,
+  });
   const sources = corpusQuery.data?.sources ?? [];
 
   return (

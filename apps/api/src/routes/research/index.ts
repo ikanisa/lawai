@@ -1,5 +1,4 @@
-import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import type { AppFastifyInstance } from '../../types/fastify.js';
 import type { AppContext } from '../../types/context.js';
 import { cloneResearchContext, getResearchFilters } from './data.js';
 import { getVectorStoreClient } from '../../openai.js';
@@ -58,7 +57,7 @@ function normalizeVectorStoreResultItem(item: VectorStoreQueryResultItem, index:
   };
 }
 
-export async function registerResearchRoutes(app: FastifyInstance, _ctx: AppContext) {
+export async function registerResearchRoutes(app: AppFastifyInstance, _ctx: AppContext) {
   app.get('/research/context', async (_request, _reply) => {
     return cloneResearchContext();
   });
