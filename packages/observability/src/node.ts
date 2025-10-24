@@ -76,7 +76,7 @@ export async function initNodeTelemetry(config: NodeTelemetryConfig): Promise<Te
 
   const instrumentations: Instrumentation[] = config.instrumentations ?? [];
 
-  const periodicMetricReader = new PeriodicExportingMetricReader({
+  const metricReader = new PeriodicExportingMetricReader({
     exporter: metricExporter,
     exportIntervalMillis: 15_000,
     exportTimeoutMillis: 10_000,
@@ -84,7 +84,7 @@ export async function initNodeTelemetry(config: NodeTelemetryConfig): Promise<Te
 
   sdk = new NodeSDK({
     traceExporter,
-    metricReader: periodicMetricReader as unknown as any,
+    metricReader: metricReader as any,
     resource,
     instrumentations,
   });
