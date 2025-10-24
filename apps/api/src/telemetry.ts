@@ -17,8 +17,8 @@ function parseHeaders(raw: string | undefined): Record<string, string> | undefin
 function getServiceVersion(): string {
   const candidates = [
     process.env.API_VERSION,
-    process.env.VERCEL_GIT_COMMIT_SHA,
     process.env.GIT_COMMIT_SHA,
+    process.env.GITHUB_SHA,
     process.env.npm_package_version,
   ];
   return candidates.find((value) => typeof value === 'string' && value.length > 0) ?? 'dev';

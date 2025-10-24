@@ -3,16 +3,16 @@
 This taskboard turns the baseline audit into a prioritised backlog that the team can execute sprint-by-sprint. Each card now carries:
 
 - **Impact tier** – whether the work unlocks immediate deploy stability, de-risks refactors, or sets up longer-term governance.
-- **Acceptance criteria** – tangible completion checks to make code review/Vercel promotion smoother.
+- **Acceptance criteria** – tangible completion checks to make code review and production promotion smoother.
 - **Dependencies** – upstream tasks that should land first to avoid rework.
 
 Use the "Start Task" buttons to move items into your chosen tracker.
 
 ## 0. Execution Roadmap
 
-| Wave | Focus | Why it matters before Vercel deploys |
+| Wave | Focus | Why it matters before production deploys |
 | --- | --- | --- |
-| Wave A | Toolchain alignment + git hygiene (Tasks 1.1, 2.1, 2.3) | Guarantees contributors run the same commands that CI/Vercel expect, preventing broken previews. |
+| Wave A | Toolchain alignment + git hygiene (Tasks 1.1, 2.1, 2.3) | Guarantees contributors run the same commands that CI and the runtime expect, preventing broken previews. |
 | Wave B | Dependency + environment hardening (Tasks 2.2, 4.1, 4.2) | Ensures builds pass consistently and secrets are ready for production rollout. |
 | Wave C | Architecture documentation + governance (Tasks 3.1, 5.1, 5.2) | Keeps future fullstack work coordinated and reviewable once stability is in place. |
 
@@ -23,9 +23,9 @@ Use the "Start Task" buttons to move items into your chosen tracker.
 - **Acceptance criteria**:
   1. `git remote -v` shows the canonical GitHub repository with `origin`.
   2. Local `main` branch is created and set to track `origin/main`.
-  3. Onboarding docs (README or `/docs`) note `main` as the merge target for Vercel deploys.
+  3. Onboarding docs (README or `/docs`) note `main` as the merge target for production deploys.
 - **Dependencies**: None (kick off first).
-- **Why now**: Without a remote/default branch, Vercel automation (`deploy.yml`) cannot trigger from review merges.【F:docs/audit/2025-02-22_repo_baseline.md†L4-L13】【F:.github/workflows/deploy.yml†L1-L33】
+- **Why now**: Without a remote/default branch, deployment automation (`deploy.yml`) cannot trigger from review merges.【F:docs/audit/2025-02-22_repo_baseline.md†L4-L13】【F:.github/workflows/deploy.yml†L1-L33】
 - **Deliverables**: Remote configuration guide, updated branch tracking instructions, link to PR workflow checklist.
 
 <button data-task="task-1-1">Start Task</button>
@@ -52,7 +52,7 @@ Use the "Start Task" buttons to move items into your chosen tracker.
   3. Add pnpm `overrides` or root `devDependencies` to pin shared toolchain packages (`@types/node`, `eslint`, `typescript`, `vitest`).
   4. Document regression command (e.g., `pnpm lint:deps`) and wire it into CI.
 - **Dependencies**: Task 2.1 (pnpm standardisation).
-- **Why now**: Current `npm ls --workspaces` output shows dozens of missing/invalid packages that will break Vercel builds.【3ba4c4†L1-L120】
+- **Why now**: Current `npm ls --workspaces` output shows dozens of missing/invalid packages that will break reproducible builds.【3ba4c4†L1-L120】
 - **Deliverables**: Updated lockfile/manifests, dependency audit report, CI hook.
 
 <button data-task="task-2-2">Start Task</button>
@@ -76,7 +76,7 @@ Use the "Start Task" buttons to move items into your chosen tracker.
 - **Acceptance criteria**:
   1. Create `docs/architecture/overview.md` housing the system context + deployment mermaid diagrams.
   2. Link the diagrams from README and relevant app-specific docs (API, web, ops) for discoverability.
-  3. Annotate ownership (e.g., "Updated when Supabase schemas or Vercel routing changes").
+  3. Annotate ownership (e.g., "Updated when Supabase schemas or legacy hosting platform routing changes").
 - **Dependencies**: Wave A tasks (ensures doc updates align with new CONTRIBUTING flow).
 - **Why now**: Keeps fullstack squads aligned during upcoming refactors across API/web/Supabase surfaces.【F:docs/audit/2025-02-22_repo_baseline.md†L27-L66】
 - **Deliverables**: Architecture doc, cross-links, maintenance note.
@@ -92,7 +92,7 @@ Use the "Start Task" buttons to move items into your chosen tracker.
   2. Reduce duplication by referencing a shared `.env.defaults` or generator for overlapping secrets.
   3. Validate `.env.example` files via a shared Zod schema or script executed in CI.
 - **Dependencies**: Task 2.1 (consistent scripts) and Task 2.2 (healthy installs for the validation tooling).
-- **Why now**: Divergent `.env.example` guidance risks failed Supabase/Vercel deploys when teams follow different files.【F:.env.example†L1-L66】【F:apps/api/.env.example†L1-L38】【F:apps/web/.env.example†L1-L22】【F:apps/ops/.env.example†L1-L26】
+- **Why now**: Divergent `.env.example` guidance risks failed Supabase or production deploys when teams follow different files.【F:.env.example†L1-L66】【F:apps/api/.env.example†L1-L38】【F:apps/web/.env.example†L1-L22】【F:apps/ops/.env.example†L1-L26】
 - **Deliverables**: Central matrix doc, deduped env examples, validation script integrated into CI.
 
 <button data-task="task-4-1">Start Task</button>
@@ -100,11 +100,11 @@ Use the "Start Task" buttons to move items into your chosen tracker.
 ### Task 4.2 — Harden secrets management for Supabase & OpenAI deploys
 - **Impact**: 🟠 Near-term (production safety)
 - **Acceptance criteria**:
-  1. Document how secrets flow from local `.env` → GitHub Actions → Vercel project settings → Supabase.
-  2. Implement preflight checks in `scripts/vercel-preflight.mjs` (or new script) that fail fast if required secrets are missing.
+  1. Document how secrets flow from local `.env` → GitHub Actions → production runtime configuration → Supabase.
+  2. Implement preflight checks in `scripts/deployment-preflight.mjs` (or successor script) that fail fast if required secrets are missing.
   3. Update `deploy.yml`/`preview.yml` with secret requirements and link documentation in PR template.
 - **Dependencies**: Task 4.1 (shared matrix as source of truth).
-- **Why now**: Smooths production deploys by making secret expectations explicit before code review merges.【F:scripts/vercel-preflight.mjs†L1-L34】【F:.github/workflows/deploy.yml†L1-L112】
+- **Why now**: Smooths production deploys by making secret expectations explicit before code review merges.【F:.github/workflows/deploy.yml†L1-L112】
 - **Deliverables**: Secret flow doc, enhanced preflight script, CI annotations.
 
 <button data-task="task-4-2">Start Task</button>
@@ -118,7 +118,7 @@ Use the "Start Task" buttons to move items into your chosen tracker.
   2. Create `CONTRIBUTING.md` with commit message guidance (e.g., Conventional Commits) and PR checklist (lint/typecheck/test, `pnpm check:binaries`).
   3. Update PR template to reference required checks and environment validation before merge to `main`.
 - **Dependencies**: Tasks 1.1 & 2.1 (ensures branch + tooling policies are clear beforehand).
-- **Why now**: Gives reviewers confidence before promoting to Vercel and encodes the governance recommendations from the audit.【F:docs/audit/2025-02-22_repo_baseline.md†L108-L122】
+- **Why now**: Gives reviewers confidence before promoting to production and encodes the governance recommendations from the audit.【F:docs/audit/2025-02-22_repo_baseline.md†L108-L122】
 - **Deliverables**: CODEOWNERS file, CONTRIBUTING guide, PR template tweaks.
 
 <button data-task="task-5-1">Start Task</button>
@@ -127,10 +127,10 @@ Use the "Start Task" buttons to move items into your chosen tracker.
 - **Impact**: 🟡 Medium-term (CI cost + clarity)
 - **Acceptance criteria**:
   1. Consolidate overlapping workflows so the single CI entrypoint runs lint → typecheck → test → build using pnpm.
-  2. Ensure preview (Vercel) and production workflows share the same gate list, with environment checks from Tasks 4.x.
+  2. Ensure preview and production workflows share the same gate list, with environment checks from Tasks 4.x.
   3. Document promotion steps from preview to production in README or ops runbooks.
 - **Dependencies**: Task 2.1 (pnpm), Task 2.2 (healthy dependency graph), Task 4.2 (secret checks).
-- **Why now**: Prevents divergence between review builds and production deploys while keeping Vercel-ready pipelines simple.【F:.github/workflows/ci.yml†L1-L92】【F:.github/workflows/monorepo-ci.yml†L1-L32】【F:.github/workflows/preview.yml†L1-L41】【F:.github/workflows/deploy.yml†L1-L112】
+- **Why now**: Prevents divergence between review builds and production deploys while keeping deployment pipelines simple.【F:.github/workflows/ci.yml†L1-L92】【F:.github/workflows/monorepo-ci.yml†L1-L32】【F:.github/workflows/preview.yml†L1-L41】【F:.github/workflows/deploy.yml†L1-L112】
 - **Deliverables**: Updated workflow YAMLs, runbook snippet, CI badge update if applicable.
 
 <button data-task="task-5-2">Start Task</button>
@@ -166,7 +166,7 @@ Use the "Start Task" buttons to move items into your chosen tracker.
 ### Task 7.1 — Harden the service worker build pipeline
 - **Impact**: 🟠 Near-term (prevents offline regressions)
 - **Acceptance criteria**:
-  1. Add assertions that `prepare-sw.mjs` and `inject-sw.mjs` run inside CI/Vercel builds with failing exit codes on missing templates.
+  1. Add assertions that `prepare-sw.mjs` and `inject-sw.mjs` run inside CI builds with failing exit codes on missing templates.
   2. Capture generated `public/sw.js` as an artefact in preview builds for QA to validate caching.
   3. Document recovery steps in the web app README if Workbox injection fails.
 - **Dependencies**: Task 2.1 (pnpm standardisation) so scripts run identically locally and in CI.
@@ -192,7 +192,7 @@ Use the "Start Task" buttons to move items into your chosen tracker.
 ### Task 8.1 — Verify edge function cron coverage
 - **Impact**: 🟠 Near-term (data freshness & compliance)
 - **Acceptance criteria**:
-  1. Audit deployed edge functions against `function_schedules.json` and document any missing Vercel/Supabase scheduler entries.
+  1. Audit deployed edge functions against `function_schedules.json` and document any missing scheduler entries in Supabase or cron tooling.
   2. Add automated drift detection that fails CI when schedules change without review.
   3. Publish a runbook clarifying expected cadences and escalation paths for late jobs.
 - **Dependencies**: Task 4.2 (secrets hardening) to ensure cron jobs can read required tokens.
@@ -270,5 +270,5 @@ Use the "Start Task" buttons to move items into your chosen tracker.
 **Implementation Guidance**
 
 1. Execute Wave A before merging feature work so that every PR follows the same pnpm + `main` expectations.
-2. Bundle Tasks 2.2, 4.1, and 4.2 into a "deployment readiness" epic—finish them prior to scheduling Vercel production deploys.
+2. Bundle Tasks 2.2, 4.1, and 4.2 into a "deployment readiness" epic—finish them prior to scheduling production deploys.
 3. Close with architecture/governance tasks once the pipeline is stable, enabling confident iteration on fullstack features across API, web, and Supabase services.

@@ -14,7 +14,9 @@ export type Json =
 
 export const SUPABASE_SCHEMA_HASH = 'sha256-ae73e68d9ea87d330adb82f88076cd54cba5d51a164d8b5045337d7ecbafcef6' as const;
 
-const jsonSchema = z.lazy(() => z.union([z.string(), z.number(), z.boolean(), z.null(), z.record(jsonSchema), z.array(jsonSchema)]));
+const jsonSchema: z.ZodType<Json> = z.lazy(() =>
+  z.union([z.string(), z.number(), z.boolean(), z.null(), z.record(jsonSchema), z.array(jsonSchema)]),
+);
 
 export type Database = {
   public: {

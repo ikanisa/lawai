@@ -17,16 +17,16 @@ Apply GitHub branch protection to `work` with the following rules:
   - `Monorepo CI / Full Workspace CI`
   - `Supabase Migration Smoke / Supabase Migration Smoke`
   - `Staging Smoke Tests / Staging Smoke Tests`
-  - `Vercel Preview Build / Auto-create Preview`
+  - `legacy hosting platform Preview Build / Auto-create Preview`
   - `QA Sign-off / Require qa-signoff label`
 - Require approvals from code owners and QA (see Section 3).
 - Dismiss stale reviews on new commits and lock the branch to administrators only for emergency fixes.
 
 Update repository settings so that the new pull request template (see below) is the default for every change.
 
-## 3. Vercel Preview + QA Sign-off Flow
+## 3. legacy hosting platform Preview + QA Sign-off Flow
 
-1. The `Vercel Preview Build` workflow automatically provisions a preview via the Vercel Git integration, publishes the deployment URL, and uploads build logs for inspection.
+1. The `legacy hosting platform Preview Build` workflow automatically provisions a preview via the legacy hosting platform Git integration, publishes the deployment URL, and uploads build logs for inspection.
 2. QA must validate the preview deployment URL and smoke-test critical user journeys. Once validation passes, QA adds the `qa-signoff` label to the pull request.
 3. The `QA Sign-off` status check fails until the label is present, preventing merges without documented QA review.
 
@@ -42,8 +42,8 @@ At the conclusion of every development phase (refactor, feature sprint, regressi
 ## 5. Post-Merge Release Discipline
 
 1. After merging to `work`, tag the release with `git tag -a vX.Y.Z -m "Release notes"` and push tags to origin.
-2. Trigger the production deployment pipeline (GitHub `deploy.yml` or Vercel production promotion) and monitor until completion.
+2. Trigger the production deployment pipeline (GitHub `deploy.yml` or legacy hosting platform production promotion) and monitor until completion.
 3. Archive closed feature branches: `git push origin :feature/old-branch` and delete the local copy to keep the namespace clean.
 4. Update the Trust Center release ledger and notify operations once production deployment is green.
 
-Adhering to this runbook ensures that every release is auditable, Vercel previews are validated, and operational stakeholders receive timely updates.
+Adhering to this runbook ensures that every release is auditable, legacy hosting platform previews are validated, and operational stakeholders receive timely updates.

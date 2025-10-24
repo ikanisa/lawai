@@ -1,83 +1,26 @@
-# Local Cron Replacement Strategy
+# Cron replacement notes
 
-With Vercel scheduled functions removed from the workflow, recurring jobs (ingestion refreshes, evaluation runs, Drive watcher pings) must be orchestrated locally or within your own infrastructure. This document outlines two supported approaches.
+Managed cron tasks previously ran via the hosted provider. With the migration to self-hosted Node.js services we need a lightweight scheduler strategy.
 
-## Option 1: Node-based schedulers (`node-cron`)
+## Current state
 
-1. Install the dependency in the workspace or a dedicated automation package:
-   ```bash
-   pnpm add -D node-cron
-   ```
-2. Create a scheduler script (e.g., `scripts/run-schedules.mjs`):
-   ```js
-   import cron from 'node-cron';
-   import { triggerDriveWatcher } from '../apps/ops/src/jobs/drive-watcher';
-   import { runNightlyEvaluations } from '../apps/ops/src/jobs/evaluations';
+- Edge functions continue to deploy through Supabase and can be triggered via the Supabase scheduler or manual CLI invocations.
+- No Node-based cron worker exists yet; CLI commands such as `pnpm --filter @apps/ops regulator-digest` remain manual.
+- Preview workflows no longer provision hosted schedules automatically.
 
-   cron.schedule('0 * * * *', async () => {
-     await triggerDriveWatcher();
-   });
+## TODO
 
-   cron.schedule('30 2 * * *', async () => {
-     await runNightlyEvaluations();
-   });
-   ```
-3. Launch the scheduler alongside your services:
-   ```bash
-   pnpm node --scripts-path scripts run-schedules.mjs
-   ```
-4. Use `.env.local` and the app-specific `.env.local` files so the scheduler has the same Supabase/OpenAI credentials as the rest of the stack.
+1. Evaluate `node-cron` or `bullmq` for local/VM scheduling of ops tasks.
+2. Document how to run scheduled jobs with macOS `launchd` for single-machine hosting.
+3. Provide sample systemd units for Linux servers.
+4. Mirror the schedule definitions currently tracked in `supabase/functions/*/function_schedules.json`.
 
-This option keeps everything in JavaScript/TypeScript and is easy to extend with additional jobs.
+## Interim approach
 
-## Option 2: macOS `launchd`
+Until a dedicated scheduler exists:
 
-For MacBook operators who prefer system-level scheduling:
+- Use shell scripts or Make targets that invoke the required `pnpm --filter @apps/ops <command>` jobs.
+- If the machine must stay online, add reminders in your calendar tool to run them manually.
+- When running inside Supabase, rely on Supabase Edge cron to invoke the deployed functions.
 
-1. Create a plist at `~/Library/LaunchAgents/com.avocat-ai.cron.plist`:
-   ```xml
-   <?xml version="1.0" encoding="UTF-8"?>
-   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-   <plist version="1.0">
-     <dict>
-       <key>Label</key>
-       <string>com.avocat-ai.cron</string>
-       <key>ProgramArguments</key>
-       <array>
-         <string>/usr/local/bin/pnpm</string>
-         <string>ops:cron</string>
-       </array>
-       <key>StartCalendarInterval</key>
-       <array>
-         <dict>
-           <key>Hour</key>
-           <integer>2</integer>
-           <key>Minute</key>
-           <integer>30</integer>
-         </dict>
-       </array>
-       <key>StandardOutPath</key>
-       <string>/tmp/avocat-ai-cron.log</string>
-       <key>StandardErrorPath</key>
-       <string>/tmp/avocat-ai-cron.err</string>
-       <key>EnvironmentVariables</key>
-       <dict>
-         <key>NODE_ENV</key>
-         <string>production</string>
-       </dict>
-     </dict>
-   </plist>
-   ```
-2. Load the job:
-   ```bash
-   launchctl load ~/Library/LaunchAgents/com.avocat-ai.cron.plist
-   ```
-3. Define the referenced `ops:cron` script in `package.json` (e.g., `"ops:cron": "pnpm --filter @apps/ops trigger:nightly"`).
-
-This integrates with macOS boot-up, restarts failed jobs automatically, and keeps logs under `/tmp/` by default.
-
-## Operational tips
-
-- Use the same `.env.local` secrets for cron scripts to avoid drift between manual and scheduled runs.
-- Add health checks (`pnpm ops:check`) as separate cron entries to verify Supabase buckets and vector stores remain in sync.
-- When running on CI or Linux servers, the same job definitions can be ported to systemd timers or GitHub Actions, since no Vercel APIs are required anymore.
+Track progress in the deployment readiness epic within `docs/audit/2025-02-22_taskboard.md`.
