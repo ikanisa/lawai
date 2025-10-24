@@ -19,5 +19,5 @@ jobs:
             const requiredLabel = 'qa-signoff';
             const labels = context.payload.pull_request.labels.map(label => label.name);
             if (!labels.includes(requiredLabel)) {
-              core.setFailed(`Add the '${requiredLabel}' label after QA validates the Vercel preview.`);
+              core.setFailed(`Add the '${requiredLabel}' label after QA validates the legacy hosting platform preview.`);
             }

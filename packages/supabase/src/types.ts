@@ -1,10 +1,4 @@
-import type {
-  GenericFunction,
-  GenericRelationship,
-  GenericSchema,
-  GenericTable,
-  SupabaseClient,
-} from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type Json =
   | string
@@ -14,18 +8,30 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export interface ServiceTable extends GenericTable {
+export interface ServiceRelationship {
+  readonly foreignKeyName?: string;
+  readonly columns: readonly string[];
+  readonly referencedTable: string;
+  readonly referencedColumns: readonly string[];
+}
+
+export interface ServiceTable {
   Row: Record<string, Json>;
   Insert: Record<string, Json>;
   Update: Record<string, Json>;
-  Relationships: GenericRelationship[];
+  Relationships: ServiceRelationship[];
 }
 
-export interface ServiceView extends GenericSchema['Views'][string] {}
+export interface ServiceView {
+  Row: Record<string, Json>;
+}
 
-export interface ServiceFunction extends GenericFunction {}
+export interface ServiceFunction {
+  readonly args: Record<string, Json>;
+  readonly returns: Json;
+}
 
-export interface ServiceSchema extends GenericSchema {
+export interface ServiceSchema {
   Tables: Record<string, ServiceTable>;
   Views: Record<string, ServiceView>;
   Functions: Record<string, ServiceFunction>;

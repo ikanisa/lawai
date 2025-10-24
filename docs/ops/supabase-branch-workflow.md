@@ -1,17 +1,17 @@
 # Supabase Branch Workflow
 
-Preview environments mirror the application code in Vercel and expect a dedicated Supabase branch. Production continues to use the canonical `main` branch.
+Preview environments mirror the application code in legacy hosting platform and expect a dedicated Supabase branch. Production continues to use the canonical `main` branch.
 
 ## Branch naming
 
 - Preview branches follow the convention `preview-<git-branch>`, where non-alphanumeric characters are replaced with `-` and the value is lowercased.
-- The GitHub workflow [`vercel-preview-build.yml`](../../.github/workflows/vercel-preview-build.yml) exports `SUPABASE_BRANCH` and `NEXT_PUBLIC_SUPABASE_BRANCH` so Vercel preview builds target the matching Supabase branch automatically.
+- The GitHub workflow [`preview.yml`](../../.github/workflows/preview.yml) should export `SUPABASE_BRANCH` and `NEXT_PUBLIC_SUPABASE_BRANCH` so preview builds target the matching Supabase branch automatically. TODO: wire this back in after the hosting migration.
 - Production builds must keep using the default branch (no `preview-` prefix) to avoid promoting experimental schemas.
 
-### Vercel integration
+### legacy hosting platform integration
 
-- `vercel-preview-build.yml` runs `pnpm check:migrations` and `pnpm lint:sql` before every preview build, catching manifest drift and formatting issues before the build step.
-- The workflow injects the derived `SUPABASE_BRANCH` when running `vercel build`, ensuring that the preview deployment and Supabase schema stay in lock-step.
+- `preview.yml` runs `pnpm check:migrations` and `pnpm lint:sql` before every preview build, catching manifest drift and formatting issues before the build step.
+- The workflow should inject the derived `SUPABASE_BRANCH` when running `pnpm --filter @avocat-ai/web build`, ensuring that the preview artifact and Supabase schema stay in lock-step.
 - When a preview is promoted, the production `deploy.yml` workflow repeats the migration + lint checks, applies migrations via `pnpm db:migrate`, and runs the [`rls-smoke`](../../apps/ops/src/rls-smoke.ts) guard to confirm tenant isolation on the production branch.
 
 ## Creating a preview branch
@@ -27,7 +27,7 @@ supabase branch create "preview-my-feature" --source main
   ```bash
   SUPABASE_PROJECT_REF=<project-ref> SUPABASE_BRANCH=preview-my-feature pnpm db:migrate
   ```
-- After validation, push changes to GitHub. The Vercel preview workflow will inject `SUPABASE_BRANCH` when running `vercel build` so the deployment points at the correct database branch.
+- After validation, push changes to GitHub. The preview workflow will inject `SUPABASE_BRANCH` when running the build so the artifact points at the correct database branch.
 
 ## Promoting to production
 

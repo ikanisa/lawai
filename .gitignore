@@ -29,3 +29,4 @@ apps/pwa/cache/
 .pnpm-state/
 Library/
 apps/web/tsconfig.typecheck.tsbuildinfo
+apps/web/tsconfig.tsbuildinfo
