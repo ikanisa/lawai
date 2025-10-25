@@ -51,6 +51,7 @@ G. Quality, Evals, and Telemetry
 
 H. Operations
 
+- [ ] CI `Deploy` : le préflight `scripts/deployment-preflight.mjs` passe avec les secrets de production (validation Supabase/OpenAI + `pnpm install`, `pnpm lint`, `pnpm typecheck`, `pnpm build`).
 - [ ] Cron: crawlers, backfills, nightly evals; quarantine flow working.
 - [ ] Incident response & rollback; model/policy versioning; change log.
 - [ ] SLO snapshots captured (`slo_snapshots`) and regulator dispatches logged (`regulator_dispatches`) for the launch window.

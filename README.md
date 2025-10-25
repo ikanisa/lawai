@@ -138,6 +138,21 @@ Au démarrage en production, l'API refusera les valeurs de configuration suivant
 
 Mettez à jour vos secrets avant déploiement pour éviter l'échec `configuration_invalid`.
 
+### Préflight de mise en production
+
+Le script `scripts/deployment-preflight.mjs` automatise les vérifications critiques avant une promotion en production :
+
+- Validation des secrets partagés via `@avocat-ai/shared/config/env` (échec immédiat si `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` ou `OPENAI_API_KEY` sont manquants ou encore en valeur factice).
+- Exécution séquentielle de `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck` et `pnpm build` avec propagation des codes de sortie.
+
+Lancez-le localement avec :
+
+```bash
+node scripts/deployment-preflight.mjs
+```
+
+Le workflow GitHub Actions [`Deploy`](.github/workflows/deploy.yml) exécute désormais ce préflight avant d'appliquer les migrations ou de publier une version, garantissant que la promotion respecte le Go / No-Go.
+
 ### Provisionner l'environnement complet
 
 Si vous souhaitez uniquement reprovisionner migrations, buckets, allowlist et vector store (sans audit des secrets), exécutez :
