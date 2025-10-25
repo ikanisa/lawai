@@ -35,10 +35,11 @@
     "ops:learning": "npm run learning --workspace @apps/ops",
     "ops:regulator-digest": "npm run regulator-digest --workspace @apps/ops",
     "ops:go-no-go": "npm run go-no-go --workspace @apps/ops",
-    "ops:check": "npm run check --workspace @apps/ops",
+    "ops:check": "pnpm env:validate && npm run check --workspace @apps/ops",
     "ops:rotate-secrets": "npm run rotate-secrets --workspace @apps/ops",
     "ops:rls-smoke": "npm run rls-smoke --workspace @apps/ops",
     "ops:phase": "npm run phase --workspace @apps/ops",
+    "env:validate": "node ./scripts/validate-env-examples.mjs",
     "seed": "npm run start --workspace @db/seed",
     "seed:compliance-test": "node ./scripts/seed-compliance-test-data.mjs",
     "check:binaries": "node ./scripts/check-binaries.mjs"
@@ -47,6 +48,7 @@
     "next-pwa": "^5.6.0"
   },
   "devDependencies": {
-    "sql-formatter": "^15.6.10"
+    "sql-formatter": "^15.6.10",
+    "zod": "^3.25.42"
   }
 }

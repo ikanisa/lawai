@@ -127,14 +127,14 @@ export async function registerWorkspaceRoutes(
       ] => Boolean(entry[1]));
 
       if (errorEntries.length === 0) {
-        return {
+        return reply.send({
           data,
           meta: {
             status: 'ok' as const,
             warnings: [] as string[],
             errors: {} as Record<string, never>,
           },
-        };
+        });
       }
 
       const serializedErrors: Partial<Record<keyof WorkspaceFetchErrors, SerializedError>> = {};
@@ -164,13 +164,11 @@ export async function registerWorkspaceRoutes(
         },
       });
     } catch (error) {
-      request.log.error({ err: error, orgId }, 'workspace_overview_fetch_failed');
+      request.log.error({ err: error }, 'workspace_overview_fetch_failed');
+      const message = error instanceof Error ? error.message : 'Unexpected error while fetching workspace overview.';
       return reply.code(500).send({
         error: 'workspace_fetch_failed',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Unexpected error while fetching workspace overview.',
+        message,
       });
     }
   });
