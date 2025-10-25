@@ -12,3 +12,4 @@ export * from './pwa.js';
 export * from './workspace.js';
 export * from './transparency/digest.js';
 export * from './scheduling/scheduler.js';
+export * from './config/env.js';

@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { env } from './config.js';
+import { incrementCounter } from './observability/metrics.js';
 
 export interface WhatsAppMessageOptions {
   phoneE164: string;
@@ -47,18 +48,27 @@ class MetaWhatsAppAdapter implements WhatsAppAdapter {
       },
     };
 
-    const response = await fetch(`https://graph.facebook.com/v19.0/${encodeURIComponent(phoneId)}/messages`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
+    let response: Response;
+
+    try {
+      response = await fetch(`https://graph.facebook.com/v19.0/${encodeURIComponent(phoneId)}/messages`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      this.logger?.error({ err: error }, 'wa_meta_send_error');
+      incrementCounter('whatsapp_send_failure', { provider: 'meta', reason: 'network' });
+      throw new Error('wa_send_failed');
+    }
 
     if (!response.ok) {
       const payload = await response.text();
       this.logger?.error({ status: response.status, payload }, 'wa_meta_send_failed');
+      incrementCounter('whatsapp_send_failure', { provider: 'meta', status: response.status });
       throw new Error('wa_send_failed');
     }
   }
@@ -87,18 +97,27 @@ class TwilioWhatsAppAdapter implements WhatsAppAdapter {
       Body: `Code ${template}: ${code}`,
     });
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
-      },
-      body: params.toString(),
-    });
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+        },
+        body: params.toString(),
+      });
+    } catch (error) {
+      this.logger?.error({ err: error }, 'wa_twilio_send_error');
+      incrementCounter('whatsapp_send_failure', { provider: 'twilio', reason: 'network' });
+      throw new Error('wa_send_failed');
+    }
 
     if (!response.ok) {
       const payload = await response.text();
       this.logger?.error({ status: response.status, payload }, 'wa_twilio_send_failed');
+      incrementCounter('whatsapp_send_failure', { provider: 'twilio', status: response.status });
       throw new Error('wa_send_failed');
     }
   }
