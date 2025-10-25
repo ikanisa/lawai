@@ -17,6 +17,10 @@
     "./scheduling": {
       "import": "./dist/scheduling.js",
       "types": "./dist/scheduling.d.ts"
+    },
+    "./config/env": {
+      "import": "./dist/config/env.js",
+      "types": "./dist/config/env.d.ts"
     }
   },
   "scripts": {
