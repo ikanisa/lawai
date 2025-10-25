@@ -1,3 +1,4 @@
+import type { RateLimitGuard } from '../rate-limit.js';
 import type { SupabaseServiceClient } from './supabase.js';
 
 export interface AppContext {

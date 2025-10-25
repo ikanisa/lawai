@@ -1,5 +1,6 @@
 import { createApp } from './app.js';
 import Fastify, { type FastifyReply } from 'fastify';
+import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
 import { diffWordsWithSpace } from 'diff';
 import { WebSearchModeSchema } from '@avocat-ai/shared';
 import type { IRACPayload, WebSearchMode } from '@avocat-ai/shared';
@@ -63,8 +64,14 @@ import { authorizeRequestWithGuards } from './http/authorization.js';
 import { supabase } from './supabase-client.js';
 import { listDeviceSessions, revokeDeviceSession } from './device-sessions.js';
 import { makeStoragePath } from './storage.js';
-import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './workspace.js';
-import { InMemoryRateLimiter, SupabaseRateLimiter, createRateLimitPreHandler } from './rate-limit.js';
+import {
+  InMemoryRateLimiter,
+  SupabaseRateLimiter,
+  createRateLimitPreHandler,
+  createRateLimitGuard,
+  createRateLimiterFactory,
+  enforceRateLimit,
+} from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
@@ -130,11 +137,13 @@ const runsRateLimitGuard = createRateLimitGuard(
   },
 );
 
+const workspaceLimiter = limiterFactory.create('workspace', {
+  limit: env.RATE_LIMIT_WORKSPACE_LIMIT,
+  windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_SECONDS * 1000,
+});
+
 const workspaceRateLimitGuard = createRateLimitGuard(
-  limiterFactory.create('workspace', {
-    limit: env.RATE_LIMIT_WORKSPACE_LIMIT,
-    windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_SECONDS * 1000,
-  }),
+  workspaceLimiter,
   {
     name: 'workspace',
     limit: env.RATE_LIMIT_WORKSPACE_LIMIT,
@@ -158,7 +167,7 @@ const complianceRateLimitGuard = createRateLimitGuard(
 
 context.rateLimits.workspace = workspaceRateLimitGuard;
 
-await registerWorkspaceRoutes(app, context);
+await registerWorkspaceRoutes(app, context, { limiter: workspaceLimiter });
 
 const sensitiveRateLimiter = new SupabaseRateLimiter({
   supabase,

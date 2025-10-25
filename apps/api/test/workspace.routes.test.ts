@@ -2,6 +2,10 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../src/http/authorization.js', () => ({
+  authorizeRequestWithGuards: vi.fn(async () => ({})),
+}));
+
 import { registerWorkspaceRoutes } from '../src/domain/workspace/routes.js';
 import type { AppContext } from '../src/types/context.js';
 import {
@@ -23,6 +27,7 @@ const supabaseStub = {} as SupabaseClient;
 const createContext = (): AppContext => ({
   supabase: supabaseStub,
   config: { openai: { apiKey: 'test-key' } },
+  rateLimits: {},
 });
 
 describe('workspace routes', () => {
@@ -52,6 +57,7 @@ describe('workspace routes', () => {
     const response = await app.inject({
       method: 'GET',
       url: '/workspace?orgId=00000000-0000-0000-0000-000000000000',
+      headers: { 'x-user-id': 'user-1' },
     });
 
     expect(response.statusCode).toBe(200);
@@ -72,6 +78,7 @@ describe('workspace routes', () => {
     const response = await app.inject({
       method: 'GET',
       url: '/workspace?orgId=00000000-0000-0000-0000-000000000000',
+      headers: { 'x-user-id': 'user-1' },
     });
 
     expect(response.statusCode).toBe(206);
@@ -95,6 +102,7 @@ describe('workspace routes', () => {
     const response = await app.inject({
       method: 'GET',
       url: '/workspace?orgId=00000000-0000-0000-0000-000000000000',
+      headers: { 'x-user-id': 'user-1' },
     });
 
     expect(response.statusCode).toBe(502);
@@ -109,6 +117,7 @@ describe('workspace routes', () => {
     const response = await app.inject({
       method: 'GET',
       url: '/workspace?orgId=00000000-0000-0000-0000-000000000000',
+      headers: { 'x-user-id': 'user-1' },
     });
 
     expect(response.statusCode).toBe(500);
