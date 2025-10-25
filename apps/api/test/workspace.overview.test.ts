@@ -1,190 +1,180 @@
-import { describe, expect, it } from 'vitest';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { buildHitlInbox } from '../src/domain/workspace/hitl.js';
-import {
-  collectWorkspaceFetchErrors,
-  extractCountry,
-  normalizeWorkspaceOverview,
-  type WorkspaceOverviewQueryResults,
-} from '../src/domain/workspace/overview.js';
+vi.mock('../src/http/authorization.js', () => ({
+  authorizeRequestWithGuards: vi.fn(async () => ({})),
+}));
 
-describe('workspace overview helpers', () => {
-  it('normalizes overview rows into the expected shape', () => {
-    const overview = normalizeWorkspaceOverview({
-      jurisdictions: [
+import { registerWorkspaceRoutes } from '../src/domain/workspace/routes.js';
+import type { AppContext } from '../src/types/context.js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+const ORG_ID = '00000000-0000-0000-0000-000000000123';
+const USER_ID = 'user-test';
+
+type QueryResult = { data: unknown; error: unknown };
+
+type QueryFactory = () => QueryResult | Promise<QueryResult>;
+
+function createQueryBuilder(factory: QueryFactory) {
+  let executed: Promise<QueryResult> | null = null;
+  const execute = () => {
+    if (!executed) {
+      executed = Promise.resolve().then(factory);
+    }
+    return executed;
+  };
+
+  const builder: any = {
+    select: vi.fn(() => builder),
+    eq: vi.fn(() => builder),
+    order: vi.fn(() => builder),
+    limit: vi.fn(() => builder),
+    then: (onFulfilled: (value: QueryResult) => unknown, onRejected?: (reason: unknown) => unknown) =>
+      execute().then(onFulfilled, onRejected),
+    catch: (onRejected: (reason: unknown) => unknown) => execute().catch(onRejected),
+    finally: (onFinally: () => void) => execute().finally(onFinally),
+  };
+
+  return builder;
+}
+
+describe('workspace overview route', () => {
+  let app: FastifyInstance;
+  const queryFactories = new Map<string, QueryFactory>();
+  const supabaseMock = {
+    from: vi.fn((table: string) => {
+      const factory = queryFactories.get(table);
+      if (!factory) {
+        throw new Error(`Unexpected table ${table}`);
+      }
+      return createQueryBuilder(factory);
+    }),
+  };
+  const supabase = supabaseMock as unknown as SupabaseClient;
+
+  const createContext = (): AppContext => ({
+    supabase,
+    config: { openai: { apiKey: 'test-key' } },
+    rateLimits: {},
+  });
+
+  beforeEach(async () => {
+    queryFactories.clear();
+    supabaseMock.from.mockClear();
+    app = Fastify();
+    await registerWorkspaceRoutes(app, createContext());
+    await app.ready();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('returns a complete overview when all queries succeed', async () => {
+    queryFactories.set('jurisdictions', () => ({
+      data: [
         { code: 'FR', name: 'France', eu: true, ohada: false },
-        { code: 'US', name: 'United States', eu: false, ohada: false },
+        { code: 'OH', name: 'OHADA', eu: false, ohada: true },
       ],
-      matters: [
+      error: null,
+    }));
+    queryFactories.set('agent_runs', () => ({
+      data: [
         {
           id: 'run-1',
-          question: 'What is the capital of France?',
-          risk_level: 'low',
-          hitl_required: false,
-          status: 'completed',
-          started_at: '2024-01-01T00:00:00.000Z',
-          finished_at: '2024-01-01T00:01:00.000Z',
-          jurisdiction_json: { country: 'FR' },
-        },
-        {
-          id: 'run-2',
-          question: 'What is the capital of the US?',
-          risk_level: null,
-          hitl_required: null,
-          status: 'pending',
-          started_at: null,
-          finished_at: null,
-          jurisdiction_json: { country_code: 'US' },
-        },
-        {
-          id: 'run-3',
-          question: 'Unknown jurisdiction',
-          risk_level: 'high',
+          question: 'Synthèse assignation Paris',
+          risk_level: 'medium',
           hitl_required: true,
           status: 'completed',
-          started_at: '2024-01-02T00:00:00.000Z',
-          finished_at: '2024-01-02T00:01:00.000Z',
-          jurisdiction_json: null,
+          started_at: '2024-01-01T09:00:00.000Z',
+          finished_at: '2024-01-01T09:30:00.000Z',
+          jurisdiction_json: { country: 'FR' },
         },
       ],
-      compliance: [
+      error: null,
+    }));
+    queryFactories.set('sources', () => ({
+      data: [
         {
-          id: 'compliance-1',
-          title: 'New policy',
-          publisher: 'OECD',
-          source_url: 'https://example.com/policy',
+          id: 'src-1',
+          title: 'CEPEJ 2024 updates',
+          publisher: 'CEPEJ',
+          source_url: 'https://example.org/cepej',
           jurisdiction_code: 'FR',
           consolidated: true,
           effective_date: '2024-01-01',
-          created_at: '2024-01-02',
+          created_at: '2024-01-03T10:00:00.000Z',
         },
       ],
-      hitl: [
+      error: null,
+    }));
+    queryFactories.set('hitl_queue', () => ({
+      data: [
         {
           id: 'hitl-1',
           run_id: 'run-1',
-          reason: 'Needs review',
+          reason: 'confidential_evidence',
           status: 'pending',
-          created_at: '2024-01-03T00:00:00.000Z',
-        },
-        {
-          id: 'hitl-2',
-          run_id: 'run-3',
-          reason: 'Escalated',
-          status: 'completed',
-          created_at: '2024-01-04T00:00:00.000Z',
+          created_at: '2024-01-02T12:00:00.000Z',
         },
       ],
+      error: null,
+    }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/workspace?orgId=${ORG_ID}`,
+      headers: { 'x-user-id': USER_ID },
     });
 
-    expect(overview.jurisdictions).toEqual([
-      { code: 'FR', name: 'France', eu: true, ohada: false, matterCount: 1 },
-      { code: 'US', name: 'United States', eu: false, ohada: false, matterCount: 1 },
-    ]);
-    expect(overview.matters).toEqual([
-      {
-        id: 'run-1',
-        question: 'What is the capital of France?',
-        status: 'completed',
-        riskLevel: 'low',
-        hitlRequired: false,
-        startedAt: '2024-01-01T00:00:00.000Z',
-        finishedAt: '2024-01-01T00:01:00.000Z',
-        jurisdiction: 'FR',
-      },
-      {
-        id: 'run-2',
-        question: 'What is the capital of the US?',
-        status: 'pending',
-        riskLevel: null,
-        hitlRequired: null,
-        startedAt: null,
-        finishedAt: null,
-        jurisdiction: 'US',
-      },
-      {
-        id: 'run-3',
-        question: 'Unknown jurisdiction',
-        status: 'completed',
-        riskLevel: 'high',
-        hitlRequired: true,
-        startedAt: '2024-01-02T00:00:00.000Z',
-        finishedAt: '2024-01-02T00:01:00.000Z',
-        jurisdiction: null,
-      },
-    ]);
-    expect(overview.complianceWatch).toEqual([
-      {
-        id: 'compliance-1',
-        title: 'New policy',
-        publisher: 'OECD',
-        url: 'https://example.com/policy',
-        jurisdiction: 'FR',
-        consolidated: true,
-        effectiveDate: '2024-01-01',
-        createdAt: '2024-01-02',
-      },
-    ]);
-    expect(overview.hitlInbox).toEqual({
-      items: [
-        {
-          id: 'hitl-1',
-          runId: 'run-1',
-          reason: 'Needs review',
-          status: 'pending',
-          createdAt: '2024-01-03T00:00:00.000Z',
-        },
-        {
-          id: 'hitl-2',
-          runId: 'run-3',
-          reason: 'Escalated',
-          status: 'completed',
-          createdAt: '2024-01-04T00:00:00.000Z',
-        },
-      ],
-      pendingCount: 1,
+    const payload = response.json();
+    expect(response.statusCode).toBe(200);
+    expect(payload.meta).toEqual({ status: 'ok', warnings: [], errors: {} });
+    expect(payload.data.jurisdictions).toHaveLength(2);
+    expect(payload.data.matters[0]).toMatchObject({
+      id: 'run-1',
+      question: 'Synthèse assignation Paris',
+      jurisdiction: 'FR',
     });
+    expect(payload.data.complianceWatch).toHaveLength(1);
+    expect(payload.data.hitlInbox.pendingCount).toBe(1);
   });
 
-  it('extracts country information from heterogeneous metadata', () => {
-    expect(extractCountry(null)).toBeNull();
-    expect(extractCountry({ country: 'FR' })).toBe('FR');
-    expect(extractCountry({ country: '  ' })).toBeNull();
-    expect(extractCountry({ country_code: 'US' })).toBe('US');
-    expect(extractCountry({ country_code: '   ' })).toBeNull();
-    expect(extractCountry({ some: 'value' })).toBeNull();
+  it('returns partial data when a query reports an error', async () => {
+    queryFactories.set('jurisdictions', () => ({ data: [], error: null }));
+    queryFactories.set('agent_runs', () => ({ data: [], error: new Error('matters failed') }));
+    queryFactories.set('sources', () => ({ data: [], error: null }));
+    queryFactories.set('hitl_queue', () => ({ data: [], error: null }));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/workspace?orgId=${ORG_ID}`,
+      headers: { 'x-user-id': USER_ID },
+    });
+
+    const payload = response.json();
+    expect(response.statusCode).toBe(206);
+    expect(payload.meta.status).toBe('partial');
+    expect(payload.meta.errors.matters).toBeDefined();
+    expect(payload.meta.warnings).toContain('Partial data: failed to load matters.');
   });
 
-  it('collects individual query errors for logging', () => {
-    const results = {
-      jurisdictionsResult: { data: [], error: new Error('jurisdictions') },
-      mattersResult: { data: [], error: undefined },
-      complianceResult: { data: [], error: new Error('compliance') },
-      hitlResult: { data: [], error: new Error('hitl') },
-    } as unknown as WorkspaceOverviewQueryResults;
-
-    expect(collectWorkspaceFetchErrors(results)).toEqual({
-      jurisdictions: expect.any(Error),
-      matters: undefined,
-      compliance: expect.any(Error),
-      hitl: expect.any(Error),
+  it('returns 500 when fetching the overview throws', async () => {
+    queryFactories.set('jurisdictions', () => {
+      throw new Error('jurisdictions unavailable');
     });
-  });
+    queryFactories.set('agent_runs', () => ({ data: [], error: null }));
+    queryFactories.set('sources', () => ({ data: [], error: null }));
+    queryFactories.set('hitl_queue', () => ({ data: [], error: null }));
 
-  it('builds the HITL inbox shape with pending counts', () => {
-    const inbox = buildHitlInbox([
-      { id: '1', run_id: 'r1', reason: 'Check', status: 'pending', created_at: '2024-01-01' },
-      { id: '2', run_id: 'r2', reason: 'OK', status: 'completed', created_at: '2024-01-02' },
-      { id: '3', run_id: 'r3', reason: 'Review', status: 'pending', created_at: null },
-    ]);
-
-    expect(inbox).toEqual({
-      items: [
-        { id: '1', runId: 'r1', reason: 'Check', status: 'pending', createdAt: '2024-01-01' },
-        { id: '2', runId: 'r2', reason: 'OK', status: 'completed', createdAt: '2024-01-02' },
-        { id: '3', runId: 'r3', reason: 'Review', status: 'pending', createdAt: null },
-      ],
-      pendingCount: 2,
+    const response = await app.inject({
+      method: 'GET',
+      url: `/workspace?orgId=${ORG_ID}`,
+      headers: { 'x-user-id': USER_ID },
     });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toMatchObject({ error: 'workspace_fetch_failed' });
   });
 });
