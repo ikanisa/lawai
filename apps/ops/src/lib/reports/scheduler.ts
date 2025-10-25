@@ -5,6 +5,20 @@ import { listSloSnapshots } from './slo.js';
 import { enqueueRegulatorDigest } from './regulator.js';
 import { createOpsAuditLogger } from '../supabase.js';
 
+export interface ScheduledReportFeatureFlags {
+  transparency?: {
+    enabled?: boolean;
+    dryRun?: boolean;
+  };
+  slo?: {
+    enabled?: boolean;
+  };
+  regulator?: {
+    enabled?: boolean;
+    verifyParity?: boolean;
+  };
+}
+
 export interface ScheduledReportsOptions {
   supabase: SupabaseClient;
   orgId: string;
@@ -15,7 +29,7 @@ export interface ScheduledReportsOptions {
 
 export interface ScheduledReportResult {
   kind: 'transparency' | 'slo' | 'regulator';
-  status: 'completed' | 'failed';
+  status: 'completed' | 'failed' | 'skipped';
   payload: unknown | null;
   insertedId: string | null;
   error?: string;
@@ -29,7 +43,7 @@ async function storeReport(
   userId: string,
   payload: unknown,
   metadata: Record<string, unknown> | undefined,
-  status: ScheduledReportResult['status'],
+  status: Exclude<ScheduledReportResult['status'], 'skipped'>,
 ): Promise<string | null> {
   const { data, error } = await supabase
     .from('ops_report_runs')
@@ -51,7 +65,10 @@ async function storeReport(
   return data?.id ?? null;
 }
 
-export async function runScheduledReports(options: ScheduledReportsOptions): Promise<ScheduledReportResult[]> {
+export async function runScheduledReports(
+  options: ScheduledReportsOptions,
+  featureFlags: ScheduledReportFeatureFlags = {},
+): Promise<ScheduledReportResult[]> {
   const auditLogger = createOpsAuditLogger(options.supabase);
   const now = new Date();
   const periodStart = formatISO(subDays(now, 7));
@@ -65,7 +82,22 @@ export async function runScheduledReports(options: ScheduledReportsOptions): Pro
     metadata: Record<string, unknown>,
     successEvent: string,
     failureEvent: string,
+    skipEvent: string,
+    enabled: boolean,
   ): Promise<void> {
+    if (!enabled) {
+      const skipMetadata = { ...metadata, reason: 'disabled' };
+      await auditLogger.log({
+        orgId: options.orgId,
+        actorId: options.userId,
+        kind: skipEvent,
+        object: `${kind}-report`,
+        metadata: skipMetadata,
+      });
+      results.push({ kind, status: 'skipped', payload: null, insertedId: null, metadata: skipMetadata });
+      return;
+    }
+
     try {
       const payload = await run();
       const insertedId = await storeReport(options.supabase, kind, options.orgId, options.userId, payload, metadata, 'completed');
@@ -103,11 +135,13 @@ export async function runScheduledReports(options: ScheduledReportsOptions): Pro
         apiBaseUrl: options.apiBaseUrl,
         periodStart,
         periodEnd,
-        dryRun: false,
+        dryRun: featureFlags.transparency?.dryRun ?? false,
       }),
-    { periodStart, periodEnd },
+    { periodStart, periodEnd, dryRun: featureFlags.transparency?.dryRun ?? false },
     'report.transparency.generated',
     'report.transparency.failed',
+    'report.transparency.skipped',
+    featureFlags.transparency?.enabled ?? true,
   );
 
   await processReport(
@@ -122,6 +156,8 @@ export async function runScheduledReports(options: ScheduledReportsOptions): Pro
     { fetchedAt: now.toISOString() },
     'report.slo.collected',
     'report.slo.failed',
+    'report.slo.skipped',
+    featureFlags.slo?.enabled ?? true,
   );
 
   await processReport(
@@ -133,10 +169,13 @@ export async function runScheduledReports(options: ScheduledReportsOptions): Pro
         apiBaseUrl: options.apiBaseUrl,
         periodStart,
         periodEnd,
+        verifyParity: featureFlags.regulator?.verifyParity ?? true,
       }),
-    { periodStart, periodEnd },
+    { periodStart, periodEnd, verifyParity: featureFlags.regulator?.verifyParity ?? true },
     'report.regulator.enqueued',
     'report.regulator.failed',
+    'report.regulator.skipped',
+    featureFlags.regulator?.enabled ?? true,
   );
 
   return results;

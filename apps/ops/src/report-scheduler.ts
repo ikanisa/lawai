@@ -48,24 +48,49 @@ async function run(): Promise<void> {
 
   try {
     const supabase = createSupabaseService(process.env as Record<string, string>);
-    const results = await runScheduledReports({
-      supabase,
-      orgId: options.orgId,
-      userId: options.userId,
-      apiBaseUrl: options.apiBaseUrl,
-    });
+    const results = await runScheduledReports(
+      {
+        supabase,
+        orgId: options.orgId,
+        userId: options.userId,
+        apiBaseUrl: options.apiBaseUrl,
+      },
+      {},
+    );
     const hasFailure = results.some((report) => report.status === 'failed');
+    const hasSuccess = results.some((report) => report.status === 'completed');
+    const allSkipped = results.length > 0 && results.every((report) => report.status === 'skipped');
+
     if (hasFailure) {
       spinner.warn('Rapports générés avec avertissements. Consultez les erreurs ci-dessous.');
-    } else {
+    } else if (hasSuccess) {
       spinner.succeed('Rapports générés et archivés.');
+    } else if (allSkipped) {
+      spinner.info('Aucun rapport généré — toutes les tâches sont désactivées.');
+    } else {
+      spinner.succeed('Cycle de planification terminé.');
     }
+
     for (const report of results) {
-      const prefix = report.status === 'completed' ? '✅' : '⚠️';
-      const target = report.insertedId ?? 'not stored';
-      const detail = report.status === 'failed' && report.error ? ` – ${report.error}` : '';
+      let prefix = 'ℹ️';
+      let target = report.insertedId ?? 'not stored';
+      let detail = '';
+
+      if (report.status === 'completed') {
+        prefix = '✅';
+      } else if (report.status === 'failed') {
+        prefix = '⚠️';
+        detail = report.error ? ` – ${report.error}` : '';
+      } else if (report.status === 'skipped') {
+        prefix = '⏭️';
+        target = 'skipped';
+        const reason = typeof report.metadata?.reason === 'string' ? report.metadata.reason : 'Ignoré par configuration';
+        detail = ` – ${reason}`;
+      }
+
       console.log(`${prefix} ${report.kind} → ${target}${detail}`);
     }
+
     if (hasFailure) {
       process.exitCode = 1;
     }
