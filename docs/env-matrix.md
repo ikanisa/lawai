@@ -73,11 +73,10 @@ secret or configuration knob is introduced.
 
 ### Legacy / project-specific snapshots
 
-Directories under `francophone-lex/` and `JB/` maintain historical configuration examples. They reuse the shared variables above and add bespoke integrations (Google Drive ingestion, payment APIs, Redis rate limiting). These examples now reference the shared matrix to reduce drift while preserving project-specific placeholders.
+Directories under `JB/` maintain historical configuration examples. They reuse the shared variables above and add bespoke integrations (Google Drive ingestion, payment APIs, Redis rate limiting). The legacy `francophone-lex/` scaffolds have been removed to avoid vendor-specific drift, so JB now serves as the lone reference area.
 
 ## Using the shared helper
 
 - Import `loadServerEnv` and the relevant schemas from `@avocat-ai/shared` when adding a new server-side loader.
 - Extend the shared schemas with service-specific validation (for example, requiring non-empty values in Ops or keeping relaxed defaults in the API).
 - Document any non-shared variables in this file so that future services know where to source configuration.
-

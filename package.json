@@ -9,8 +9,7 @@
     "apps/*",
     "packages/*",
     "db/*",
-    "JB/*",
-    "francophone-lex/*"
+    "JB/*"
   ],
   "scripts": {
     "build": "pnpm -r --if-present run build",
