@@ -1,52 +1,86 @@
 import { z } from 'zod';
-import type { AppContext } from '../../types/context';
 import type { AppFastifyInstance } from '../../types/fastify.js';
+import type { AppContext } from '../../types/context.js';
+import { fetchWorkspaceOverview as defaultFetchWorkspaceOverview } from './services.js';
+import type { WorkspaceFetchErrors } from './overview.js';
 
 type WorkspaceServices = {
   fetchWorkspaceOverview: typeof defaultFetchWorkspaceOverview;
 };
 
-export async function registerWorkspaceRoutes(app: AppFastifyInstance, ctx: AppContext) {
-  app.get<{ Querystring: z.infer<typeof workspaceQuerySchema> }>('/workspace', async (request, reply) => {
-    const parse = workspaceQuerySchema.safeParse(request.query);
-    if (!parse.success) {
+const workspaceQuerySchema = z.object({
+  orgId: z.string().uuid('orgId must be a valid UUID'),
+});
+
+type WorkspaceQuery = z.infer<typeof workspaceQuerySchema>;
+
+const WORKSPACE_SECTIONS = ['jurisdictions', 'matters', 'compliance', 'hitl'] as const;
+
+const SECTION_LABELS: Record<(typeof WORKSPACE_SECTIONS)[number], string> = {
+  jurisdictions: 'jurisdictions',
+  matters: 'matters',
+  compliance: 'compliance watch',
+  hitl: 'HITL inbox',
+};
+
+type SerializedError = {
+  message?: string;
+  name?: string;
+  stack?: string;
+  [key: string]: unknown;
+};
+
+function serializeError(error: unknown): SerializedError {
+  if (!error) {
+    return { message: 'Unknown error' };
+  }
+
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  if (typeof error === 'string') {
+    return { message: error };
+  }
+
+  if (typeof error === 'object') {
+    return { ...(error as Record<string, unknown>) };
+  }
+
+  return { message: String(error) };
+}
+
+export async function registerWorkspaceRoutes(
+  app: AppFastifyInstance,
+  ctx: AppContext,
+  services: WorkspaceServices = { fetchWorkspaceOverview: defaultFetchWorkspaceOverview },
+): Promise<void> {
+  const { supabase } = ctx;
+  const workspaceGuard = ctx.rateLimits.workspace;
+
+  app.get<{ Querystring: WorkspaceQuery }>('/workspace', async (request, reply) => {
+    const parsed = workspaceQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
       return reply.code(400).send({
         error: 'invalid_query_parameters',
         message: 'Invalid query parameters',
-        details: parse.error.flatten(),
+        details: parsed.error.flatten(),
       });
     }
-  } catch (error) {
-    request.log.warn({ err: error }, 'workspace_rate_limit_failed');
-  }
-  return true;
-}
 
-export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
-  app.get<{ Querystring: WorkspaceQuery }>(
-    '/workspace',
-    {
-      schema: {
-        headers: {
-          type: 'object',
-          properties: { 'x-user-id': { type: 'string' } },
-          required: ['x-user-id'],
-        },
-        querystring: {
-          type: 'object',
-          properties: { orgId: { type: 'string' } },
-          required: ['orgId'],
-        },
-        response: { 200: { type: 'object', additionalProperties: true } },
-      },
-    },
-    async (request, reply) => {
-      if (!enforceRateLimit(workspaceLimiter, request, reply)) {
+    if (workspaceGuard) {
+      const allowed = await workspaceGuard(request, reply, ['workspace', parsed.data.orgId]);
+      if (!allowed) {
         return;
       }
+    }
 
     try {
-      const { data, errors } = await services.fetchWorkspaceOverview(supabase, orgId);
+      const { data, errors } = await services.fetchWorkspaceOverview(supabase, parsed.data.orgId);
 
       const errorEntries = Object.entries(errors ?? {}).filter((entry): entry is [
         keyof WorkspaceFetchErrors,
@@ -54,14 +88,14 @@ export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppCont
       ] => Boolean(entry[1]));
 
       if (errorEntries.length === 0) {
-        return {
+        return reply.send({
           data,
           meta: {
             status: 'ok' as const,
             warnings: [] as string[],
             errors: {} as Record<string, never>,
           },
-        };
+        });
       }
 
       const serializedErrors: Partial<Record<keyof WorkspaceFetchErrors, SerializedError>> = {};
@@ -76,9 +110,6 @@ export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppCont
       const allSectionsFailed = errorEntries.length === WORKSPACE_SECTIONS.length;
       const statusCode = allSectionsFailed ? 502 : 206;
       const status = allSectionsFailed ? 'error' : 'partial';
-      const logMethod = allSectionsFailed ? request.log.error.bind(request.log) : request.log.warn.bind(request.log);
-
-      logMethod({ errors: serializedErrors, orgId }, 'workspace_overview_incomplete');
 
       return reply.code(statusCode).send({
         data,
@@ -89,13 +120,11 @@ export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppCont
         },
       });
     } catch (error) {
-      request.log.error({ err: error, orgId }, 'workspace_overview_fetch_failed');
+      request.log.error({ err: error }, 'workspace_overview_fetch_failed');
+      const message = error instanceof Error ? error.message : 'Unexpected error while fetching workspace overview.';
       return reply.code(500).send({
         error: 'workspace_fetch_failed',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Unexpected error while fetching workspace overview.',
+        message,
       });
     }
   });

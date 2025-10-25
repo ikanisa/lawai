@@ -1,4 +1,7 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { observabilityPlugin } from './plugins/observability.js';
+import { createAppContainer } from './container.js';
+import { createRateLimiterFactory } from './rate-limit.js';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
 import { registerCorpusRoutes } from './routes/corpus/index.js';
@@ -11,11 +14,11 @@ import { registerUploadRoutes } from './routes/upload/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
 import type { AppContext } from './types/context';
 import type { AppAssembly, AppFastifyInstance } from './types/fastify.js';
-import { env } from './config.js';
+import { env, rateLimitConfig } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
-import type { CreateAppResult } from './types/app';
+import type { CreateAppOptions } from './types/app';
 
-export async function createApp(): Promise<AppAssembly> {
+export async function createApp(options: CreateAppOptions = {}): Promise<AppAssembly> {
   const app: AppFastifyInstance = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
@@ -41,15 +44,18 @@ export async function createApp(): Promise<AppAssembly> {
 
   await app.register(observabilityPlugin);
 
-  const { supabase: supabaseOverride, overrides, includeWorkspaceDomainRoutes = false } = options;
+  const {
+    supabase: supabaseOverride,
+    overrides,
+    registerWorkspaceRoutes: _registerWorkspaceRoutes = true,
+    includeWorkspaceDomainRoutes: _includeWorkspaceDomainRoutes = false,
+  } = options;
 
   const supabase = supabaseOverride ?? serviceClient;
   const container = createAppContainer({
     supabase,
     ...(overrides ?? {}),
   });
-
-  const shouldRegisterWorkspaceRoutes = options.registerWorkspaceRoutes ?? true;
 
   const rateLimiterFactory = createRateLimiterFactory({
     driver: rateLimitConfig.driver,
@@ -61,6 +67,7 @@ export async function createApp(): Promise<AppAssembly> {
 
   const context: AppContext = {
     supabase,
+    container,
     config: {
       openai: {
         apiKey: env.OPENAI_API_KEY,
