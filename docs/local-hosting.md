@@ -19,6 +19,20 @@ This document explains how to run the Avocat-AI stack entirely on a local MacBoo
    - `APP_ENV=local`, `PORT=3000` (override as needed).
 3. Never commit `.env.local`. For shared defaults, update `.env.example` only with placeholder values.
 
+### WhatsApp OTP configuration
+
+If you plan to send WhatsApp OTP messages from the API, populate the following variables in your deployment environment:
+
+- `WA_PROVIDER` — either `meta` for the WhatsApp Business Cloud API or `twilio` for Twilio Programmable Messaging.
+- `WA_TOKEN` — Meta access token or Twilio credentials in `ACxxxxxxxxxxxxxxxxxxxxxxxxxxxx:auth_token` form.
+- `WA_PHONE_NUMBER_ID` — Meta phone number ID or the WhatsApp-enabled number in E.164 format.
+- `WA_TEMPLATE_OTP_NAME` — Approved WhatsApp template that renders the OTP code.
+- (Optional) `WA_TEMPLATE_LOCALE` — Locale code for Meta templates (defaults to `fr`).
+
+The API schema now validates that the full credential set is present whenever `WA_PROVIDER` is defined, so deployment preflights fail fast instead of surfacing missing secrets at runtime.
+
+On send failures the service emits structured logs (`wa_meta_send_failed`, `wa_twilio_send_failed`, `wa_*_send_error`) and increments the `whatsapp_send_failure` counter with provider and status labels. Forward these signals to your log/metrics pipeline (e.g. Vercel Log Drains + Prometheus scraper) to alert on delivery issues.
+
 ## Install dependencies
 
 ```bash
