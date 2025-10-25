@@ -15,6 +15,9 @@ importers:
       sql-formatter:
         specifier: ^15.6.10
         version: 15.6.10
+      zod:
+        specifier: ^3.25.42
+        version: 3.25.76
 
   apps/api:
     dependencies:
