@@ -32,7 +32,14 @@ type EdgeServeHandlerInfo = {
   [key: string]: unknown;
 };
 
-const deno = (globalThis as typeof globalThis & { Deno?: { env?: { get?: (key: string) => string | undefined }; serve?: (...args: any[]) => any } }).Deno;
+type DenoRuntime = {
+  env?: {
+    get?: (key: string) => string | undefined;
+  };
+  serve?: (...args: unknown[]) => unknown;
+};
+
+const deno = (globalThis as typeof globalThis & { Deno?: DenoRuntime }).Deno;
 
 const getDenoEnv = (key: string) => deno?.env?.get?.(key);
 
@@ -115,7 +122,8 @@ function ensurePatchedServe(tracerName: string) {
     };
   };
 
-  deno.serve = function (...args: any[]) {
+  const originalServe = deno.serve as NonNullable<DenoRuntime['serve']>;
+  deno.serve = function (...args: Parameters<typeof originalServe>) {
     if (args.length === 1 && typeof args[0] === 'function') {
       return originalServe(wrapHandler(args[0]));
     }
@@ -123,7 +131,7 @@ function ensurePatchedServe(tracerName: string) {
       return originalServe(args[0], wrapHandler(args[1]));
     }
     return originalServe(...args);
-  };
+  } as typeof originalServe;
   servePatched = true;
 }
 

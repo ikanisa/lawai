@@ -2,7 +2,7 @@ declare const Deno: {
   env: {
     get(name: string): string | undefined;
   };
-  serve?: (...args: any[]) => any;
+  serve?: (...args: unknown[]) => unknown;
 };
 
 declare namespace Deno {

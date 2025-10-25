@@ -34,7 +34,10 @@ export function TrustCenterView({ messages }: TrustCenterViewProps) {
 
   const trustMessages = messages.trust;
   const loadingText = messages.admin.loadingShort;
-  const publications = publicationsQuery.data?.publications ?? [];
+  const publications = useMemo(
+    () => publicationsQuery.data?.publications ?? [],
+    [publicationsQuery.data?.publications],
+  );
 
   const publicationsByCategory = useMemo(() => {
     const groups = new Map<string, typeof publications>();

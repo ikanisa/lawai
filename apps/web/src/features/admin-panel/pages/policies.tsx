@@ -29,7 +29,7 @@ export function AdminPoliciesPage() {
     },
   });
 
-  const policies = policyQuery.data?.policies ?? [];
+  const policies = useMemo(() => policyQuery.data?.policies ?? [], [policyQuery.data?.policies]);
   const featureFlags = useMemo(
     () =>
       policies.filter((policy) => policy.key.startsWith('feature:')).map((policy) => ({

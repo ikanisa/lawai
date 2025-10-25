@@ -18,6 +18,7 @@ import {
 import { PlanDrawer, type ToolLogEntry } from "@/components/agent/PlanDrawer";
 import { ToolChip } from "@/components/agent/ToolChip";
 import { EvidencePane } from "@/components/evidence/EvidencePane";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";

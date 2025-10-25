@@ -33,7 +33,7 @@ export function AdminOverviewPage() {
   });
 
   const stats = overviewQuery.data?.stats ?? FALLBACK_STATS;
-  const charts = overviewQuery.data?.charts ?? [];
+  const charts = useMemo(() => overviewQuery.data?.charts ?? [], [overviewQuery.data?.charts]);
   const alerts = overviewQuery.data?.alerts ?? [];
   const jobs = jobsQuery.data?.jobs ?? [];
 

@@ -18,7 +18,7 @@ import { IRACAccordion } from '@/components/irac-accordion';
 import { CitationCard } from '@/components/citation-card';
 import { VersionTimeline } from '@/components/version-timeline';
 import { PlanDrawer } from '@/components/plan-drawer';
-import { usePlanDrawer } from @/state/plan-drawer';
+import { usePlanDrawer } from '@/state/plan-drawer';
 import { VoiceInputButton } from './voice-input-button';
 import { CameraOcrButton } from './camera-ocr-button';
 import { OutboxPanel } from './outbox-panel';
@@ -39,7 +39,7 @@ import { cn } from '@/lib/utils';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useOutbox, type OutboxItem } from '@/hooks/use-outbox';
 import { usePwaInstall } from '@/hooks/use-pwa-install';
-import { useConfidentialMode } from @/state/confidential-mode';
+import { useConfidentialMode } from '@/state/confidential-mode';
 import { RwandaLanguageTriage } from './rwanda-language-triage';
 
 const EMPTY_VIOLATIONS: string[] = [];
@@ -409,8 +409,6 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     trustMessages.hitlRequestFailed,
     locale,
     hitlMessage,
-    requestHitlReview,
-    sendTelemetryEvent,
     online,
   ]);
 
@@ -470,7 +468,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     );
     setHitlQueued(requiresHitl);
     setHitlRequestPending(false);
-  }, [latestRun?.runId]);
+  }, [latestRun]);
 
   const fallbackViolationHosts = useMemo(() => {
     if (allowlistViolations.length === 0) return [] as string[];

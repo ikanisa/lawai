@@ -4,7 +4,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { type Instrumentation } from '@opentelemetry/instrumentation';
 import { Resource } from '@opentelemetry/resources';
-import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { MetricReader, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { context as apiContext } from '@opentelemetry/api';
@@ -84,7 +84,7 @@ export async function initNodeTelemetry(config: NodeTelemetryConfig): Promise<Te
 
   sdk = new NodeSDK({
     traceExporter,
-    metricReader: metricReader as any,
+    metricReader: metricReader as MetricReader,
     resource,
     instrumentations,
   });
