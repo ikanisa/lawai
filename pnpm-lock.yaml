@@ -9733,11 +9733,7 @@ packages:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-<<<<<<< Updated upstream
-      '@types/node': 20.14.10
-=======
       '@types/node': 20.19.23
->>>>>>> Stashed changes
       long: 5.3.2
     dev: false
 
