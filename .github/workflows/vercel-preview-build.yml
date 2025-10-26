@@ -27,6 +27,8 @@ jobs:
           echo "### Supabase preview branch" >> $GITHUB_STEP_SUMMARY
           echo "Using branch \`${SUPABASE_BRANCH}\` for Supabase preview resources." >> $GITHUB_STEP_SUMMARY
       - name: Check migrations
+        env:
+          ALLOW_SUPABASE_MIGRATIONS: '1'
         run: pnpm check:migrations
       - name: SQL lint
         run: pnpm lint:sql
