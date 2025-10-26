@@ -15,14 +15,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Install, Lint, Typecheck, Build
+  node-ci:
+    name: Install, typecheck, lint, build
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup PNPM
+      - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
           version: 8.15.4
@@ -32,15 +33,21 @@ jobs:
         with:
           node-version: 20
           cache: 'pnpm'
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
-      - name: Run lint checks
-        run: pnpm lint
-
-      - name: Run type checks
+      - name: Typecheck workspace
         run: pnpm typecheck
 
-      - name: Build packages
+      - name: Lint workspace
+        run: pnpm lint
+
+      - name: Test workspace
+        run: pnpm -r test
+
+      - name: Build workspace
         run: pnpm build

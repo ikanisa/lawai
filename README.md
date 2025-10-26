@@ -20,51 +20,114 @@ packages/
   supabase/   # Generated types and helpers for Supabase clients
 ```
 
-## Getting Started
+## Local Setup (MacBook)
 
-1. Install dependencies with **pnpm** (ensure pnpm ≥ 8.15):
+These steps assume macOS 14 on Apple Silicon, but the commands translate to
+Intel and Linux workstations. Enable Corepack so that pnpm 8.x is available:
+
+```bash
+corepack enable
+corepack prepare pnpm@8.15.4 --activate
+```
+
+1. Clone the repository and install dependencies with pnpm ≥ 8.15:
    ```bash
+   git clone https://github.com/avocat-ai/lawai.git
+   cd lawai
    pnpm install
    ```
-2. Copy `.env.example` to `.env` and fill in required secrets.
-   The API no longer falls back to placeholder defaults for production-critical
-   values. Provide explicit entries for at least the following keys before
-   starting the server or running migrations:
-   - `OPENAI_API_KEY`
-   - `AGENT_MODEL`
-   - `EMBEDDING_MODEL`
-   - `OPENAI_VECTOR_STORE_AUTHORITIES_ID`
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   Placeholder values such as `test`, `vs_test`, `changeme`, or the sample
-   Supabase domain will now cause the API to exit immediately when
-   `NODE_ENV=production`.
-3. Apply database migrations directly against your Supabase instance (requires `SUPABASE_DB_URL`):
+2. Create `.env.local` from the template and populate the secrets listed in
+   [Environment Variables](#environment-variables):
+   ```bash
+   cp .env.example .env.local
+   ```
+3. Apply database migrations against the target Supabase instance (requires a
+   valid `SUPABASE_DB_URL`):
    ```bash
    pnpm db:migrate
    ```
-4. Bootstrap Supabase storage buckets and synchronise allowlisted domains:
+4. Provision operational fixtures (buckets, allowlists, vector store) once per
+   environment:
    ```bash
    pnpm --filter @apps/ops bootstrap
    ```
-5. Seed base data (jurisdictions, allowlists) once:
+5. Seed base data (jurisdictions, allowlists) as part of the initial bootstrap:
    ```bash
    pnpm seed
    ```
-6. Generate the PWA icons (required before running the web build in clean environments):
+6. Generate the PWA icons before running a production web build:
    ```bash
    pnpm --filter @avocat-ai/web icons:generate
    ```
-7. Start the API locally:
+7. Start the API locally on port 3333:
    ```bash
    pnpm dev:api
    ```
-8. Launch the operator console (Next.js App Router) on http://localhost:3001:
+8. Launch the operator console on http://localhost:3001:
    ```bash
    pnpm dev:web
    ```
 
-Pour un déploiement local en mode production (build Next.js + serveur Node), consultez [docs/local-hosting.md](docs/local-hosting.md).
+For a production-mode smoke test on a laptop follow the
+[local hosting guide](docs/local-hosting.md), which outlines the
+`pnpm install && pnpm build && pnpm start` flow and optional reverse proxy
+setups.
+
+## Environment Variables
+
+- `.env.local` (root) powers both the Fastify API and the Next.js console. Use
+  `.env` only for CI secrets that never leave the vault.
+- Required keys:
+  - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` for service-to-service calls.
+  - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` for the web
+    client.
+  - `OPENAI_API_KEY` and `OPENAI_VECTOR_STORE_AUTHORITIES_ID` for agent
+    orchestration.
+  - Feature toggles such as `FEAT_ADMIN_PANEL` and `APP_ENV` mirror the runtime
+    checks inside `apps/web/src/config/feature-flags.ts`.
+- The API performs runtime validation via `apps/api/src/env.server.ts`; the web
+  app mirrors this with `apps/web/src/env.server.ts`. Invalid or missing values
+  will surface as boot-time errors.
+
+## Run Commands
+
+| Command | Description |
+| ------- | ----------- |
+| `pnpm dev:api` | Start the Fastify API with hot reload on port 3333. |
+| `pnpm dev:web` | Run the Next.js operator console on http://localhost:3001. |
+| `pnpm typecheck` | Execute TypeScript checks across all workspaces. |
+| `pnpm lint` | Enforce ESLint rules in every package. |
+| `pnpm build` | Build API, web, PWA, and shared packages. |
+| `pnpm test` | Run the workspace test suites (Vitest, etc.). |
+| `pnpm check:binaries` | Guard-rail to prevent binary assets in Git history. |
+| `pnpm ops:foundation` | One-shot Supabase provisioning with safety checks. |
+| `pnpm ops:provision` | Re-run provisioning without the secrets audit. |
+| `pnpm ops:check` | Continuous environment compliance report. |
+
+## Supabase Notes
+
+- Database extensions (`pgvector`, `pg_trgm`, optional `pg_cron`) must be
+  enabled before `pnpm ops:foundation` succeeds.
+- The Supabase Edge functions listed in `supabase/config.toml` now rely on
+  manual scheduling—see [`scripts/cron.md`](scripts/cron.md) for the recommended
+  cadence and example runners.
+- `supabase/migrations/` contains canonical SQL. Run `pnpm db:migrate` against
+  the production database URL to keep parity with your Supabase project.
+- The Supabase CLI (`brew install supabase/tap/supabase`) is required for edge
+  deployments triggered in CI and for local function testing.
+
+## Vercel Decommissioning Summary
+
+- The Vercel preview workflow and cron configuration have been removed from the
+  repository. Preview builds now rely on local scripts instead of
+  `.github/workflows/vercel-preview-build.yml`.
+- Scheduled workloads should be wired through cron/Node runners documented in
+  [`scripts/cron.md`](scripts/cron.md).
+- Local production-style hosting is documented in
+  [`docs/local-hosting.md`](docs/local-hosting.md) so MacBook operators can
+  self-host without Vercel.
+
+## Ops automation reference
 
 ### Assembler les fondations en une étape
 
