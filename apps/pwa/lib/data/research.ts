@@ -25,6 +25,7 @@ interface StartResearchRunOptions {
   jurisdiction?: string | null;
   policyFlags?: string[];
   userLocation?: string | null;
+  webSearchMode?: WebSearchMode;
 }
 
 export async function fetchResearchDeskContext(): Promise<ResearchDeskContext> {
@@ -40,6 +41,7 @@ export function startResearchRun(
     jurisdiction,
     policyFlags = [],
     userLocation,
+    webSearchMode = "allowlist",
   }: StartResearchRunOptions = {}
 ): () => void {
   const controller = new AbortController();
@@ -57,6 +59,7 @@ export function startResearchRun(
           jurisdiction: jurisdiction ?? undefined,
           policy_flags: policyFlags,
           user_location: userLocation ?? undefined,
+          web_search_mode: webSearchMode,
         },
       });
     } catch (error) {
@@ -76,6 +79,7 @@ export function startResearchRun(
           thread_id: run.threadId,
           tools_enabled: toolsEnabled,
           user_location: userLocation ?? undefined,
+          web_search_mode: webSearchMode,
         }),
         signal: controller.signal,
       });
