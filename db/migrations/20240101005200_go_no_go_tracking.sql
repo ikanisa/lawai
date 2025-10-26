@@ -1,44 +1,49 @@
 -- Go / No-Go checklist evidence and sign-off tracking
-create table if not exists public.go_no_go_evidence (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  section text not null check (section in ('A','B','C','D','E','F','G','H')),
-  criterion text not null,
-  status text not null default 'pending' check (status in ('pending','satisfied')),
+CREATE TABLE IF NOT EXISTS public.go_no_go_evidence (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  section text NOT NULL CHECK (
+    section IN ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H')
+  ),
+  criterion text NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'satisfied')),
   evidence_url text,
   notes jsonb,
-  recorded_by uuid not null,
-  recorded_at timestamptz not null default now()
+  recorded_by uuid NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists go_no_go_evidence_org_section_idx on public.go_no_go_evidence(org_id, section);
+CREATE INDEX if NOT EXISTS go_no_go_evidence_org_section_idx ON public.go_no_go_evidence (org_id, section);
 
-create table if not exists public.go_no_go_signoffs (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  release_tag text not null,
-  decision text not null check (decision in ('go','no-go')),
-  decided_by uuid not null,
-  decided_at timestamptz not null default now(),
+CREATE TABLE IF NOT EXISTS public.go_no_go_signoffs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  release_tag text NOT NULL,
+  decision text NOT NULL CHECK (decision IN ('go', 'no-go')),
+  decided_by uuid NOT NULL,
+  decided_at timestamptz NOT NULL DEFAULT now(),
   notes text,
-  evidence_total int not null default 0
+  evidence_total int NOT NULL DEFAULT 0
 );
 
-create unique index if not exists go_no_go_signoffs_org_release_idx on public.go_no_go_signoffs(org_id, release_tag);
+CREATE UNIQUE INDEX if NOT EXISTS go_no_go_signoffs_org_release_idx ON public.go_no_go_signoffs (org_id, release_tag);
 
-alter table public.go_no_go_evidence enable row level security;
-alter table public.go_no_go_signoffs enable row level security;
+ALTER TABLE public.go_no_go_evidence enable ROW level security;
 
-create policy "go_no_go_evidence_read" on public.go_no_go_evidence
-  for select using (public.is_org_member(org_id));
+ALTER TABLE public.go_no_go_signoffs enable ROW level security;
 
-create policy "go_no_go_evidence_write" on public.go_no_go_evidence
-  for all using (public.is_org_member(org_id))
-  with check (public.is_org_member(org_id));
+CREATE POLICY "go_no_go_evidence_read" ON public.go_no_go_evidence FOR
+SELECT
+  USING (public.is_org_member (org_id));
 
-create policy "go_no_go_signoffs_read" on public.go_no_go_signoffs
-  for select using (public.is_org_member(org_id));
+CREATE POLICY "go_no_go_evidence_write" ON public.go_no_go_evidence FOR ALL USING (public.is_org_member (org_id))
+WITH
+  CHECK (public.is_org_member (org_id));
 
-create policy "go_no_go_signoffs_write" on public.go_no_go_signoffs
-  for all using (public.is_org_member(org_id))
-  with check (public.is_org_member(org_id));
+CREATE POLICY "go_no_go_signoffs_read" ON public.go_no_go_signoffs FOR
+SELECT
+  USING (public.is_org_member (org_id));
+
+CREATE POLICY "go_no_go_signoffs_write" ON public.go_no_go_signoffs FOR ALL USING (public.is_org_member (org_id))
+WITH
+  CHECK (public.is_org_member (org_id));

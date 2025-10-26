@@ -1,5 +1,4 @@
 node_modules
-pnpm-lock.yaml
 .DS_Store
 .env
 .env.local
@@ -15,6 +14,8 @@ apps/dist
 /build
 /.turbo
 /tmp
+playwright-report/
+test-results/
 apps/web/public/sw.js
 
 # Generated PWA icons
@@ -28,3 +29,8 @@ apps/pwa/cache/
 .pnpm-state/
 Library/
 apps/web/tsconfig.typecheck.tsbuildinfo
+
+# Cloudflare/Caddy local runtime
+.logs/
+infra/cloudflared/config.yml
+infra/cloudflared/credentials/

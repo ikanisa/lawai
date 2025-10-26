@@ -3,33 +3,30 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Check, MessageSquareWarning, XCircle } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
+import { Button } from '../@/ui/button';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
-import { adminQueries } from '../api/client';
+import { adminQueries, recordHitlDecision } from '../api/client';
+import { useAdminSession } from '../session-context';
 import { Sheet, SheetSection } from '../../../components/ui/sheet';
 
 export function AdminHitlPage() {
   const { activeOrg, searchQuery } = useAdminPanelContext();
+  const { session, loading: sessionLoading } = useAdminSession();
   const queryClient = useQueryClient();
-  const hitlQuery = useQuery(adminQueries.hitl(activeOrg.id));
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const hitlQuery = useQuery({
+    ...adminQueries.hitl(activeOrg.id),
+    enabled: isSessionReady,
+  });
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const queue = hitlQuery.data?.queue ?? [];
   const selectedItem = selectedItemId ? queue.find((item) => item.id === selectedItemId) : undefined;
 
   const reviewMutation = useMutation({
-    mutationFn: async (payload: { id: string; action: 'approved' | 'revision-requested' | 'rejected' }) => {
-      const response = await fetch('/api/admin/hitl', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: activeOrg.id, action: 'decision', payload }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to update HITL item');
-      }
-      return response.json();
-    },
+    mutationFn: async (payload: { id: string; action: 'approved' | 'revision-requested' | 'rejected' }) =>
+      recordHitlDecision(activeOrg.id, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminQueries.hitl(activeOrg.id).queryKey });
       setSelectedItemId(null);
@@ -96,7 +93,7 @@ export function AdminHitlPage() {
                   size="sm"
                   className="gap-2"
                   onClick={() => reviewMutation.mutate({ id: selectedItem.id, action: 'approved' })}
-                  disabled={reviewMutation.isPending}
+                  disabled={!isSessionReady || reviewMutation.isPending}
                 >
                   <Check className="h-4 w-4" /> Approve
                 </Button>
@@ -105,7 +102,7 @@ export function AdminHitlPage() {
                   variant="outline"
                   className="gap-2"
                   onClick={() => reviewMutation.mutate({ id: selectedItem.id, action: 'revision-requested' })}
-                  disabled={reviewMutation.isPending}
+                  disabled={!isSessionReady || reviewMutation.isPending}
                 >
                   <MessageSquareWarning className="h-4 w-4" /> Request changes
                 </Button>
@@ -114,7 +111,7 @@ export function AdminHitlPage() {
                   variant="destructive"
                   className="gap-2"
                   onClick={() => reviewMutation.mutate({ id: selectedItem.id, action: 'rejected' })}
-                  disabled={reviewMutation.isPending}
+                  disabled={!isSessionReady || reviewMutation.isPending}
                 >
                   <XCircle className="h-4 w-4" /> Reject
                 </Button>

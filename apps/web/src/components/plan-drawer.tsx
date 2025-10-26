@@ -2,8 +2,8 @@
 
 import { AgentPlanStep } from '@avocat-ai/shared';
 import { useMemo } from 'react';
-import { Sheet, SheetSection } from './ui/sheet';
-import { Separator } from './ui/separator';
+import { Sheet, SheetSection } from '@/ui/sheet';
+import { Separator } from '@/ui/separator';
 
 interface PlanDrawerProps {
   open: boolean;

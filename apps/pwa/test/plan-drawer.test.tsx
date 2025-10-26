@@ -1,5 +1,56 @@
+import { vi } from "vitest";
+
+vi.mock("@/lib/state/ui-store", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/state/ui-store")>("@/lib/state/ui-store");
+  const React = await import("react");
+  const mockSetPlanDrawerOpen = vi.fn();
+
+  const mockState = {
+    commandPaletteOpen: false,
+    setCommandPaletteOpen: () => {},
+    sidebarCollapsed: false,
+    toggleSidebar: () => {},
+    planDrawerOpen: true,
+    setPlanDrawerOpen: mockSetPlanDrawerOpen,
+    theme: "dark",
+    setTheme: () => {},
+    jurisdiction: "FR",
+    setJurisdiction: () => {}
+  } as import("@/lib/state/ui-store").UIState;
+
+  return {
+    ...actual,
+    UIStateProvider: ({ children }: { children: import("react").ReactNode }) => (
+      <React.Fragment>{children}</React.Fragment>
+    ),
+    useUIState: (selector: (state: typeof mockState) => unknown) => selector(mockState)
+  };
+});
+
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const uiStoreMock = vi.hoisted(() => {
+  const baseState = {
+    planDrawerOpen: true,
+    setPlanDrawerOpen: vi.fn(),
+    commandPaletteOpen: false,
+    setCommandPaletteOpen: vi.fn(),
+    sidebarCollapsed: false,
+    toggleSidebar: vi.fn(),
+    theme: "dark",
+    setTheme: vi.fn(),
+    jurisdiction: "FR",
+    setJurisdiction: vi.fn()
+  };
+
+  return {
+    UIStateProvider: ({ children }: { children: ReactNode }) => children as JSX.Element,
+    useUIState: (selector: (state: typeof baseState) => unknown) => selector(baseState)
+  };
+});
+
+vi.mock("@/lib/state/ui-store", () => uiStoreMock);
 
 import { PlanDrawer, type ToolLogEntry } from "@/components/agent/PlanDrawer";
 import type { ResearchPlan } from "@/lib/data/research";

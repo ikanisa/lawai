@@ -1,7 +1,8 @@
 -- Track fairness drift alongside drift/evaluation/queue snapshots
-alter table public.agent_learning_reports
-  drop constraint if exists agent_learning_reports_kind_check;
+ALTER TABLE public.agent_learning_reports
+DROP CONSTRAINT if EXISTS agent_learning_reports_kind_check;
 
-alter table public.agent_learning_reports
-  add constraint agent_learning_reports_kind_check
-    check (kind in ('drift', 'evaluation', 'queue', 'fairness'));
+ALTER TABLE public.agent_learning_reports
+ADD CONSTRAINT agent_learning_reports_kind_check CHECK (
+  kind IN ('drift', 'evaluation', 'queue', 'fairness')
+);
