@@ -81,6 +81,64 @@ let providerConfigured = false;
 let directorAgentInstance: Agent | null = null;
 let safetyAgentInstance: Agent | null = null;
 
+const MAX_STEP_TOOL_BUDGET_TOKENS = 32;
+const MAX_PLAN_TOOL_BUDGET_TOKENS = 128;
+
+async function drainAgentStream(response: unknown, logger?: OrchestratorLogger): Promise<void> {
+  if (!response || typeof response !== 'object') {
+    return;
+  }
+
+  const candidate =
+    (response as Record<string, unknown>).stream ??
+    (response as Record<string, unknown>).eventStream ??
+    (response as Record<string, unknown>).events ??
+    null;
+
+  if (!candidate || typeof candidate !== 'object' || typeof (candidate as any)[Symbol.asyncIterator] !== 'function') {
+    return;
+  }
+
+  const iterable = candidate as AsyncIterable<unknown>;
+
+  try {
+    for await (const _event of iterable) {
+      // Consume the iterator to avoid leaking open handles from streaming responses
+    }
+  } catch (error) {
+    logger?.warn?.(
+      { err: error instanceof Error ? error.message : error },
+      'director_plan_stream_drain_failed',
+    );
+  }
+}
+
+function ensureDirectorPlanBudget(plan: FinanceDirectorPlan, logger?: OrchestratorLogger): void {
+  let totalTokens = 0;
+
+  for (const step of plan.steps ?? []) {
+    const tokens = step.envelope?.budget?.tokens;
+    if (typeof tokens === 'number') {
+      if (tokens > MAX_STEP_TOOL_BUDGET_TOKENS) {
+        logger?.warn?.(
+          { stepId: step.id, tokens, limit: MAX_STEP_TOOL_BUDGET_TOKENS },
+          'director_plan_budget_exceeded',
+        );
+        throw new Error('director_plan_budget_exceeded');
+      }
+      totalTokens += tokens;
+    }
+  }
+
+  if (totalTokens > MAX_PLAN_TOOL_BUDGET_TOKENS) {
+    logger?.warn?.(
+      { totalTokens, limit: MAX_PLAN_TOOL_BUDGET_TOKENS },
+      'director_plan_budget_total_exceeded',
+    );
+    throw new Error('director_plan_budget_total_exceeded');
+  }
+}
+
 function ensureOpenAIProvider(): void {
   if (providerConfigured) {
     return;
@@ -369,10 +427,15 @@ export async function runDirectorPlanning(
       },
     } as any);
 
-    const plan = (response as { finalOutput?: FinanceDirectorPlan }).finalOutput;
+    let plan = (response as { finalOutput?: FinanceDirectorPlan }).finalOutput;
+    await drainAgentStream(response, logger);
+    if (!plan) {
+      plan = (response as { finalOutput?: FinanceDirectorPlan }).finalOutput;
+    }
     if (!plan) {
       throw new Error('director_plan_missing_output');
     }
+    ensureDirectorPlanBudget(plan, logger);
     return plan;
   } catch (error) {
     await logOpenAIDebug('director_plan', error, logger);
