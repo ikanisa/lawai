@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 
 type Env = {
   supabaseUrl?: string;
@@ -50,7 +51,7 @@ function buildSlackText(orgId: string, row: ProvenanceRow, thresholds: { staleRa
   return lines.join('\n');
 }
 
-Deno.serve(async (req) => {
+serveEdgeFunction(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',

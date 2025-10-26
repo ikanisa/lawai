@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 import { SupabaseScheduler } from '../../../packages/shared/src/scheduling/scheduler.ts';
 
 type ManifestEntry = {
@@ -149,7 +150,7 @@ async function fetchManifestFromUrl(url: string | undefined): Promise<string | n
   }
 }
 
-Deno.serve(async (request) => {
+serveEdgeFunction(async (request) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
