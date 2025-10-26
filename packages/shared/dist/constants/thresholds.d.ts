@@ -3,6 +3,7 @@ export interface AcceptanceThresholds {
     temporalValidityP95: number;
     maghrebBindingBannerCoverage: number;
     linkHealthFailureRatioMax: number;
+    hitlRecallHighRisk: number;
 }
 export declare const ACCEPTANCE_THRESHOLDS: AcceptanceThresholds;
 //# sourceMappingURL=thresholds.d.ts.map

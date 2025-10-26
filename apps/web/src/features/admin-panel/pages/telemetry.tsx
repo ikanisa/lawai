@@ -3,15 +3,21 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, LineChart, Wifi } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
+import { Button } from '../@/ui/button';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
 import { adminQueries } from '../api/client';
+import { useAdminSession } from '../session-context';
 
 export function AdminTelemetryPage() {
   const { activeOrg, searchQuery } = useAdminPanelContext();
-  const telemetryQuery = useQuery(adminQueries.telemetry(activeOrg.id));
+  const { session, loading: sessionLoading } = useAdminSession();
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const telemetryQuery = useQuery({
+    ...adminQueries.telemetry(activeOrg.id),
+    enabled: isSessionReady,
+  });
   const telemetry = telemetryQuery.data?.metrics ?? [];
 
   const charts = useMemo(
@@ -32,7 +38,7 @@ export function AdminTelemetryPage() {
         title="Telemetry"
         description="Analyze runs, latencies, voice roundtrip times, and eval pass rates with exportable datasets."
         actions={
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button variant="outline" size="sm" className="gap-2" disabled={!isSessionReady}>
             <Download className="h-4 w-4" /> Export CSV
           </Button>
         }

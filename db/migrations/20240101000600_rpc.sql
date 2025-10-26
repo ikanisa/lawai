@@ -1,20 +1,16 @@
-create or replace function public.match_chunks(
+CREATE OR REPLACE FUNCTION public.match_chunks (
   p_org uuid,
-  p_query_embedding vector(1536),
-  p_match_count int default 8,
-  p_min_sim float default 0.75,
-  p_jurisdiction text default null
-)
-returns table(
+  p_query_embedding vector (1536),
+  p_match_count int DEFAULT 8,
+  p_min_sim float DEFAULT 0.75,
+  p_jurisdiction text DEFAULT NULL
+) returns TABLE (
   chunk_id uuid,
   document_id uuid,
   jurisdiction_code text,
   content text,
   similarity float
-)
-language sql
-stable
-as $$
+) language sql stable AS $$
   select
     dc.id as chunk_id,
     dc.document_id,
@@ -29,11 +25,7 @@ as $$
   limit p_match_count
 $$;
 
-create or replace function public.domain_in_allowlist(url text)
-returns boolean
-language sql
-immutable
-as $$
+CREATE OR REPLACE FUNCTION public.domain_in_allowlist (url text) returns boolean language sql immutable AS $$
   with host as (
     select lower(regexp_replace(regexp_replace(url, '^https?://', ''), '/.*$', '')) as h
   )

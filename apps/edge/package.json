@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "deno lint --config deno.jsonc",
-    "typecheck": "deno run --allow-read --allow-run scripts/typecheck.ts",
-    "test": "deno run --allow-read --allow-run scripts/typecheck.ts"
+    "lint": "node ./scripts/run-lint.mjs",
+    "typecheck": "node ./scripts/run-typecheck.mjs",
+    "test": "node ./scripts/run-typecheck.mjs"
   }
 }
