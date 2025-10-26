@@ -1,125 +1,74 @@
-# Local hosting guide
+# Local Hosting Guide
 
-This document explains how to run the Avocat-AI stack entirely on a local MacBook without relying on managed cloud runtimes. The goal is to keep the operator console (PWA) and API ready for future reverse proxies while preserving the Supabase backend.
+This document explains how to run the Avocat-AI stack locally using the bundled Node server output. It assumes you already have a Supabase project with the required migrations applied.
 
-## Prerequisites
+## 1. Prerequisites
 
-- macOS with Node.js 20.x (`asdf install nodejs 20`, `fnm use 20`, or `nvm use 20`).
-- PNPM 8.15.4 (`corepack enable pnpm`).
-- Docker (optional) if you prefer running Supabase locally; otherwise point to a hosted Supabase project.
-- Supabase project with the `authorities`, `uploads`, and `snapshots` buckets plus `pgvector` and `pg_trgm` extensions.
+- Node.js 20 (matches the version declared in `package.json`).
+- `pnpm` 8+ (Corepack recommended).
+- A Supabase project with service role access and database URL.
+- OpenAI API credentials.
 
-## Environment files
+## 2. Configure environment variables
 
-1. Copy `.env.example` to `.env.local` at the repository root.
-2. Fill in the required secrets:
-   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`.
-   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (these are safe for the browser bundle).
-   - `OPENAI_API_KEY`, `AGENT_MODEL`, `EMBEDDING_MODEL`, `SUMMARISER_MODEL`.
-   - `APP_ENV=local`, `PORT=3000` (override as needed).
-3. Never commit `.env.local`. For shared defaults, update `.env.example` only with placeholder values.
+1. Copy the provided examples:
+   ```bash
+   cp apps/web/.env.example apps/web/.env.local
+   cp apps/ops/.env.example apps/ops/.env.local
+   cp apps/api/.env.example apps/api/.env
+   ```
+2. Update the secrets:
+   - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` must reference your Supabase instance.
+   - `OPENAI_API_KEY` should carry a key that can access the configured models.
+   - `NEXT_PUBLIC_API_BASE_URL` **must remain** `http://localhost:3333` for local operation so the web client talks to the Fastify API.
+   - `API_BASE_URL` in `apps/ops/.env.local` should stay `http://localhost:3333/api`.
 
-### WhatsApp OTP configuration
+> **Note:** The Supabase service role key is only read on the server. The client bundle never embeds it; requests flow through server actions and the Fastify API.
 
-If you plan to send WhatsApp OTP messages from the API, populate the following variables in your deployment environment:
+## 3. Install dependencies and build assets
 
-- `WA_PROVIDER` — either `meta` for the WhatsApp Business Cloud API or `twilio` for Twilio Programmable Messaging.
-- `WA_TOKEN` — Meta access token or Twilio credentials in `ACxxxxxxxxxxxxxxxxxxxxxxxxxxxx:auth_token` form.
-- `WA_PHONE_NUMBER_ID` — Meta phone number ID or the WhatsApp-enabled number in E.164 format.
-- `WA_TEMPLATE_OTP_NAME` — Approved WhatsApp template that renders the OTP code.
-- (Optional) `WA_TEMPLATE_LOCALE` — Locale code for Meta templates (defaults to `fr`).
-
-The API schema now validates that the full credential set is present whenever `WA_PROVIDER` is defined, so deployment preflights fail fast instead of surfacing missing secrets at runtime.
-
-On send failures the service emits structured logs (`wa_meta_send_failed`, `wa_twilio_send_failed`, `wa_*_send_error`) and increments the `whatsapp_send_failure` counter with provider and status labels. Forward these signals to your log/metrics pipeline (e.g. Vercel Log Drains + Prometheus scraper) to alert on delivery issues.
-
-## Install dependencies
-
+Run the workspace installation and compile the production bundles once:
 ```bash
 pnpm install
+pnpm --filter @apps/api build
+pnpm --filter @avocat-ai/web build
 ```
 
-This installs workspaces for API (`apps/api`), web (`apps/web`), ops tooling (`apps/ops`), Supabase edge functions, and shared packages. If you encounter native module rebuild errors, ensure Xcode Command Line Tools are installed (`xcode-select --install`).
-
-## Build and validate
-
+If you are bootstrapping a new database, apply the migrations and seed data:
 ```bash
-pnpm typecheck
-pnpm lint
-pnpm build
+pnpm db:migrate
+pnpm seed
 ```
 
-- `pnpm typecheck` runs TypeScript across all packages.
-- `pnpm lint` enforces ESLint rules (strict, zero warnings).
-- `pnpm build` compiles the API, web app (Next.js standalone output), PWA service worker, and ops CLIs.
+## 4. Launch the services
 
-## Start services locally
+1. Start the API (Fastify) on port 3333:
+   ```bash
+   pnpm dev:api
+   ```
+   The server exposes `/api/healthz` and all agent orchestration routes backed by Supabase.
 
-### API
+2. In a separate terminal, start the Next.js Node server on port 3000:
+   ```bash
+   PORT=3000 pnpm start
+   ```
+   The command runs `next start` against the standalone build created earlier.
 
+3. Visit the operator console at <http://localhost:3000>. The web app proxies authenticated calls to the API running on port 3333.
+
+## 5. Verify the PWA bundle
+
+After the web server is running, confirm the PWA manifest is reachable:
 ```bash
-pnpm dev:api
+curl http://localhost:3000/manifest.webmanifest
 ```
+You should receive a JSON manifest describing the name, icons, and start URL of the application.
 
-The Fastify server listens on `http://localhost:3333` by default. Update `APPS_API_PORT` in the relevant config if needed.
+## 6. Worker & CLI tooling
 
-### Web / PWA
-
-For development with hot reload:
-
+CLI workflows (evaluations, SLO reports, transparency) use the same Supabase project and the `API_BASE_URL` pointing at `http://localhost:3333/api`. Run them via:
 ```bash
-pnpm dev:web
+pnpm --filter @apps/ops <command>
 ```
 
-For a production-like run after `pnpm build`:
-
-```bash
-pnpm start
-```
-
-`pnpm start` proxies to `next start -p ${PORT:-3000}` within `apps/web`, matching the configuration used behind a reverse proxy.
-
-### Ops tooling
-
-Automation commands (migrations, RLS smoke tests, ingestion) live in `apps/ops`.
-
-```bash
-pnpm ops:foundation
-pnpm --filter @apps/ops rls-smoke
-```
-
-These commands ensure Supabase tables, buckets, and extensions are aligned before exposing the stack to users.
-
-## Cron and background jobs
-
-Managed cron was previously configured via the hosted provider. For local hosting:
-
-- Use `node` + `cron` packages or macOS `launchd` to schedule CLI invocations.
-- See [../scripts/cron.md](../scripts/cron.md) for notes and TODO items while we design the replacement scheduler.
-
-## Reverse proxy / TLS (future work)
-
-When you are ready to expose the admin UI beyond localhost:
-
-1. Place a reverse proxy (Caddy, nginx, Traefik) in front of the Next.js server.
-2. Terminate TLS at the proxy.
-3. Add HTTP basic auth or SSO at the proxy level until application-level auth is finalised.
-4. Forward `/api/*` routes to the Fastify server if hosting API and web separately.
-
-## Troubleshooting
-
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| `pnpm build` fails looking for `next start -p` | Outdated build artifacts | Run `pnpm --filter @avocat-ai/web clean` then retry `pnpm build`. |
-| 500 errors from Supabase actions | Missing service role key or RLS policies | Re-check `.env.local` values and rerun `pnpm ops:foundation`. |
-| PWA assets missing icons | `icons:generate` not executed | Run `pnpm --filter @avocat-ai/web icons:generate` before build. |
-| API rejects OpenAI calls in production mode | Placeholder OpenAI keys | Replace with real keys; see `.env.example` for required values. |
-
-## What changed compared to the hosted deployment?
-
-- Removed every package and config tied to the previous hosted provider, including analytics adapters and preview workflows.
-- Standardised on Node.js runtime with `next start -p ${PORT:-3000}`.
-- Added `.github/workflows/node.yml` for consistent pnpm CI gates.
-- Documented local cron expectations in `scripts/cron.md`.
-
-Track additional TODOs in `docs/audit/2025-02-22_taskboard.md` under the deployment readiness epic.
+Keep the `.env.local` files under version control ignore rules to avoid leaking secrets. When packaging for another environment, reuse the same values but provision secrets via your hosting platform's secret manager.

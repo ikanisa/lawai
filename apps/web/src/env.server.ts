@@ -5,13 +5,7 @@ const APP_ENV_VALUES = ['local', 'development', 'preview', 'staging', 'productio
 
 const serverSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']),
-  APP_ENV: z
-    .preprocess((value) => {
-      if (typeof value !== 'string') return undefined;
-      const normalized = value.trim().toLowerCase();
-      return normalized.length === 0 ? undefined : normalized;
-    }, z.enum(APP_ENV_VALUES))
-    .catch('local'),
+  APP_ENV: z.string().optional(),
   SUPABASE_URL: z
     .string()
     .url({ message: 'SUPABASE_URL must be a valid URL' }),

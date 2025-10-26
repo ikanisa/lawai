@@ -1,2 +1,2 @@
-      input: question,
-      ...(env3.EMBEDDING_DIMENSION ? { dimensions: env3.EMBEDDING_DIMENSION } : {})
+        if (typeof globalThis !== "undefined" && globalThis.EdgeRuntime) {
+            error: "Edge runtime detected. WebSockets are not supported in edge functions.",
