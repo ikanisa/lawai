@@ -11,7 +11,8 @@ Preview environments mirror the application code in legacy hosting platform and 
 ### legacy hosting platform integration
 
 - `preview.yml` runs `pnpm check:migrations` and `pnpm lint:sql` before every preview build, catching manifest drift and formatting issues before the build step.
-- The workflow should inject the derived `SUPABASE_BRANCH` when running `pnpm --filter @avocat-ai/web build`, ensuring that the preview artifact and Supabase schema stay in lock-step.
+- The workflow should inject the derived `SUPABASE_BRANCH` when running `pnpm --filter @avocat-ai/web build`, ensuring that the operator console preview artifact and Supabase schema stay in lock-step.
+- For the public PWA, mirror the same environment injection when calling `pnpm --filter @apps/pwa build` so the Vercel preview talks to the matching Supabase branch.
 - When a preview is promoted, the production `deploy.yml` workflow repeats the migration + lint checks, applies migrations via `pnpm db:migrate`, and runs the [`rls-smoke`](../../apps/ops/src/rls-smoke.ts) guard to confirm tenant isolation on the production branch.
 
 ## Creating a preview branch

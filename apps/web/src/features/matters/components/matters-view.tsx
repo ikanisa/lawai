@@ -9,7 +9,8 @@ import { Badge } from '@/ui/badge';
 import { Separator } from '@/ui/separator';
 import { Input } from '@/ui/input';
 import type { Locale, Messages } from '@/lib/i18n';
-import { DEMO_ORG_ID, fetchMatters, fetchMatterDetail } from '@/lib/api';
+import { fetchMatters, fetchMatterDetail } from '@/lib/api';
+import { useRequiredSession } from '@/components/session-provider';
 
 interface MattersViewProps {
   messages: Messages;
@@ -38,18 +39,19 @@ interface MatterDetail {
 }
 
 export function MattersView({ messages, locale }: MattersViewProps) {
+  const { orgId } = useRequiredSession();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
 
   const mattersQuery = useQuery({
-    queryKey: ['matters'],
-    queryFn: () => fetchMatters(DEMO_ORG_ID),
+    queryKey: ['matters', orgId],
+    queryFn: () => fetchMatters(orgId),
   });
 
   const detailQuery = useQuery({
-    queryKey: ['matter', selectedId],
+    queryKey: ['matter', orgId, selectedId],
     enabled: Boolean(selectedId),
-    queryFn: () => fetchMatterDetail(DEMO_ORG_ID, selectedId ?? ''),
+    queryFn: () => fetchMatterDetail(orgId, selectedId ?? ''),
   });
 
   useEffect(() => {

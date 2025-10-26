@@ -15,7 +15,8 @@ import {
   UploadCloud
 } from "lucide-react";
 
-import { PlanDrawer, type ToolLogEntry } from "@/components/agent/PlanDrawer";
+import { PlanDrawer } from "@/components/agent/PlanDrawer";
+import type { PlanDrawerToolLogEntry } from "@avocat-ai/shared";
 import { ToolChip } from "@/components/agent/ToolChip";
 import { EvidencePane } from "@/components/evidence/EvidencePane";
 import { Badge } from "@/components/ui/badge";
@@ -58,7 +59,7 @@ export function ResearchView() {
       createdAt: Date.now()
     }
   ]);
-  const [toolLogs, setToolLogs] = useState<ToolLogEntry[]>([]);
+  const [toolLogs, setToolLogs] = useState<PlanDrawerToolLogEntry[]>([]);
   const [activeToolIds, setActiveToolIds] = useState<string[]>([]);
   const [composer, setComposer] = useState("");
   const [confidentialMode, setConfidentialMode] = useState(false);
@@ -178,13 +179,13 @@ export function ResearchView() {
       setToolLogs((prev) => {
         const existing = prev.find((item) => item.id === tool.id);
         if (existing) {
-          return prev.map((item: ToolLogEntry) =>
+          return prev.map((item: PlanDrawerToolLogEntry) =>
             item.id === tool.id
-              ? { ...item, status: tool.status, detail: tool.detail }
+              ? { ...item, status: tool.status, description: tool.detail }
               : item
           );
         }
-        const startedAt = new Intl.DateTimeFormat("fr-FR", {
+        const timestamp = new Intl.DateTimeFormat("fr-FR", {
           hour: "2-digit",
           minute: "2-digit"
         }).format(new Date());
@@ -194,8 +195,8 @@ export function ResearchView() {
             id: tool.id,
             name: tool.name,
             status: tool.status,
-            detail: tool.detail,
-            startedAt
+            description: tool.detail,
+            timestamp
           }
         ];
       });
@@ -370,7 +371,7 @@ export function ResearchView() {
 function updatePlanSteps(
   plan: ResearchPlan | null,
   planStepId: string | undefined,
-  status: ToolLogEntry["status"],
+  status: PlanDrawerToolLogEntry["status"],
   detail: string
 ): ResearchPlan | null {
   if (!plan || !planStepId) return plan;

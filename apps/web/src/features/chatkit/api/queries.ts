@@ -1,7 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 
 import {
-  DEMO_ORG_ID,
   fetchChatkitSession,
   fetchChatkitSessions,
   type ChatkitSessionRecord,
@@ -36,5 +35,3 @@ export const chatkitQueries = {
       staleTime: 15_000,
     }),
 };
-
-export const defaultChatkitSessionsQuery = chatkitQueries.sessions(DEMO_ORG_ID);

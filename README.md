@@ -8,8 +8,9 @@ This repository contains the production implementation scaffold for the Avocat-A
 apps/
   api/        # Fastify API service hosting the agent orchestrator and REST endpoints
   edge/       # Supabase Edge Functions (Deno) for crawlers, schedulers, and webhooks
-  ops/        # Command-line tooling for ingestion and evaluations
-  web/        # Next.js App Router front-end (liquid-glass UI, shadcn primitives, TanStack Query)
+  ops/        # Command-line tooling for ingestion, provisioning, and evaluations
+  pwa/        # Next.js PWA surface for litigants and reviewers (App Router, Radix UI, three.js)
+  web/        # Next.js operator console for admins and HITL reviewers (App Router, shadcn UI, TanStack Query)
 
 db/
   migrations/ # SQL migrations (Supabase/Postgres)
@@ -19,6 +20,14 @@ packages/
   shared/     # Shared TypeScript utilities (IRAC schema, allowlists, constants)
   supabase/   # Generated types and helpers for Supabase clients
 ```
+
+Key runbooks and deployment guides:
+
+- [`apps/api`](docs/operations/avocat-ai-launch-runbook.md) – Launch automation and smoke checks for the Fastify orchestrator.
+- [`apps/edge`](docs/ops/provenance-alerts.md) – Example edge deployment (provenance alerts) and environment guidance.
+- [`apps/ops`](docs/ops/cron.md) – Scheduler worker and CLI bootstrap instructions for operational tooling.
+- [`apps/pwa`](docs/deployment/vercel.md) – Vercel deployment checklist for the public-facing PWA.
+- [`apps/web`](docs/local-hosting.md) – Operator console runbook for local/self-hosted environments.
 
 ## Local Setup (MacBook)
 
@@ -45,7 +54,7 @@ packages/
    ```bash
    pnpm seed
    ```
-6. Generate the PWA icons before running a production web build:
+6. Generate the operator console icon sprite before running a production build:
    ```bash
    pnpm --filter @avocat-ai/web icons:generate
    ```
@@ -53,71 +62,24 @@ packages/
    ```bash
    pnpm dev:api
    ```
-8. Launch the operator console on http://localhost:3001:
+8. Launch the public-facing PWA on http://localhost:3000 (set `PORT=3002` if the default port is busy):
+   ```bash
+   pnpm --filter @apps/pwa dev
+   ```
+9. Launch the operator console on http://localhost:3001:
    ```bash
    pnpm dev:web
    ```
 
-For a production-mode smoke test on a laptop follow the
-[local hosting guide](docs/local-hosting.md), which outlines the
-`pnpm install && pnpm build && pnpm start` flow and optional reverse proxy
-setups.
+## Deployment checklist
 
-## Environment Variables
+Follow this short list before promoting a change to production. A detailed walkthrough lives in [docs/deployment/vercel.md](docs/deployment/vercel.md).
 
-- `.env.local` (root) powers both the Fastify API and the Next.js console. Use
-  `.env` only for CI secrets that never leave the vault.
-- Required keys:
-  - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` for service-to-service calls.
-  - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` for the web
-    client.
-  - `OPENAI_API_KEY` and `OPENAI_VECTOR_STORE_AUTHORITIES_ID` for agent
-    orchestration.
-  - Feature toggles such as `FEAT_ADMIN_PANEL` and `APP_ENV` mirror the runtime
-    checks inside `apps/web/src/config/feature-flags.ts`.
-- The API performs runtime validation via `apps/api/src/env.server.ts`; the web
-  app mirrors this with `apps/web/src/env.server.ts`. Invalid or missing values
-  will surface as boot-time errors.
-
-## Run Commands
-
-| Command | Description |
-| ------- | ----------- |
-| `pnpm dev:api` | Start the Fastify API with hot reload on port 3333. |
-| `pnpm dev:web` | Run the Next.js operator console on http://localhost:3001. |
-| `pnpm typecheck` | Execute TypeScript checks across all workspaces. |
-| `pnpm lint` | Enforce ESLint rules in every package. |
-| `pnpm build` | Build API, web, PWA, and shared packages. |
-| `pnpm test` | Run the workspace test suites (Vitest, etc.). |
-| `pnpm check:binaries` | Guard-rail to prevent binary assets in Git history. |
-| `pnpm ops:foundation` | One-shot Supabase provisioning with safety checks. |
-| `pnpm ops:provision` | Re-run provisioning without the secrets audit. |
-| `pnpm ops:check` | Continuous environment compliance report. |
-
-## Supabase Notes
-
-- Database extensions (`pgvector`, `pg_trgm`, optional `pg_cron`) must be
-  enabled before `pnpm ops:foundation` succeeds.
-- The Supabase Edge functions listed in `supabase/config.toml` now rely on
-  manual scheduling—see [`scripts/cron.md`](scripts/cron.md) for the recommended
-  cadence and example runners.
-- `supabase/migrations/` contains canonical SQL. Run `pnpm db:migrate` against
-  the production database URL to keep parity with your Supabase project.
-- The Supabase CLI (`brew install supabase/tap/supabase`) is required for edge
-  deployments triggered in CI and for local function testing.
-
-## Vercel Decommissioning Summary
-
-- The Vercel preview workflow and cron configuration have been removed from the
-  repository. Preview builds now rely on local scripts instead of
-  `.github/workflows/vercel-preview-build.yml`.
-- Scheduled workloads should be wired through cron/Node runners documented in
-  [`scripts/cron.md`](scripts/cron.md).
-- Local production-style hosting is documented in
-  [`docs/local-hosting.md`](docs/local-hosting.md) so MacBook operators can
-  self-host without Vercel.
-
-## Ops automation reference
+1. Provision or refresh Supabase by running `npm run db:migrate` and `npm run ops:foundation` against the target project.
+2. Populate the Vercel environment variables (server secrets and `NEXT_PUBLIC_*` settings) exactly as described in the deployment guide.
+3. Run `npm run lint --workspace @apps/pwa`, `npm run test --workspace @apps/pwa`, and `npm run build --workspace @apps/pwa` locally (or the equivalent `pnpm --filter @apps/pwa ...` commands); fix any failures before opening a PR.
+4. Check that the **Vercel Preview Build** GitHub workflow is green on your branch.
+5. Trigger `vercel deploy --prebuilt` (or let the GitHub → Vercel integration promote the passing build) and smoke-test `/healthz` plus the admin panel.
 
 ### Assembler les fondations en une étape
 
@@ -147,7 +109,8 @@ Mettez à jour vos secrets avant déploiement pour éviter l'échec `configurati
 Le script `scripts/deployment-preflight.mjs` automatise les vérifications critiques avant une promotion en production :
 
 - Validation des secrets partagés via `@avocat-ai/shared/config/env` (échec immédiat si `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` ou `OPENAI_API_KEY` sont manquants ou encore en valeur factice).
-- Exécution séquentielle de `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck` et `pnpm build` avec propagation des codes de sortie.
+- Vérification de la présence des variables PWA (`NEXT_PUBLIC_FEAT_AGENT_SHELL`, `NEXT_PUBLIC_FEAT_VOICE_REALTIME`, `NEXT_PUBLIC_DRIVE_INGESTION_ENABLED`).
+- Exécution séquentielle de `npm --version`, `npm ci --prefer-offline`, `npm run lint/test/build --workspace @apps/pwa`, `npm run build --workspace @avocat-ai/web` et `npm run build --workspace @apps/api` avec propagation des codes de sortie.
 
 Lancez-le localement avec :
 

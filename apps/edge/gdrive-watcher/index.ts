@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 
 interface GDriveWatcherRequest {
   orgId?: string;
@@ -40,7 +41,7 @@ function determineReason(change: GDriveWatcherRequest['changes'][number]): strin
   return null;
 }
 
-Deno.serve(async (request) => {
+serveEdgeFunction(async (request) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
