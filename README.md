@@ -64,56 +64,7 @@ packages/
    pnpm dev:web
    ```
 
-## Local Setup (MacBook)
-
-- Ensure macOS runs Node.js 20+ (use asdf, fnm, or nvm).
-- Install dependencies with `pnpm install`.
-- Copy `.env.example` to `.env.local` and populate Supabase/OpenAI credentials.
-- Run `pnpm typecheck`, `pnpm lint`, and `pnpm build` to validate the workspace.
-- Start services locally with `pnpm dev:api` and `pnpm dev:web`, or serve the production build via `pnpm build && pnpm start` (respects `PORT`).
-- Consultez [docs/local-hosting.md](docs/local-hosting.md) pour un tutoriel détaillé et des conseils de dépannage.
-
-## Environment Variables
-
-La configuration provient de `.env.local` (non versionné) et des exemples partagés. Variables clés :
-
-- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` pour le client web.
-- `SUPABASE_SERVICE_ROLE_KEY` pour les helpers côté serveur (ne jamais exposer côté client).
-- `OPENAI_API_KEY` et les paramètres de modèles associés pour l'API.
-- `APP_ENV` vaut `local` par défaut et peut prendre `staging` ou `production` selon l'hébergement.
-- `PORT` contrôle le port du serveur web (3000 par défaut).
-
-## Run Commands
-
-Commandes fréquentes du workspace :
-
-- `pnpm typecheck` — vérifie les types TypeScript.
-- `pnpm lint` — lance ESLint sur API, web et ops.
-- `pnpm build` — construit toutes les workspaces (Next.js, Fastify, workers).
-- `pnpm start` — sert le build web localement (`PORT` respecté).
-- `pnpm dev:api`, `pnpm dev:web`, `pnpm dev:ops` — serveurs de développement ciblés.
-
-## Supabase Notes
-
-- Le code client utilise toujours la clé anonyme ; les secrets service role restent côté serveur.
-- Les tests RLS (`pnpm --filter @apps/ops rls-smoke`) nécessitent les identifiants service role et doivent précéder une mise en production.
-- Les buckets (`authorities`, `uploads`, `snapshots`) et extensions (`pgvector`, `pg_trgm`) se provisionnent via `pnpm ops:foundation`.
-- [docs/local-hosting.md](docs/local-hosting.md) explique comment relier Supabase en local ou en staging sans dépendance à un hébergeur propriétaire.
-
-## Hosting Changes
-
-- Les scripts spécifiques au cloud ont été retirés au profit d'un build Node.js pur (`next start -p ${PORT:-3000}`).
-- Les workflows de CI/preview s'appuient désormais sur pnpm et Node (voir `.github/workflows/node.yml`).
-- Un reverse proxy (Caddy, nginx) pourra pointer vers `pnpm start`; ajoutez TLS et authentification en couche supérieure lorsque nécessaire.
-
-## Deployment checklist (Local runtime)
-
-Avant de fusionner une branche dans `main` ou de promouvoir un déploiement auto-hébergé en production, vérifiez :
-
-- [ ] Le workflow **CI** GitHub Actions est passé (lint, typecheck, tests et builds). Vous pouvez reproduire localement via `pnpm -r lint`, `pnpm -r test`, `pnpm --filter @apps/api typecheck`, `pnpm --filter @avocat-ai/web typecheck`, puis les commandes `build` et `bundle:check`.
-- [ ] L'ensemble des variables d'environnement (OpenAI, Supabase, OTP, alertes) sont saisies conformément au [guide d'hébergement local](docs/local-hosting.md).
-- [ ] Les migrations Supabase et les buckets obligatoires sont en place (`pnpm ops:foundation`) et les données de référence ont été chargées (`pnpm seed`).
-- [ ] Les drapeaux de fonctionnalités critiques (ex. `FEAT_ADMIN_PANEL`) sont positionnés selon la stratégie d'exposition souhaitée.
+Pour un déploiement local en mode production (build Next.js + serveur Node), consultez [docs/local-hosting.md](docs/local-hosting.md).
 
 ### Assembler les fondations en une étape
 
@@ -262,8 +213,8 @@ Un nouveau panneau d'administration Next.js est livré derrière le flag `FEAT_A
 développement et en préproduction, et reste désactivé en production tant que `FEAT_ADMIN_PANEL=1` n'est pas fourni.
 
 - **Activer localement** : ajoutez `FEAT_ADMIN_PANEL=1` à votre `.env.local`.
-- **Prévisualisation** : les environnements avec `APP_ENV=preview` ou `APP_ENV=staging` héritent d'un comportement activé par défaut.
-- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans vos variables d'environnement de production.
+- **Environnements de préproduction** : lorsque `NODE_ENV` n'est pas `production`, le panneau reste activé par défaut.
+- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans la configuration d'exécution avant le déploiement.
 
 Les routes `/api/admin/*` valident systématiquement la présence des en-têtes `x-admin-actor` et `x-admin-org` (ou retombent sur
 les valeurs de configuration `ADMIN_PANEL_ACTOR`/`ADMIN_PANEL_ORG`).

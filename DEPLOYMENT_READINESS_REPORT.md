@@ -1,9 +1,9 @@
 # Deployment Readiness Report
 
 ## Summary
-- **Primary target:** `apps/web` (Next.js 14) deploying to legacy hosting platform using npm workspaces and Node 20.
-- **Supporting services:** `apps/api` (Fastify) and `apps/ops` (Node workers) with shared Supabase resources.
-- **Overall status:** **Amber** – configuration and validation in place, pending real secrets and verification of `pnpm build` with production credentials.
+- **Primary target:** `apps/web` (Next.js 14) serving via the bundled Node server output (`next start`) behind Supabase auth.
+- **Supporting services:** `apps/api` (Fastify) and `apps/ops` (Node workers) sharing Supabase databases and storage.
+- **Overall status:** **Amber** – configuration and validation in place pending real secrets and production Supabase access.
 
 ## Inventory highlights
 - Package manager: npm 11.4.2 (`package-lock.json` committed) with Node `>=20 <21` (`.nvmrc` 20.11.0).
@@ -18,22 +18,22 @@
   - `apps/ops/src/env.server.ts` adds Zod validation for CLI/worker envs; `lib/env.ts` now honours validated values.
 - Missing critical secrets (OpenAI, Supabase) will now fail fast during import/build.
 
-## legacy hosting platform configuration
-- `apps/web/next.config.js` pins the standalone output, strict mode, and `/healthz` route handling for monitoring.
-- `apps/web/next.config.js` now sets `output: 'standalone'` and permissive remote image patterns for hosted assets.
-- `docs/local-hosting.md` documents root directories, commands, and notes per app.
+## Node hosting configuration
+- `apps/web/next.config.js` continues to emit the standalone Node server for deployment on any Node 20 target.
+- Local health-check endpoints are served from `apps/api` (`/api/healthz`) with routing handled by the web app.
+- `audit/env-matrix.csv` tracks the variables required to boot the self-hosted stack (web/api/ops/shared scripts).
 
 ## Build & CI automation
-- Added `.github/workflows/node.yml` to run pnpm lint/typecheck/build gates on PRs with Node 20.
-- Introduced TODO `scripts/deployment-preflight.mjs` to validate Node version, environment variables, dependency install, and preview build locally.
+- CI relies on workspace lint/typecheck/build scripts; local developers should run `pnpm lint`, `pnpm typecheck`, and `pnpm build` before shipping.
+- `scripts/check-binaries.mjs` remains the safeguard preventing accidental large/binary assets in pull requests.
 
 ## Risks & follow-ups
-- **Secrets provisioning (Amber):** legacy hosting platform project must be populated with Supabase and OpenAI credentials before attempting production build.
-- **API deployment (Amber):** `apps/api` assumes Serverless deployment but still needs routing integration (rewrites or custom domain) – document once decided.
-- **Ops automation (Amber):** Workers require secure storage of management tokens; consider legacy hosting platform cron or external scheduler.
+- **Secrets provisioning (Amber):** Supabase and OpenAI credentials must be populated in `.env` (and secret managers) prior to production rollout.
+- **API routing (Amber):** `apps/api` expects to run alongside the web server or behind a reverse proxy; document ingress wiring in the hosting environment.
+- **Ops automation (Amber):** Workers require secure storage of management tokens; schedule execution via cron/containers within your infrastructure.
 
 ## Time to green
-- Provide legacy hosting platform project credentials + secrets → 0.5 day.
-- Implement and run `scripts/deployment-preflight.mjs` with production env + adjust any failing steps → 0.5 day.
-- Confirm preview deployment + smoke test admin panel and API routes → 1 day.
-- Total estimated: **~2 business days** pending access to secrets.
+- Populate Supabase + OpenAI secrets in the hosting environment → 0.5 day.
+- Provision ingress + TLS for the Node web server and Fastify API → 0.5 day.
+- Run local smoke tests (`pnpm build`, `pnpm start`, API health checks) with production-like data → 1 day.
+- Total estimated: **~2 business days** pending access to secrets and infrastructure.
