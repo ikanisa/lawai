@@ -1,74 +1,63 @@
-# Local Hosting Guide
+# Local hosting guide
 
-This document explains how to run the Avocat-AI stack locally using the bundled Node server output. It assumes you already have a Supabase project with the required migrations applied.
+This document explains how to serve the Avocat-AI Francophone operator console on
+a workstation without relying on Vercel. The steps below assume macOS 14 on a
+MacBook, but the commands work on Linux as well.
 
-## 1. Prerequisites
+## Environment file
 
-- Node.js 20 (matches the version declared in `package.json`).
-- `pnpm` 8+ (Corepack recommended).
-- A Supabase project with service role access and database URL.
-- OpenAI API credentials.
+Create a `.env.local` file at the repository root. Start with the values from
+[`.env.example`](../.env.example) and layer on developer specific overrides:
 
-## 2. Configure environment variables
+```bash
+cp .env.example .env.local
+open .env.local # fill in SUPABASE_*, OPENAI_*, NEXT_PUBLIC_* keys
+```
 
-1. Copy the provided examples:
+The web application reads `.env.local` automatically. The API relies on the same
+file when you run `pnpm dev:api`, so you only need to maintain one copy during
+local work.
+
+## Install, build, and start
+
+1. Install dependencies once per machine:
+
    ```bash
-   cp apps/web/.env.example apps/web/.env.local
-   cp apps/ops/.env.example apps/ops/.env.local
-   cp apps/api/.env.example apps/api/.env
+   pnpm install
    ```
-2. Update the secrets:
-   - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` must reference your Supabase instance.
-   - `OPENAI_API_KEY` should carry a key that can access the configured models.
-   - `NEXT_PUBLIC_API_BASE_URL` **must remain** `http://localhost:3333` for local operation so the web client talks to the Fastify API.
-   - `API_BASE_URL` in `apps/ops/.env.local` should stay `http://localhost:3333/api`.
 
-> **Note:** The Supabase service role key is only read on the server. The client bundle never embeds it; requests flow through server actions and the Fastify API.
+2. Build the workspaces to ensure shared packages and Next.js output are
+   up-to-date:
 
-## 3. Install dependencies and build assets
-
-Run the workspace installation and compile the production bundles once:
-```bash
-pnpm install
-pnpm --filter @apps/api build
-pnpm --filter @avocat-ai/web build
-```
-
-If you are bootstrapping a new database, apply the migrations and seed data:
-```bash
-pnpm db:migrate
-pnpm seed
-```
-
-## 4. Launch the services
-
-1. Start the API (Fastify) on port 3333:
    ```bash
-   pnpm dev:api
+   pnpm build
    ```
-   The server exposes `/api/healthz` and all agent orchestration routes backed by Supabase.
 
-2. In a separate terminal, start the Next.js Node server on port 3000:
+3. Start the web console in production mode. This command honours `.env.local`:
+
    ```bash
-   PORT=3000 pnpm start
+   pnpm start
    ```
-   The command runs `next start` against the standalone build created earlier.
 
-3. Visit the operator console at <http://localhost:3000>. The web app proxies authenticated calls to the API running on port 3333.
+   The Next.js server listens on `http://localhost:3000` by default. Use
+   `PORT=3001 pnpm start` if the default port is already bound.
 
-## 5. Verify the PWA bundle
+For an end-to-end smoke test you can chain the commands together:
 
-After the web server is running, confirm the PWA manifest is reachable:
 ```bash
-curl http://localhost:3000/manifest.webmanifest
-```
-You should receive a JSON manifest describing the name, icons, and start URL of the application.
-
-## 6. Worker & CLI tooling
-
-CLI workflows (evaluations, SLO reports, transparency) use the same Supabase project and the `API_BASE_URL` pointing at `http://localhost:3333/api`. Run them via:
-```bash
-pnpm --filter @apps/ops <command>
+pnpm install && pnpm build && pnpm start
 ```
 
-Keep the `.env.local` files under version control ignore rules to avoid leaking secrets. When packaging for another environment, reuse the same values but provision secrets via your hosting platform's secret manager.
+## Optional reverse proxy
+
+When exposing the console to colleagues or mobile devices you can front the
+Next.js server with a reverse proxy. Two common approaches are:
+
+- **`ngrok`** – run `ngrok http 3000` to obtain a temporary, TLS-terminated URL.
+- **`Caddy` or `Nginx`** – terminate TLS locally and forward requests to
+  `http://127.0.0.1:3000`. Remember to forward `Host` headers to keep Next.js
+  aware of the public origin.
+
+Always protect the proxy with authentication and IP allowlists. The `.env.local`
+settings control which Supabase instance and OpenAI project the console talks
+to, so treat the proxy as a production entry point.
