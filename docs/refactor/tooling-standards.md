@@ -4,7 +4,7 @@ _Phase 2 deliverable • Updated 2025-02-07_
 
 ## Supported Toolchain
 - **Node**: 20.x (minimum)  
-- **Package manager**: `pnpm@8.15.4` (pinned via `package.json#packageManager`)  
+- **Package manager**: `pnpm@8.15.4` (pinned via `package.json#packageManager`; use `corepack pnpm <command>` to respect the version)
 - **TypeScript**: 5.4.x across all packages (shared via `tsconfig.base.json` and `tsconfig.node.json`)  
 - **Testing**: `vitest` for unit/integration, `cypress` for PWA E2E  
 - **Linting**: ESLint 8.57 with shared config (`packages/config/eslint/node.cjs`) and Next.js defaults for web surfaces  

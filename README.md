@@ -22,19 +22,9 @@ packages/
 
 ## Local Setup (MacBook)
 
-These steps assume macOS 14 on Apple Silicon, but the commands translate to
-Intel and Linux workstations. Enable Corepack so that pnpm 8.x is available:
-
-```bash
-corepack enable
-corepack prepare pnpm@8.15.4 --activate
-```
-
-1. Clone the repository and install dependencies with pnpm ≥ 8.15:
+1. Install dependencies with **pnpm@8.15.4** (Corepack will download the pinned version declared in `package.json`):
    ```bash
-   git clone https://github.com/avocat-ai/lawai.git
-   cd lawai
-   pnpm install
+   corepack pnpm install
    ```
 2. Create `.env.local` from the template and populate the secrets listed in
    [Environment Variables](#environment-variables):
