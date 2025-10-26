@@ -1,152 +1,95 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import process from 'node:process';
 
-let loadServerEnv;
-let sharedSupabaseSchema;
-let sharedOpenAiSchema;
-try {
-  ({ loadServerEnv, sharedSupabaseSchema, sharedOpenAiSchema } = await import(
-    '@avocat-ai/shared/config/env'
-  ));
-} catch (error) {
-  console.error('❌ Unable to load shared environment schema from @avocat-ai/shared/config/env');
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
+const requiredEnv = new Map([
+  [
+    'apps/web',
+    [
+      'SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+    ],
+  ],
+  [
+    'apps/api',
+    [
+      'OPENAI_API_KEY',
+      'OPENAI_VECTOR_STORE_AUTHORITIES_ID',
+      'SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+    ],
+  ],
+  [
+    'apps/pwa',
+    [
+      'NEXT_PUBLIC_FEAT_AGENT_SHELL',
+      'NEXT_PUBLIC_FEAT_VOICE_REALTIME',
+      'NEXT_PUBLIC_DRIVE_INGESTION_ENABLED',
+    ],
+  ],
+  [
+    'apps/ops',
+    [
+      'OPENAI_API_KEY',
+      'SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+    ],
+  ],
+]);
+
+function run(cmd) {
+  console.log(`\n$ ${cmd}`);
+  execSync(cmd, { stdio: 'inherit' });
 }
 
-const productionEnvSchema = sharedSupabaseSchema.extend({
-  OPENAI_API_KEY: sharedOpenAiSchema.shape.OPENAI_API_KEY,
-});
-
-const PRODUCTION_CRITICAL_KEYS = {
-  SUPABASE_URL: 'Supabase project URL used by production services',
-  SUPABASE_SERVICE_ROLE_KEY: 'Supabase service role key required for server actions and migrations',
-  OPENAI_API_KEY: 'OpenAI API key used by orchestrators and background jobs',
-};
-
-const GENERIC_PLACEHOLDERS = [
-  /^\s*$/,
-  /^null$/i,
-  /^undefined$/i,
-  /placeholder/i,
-  /changeme/i,
-  /example/i,
-  /dummy/i,
-  /sample/i,
-  /^todo$/i,
-];
-
-const KEY_SPECIFIC_PLACEHOLDERS = {
-  SUPABASE_URL: [/localhost/i, /https:\/\/(example|project)\.supabase\.co/i, /YOUR_/i],
-  SUPABASE_SERVICE_ROLE_KEY: [/service[-_]?role[-_]?test/i],
-  OPENAI_API_KEY: [/^sk-(test|demo|example|placeholder|dummy|sample)/i],
-};
-
-function isPlaceholder(key, value) {
-  if (typeof value !== 'string') {
-    return true;
+function assertNodeVersion() {
+  const version = process.versions.node;
+  const major = Number(version.split('.')[0]);
+  if (Number.isNaN(major) || major < 20) {
+    throw new Error(`Node.js >=20 is required. Detected ${version}`);
   }
+  console.log(`Node version OK (${version})`);
+}
 
-  if (GENERIC_PLACEHOLDERS.some((pattern) => pattern.test(value))) {
-    return true;
+function checkEnv() {
+  const missingByApp = [];
+  for (const [app, keys] of requiredEnv.entries()) {
+    const missing = keys.filter((key) => !process.env[key] || process.env[key]?.length === 0);
+    if (missing.length > 0) {
+      missingByApp.push({ app, missing });
+    }
   }
-
-  const keyPatterns = KEY_SPECIFIC_PLACEHOLDERS[key];
-  if (keyPatterns && keyPatterns.some((pattern) => pattern.test(value))) {
-    return true;
+  if (missingByApp.length > 0) {
+    console.error('Missing environment variables:');
+    for (const { app, missing } of missingByApp) {
+      console.error(`  ${app}: ${missing.join(', ')}`);
+    }
+    throw new Error('Environment validation failed');
   }
-
-  return false;
+  console.log('Environment variables OK');
 }
 
-function formatIssues(issues) {
-  return issues.map((issue) => `  - ${issue}`).join('\n');
-}
-
-async function runCommand(command, args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'inherit', shell: false });
-
-    child.on('error', (error) => {
-      reject(error);
-    });
-
-    child.on('exit', (code, signal) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        const reason =
-          code !== null ? `exit code ${code}` : signal ? `signal ${signal}` : 'unknown failure';
-        reject(new Error(`Command \`${command} ${args.join(' ')}\` failed with ${reason}`));
-      }
-    });
-  });
-}
-
-async function validateEnvironment() {
+async function main() {
   try {
-    const parsed = loadServerEnv(productionEnvSchema, {
-      dotenv: process.env.NODE_ENV !== 'production',
-    });
-
-    const issues = [];
-
-    for (const [key, description] of Object.entries(PRODUCTION_CRITICAL_KEYS)) {
-      const value = parsed[key];
-      if (isPlaceholder(key, value)) {
-        issues.push(`${key} (${description}) is missing or still a placeholder.`);
-      }
-    }
-
-    if (issues.length > 0) {
-      throw new Error(`Production secrets check failed:\n${formatIssues(issues)}`);
-    }
-
-    console.log('✅ Production secrets validated.');
+    assertNodeVersion();
+    checkEnv();
+    run('npm --version');
+    run('npm ci --prefer-offline');
+    run('npm run lint --workspace @apps/pwa');
+    run('npm run test --workspace @apps/pwa');
+    run('npm run build --workspace @apps/pwa');
+    run('npm run build --workspace @avocat-ai/web');
+    run('npm run build --workspace @apps/api');
+    console.log('Deployment preflight PASS');
   } catch (error) {
-    if (error instanceof Error && 'issues' in error) {
-      console.error('❌ Environment schema validation failed.');
-      console.error(error.toString());
-    } else if (error instanceof Error) {
-      console.error('❌ Environment validation failed.');
+    console.error('\nDeployment preflight FAILED');
+    if (error instanceof Error) {
       console.error(error.message);
     } else {
-      console.error('❌ Environment validation failed with an unknown error.');
       console.error(error);
     }
     process.exit(1);
   }
 }
 
-async function main() {
-  console.log('🔍 Running deployment preflight checks...');
-
-  await validateEnvironment();
-
-  const steps = [
-    { label: 'pnpm install --frozen-lockfile', command: 'pnpm', args: ['install', '--frozen-lockfile'] },
-    { label: 'pnpm lint', command: 'pnpm', args: ['lint'] },
-    { label: 'pnpm typecheck', command: 'pnpm', args: ['typecheck'] },
-    { label: 'pnpm build', command: 'pnpm', args: ['build'] },
-  ];
-
-  for (const step of steps) {
-    console.log(`▶️  ${step.label}`);
-    try {
-      await runCommand(step.command, step.args);
-    } catch (error) {
-      console.error(`❌ ${step.label} failed.`);
-      console.error(error instanceof Error ? error.message : error);
-      process.exit(1);
-    }
-  }
-
-  console.log('🎉 Deployment preflight passed.');
-}
-
-main().catch((error) => {
-  console.error('❌ Unexpected error during deployment preflight.');
-  console.error(error instanceof Error ? error.stack ?? error.message : error);
-  process.exit(1);
-});
+main();

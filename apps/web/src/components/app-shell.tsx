@@ -28,7 +28,6 @@ import { Switch } from './ui/switch';
 import { cn } from '../lib/utils';
 import type { Messages, Locale } from '../lib/i18n';
 import { CommandPalette, type CommandPaletteAction } from './command-palette';
-import { sendTelemetryEvent } from '@/lib/api';
 import { toast } from 'sonner';
 import { ConfidentialModeBanner } from './confidential-mode-banner';
 import { ComplianceBanner } from './compliance-banner';
@@ -38,6 +37,8 @@ import { useOutbox } from '@/hooks/use-outbox';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { PwaInstallPrompt } from './pwa-install-prompt';
 import { PwaPreferenceToggle } from './pwa-preference-toggle';
+import { usePwaPreference } from '@/hooks/use-pwa-preference';
+import { useSessionTelemetry } from '@/hooks/use-session-telemetry';
 
 interface AppShellProps {
   children: ReactNode;
@@ -77,6 +78,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   const online = useOnlineStatus();
   const statusBarMessages = messages.app.statusBar;
   const { enabled: pwaOptIn, ready: pwaPreferenceReady, setEnabled: setPwaOptIn } = usePwaPreference();
+  const sendUserTelemetry = useSessionTelemetry();
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -94,8 +96,8 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
     if (toastMessage) {
       toast.info(toastMessage);
     }
-    void sendTelemetryEvent('confidential_mode_toggled', { enabled: next });
-  }, [confidentialMode, setConfidentialMode, statusMessages]);
+    sendUserTelemetry('confidential_mode_toggled', { enabled: next });
+  }, [confidentialMode, sendUserTelemetry, setConfidentialMode, statusMessages]);
 
   const confidentialToggleLabel = confidentialMode
     ? confidentialActions?.disable?.label ?? confidentialMessages?.cta ?? 'Disable confidential mode'
@@ -197,7 +199,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
 
   const handleCommandButton = () => {
     setCommandOpen(true);
-    void sendTelemetryEvent('command_palette_button');
+    sendUserTelemetry('command_palette_button');
   };
 
   const handleFabPointerDown = (event: ReactPointerEvent<HTMLAnchorElement>) => {
@@ -235,8 +237,8 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
     if (feedback) {
       toast.info(feedback);
     }
-    void sendTelemetryEvent('pwa_opt_in_toggled', { enabled: next });
-  }, [optInMessages, pwaOptIn, setPwaOptIn]);
+    sendUserTelemetry('pwa_opt_in_toggled', { enabled: next });
+  }, [optInMessages, pwaOptIn, sendUserTelemetry, setPwaOptIn]);
   const canTogglePwa = clientEnv.NEXT_PUBLIC_ENABLE_PWA && Boolean(optInMessages);
   const outboxAgeLabel = useMemo(() => {
     if (!statusBarMessages || !hasOutbox) {

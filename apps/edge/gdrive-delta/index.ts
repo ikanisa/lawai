@@ -1,10 +1,11 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 
 type DeltaRequest = { limit?: number };
 
-Deno.serve(async (req) => {
+serveEdgeFunction(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');

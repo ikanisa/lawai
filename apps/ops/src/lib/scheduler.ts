@@ -46,6 +46,7 @@ export function buildOpsScheduler(
         )
       : null);
   const fetchImpl = options.fetchImpl ?? fetch;
+  const edgeServiceSecret = env.EDGE_SERVICE_SECRET;
 
   const scheduler = createScheduler<OpsSchedulerContext>({
     defaultContext: () => ({ supabase, fetchImpl, env }),
@@ -57,16 +58,22 @@ export function buildOpsScheduler(
     description: 'Traite la file d’apprentissage côté edge en mode horaire.',
     trigger: { kind: 'cron', expression: env.INGESTION_CRON ?? '0 * * * *', timezone: env.INGESTION_TZ ?? 'UTC' },
     command: env.EDGE_PROCESS_LEARNING_URL
-      ? `curl -s -X POST "${env.EDGE_PROCESS_LEARNING_URL}?mode=hourly"`
+      ? `curl -s -X POST "${env.EDGE_PROCESS_LEARNING_URL}?mode=hourly"${
+          edgeServiceSecret ? ` -H 'x-service-secret: ${edgeServiceSecret}'` : ''
+        }`
       : undefined,
     handler: async ({ fetchImpl: ctxFetch }) => {
       const endpoint = env.EDGE_PROCESS_LEARNING_URL;
       if (!endpoint) {
         return;
       }
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (edgeServiceSecret) {
+        headers['x-service-secret'] = edgeServiceSecret;
+      }
       const response = await ctxFetch(`${endpoint}?mode=hourly`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ orgId: env.INGESTION_ORG_ID ?? env.EVAL_ORG_ID ?? null }),
       });
       if (!response.ok) {

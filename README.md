@@ -8,8 +8,9 @@ This repository contains the production implementation scaffold for the Avocat-A
 apps/
   api/        # Fastify API service hosting the agent orchestrator and REST endpoints
   edge/       # Supabase Edge Functions (Deno) for crawlers, schedulers, and webhooks
-  ops/        # Command-line tooling for ingestion and evaluations
-  web/        # Next.js App Router front-end (liquid-glass UI, shadcn primitives, TanStack Query)
+  ops/        # Command-line tooling for ingestion, provisioning, and evaluations
+  pwa/        # Next.js PWA surface for litigants and reviewers (App Router, Radix UI, three.js)
+  web/        # Next.js operator console for admins and HITL reviewers (App Router, shadcn UI, TanStack Query)
 
 db/
   migrations/ # SQL migrations (Supabase/Postgres)
@@ -20,100 +21,65 @@ packages/
   supabase/   # Generated types and helpers for Supabase clients
 ```
 
-## Getting Started
+Key runbooks and deployment guides:
 
-1. Install dependencies with **pnpm** (ensure pnpm ≥ 8.15):
+- [`apps/api`](docs/operations/avocat-ai-launch-runbook.md) – Launch automation and smoke checks for the Fastify orchestrator.
+- [`apps/edge`](docs/ops/provenance-alerts.md) – Example edge deployment (provenance alerts) and environment guidance.
+- [`apps/ops`](docs/ops/cron.md) – Scheduler worker and CLI bootstrap instructions for operational tooling.
+- [`apps/pwa`](docs/deployment/vercel.md) – Vercel deployment checklist for the public-facing PWA.
+- [`apps/web`](docs/local-hosting.md) – Operator console runbook for local/self-hosted environments.
+
+## Local Setup (MacBook)
+
+1. Install dependencies with **pnpm@8.15.4** (Corepack will download the pinned version declared in `package.json`):
    ```bash
-   pnpm install
+   corepack pnpm install
    ```
-2. Copy `.env.example` to `.env` and fill in required secrets.
-   The API no longer falls back to placeholder defaults for production-critical
-   values. Provide explicit entries for at least the following keys before
-   starting the server or running migrations:
-   - `OPENAI_API_KEY`
-   - `AGENT_MODEL`
-   - `EMBEDDING_MODEL`
-   - `OPENAI_VECTOR_STORE_AUTHORITIES_ID`
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   Placeholder values such as `test`, `vs_test`, `changeme`, or the sample
-   Supabase domain will now cause the API to exit immediately when
-   `NODE_ENV=production`.
-3. Apply database migrations directly against your Supabase instance (requires `SUPABASE_DB_URL`):
+2. Create `.env.local` from the template and populate the secrets listed in
+   [Environment Variables](#environment-variables):
+   ```bash
+   cp .env.example .env.local
+   ```
+3. Apply database migrations against the target Supabase instance (requires a
+   valid `SUPABASE_DB_URL`):
    ```bash
    pnpm db:migrate
    ```
-4. Bootstrap Supabase storage buckets and synchronise allowlisted domains:
+4. Provision operational fixtures (buckets, allowlists, vector store) once per
+   environment:
    ```bash
    pnpm --filter @apps/ops bootstrap
    ```
-5. Seed base data (jurisdictions, allowlists) once:
+5. Seed base data (jurisdictions, allowlists) as part of the initial bootstrap:
    ```bash
    pnpm seed
    ```
-6. Generate the PWA icons (required before running the web build in clean environments):
+6. Generate the operator console icon sprite before running a production build:
    ```bash
    pnpm --filter @avocat-ai/web icons:generate
    ```
-7. Start the API locally:
+7. Start the API locally on port 3333:
    ```bash
    pnpm dev:api
    ```
-8. Launch the operator console (Next.js App Router) on http://localhost:3001:
+8. Launch the public-facing PWA on http://localhost:3000 (set `PORT=3002` if the default port is busy):
+   ```bash
+   pnpm --filter @apps/pwa dev
+   ```
+9. Launch the operator console on http://localhost:3001:
    ```bash
    pnpm dev:web
    ```
 
-## Local Setup (MacBook)
+## Deployment checklist
 
-- Ensure macOS runs Node.js 20+ (use asdf, fnm, or nvm).
-- Install dependencies with `pnpm install`.
-- Copy `.env.example` to `.env.local` and populate Supabase/OpenAI credentials.
-- Run `pnpm typecheck`, `pnpm lint`, and `pnpm build` to validate the workspace.
-- Start services locally with `pnpm dev:api` and `pnpm dev:web`, or serve the production build via `pnpm build && pnpm start` (respects `PORT`).
-- Consultez [docs/local-hosting.md](docs/local-hosting.md) pour un tutoriel détaillé et des conseils de dépannage.
+Follow this short list before promoting a change to production. A detailed walkthrough lives in [docs/deployment/vercel.md](docs/deployment/vercel.md).
 
-## Environment Variables
-
-La configuration provient de `.env.local` (non versionné) et des exemples partagés. Variables clés :
-
-- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` pour le client web.
-- `SUPABASE_SERVICE_ROLE_KEY` pour les helpers côté serveur (ne jamais exposer côté client).
-- `OPENAI_API_KEY` et les paramètres de modèles associés pour l'API.
-- `APP_ENV` vaut `local` par défaut et peut prendre `staging` ou `production` selon l'hébergement.
-- `PORT` contrôle le port du serveur web (3000 par défaut).
-
-## Run Commands
-
-Commandes fréquentes du workspace :
-
-- `pnpm typecheck` — vérifie les types TypeScript.
-- `pnpm lint` — lance ESLint sur API, web et ops.
-- `pnpm build` — construit toutes les workspaces (Next.js, Fastify, workers).
-- `pnpm start` — sert le build web localement (`PORT` respecté).
-- `pnpm dev:api`, `pnpm dev:web`, `pnpm dev:ops` — serveurs de développement ciblés.
-
-## Supabase Notes
-
-- Le code client utilise toujours la clé anonyme ; les secrets service role restent côté serveur.
-- Les tests RLS (`pnpm --filter @apps/ops rls-smoke`) nécessitent les identifiants service role et doivent précéder une mise en production.
-- Les buckets (`authorities`, `uploads`, `snapshots`) et extensions (`pgvector`, `pg_trgm`) se provisionnent via `pnpm ops:foundation`.
-- [docs/local-hosting.md](docs/local-hosting.md) explique comment relier Supabase en local ou en staging sans dépendance à un hébergeur propriétaire.
-
-## Hosting Changes
-
-- Les scripts spécifiques au cloud ont été retirés au profit d'un build Node.js pur (`next start -p ${PORT:-3000}`).
-- Les workflows de CI/preview s'appuient désormais sur pnpm et Node (voir `.github/workflows/node.yml`).
-- Un reverse proxy (Caddy, nginx) pourra pointer vers `pnpm start`; ajoutez TLS et authentification en couche supérieure lorsque nécessaire.
-
-## Deployment checklist (Local runtime)
-
-Avant de fusionner une branche dans `main` ou de promouvoir un déploiement auto-hébergé en production, vérifiez :
-
-- [ ] Le workflow **CI** GitHub Actions est passé (lint, typecheck, tests et builds). Vous pouvez reproduire localement via `pnpm -r lint`, `pnpm -r test`, `pnpm --filter @apps/api typecheck`, `pnpm --filter @avocat-ai/web typecheck`, puis les commandes `build` et `bundle:check`.
-- [ ] L'ensemble des variables d'environnement (OpenAI, Supabase, OTP, alertes) sont saisies conformément au [guide d'hébergement local](docs/local-hosting.md).
-- [ ] Les migrations Supabase et les buckets obligatoires sont en place (`pnpm ops:foundation`) et les données de référence ont été chargées (`pnpm seed`).
-- [ ] Les drapeaux de fonctionnalités critiques (ex. `FEAT_ADMIN_PANEL`) sont positionnés selon la stratégie d'exposition souhaitée.
+1. Provision or refresh Supabase by running `npm run db:migrate` and `npm run ops:foundation` against the target project.
+2. Populate the Vercel environment variables (server secrets and `NEXT_PUBLIC_*` settings) exactly as described in the deployment guide.
+3. Run `npm run lint --workspace @apps/pwa`, `npm run test --workspace @apps/pwa`, and `npm run build --workspace @apps/pwa` locally (or the equivalent `pnpm --filter @apps/pwa ...` commands); fix any failures before opening a PR.
+4. Check that the **Vercel Preview Build** GitHub workflow is green on your branch.
+5. Trigger `vercel deploy --prebuilt` (or let the GitHub → Vercel integration promote the passing build) and smoke-test `/healthz` plus the admin panel.
 
 ### Assembler les fondations en une étape
 
@@ -143,7 +109,8 @@ Mettez à jour vos secrets avant déploiement pour éviter l'échec `configurati
 Le script `scripts/deployment-preflight.mjs` automatise les vérifications critiques avant une promotion en production :
 
 - Validation des secrets partagés via `@avocat-ai/shared/config/env` (échec immédiat si `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` ou `OPENAI_API_KEY` sont manquants ou encore en valeur factice).
-- Exécution séquentielle de `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck` et `pnpm build` avec propagation des codes de sortie.
+- Vérification de la présence des variables PWA (`NEXT_PUBLIC_FEAT_AGENT_SHELL`, `NEXT_PUBLIC_FEAT_VOICE_REALTIME`, `NEXT_PUBLIC_DRIVE_INGESTION_ENABLED`).
+- Exécution séquentielle de `npm --version`, `npm ci --prefer-offline`, `npm run lint/test/build --workspace @apps/pwa`, `npm run build --workspace @avocat-ai/web` et `npm run build --workspace @apps/api` avec propagation des codes de sortie.
 
 Lancez-le localement avec :
 
@@ -262,8 +229,8 @@ Un nouveau panneau d'administration Next.js est livré derrière le flag `FEAT_A
 développement et en préproduction, et reste désactivé en production tant que `FEAT_ADMIN_PANEL=1` n'est pas fourni.
 
 - **Activer localement** : ajoutez `FEAT_ADMIN_PANEL=1` à votre `.env.local`.
-- **Prévisualisation** : les environnements avec `APP_ENV=preview` ou `APP_ENV=staging` héritent d'un comportement activé par défaut.
-- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans vos variables d'environnement de production.
+- **Prévisualisation hébergeur** : les environnements `preview` héritent d'un comportement activé par défaut.
+- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans les variables de la plateforme avant le déploiement.
 
 Les routes `/api/admin/*` valident systématiquement la présence des en-têtes `x-admin-actor` et `x-admin-org` (ou retombent sur
 les valeurs de configuration `ADMIN_PANEL_ACTOR`/`ADMIN_PANEL_ORG`).
@@ -360,10 +327,11 @@ Le service met automatiquement à jour `go_no_go_evidence` (section A) avec le
 
 ### Lancer le crawler Edge manuellement
 
-Déployez la fonction `crawl-authorities` puis exécutez-la en fournissant les identifiants suivants :
+Déployez la fonction `crawl-authorities` puis exécutez-la en fournissant les identifiants suivants (inclure `EDGE_SERVICE_SECRET` pour l’authentification) :
 
 ```bash
 curl -X POST https://<project-ref>.functions.supabase.co/crawl-authorities \
+  -H "x-service-secret: $EDGE_SERVICE_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
     "supabaseUrl": "'$SUPABASE_URL'",
@@ -390,6 +358,7 @@ appelez-la en transmettant l’identifiant d’organisation et un manifeste (JSO
 supabase functions deploy drive-watcher --project-ref <project-ref>
 
 curl -X POST https://<project-ref>.functions.supabase.co/drive-watcher \
+  -H "x-service-secret: $EDGE_SERVICE_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
     "orgId": "00000000-0000-0000-0000-000000000000",

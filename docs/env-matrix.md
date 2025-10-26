@@ -13,6 +13,7 @@ secret or configuration knob is introduced.
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | API, Ops, Web server actions | Root `.env` (mirrored in examples) → parsed via `packages/shared/src/config/env.ts` | Required for all server-side Supabase interactions. Ops enforces non-empty values, API validates at runtime for production safety. |
 | `SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Web UI, legacy bots | Root `.env` & `apps/web/.env.example` | Public anon key for browser clients. Keep in sync with Supabase project. |
 | `SUPABASE_DB_URL`, `SUPABASE_PROJECT_REF`, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_MANAGEMENT_API_URL` | Ops CLI automation, legacy scripts | Root `.env` | Optional but shared across automation tools. |
+| `EDGE_SERVICE_SECRET`, `EDGE_JWT_SECRET` | Supabase Edge Functions, Ops scheduler, external cron runners | Root `.env` → Supabase secrets | `EDGE_SERVICE_SECRET` powers the `X-Service-Secret` header; `EDGE_JWT_SECRET` signs optional HS256 bearer tokens. |
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | API, Ops workers, legacy bots | Root `.env` → shared helper | API and Ops enforce a value; helper allows overrides for non-OpenAI providers. |
 | `OPENAI_VECTOR_STORE_AUTHORITIES_ID` | API (default `vs_test`), Ops (optional) | Root `.env` | API defaults to `vs_test` but production deployments should override. |
 | `OPENAI_REQUEST_TAGS*` (`OPENAI_REQUEST_TAGS`, `OPENAI_REQUEST_TAGS_API`, `OPENAI_REQUEST_TAGS_OPS`, `OPENAI_REQUEST_TAGS_EDGE`) | API, Ops, Edge workers | Root `.env` | Shared tagging conventions for observability. |
@@ -73,11 +74,10 @@ secret or configuration knob is introduced.
 
 ### Legacy / project-specific snapshots
 
-Directories under `francophone-lex/` and `JB/` maintain historical configuration examples. They reuse the shared variables above and add bespoke integrations (Google Drive ingestion, payment APIs, Redis rate limiting). These examples now reference the shared matrix to reduce drift while preserving project-specific placeholders.
+Directories under `JB/` maintain historical configuration examples. They reuse the shared variables above and add bespoke integrations (Google Drive ingestion, payment APIs, Redis rate limiting). The legacy `francophone-lex/` scaffolds have been removed to avoid vendor-specific drift, so JB now serves as the lone reference area.
 
 ## Using the shared helper
 
 - Import `loadServerEnv` and the relevant schemas from `@avocat-ai/shared` when adding a new server-side loader.
 - Extend the shared schemas with service-specific validation (for example, requiring non-empty values in Ops or keeping relaxed defaults in the API).
 - Document any non-shared variables in this file so that future services know where to source configuration.
-

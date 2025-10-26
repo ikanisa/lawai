@@ -76,40 +76,6 @@ export type Env = z.infer<typeof envSchema>;
 
 const parsed = loadServerEnv(envSchema);
 
-const SUPABASE_URL_PLACEHOLDER_PATTERNS = [
-  /example\.supabase\.co/i,
-  /project\.supabase\.co/i,
-  /localhost/i,
-];
-
-const OPENAI_KEY_PLACEHOLDER_PATTERNS = [
-  /CHANGEME/i,
-  /placeholder/i,
-  /test-openai-key/i,
-  /^sk-(?:test|demo|example|placeholder|dummy|sample)/i,
-];
-
-const SUPABASE_SERVICE_ROLE_PLACEHOLDER_PATTERNS = [
-  /placeholder/i,
-  /service-role-test/i,
-];
-
-const PRODUCTION_CRITICAL_KEYS = [
-  'OPENAI_API_KEY',
-  'SUPABASE_URL',
-  'SUPABASE_SERVICE_ROLE_KEY',
-  'OPENAI_VECTOR_STORE_AUTHORITIES_ID',
-] as const;
-
-type ProductionCriticalKey = (typeof PRODUCTION_CRITICAL_KEYS)[number];
-
-const PRODUCTION_PLACEHOLDER_PATTERNS: Record<ProductionCriticalKey, RegExp[]> = {
-  OPENAI_API_KEY: [/(?:changeme|placeholder)/i, /test-openai-key/i],
-  SUPABASE_URL: [/example\.supabase\.co/i, /localhost/i, /127\.0\.0\.1/],
-  SUPABASE_SERVICE_ROLE_KEY: [/placeholder/i, /service-role-test/i],
-  OPENAI_VECTOR_STORE_AUTHORITIES_ID: [/^vs_?test$/i, /placeholder/i, /changeme/i],
-};
-
 const REQUIRED_PROD_KEYS: Array<keyof Env> = [
   'OPENAI_API_KEY',
   'SUPABASE_URL',

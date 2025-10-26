@@ -1,23 +1,35 @@
 -- Track PDF upload ingestion jobs and guardrail metadata
-create table if not exists public.upload_ingestion_jobs (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  document_id uuid not null references public.documents(id) on delete cascade,
-  submitted_by uuid references public.profiles(user_id) on delete set null,
-  status text not null default 'pending' check (status in ('pending', 'processing', 'completed', 'failed', 'quarantined')),
+CREATE TABLE IF NOT EXISTS public.upload_ingestion_jobs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  document_id uuid NOT NULL REFERENCES public.documents (id) ON DELETE CASCADE,
+  submitted_by uuid REFERENCES public.profiles (user_id) ON DELETE SET NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (
+    status IN (
+      'pending',
+      'processing',
+      'completed',
+      'failed',
+      'quarantined'
+    )
+  ),
   hash_sha256 text,
-  confidentiality text not null default 'internal',
-  guardrail_tags text[] not null default array[]::text[],
+  confidentiality text NOT NULL DEFAULT 'internal',
+  guardrail_tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   metadata jsonb,
   quarantine_reason text,
-  progress integer not null default 0 check (progress >= 0 and progress <= 100),
+  progress integer NOT NULL DEFAULT 0 CHECK (
+    progress >= 0
+    AND progress <= 100
+  ),
   error text,
-  queued_at timestamptz not null default now(),
+  queued_at timestamptz NOT NULL DEFAULT now(),
   started_at timestamptz,
   completed_at timestamptz,
-  created_at timestamptz not null default now(),
-  unique (org_id, document_id)
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, document_id)
 );
 
-create index if not exists upload_ingestion_jobs_status_idx on public.upload_ingestion_jobs(status);
-create index if not exists upload_ingestion_jobs_org_idx on public.upload_ingestion_jobs(org_id);
+CREATE INDEX if NOT EXISTS upload_ingestion_jobs_status_idx ON public.upload_ingestion_jobs (status);
+
+CREATE INDEX if NOT EXISTS upload_ingestion_jobs_org_idx ON public.upload_ingestion_jobs (org_id);

@@ -20,6 +20,9 @@ function checksum(contents) {
 const repoRoot = process.cwd();
 const dbDir = join(repoRoot, 'db', 'migrations');
 const supaDir = join(repoRoot, 'supabase', 'migrations');
+const manifestPath = join(dbDir, 'manifest.json');
+const dependencyOverridesPath = join(dbDir, 'dependency-overrides.json');
+const allowedRollbackStrategies = new Set(['manual-restore', 'reapply-migration', 'reseed']);
 const allowLegacySupabase = process.env.ALLOW_SUPABASE_MIGRATIONS === '1';
 
 // 1) Enforce canonical location: db/migrations

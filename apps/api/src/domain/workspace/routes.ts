@@ -1,72 +1,40 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-
 import { authorizeRequestWithGuards } from '../../http/authorization.js';
-import { enforceRateLimit, type RateLimiter } from '../../rate-limit.js';
-import type { AppContext } from '../../types/context';
 import type { AppFastifyInstance } from '../../types/fastify.js';
-import {
-  fetchWorkspaceOverview as defaultFetchWorkspaceOverview,
-  type WorkspaceFetchErrors,
-} from './services.js';
-import { workspaceQuerySchema, type WorkspaceQuery } from './schemas.js';
+import type { AppContext } from '../../types/context.js';
+import { fetchWorkspaceOverview as defaultFetchWorkspaceOverview } from './services.js';
+import type { WorkspaceFetchErrors } from './overview.js';
 
-const SECTION_LABELS: Record<keyof WorkspaceFetchErrors, string> = {
+type WorkspaceServices = {
+  fetchWorkspaceOverview: typeof defaultFetchWorkspaceOverview;
+};
+
+const workspaceQuerySchema = z.object({
+  orgId: z.string().uuid('orgId must be a valid UUID'),
+});
+
+type WorkspaceQuery = z.infer<typeof workspaceQuerySchema>;
+
+const workspaceHeadersSchema = z.object({
+  'x-user-id': z.string().min(1, 'x-user-id header is required'),
+});
+
+type WorkspaceHeaders = z.infer<typeof workspaceHeadersSchema>;
+
+const WORKSPACE_SECTIONS = ['jurisdictions', 'matters', 'compliance', 'hitl'] as const;
+
+const SECTION_LABELS: Record<(typeof WORKSPACE_SECTIONS)[number], string> = {
   jurisdictions: 'jurisdictions',
   matters: 'matters',
   compliance: 'compliance watch',
   hitl: 'HITL inbox',
 };
 
-const WORKSPACE_SECTIONS = Object.keys(SECTION_LABELS) as Array<keyof WorkspaceFetchErrors>;
-
-type SerializedError = {
-  name?: string;
-  message: string;
-  stack?: string;
-  cause?: unknown;
-  [key: string]: unknown;
-};
-
-const defaultServices = {
-  fetchWorkspaceOverview: defaultFetchWorkspaceOverview,
-  limiter: undefined as RateLimiter | undefined,
-};
-
-type WorkspaceServices = {
-  fetchWorkspaceOverview: (
-    supabase: SupabaseClient,
-    orgId: string,
-  ) => Promise<{ data: unknown; errors: WorkspaceFetchErrors }>;
-  limiter?: RateLimiter;
-};
-
-function serializeUnknownError(error: unknown): SerializedError {
-  if (error instanceof Error) {
-    const serialized: SerializedError = {
-      name: error.name,
-      message: error.message,
-    };
-    if (error.stack) {
-      serialized.stack = error.stack;
-    }
-    const cause = (error as Error & { cause?: unknown }).cause;
-    if (cause !== undefined) {
-      serialized.cause = cause;
-    }
-    return serialized;
-  }
-
-  if (error && typeof error === 'object') {
-    const record = error as Record<string, unknown>;
-    const message = typeof record.message === 'string' ? record.message : JSON.stringify(record);
-    return { ...record, message } as SerializedError;
-  }
-
-  return {
-    message: typeof error === 'string' ? error : JSON.stringify(error),
-  } as SerializedError;
-}
+import { authorizeRequestWithGuards } from '../../http/authorization.js';
+import { buildPhaseCProcessNavigator } from '../../workspace.js';
+import type { AppContext } from '../../types/context.js';
+import { fetchWorkspaceOverview } from './services.js';
 
 export async function registerWorkspaceRoutes(
   app: AppFastifyInstance,
@@ -77,7 +45,7 @@ export async function registerWorkspaceRoutes(
   const { fetchWorkspaceOverview, limiter } = { ...defaultServices, ...services };
   const guard = ctx.rateLimits.workspace;
 
-  app.get<{ Querystring: WorkspaceQuery }>('/workspace', async (request, reply) => {
+  app.get<{ Querystring: WorkspaceQuery; Headers: WorkspaceHeaders }>('/workspace', async (request, reply) => {
     const parsed = workspaceQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return reply.code(400).send({
@@ -87,82 +55,61 @@ export async function registerWorkspaceRoutes(
       });
     }
 
-    const { orgId } = parsed.data;
-    const userHeader = request.headers['x-user-id'];
-
-    if (!userHeader || typeof userHeader !== 'string') {
-      return reply.code(400).send({ error: 'x-user-id header is required' });
+    const parsedHeaders = workspaceHeadersSchema.safeParse(request.headers);
+    if (!parsedHeaders.success) {
+      return reply.code(400).send({
+        error: 'invalid_headers',
+        message: 'Invalid headers',
+        details: parsedHeaders.error.flatten(),
+      });
     }
 
-    if (limiter) {
-      try {
-        const allowed = await enforceRateLimit(limiter, request, reply, `workspace:${orgId}:${userHeader}`);
-        if (!allowed) {
-          return;
-        }
-      } catch (error) {
-        request.log.warn({ err: error, orgId, userId: userHeader }, 'workspace_rate_limit_failed');
-      }
-    }
+    const userId = parsedHeaders.data['x-user-id'];
 
-    if (guard) {
-      try {
-        const limited = await guard(request, reply, [orgId, userHeader]);
-        if (limited) {
-          return;
-        }
-      } catch (error) {
-        request.log.warn({ err: error, orgId, userId: userHeader }, 'workspace_guard_failed');
+    if (workspaceGuard) {
+      const allowed = await workspaceGuard(request, reply, ['workspace', parsed.data.orgId]);
+      if (!allowed) {
+        return;
       }
     }
 
     try {
-      await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
+      await authorizeRequestWithGuards('workspace:view', parsed.data.orgId, userId, request);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'statusCode' in error &&
+        typeof (error as { statusCode?: unknown }).statusCode === 'number'
+      ) {
+        return reply.code((error as { statusCode: number }).statusCode).send({ error: error.message });
+      }
+
+      request.log.error({ err: error }, 'workspace_overview_authorization_failed');
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    try {
+      const { data, errors } = await services.fetchWorkspaceOverview(supabase, parsed.data.orgId);
 
       const { data, errors } = await fetchWorkspaceOverview(supabase, orgId);
 
-      const errorEntries = Object.entries(errors ?? {}).filter((entry): entry is [
-        keyof WorkspaceFetchErrors,
-        unknown,
-      ] => Boolean(entry[1]));
-
-      if (errorEntries.length === 0) {
-        return reply.send({
-          data,
-          meta: {
-            status: 'ok' as const,
-            warnings: [] as string[],
-            errors: {} as Record<string, never>,
-          },
-        });
+      if (errors.jurisdictions) {
+        request.log.error({ err: errors.jurisdictions }, 'workspace jurisdictions query failed');
+      }
+      if (errors.matters) {
+        request.log.error({ err: errors.matters }, 'workspace matters query failed');
+      }
+      if (errors.compliance) {
+        request.log.error({ err: errors.compliance }, 'workspace compliance query failed');
+      }
+      if (errors.hitl) {
+        request.log.error({ err: errors.hitl }, 'workspace hitl query failed');
       }
 
-      const serializedErrors: Partial<Record<keyof WorkspaceFetchErrors, SerializedError>> = {};
-      const warnings: string[] = [];
-
-      for (const [section, error] of errorEntries) {
-        serializedErrors[section] = serializeUnknownError(error);
-        const label = SECTION_LABELS[section] ?? section;
-        warnings.push(`Partial data: failed to load ${label}.`);
-      }
-
-      const allSectionsFailed = errorEntries.length === WORKSPACE_SECTIONS.length;
-      const statusCode = allSectionsFailed ? 502 : 206;
-      const status = allSectionsFailed ? 'error' : 'partial';
-      const logMethod = allSectionsFailed
-        ? request.log.error.bind(request.log)
-        : request.log.warn.bind(request.log);
-
-      logMethod({ errors: serializedErrors, orgId }, 'workspace_overview_incomplete');
-
-      return reply.code(statusCode).send({
-        data,
-        meta: {
-          status,
-          warnings,
-          errors: serializedErrors,
-        },
-      });
+      return {
+        ...data,
+        navigator: buildPhaseCProcessNavigator(),
+      };
     } catch (error) {
       if (isHttpError(error)) {
         throw error;

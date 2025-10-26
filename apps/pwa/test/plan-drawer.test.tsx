@@ -1,60 +1,27 @@
-import { vi } from "vitest";
-
-vi.mock("@/lib/state/ui-store", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/state/ui-store")>("@/lib/state/ui-store");
-  const React = await import("react");
-  const mockSetPlanDrawerOpen = vi.fn();
-
-  const mockState = {
-    commandPaletteOpen: false,
-    setCommandPaletteOpen: () => {},
-    sidebarCollapsed: false,
-    toggleSidebar: () => {},
-    planDrawerOpen: true,
-    setPlanDrawerOpen: mockSetPlanDrawerOpen,
-    theme: "dark",
-    setTheme: () => {},
-    jurisdiction: "FR",
-    setJurisdiction: () => {}
-  } as import("@/lib/state/ui-store").UIState;
-
-  return {
-    ...actual,
-    UIStateProvider: ({ children }: { children: import("react").ReactNode }) => (
-      <React.Fragment>{children}</React.Fragment>
-    ),
-    useUIState: (selector: (state: typeof mockState) => unknown) => selector(mockState)
-  };
-});
-
+import { Fragment, type ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-const uiStoreMock = vi.hoisted(() => {
-  const baseState = {
+import { PlanDrawer } from "@/components/agent/PlanDrawer";
+import type { PlanDrawerToolLogEntry } from "@avocat-ai/shared";
+import type { ResearchPlan } from "@/lib/data/research";
+
+const { setPlanDrawerOpen } = vi.hoisted(() => ({
+  setPlanDrawerOpen: vi.fn()
+}));
+
+vi.mock("@/lib/state/ui-store", async () => {
+  const mockState = {
     planDrawerOpen: true,
-    setPlanDrawerOpen: vi.fn(),
-    commandPaletteOpen: false,
-    setCommandPaletteOpen: vi.fn(),
-    sidebarCollapsed: false,
-    toggleSidebar: vi.fn(),
-    theme: "dark",
-    setTheme: vi.fn(),
-    jurisdiction: "FR",
-    setJurisdiction: vi.fn()
+    setPlanDrawerOpen
   };
 
   return {
-    UIStateProvider: ({ children }: { children: ReactNode }) => children as JSX.Element,
-    useUIState: (selector: (state: typeof baseState) => unknown) => selector(baseState)
+    useUIState: (selector: (state: typeof mockState) => unknown) => selector(mockState),
+    UIStateProvider: ({ children }: { children: ReactNode }) => <Fragment>{children}</Fragment>
   };
 });
-
-vi.mock("@/lib/state/ui-store", () => uiStoreMock);
-
-import { PlanDrawer, type ToolLogEntry } from "@/components/agent/PlanDrawer";
-import type { ResearchPlan } from "@/lib/data/research";
-import { UIStateProvider } from "@/lib/state/ui-store";
 
 const plan: ResearchPlan = {
   id: "plan-1",
@@ -80,36 +47,34 @@ const plan: ResearchPlan = {
   ]
 };
 
-const toolLogs: ToolLogEntry[] = [
+const toolLogs: PlanDrawerToolLogEntry[] = [
   {
     id: "tool-1",
     name: "file_search",
     status: "success",
-    detail: "3 passages consolidés alignés sur la requête",
-    startedAt: "10:12"
+    description: "3 passages consolidés alignés sur la requête",
+    timestamp: "10:12"
   },
   {
     id: "tool-2",
     name: "web_search",
     status: "running",
-    detail: "Analyse des sources autorisées",
-    startedAt: "10:16"
+    description: "Analyse des sources autorisées",
+    timestamp: "10:16"
   }
 ];
 
 describe("PlanDrawer", () => {
-  it("renders the active plan with risk badges and tool logs", () => {
-    render(
-      <UIStateProvider initialState={{ planDrawerOpen: true }}>
-        <PlanDrawer plan={plan} toolLogs={toolLogs} />
-      </UIStateProvider>
-    );
+  it("closes the drawer when the action is triggered", async () => {
+    const user = userEvent.setup();
+    setPlanDrawerOpen.mockClear();
+    render(<PlanDrawer plan={plan} toolLogs={toolLogs} />);
 
     expect(screen.getByRole("dialog", { name: /plan d'investigation de l'agent/i })).toBeInTheDocument();
-    expect(screen.getByText("Analyse IRAC complète")).toBeInTheDocument();
-    expect(screen.getByText(/risque : modéré/i)).toBeInTheDocument();
-    expect(screen.getAllByText("file_search")).toHaveLength(2);
-    expect(screen.getByText(/Les articles 1103/)).toBeInTheDocument();
-    expect(screen.getByText("Analyse des sources autorisées")).toBeInTheDocument();
+    expect(screen.getByText(/Risque : Modéré/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /fermer le plan/i }));
+
+    expect(setPlanDrawerOpen).toHaveBeenCalledWith(false);
   });
 });

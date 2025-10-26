@@ -5,12 +5,13 @@ import { AppShell } from '@/components/app-shell';
 import { AppProviders } from '@/components/providers';
 import { AuthGuard } from '@/features/auth/components/auth-guard';
 import { getMessages, isLocale, locales, type Locale } from '@/lib/i18n';
+import { resolveClientSession } from '@/server/session';
 
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
 
-export default function LocaleLayout({
+export default async function LocaleLayout({
   children,
   params,
 }: {
@@ -22,9 +23,10 @@ export default function LocaleLayout({
   }
   const locale = params.locale as Locale;
   const messages = getMessages(locale);
+  const initialSession = await resolveClientSession();
 
   return (
-    <AppProviders>
+    <AppProviders initialSession={initialSession}>
       <AuthGuard locale={locale}>
         <AppShell messages={messages} locale={locale}>
           {children}

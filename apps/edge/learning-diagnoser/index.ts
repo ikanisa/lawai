@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 
 const LOOKBACK_RUNS = 200;
 const PRECISION_THRESHOLD = 0.95;
@@ -16,7 +17,7 @@ type CitationRow = {
   domain_ok: boolean | null;
 };
 
-Deno.serve(async () => {
+serveEdgeFunction(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceKey) {

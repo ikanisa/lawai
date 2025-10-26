@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, EdgeSupabaseClient, rowAs } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 
 const PRECISION_THRESHOLD = 0.95;
 const DEAD_LINK_THRESHOLD = 0.01;
@@ -28,7 +29,7 @@ async function fetchLatestMetric(supabase: EdgeSupabaseClient, metric: string) {
   return rowAs<LearningMetricRow>(response.data);
 }
 
-Deno.serve(async () => {
+serveEdgeFunction(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceKey) {

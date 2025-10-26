@@ -5,6 +5,7 @@ import {
   type TransparencyReport,
 } from 'npm:@avocat-ai/shared/transparency';
 import { createEdgeClient, EdgeSupabaseClient, rowsAs } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 import {
   formatTransparencyDigest,
   type TransparencyDigestRecord,
@@ -66,7 +67,7 @@ function buildDigest(reference: Date, reports: TransparencyReportRow[]): { markd
   return formatTransparencyDigest(reference, reports, { linkBuilder: buildReportLink });
 }
 
-Deno.serve(async (req) => {
+serveEdgeFunction(async (req) => {
   const payload: Env = {};
   if (req.method === 'POST') {
     const body = await req.json().catch(() => ({}));
