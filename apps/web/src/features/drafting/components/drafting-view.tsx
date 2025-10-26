@@ -9,7 +9,8 @@ import { Input } from '@/ui/input';
 import { Textarea } from '@/ui/textarea';
 import { Badge } from '@/ui/badge';
 import type { Locale, Messages } from '@/lib/i18n';
-import { DEMO_ORG_ID, fetchDraftingTemplates } from '@/lib/api';
+import { fetchDraftingTemplates } from '@/lib/api';
+import { useRequiredSession } from '@/components/session-provider';
 import { RedlineDiff, type RedlineEntry } from './redline-diff';
 
 interface DraftingViewProps {
@@ -85,12 +86,13 @@ const REDLINE_DIFF: RedlineEntry[] = [
 ];
 
 export function DraftingView({ messages, locale }: DraftingViewProps) {
+  const { orgId } = useRequiredSession();
   const [prompt, setPrompt] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
 
   const templatesQuery = useQuery({
-    queryKey: ['drafting-templates', DEMO_ORG_ID],
-    queryFn: () => fetchDraftingTemplates(DEMO_ORG_ID),
+    queryKey: ['drafting-templates', orgId],
+    queryFn: () => fetchDraftingTemplates(orgId),
   });
 
   const templates = useMemo<DraftTemplate[]>(() => {
