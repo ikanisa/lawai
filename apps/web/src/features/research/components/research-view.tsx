@@ -4,23 +4,15 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { IRACPayload, SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
-import { Input } from '@/ui/input';
-import { Textarea } from '@/ui/textarea';
 import { Switch } from '@/ui/switch';
 import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { JurisdictionChip } from '@/components/jurisdiction-chip';
 import type { JurisdictionChipProps } from '@/components/jurisdiction-chip';
-import { RiskBanner } from '@/components/risk-banner';
-import { LanguageBanner } from '@/components/language-banner';
-import { BilingualToggle } from '@/components/bilingual-toggle';
-import { IRACAccordion } from '@/components/irac-accordion';
 import { CitationCard } from '@/components/citation-card';
 import { VersionTimeline } from '@/components/version-timeline';
 import { PlanDrawer } from '@/components/plan-drawer';
 import { usePlanDrawer } from '@/state/plan-drawer';
-import { VoiceInputButton } from './voice-input-button';
-import { CameraOcrButton } from './camera-ocr-button';
 import { OutboxPanel } from './outbox-panel';
 import { ReadingModeToggle, type ReadingMode } from './reading-mode-toggle';
 import {
@@ -34,174 +26,21 @@ import {
 import type { Messages, Locale } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { Separator } from '@/ui/separator';
-import { exportIracToDocx, exportIracToPdf } from '@/lib/exporters';
 import { cn } from '@/lib/utils';
 import { useOnlineStatus } from '@/hooks/use-online-status';
 import { useOutbox, type OutboxItem } from '@/hooks/use-outbox';
 import { usePwaInstall } from '@/hooks/use-pwa-install';
 import { useConfidentialMode } from '@/state/confidential-mode';
-import { RwandaLanguageTriage } from './rwanda-language-triage';
+import { ResearchQueryForm } from './query-form';
+import { ResearchOfflineBanner } from './offline-banner';
+import { ResearchResultsPane } from './irac-results-pane';
+import { useIracExportActions } from './use-irac-export-actions';
 
 const EMPTY_VIOLATIONS: string[] = [];
 
 interface ResearchViewProps {
   messages: Messages;
   locale: Locale;
-}
-
-interface BriefSummaryProps {
-  payload: IRACPayload;
-  readingMessages: Messages['research']['readingModes'];
-  textClassName?: string;
-}
-
-function BriefSummary({ payload, readingMessages, textClassName }: BriefSummaryProps) {
-  const leadingRules = payload.rules?.slice(0, 3) ?? [];
-
-  return (
-    <Card className="font-serif">
-      <CardHeader>
-        <CardTitle className="text-xl text-slate-100">{readingMessages.briefTitle}</CardTitle>
-        <p className="text-sm text-slate-300">{readingMessages.briefLead}</p>
-      </CardHeader>
-      <CardContent className={cn('space-y-4 text-lg leading-relaxed text-slate-100', textClassName)}>
-        <section>
-          <h3 className="text-base font-semibold uppercase tracking-wide text-slate-300">
-            {readingMessages.briefIssue}
-          </h3>
-          <p className="mt-1">{payload.issue}</p>
-        </section>
-
-        <section>
-          <h3 className="text-base font-semibold uppercase tracking-wide text-slate-300">
-            {readingMessages.briefConclusion}
-          </h3>
-          <p className="mt-1">{payload.conclusion}</p>
-        </section>
-
-        <section>
-          <h3 className="text-base font-semibold uppercase tracking-wide text-slate-300">
-            {readingMessages.briefRules}
-          </h3>
-          {leadingRules.length > 0 ? (
-            <ul className="mt-1 space-y-2 text-base leading-relaxed">
-              {leadingRules.map((rule, index) => (
-                <li key={`${rule.citation}-${index}`}>
-                  <span className="font-semibold text-slate-200">{rule.citation}</span>
-                  {rule.effective_date ? (
-                    <span className="text-sm text-slate-400"> · {rule.effective_date}</span>
-                  ) : null}
-                  <div className="text-sm text-slate-300">{rule.summary ?? rule.note}</div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1 text-base text-slate-300">{readingMessages.briefRulesEmpty}</p>
-          )}
-        </section>
-
-        <section>
-          <h3 className="text-base font-semibold uppercase tracking-wide text-slate-300">
-            {readingMessages.briefApplication}
-          </h3>
-          <p className="mt-1">{payload.application}</p>
-        </section>
-      </CardContent>
-    </Card>
-  );
-}
-
-interface EvidenceFocusProps {
-  citations?: IRACPayload['citations'];
-  readingMessages: Messages['research']['readingModes'];
-  onVisit: (url: string) => void;
-  citationBadges: (note?: string) => string[];
-  verifyLabel: string;
-  staleLabel: string;
-  isCitationStale: (date: string) => boolean;
-  onVerify: (url: string) => void;
-  textClassName?: string;
-}
-
-function EvidenceFocusCard({
-  citations = [],
-  readingMessages,
-  onVisit,
-  citationBadges,
-  verifyLabel,
-  staleLabel,
-  isCitationStale,
-  onVerify,
-  textClassName,
-}: EvidenceFocusProps) {
-  const primary = citations[0];
-  const secondary = citations.slice(1);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{readingMessages.evidenceModeTitle}</CardTitle>
-        <p className="text-sm text-slate-300">{readingMessages.evidenceModeSubtitle}</p>
-      </CardHeader>
-      <CardContent className={cn('space-y-4', textClassName)}>
-        {primary ? (
-          <article className={cn('glass-card space-y-3 rounded-2xl border border-slate-700/60 p-4', textClassName)}>
-            <header className="space-y-1">
-              <p className="text-xs uppercase tracking-wide text-slate-400">
-                {readingMessages.evidencePrimary}
-              </p>
-              <h4 className="text-sm font-semibold text-slate-100">{primary.title}</h4>
-              <p className="text-xs text-slate-400">
-                {primary.court_or_publisher} · {primary.date}
-              </p>
-            </header>
-            <div className="flex flex-wrap items-center gap-2">
-              {citationBadges(primary.note).map((badge) => (
-                <Badge key={badge} variant={badge === 'Officiel' ? 'success' : 'outline'}>
-                  {badge}
-                </Badge>
-              ))}
-              {isCitationStale(primary.date ?? '') ? (
-                <Badge variant="warning">{staleLabel}</Badge>
-              ) : null}
-            </div>
-            {primary.note ? <p className="text-xs text-slate-300">{primary.note}</p> : null}
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => onVisit(primary.url)}>
-                {readingMessages.evidenceOpen}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => onVerify(primary.url)}>
-                {verifyLabel}
-              </Button>
-            </div>
-          </article>
-        ) : (
-          <p className="text-sm text-slate-300">{readingMessages.evidenceEmpty}</p>
-        )}
-
-        {secondary.length > 0 ? (
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-400">
-              {readingMessages.evidenceSecondary}
-            </p>
-            <ul className="mt-2 space-y-2 text-sm text-slate-300">
-              {secondary.map((citation) => (
-                <li key={citation.url}>
-                  <button
-                    type="button"
-                    onClick={() => onVisit(citation.url)}
-                    className="text-left text-indigo-300 underline-offset-4 hover:underline"
-                  >
-                    {citation.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
 }
 
 export function ResearchView({ messages, locale }: ResearchViewProps) {
@@ -450,7 +289,6 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
   const trustPanel = latestRun?.trustPanel ?? null;
   const trustCitationSummary = trustPanel?.citationSummary ?? null;
-  const trustProvenance = trustPanel?.provenance ?? null;
   const trustRisk = trustPanel?.risk ?? null;
   const verification = latestRun?.verification ?? trustRisk?.verification ?? null;
   const allowlistViolations = verification?.allowlistViolations ?? EMPTY_VIOLATIONS;
@@ -707,57 +545,62 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     void sendTelemetryEvent('citation_verify', { url });
   };
 
+  const { handleExportPdf, handleExportDocx } = useIracExportActions({
+    payload,
+    locale,
+    loadingMessages: { pdf: exportPdfMessage, docx: exportDocxMessage },
+    successMessages: { pdf: exportPdfSuccessMessage, docx: exportDocxSuccessMessage },
+    errorMessage: exportErrorMessage,
+  });
+
+  const trustSummaryData = {
+    verificationMessage,
+    verificationNotes,
+    allowlistSummary,
+    allowlistDetails,
+    allowlistStats,
+    translationSummary,
+    translationWarnings,
+    bindingSummary,
+    bindingCountsMessage,
+    planSummary,
+    riskLabelSummary,
+    hitlSummary,
+    citationHosts,
+  };
+
   return (
     <div className="space-y-8">
       <header className="space-y-6">
-        <div className="glass-card rounded-3xl border border-slate-800/60 p-6 shadow-2xl">
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <label className="sr-only" htmlFor="hero-question">
-              {messages.research.heroPlaceholder}
-            </label>
-            <div className="space-y-2">
-              <Input
-                id="hero-question"
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                placeholder={messages.research.heroPlaceholder}
-              />
-              <VoiceInputButton
-                messages={voiceMessages}
-                onTranscript={handleVoiceTranscript}
-                disabled={confidentialMode}
-                disabledMessage={confidentialMessages.voiceDisabled}
-              />
-            </div>
-            <div className="space-y-2">
-              <Textarea
-                value={context}
-                onChange={(event) => setContext(event.target.value)}
-                placeholder={contextPlaceholder}
-              />
-              <CameraOcrButton
-                messages={ocrMessages}
-                onText={handleOcrText}
-                disabled={confidentialMode}
-                disabledMessage={confidentialMessages.ocrDisabled}
-              />
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-2">
-                <Switch checked={ohadaMode} onClick={() => setOhadaMode((prev) => !prev)} label={messages.research.ohadaMode} />
-                <Switch checked={euOverlay} onClick={() => setEuOverlay((prev) => !prev)} label={messages.research.euOverlay} />
-                <Switch
-                  checked={confidentialMode}
-                  onClick={() => setConfidentialMode(!confidentialMode)}
-                  label={messages.research.confidentialMode}
-                />
-              </div>
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? processingLabel : messages.actions.submit}
-              </Button>
-            </div>
-          </form>
-        </div>
+        <ResearchOfflineBanner online={online} message={outboxMessages.offline} />
+        <ResearchQueryForm
+          question={question}
+          context={context}
+          ohadaMode={ohadaMode}
+          euOverlay={euOverlay}
+          confidentialMode={confidentialMode}
+          processingLabel={processingLabel}
+          submitLabel={messages.actions.submit}
+          contextPlaceholder={contextPlaceholder}
+          messages={{
+            heroPlaceholder: messages.research.heroPlaceholder,
+            ohadaMode: messages.research.ohadaMode,
+            euOverlay: messages.research.euOverlay,
+            confidentialMode: messages.research.confidentialMode,
+          }}
+          voiceMessages={voiceMessages}
+          ocrMessages={ocrMessages}
+          confidentialMessages={confidentialMessages}
+          isSubmitting={mutation.isPending}
+          onSubmit={onSubmit}
+          onQuestionChange={setQuestion}
+          onContextChange={setContext}
+          onToggleOhada={() => setOhadaMode((prev) => !prev)}
+          onToggleEuOverlay={() => setEuOverlay((prev) => !prev)}
+          onToggleConfidential={() => setConfidentialMode(!confidentialMode)}
+          onVoiceTranscript={handleVoiceTranscript}
+          onOcrText={handleOcrText}
+        />
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant="outline">{autoDetectionLabel}</Badge>
           <Badge variant="success">{ohadaPriorityLabel}</Badge>
@@ -828,262 +671,39 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
           </Card>
         </div>
 
-        <div className="space-y-5">
-          {payload ? (
-            <div className="space-y-5">
-              <RiskBanner
-                risk={payload.risk}
-                hitlLabel={hitlButtonLabel}
-                onHitl={handleHitlRequest}
-                hitlDisabled={hitlButtonDisabled}
-              />
-              {confidentialMode && confidentialMessages.banner ? (
-                <LanguageBanner message={confidentialMessages.banner} />
-              ) : null}
-              {isMaghreb && <LanguageBanner message={messages.research.languageWarning} />}
-              {isCanadian && <LanguageBanner message={messages.research.canadaLanguageNotice} />}
-              {isSwiss && <LanguageBanner message={messages.research.switzerlandLanguageNotice} />}
-              {isRwanda && messages.research.rwandaLanguageNotice ? (
-                <LanguageBanner message={messages.research.rwandaLanguageNotice} />
-              ) : null}
-              {noticeMessages.map((message) => (
-                <LanguageBanner key={message} message={message} />
-              ))}
-              {isCanadian && (
-                <BilingualToggle messages={messages.research.bilingual} onSelect={handleBilingualSelect} />
-              )}
-              {isRwanda && rwandaMessages ? (
-                <RwandaLanguageTriage messages={rwandaMessages} onSelect={handleRwandaLanguageSelect} />
-              ) : null}
-              {readingMode === 'research' ? (
-                <IRACAccordion
-                  payload={payload}
-                  labels={messages.research.irac}
-                  onCopy={() => navigator.clipboard.writeText(JSON.stringify(payload, null, 2))}
-                  onExportPdf={async () => {
-                    const toastId = 'export-pdf';
-                    toast.loading(exportPdfMessage, { id: toastId });
-                    try {
-                      await exportIracToPdf(payload, locale);
-                      toast.success(exportPdfSuccessMessage, { id: toastId });
-                    } catch (error) {
-                      console.error('export_pdf_failed', error);
-                      toast.error(exportErrorMessage, { id: toastId });
-                    }
-                  }}
-                  onExportDocx={async () => {
-                    const toastId = 'export-docx';
-                    toast.loading(exportDocxMessage, { id: toastId });
-                    try {
-                      await exportIracToDocx(payload, locale);
-                      toast.success(exportDocxSuccessMessage, { id: toastId });
-                    } catch (error) {
-                      console.error('export_docx_failed', error);
-                      toast.error(exportErrorMessage, { id: toastId });
-                    }
-                  }}
-                  copyLabel={messages.actions.copy}
-                  exportPdfLabel={messages.actions.exportPdf}
-                  exportDocxLabel={messages.actions.exportDocx}
-                  contentClassName={hyphenatedClass}
-                />
-              ) : readingMode === 'brief' ? (
-                <BriefSummary
-                  payload={payload}
-                  readingMessages={readingModeMessages}
-                  textClassName={hyphenatedClass}
-                />
-              ) : (
-                <EvidenceFocusCard
-                  citations={payload.citations}
-                  readingMessages={readingModeMessages}
-                  onVisit={handleCitationVisit}
-                  citationBadges={citationBadges}
-                  verifyLabel={verifyLabel}
-                  staleLabel={staleMessages.label}
-                  isCitationStale={isCitationStale}
-                  onVerify={verifyCitation}
-                  textClassName={hyphenatedClass}
-                />
-              )}
-              {readingMode !== 'evidence' ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>{trustMessages.title}</CardTitle>
-                    <p className="text-sm text-slate-300">{trustMessages.description}</p>
-                  </CardHeader>
-                  <CardContent className="space-y-5 text-sm text-slate-200">
-                    <div>
-                      <h4 className="font-semibold text-slate-100">{trustMessages.verificationHeading}</h4>
-                      <p className="mt-1">{verificationMessage}</p>
-                      {verificationNotes.length > 0 ? (
-                        <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
-                          {verificationNotes.map((note) => (
-                            <li key={`${note.code}-${note.message}`}>{note.message}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="mt-2 text-slate-400">{trustMessages.verificationNotesEmpty}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <h4 className="font-semibold text-slate-100">{trustMessages.allowlistHeading}</h4>
-                      <p className="mt-1">{allowlistSummary}</p>
-                      {allowlistStats && <p className="mt-1 text-slate-300">{allowlistStats}</p>}
-                      {allowlistDetails.length > 0 && (
-                        <ul className="mt-2 space-y-1 list-inside list-disc text-amber-300">
-                          {allowlistDetails.map((item, index) => (
-                            <li key={`${item}-${index}`}>{item}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-
-                    <div>
-                      <h4 className="font-semibold text-slate-100">{trustMessages.translationHeading}</h4>
-                      <p className="mt-1">{translationSummary}</p>
-                      {translationWarnings.length > 0 && (
-                        <ul className="mt-2 space-y-1 list-inside list-disc text-amber-200">
-                          {translationWarnings.map((warning, index) => (
-                            <li key={`${warning}-${index}`}>{warning}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-
-                    <div>
-                      <h4 className="font-semibold text-slate-100">{trustMessages.bindingHeading}</h4>
-                      <p className="mt-1">{bindingSummary}</p>
-                      {bindingCountsMessage && <p className="mt-1 text-slate-300">{bindingCountsMessage}</p>}
-                      {nonBindingRules.length > 0 && (
-                        <ul className="mt-2 space-y-1 list-inside list-disc text-amber-200">
-                          {nonBindingRules.map((rule) => (
-                            <li key={`${rule.citation}-binding`}>{rule.citation}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-
-                    {trustProvenance && (
-                      <div>
-                        <h4 className="font-semibold text-slate-100">{trustMessages.provenanceHeading}</h4>
-                        <p className="mt-1">
-                          {trustMessages.provenanceSummary.replace(
-                            '{count}',
-                            trustProvenance.totalSources.toString(),
-                          )}
-                        </p>
-                        <div className="mt-2 space-y-1 text-slate-300">
-                          <p>
-                            {trustMessages.provenanceEli.replace(
-                              '{count}',
-                              trustProvenance.withEli.toString(),
-                            )}
-                          </p>
-                          <p>
-                            {trustMessages.provenanceEcli.replace(
-                              '{count}',
-                              trustProvenance.withEcli.toString(),
-                            )}
-                          </p>
-                          <p>
-                            {trustMessages.provenanceAkoma.replace(
-                              '{count}',
-                              trustProvenance.akomaArticles.toString(),
-                            )}
-                          </p>
-                        </div>
-                        <div className="mt-3">
-                          <p className="font-medium text-slate-200">{trustMessages.provenanceResidencyHeading}</p>
-                          {trustProvenance.residencyBreakdown.length > 0 ? (
-                            <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
-                              {trustProvenance.residencyBreakdown.map(({ zone, count }) => (
-                                <li key={`${zone}-${count}`}>
-                                  {trustMessages.provenanceResidencyItem
-                                    .replace('{zone}', zone.toUpperCase())
-                                    .replace('{count}', count.toString())}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="mt-1 text-slate-400">{trustMessages.provenanceEmptyResidency}</p>
-                          )}
-                        </div>
-                        <div className="mt-3">
-                          <p className="font-medium text-slate-200">{trustMessages.provenanceBindingHeading}</p>
-                          {trustProvenance.bindingLanguages.length > 0 ? (
-                            <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
-                              {trustProvenance.bindingLanguages.map(({ language, count }) => (
-                                <li key={`${language}-${count}`}>
-                                  {trustMessages.provenanceBindingItem
-                                    .replace('{language}', language.toUpperCase())
-                                    .replace('{count}', count.toString())}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="mt-1 text-slate-400">{trustMessages.provenanceEmptyBinding}</p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <div>
-                      <h4 className="font-semibold text-slate-100">{trustMessages.sourcesHeading}</h4>
-                      {citationHosts.length > 0 ? (
-                        <ul className="mt-2 space-y-1 text-slate-300">
-                          {citationHosts.map(({ host, count }) => {
-                            const template =
-                              count === 1 ? trustMessages.sourceHostSingle : trustMessages.sourceHostMultiple;
-                            const label = template
-                              .replace('{host}', host)
-                              .replace('{count}', count.toString());
-                            return <li key={`${host}-${count}`}>{label}</li>;
-                          })}
-                        </ul>
-                      ) : (
-                        <p className="mt-1 text-slate-400">{trustMessages.sourcesEmpty}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <h4 className="font-semibold text-slate-100">{trustMessages.planHeading}</h4>
-                      {planSummary && <p className="mt-1">{planSummary}</p>}
-                      {riskLabelSummary && <p className="mt-1">{riskLabelSummary}</p>}
-                      {hitlSummary && (
-                        <p className={`mt-1 ${payload?.risk.hitl_required ? 'text-amber-300' : ''}`}>{hitlSummary}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <h4 className="font-semibold text-slate-100">{trustMessages.noticesHeading}</h4>
-                      {noticeMessages.length > 0 ? (
-                        <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
-                          {noticeMessages.map((message) => (
-                            <li key={message}>{message}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="mt-1 text-slate-400">{trustMessages.noticesEmpty}</p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : null}
-            </div>
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>{awaitingTitle}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-slate-300">
-                <p>{awaitingBody}</p>
-                <p>{awaitingSecondary}</p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+        <ResearchResultsPane
+          payload={payload}
+          readingMode={readingMode}
+          researchMessages={messages.research}
+          confidentialMode={confidentialMode}
+          confidentialBanner={confidentialMessages.banner ?? null}
+          isMaghreb={isMaghreb}
+          isCanadian={isCanadian}
+          isSwiss={isSwiss}
+          isRwanda={isRwanda}
+          noticeMessages={noticeMessages}
+          hitlButtonLabel={hitlButtonLabel}
+          hitlButtonDisabled={hitlButtonDisabled}
+          onHitlRequest={handleHitlRequest}
+          onBilingualSelect={handleBilingualSelect}
+          onRwandaLanguageSelect={handleRwandaLanguageSelect}
+          citationBadges={citationBadges}
+          verifyLabel={verifyLabel}
+          staleLabel={staleMessages.label}
+          isCitationStale={isCitationStale}
+          onCitationVisit={handleCitationVisit}
+          onCitationVerify={verifyCitation}
+          hyphenatedClass={hyphenatedClass}
+          trustSummary={trustSummaryData}
+          awaiting={{ title: awaitingTitle, body: awaitingBody, secondary: awaitingSecondary }}
+          exportLabels={{
+            copy: messages.actions.copy,
+            exportPdf: messages.actions.exportPdf,
+            exportDocx: messages.actions.exportDocx,
+          }}
+          onExportPdf={handleExportPdf}
+          onExportDocx={handleExportDocx}
+        />
 
         <div className="space-y-4">
           <Card>

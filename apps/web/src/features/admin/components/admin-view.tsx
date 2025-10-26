@@ -1,7 +1,7 @@
 'use client';
 
-import type { FormEvent, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -11,8 +11,6 @@ import { Input } from '@/ui/input';
 import { OperationsOverviewCard } from '@/components/governance/operations-overview-card';
 import {
   DEMO_ORG_ID,
-  fetchGovernanceMetrics,
-  type GovernanceMetricsResponse,
   fetchRetrievalMetrics,
   type RetrievalMetricsResponse,
   fetchEvaluationMetrics,
@@ -39,60 +37,27 @@ import {
   type ComplianceDashboardResponse,
 } from '@/lib/api';
 import type { Messages } from '@/lib/i18n';
-import { clientEnv } from '../../env.client';
+import { clientEnv } from '@/env.client';
+import { useGovernanceMetrics } from '../hooks/use-governance-metrics';
+import { AdminTelemetryDashboard } from './telemetry-dashboard';
+import { AdminAuditLogPanel } from './audit-log-panel';
+import {
+  numberFormatter,
+  decimalFormatter,
+  formatPercent,
+  formatMinutes,
+  formatSeconds,
+  formatPercentValue,
+  formatDecimal,
+  formatDateTime,
+} from '../utils/formatters';
 
 interface AdminViewProps {
   messages: Messages;
 }
 
-const numberFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
-const decimalFormatter = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
-const dateTimeFormatter = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
-
-function formatPercent(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
-  return `${decimalFormatter.format(value * 100)} %`;
-}
-
-function formatMinutes(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
-  return `${decimalFormatter.format(value)} min`;
-}
-
-function formatSeconds(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
-  return `${decimalFormatter.format(value)} s`;
-}
-
-function formatPercentValue(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
-  return `${decimalFormatter.format(value)} %`;
-}
-
-function formatDecimal(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '—';
-  return decimalFormatter.format(value);
-}
-
 const selectClassName =
   'focus-ring w-full rounded-2xl border border-slate-600/60 bg-slate-900/60 px-4 py-3 text-sm text-slate-100';
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '—';
-  }
-  return dateTimeFormatter.format(date);
-}
-
-function useGovernanceMetrics() {
-  return useQuery<GovernanceMetricsResponse>({
-    queryKey: ['governance-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchGovernanceMetrics(DEMO_ORG_ID),
-    staleTime: 60_000,
-  });
-}
 
 export function AdminView({ messages }: AdminViewProps) {
   const queryClient = useQueryClient();
@@ -473,325 +438,25 @@ export function AdminView({ messages }: AdminViewProps) {
     }
   };
 
-  const summaryPrimary = useMemo(() => {
-    if (!overview) return '—';
-    if (overview.documentsTotal === 0) {
-      return messages.admin.summaryCoverageEmpty;
-    }
-    return `${numberFormatter.format(overview.documentsReady)} / ${numberFormatter.format(overview.documentsTotal)}`;
-  }, [overview, messages.admin.summaryCoverageEmpty]);
 
-  const summarySecondary = useMemo(() => {
-    if (!overview) return messages.admin.summaryCoverageHint;
-    const pendingNum = overview.documentsPending ?? 0;
-    const failedNum = overview.documentsFailed ?? 0;
-    const statusKind = failedNum > 0 ? 'error' : pendingNum > 0 ? 'warning' : 'ok';
-    const statusLabel =
-      statusKind === 'error'
-        ? messages.admin.summaryStatusErrors
-        : statusKind === 'warning'
-          ? messages.admin.summaryStatusPending
-          : messages.admin.summaryStatusOk;
-    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-    const colorBadge =
-      statusKind === 'error'
-        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
-        : statusKind === 'warning'
-          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
-          : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
 
-    const pending = numberFormatter.format(pendingNum);
-    const failed = numberFormatter.format(failedNum);
-    const skipped = numberFormatter.format(overview.documentsSkipped);
-    const chunked = numberFormatter.format(overview.documentsChunked);
-    return (
-      <span>
-        <span className={`${baseBadge} ${colorBadge}`}>{statusLabel}</span>
-        <span className="mx-1 text-slate-600">·</span>
-        <span>
-          {messages.admin.summaryPendingLabel} {pending} · {messages.admin.summaryFailedLabel} {failed} · {messages.admin.summarySkippedLabel} {skipped} · {messages.admin.summaryChunkedLabel} {chunked}
-        </span>
-      </span>
-    );
-  }, [
-    overview,
-    messages.admin.summaryCoverageHint,
-    messages.admin.summaryStatusErrors,
-    messages.admin.summaryStatusPending,
-    messages.admin.summaryStatusOk,
-    messages.admin.summaryPendingLabel,
-    messages.admin.summaryFailedLabel,
-    messages.admin.summarySkippedLabel,
-    messages.admin.summaryChunkedLabel,
-  ]);
 
-  const ingestionSummary = useMemo(() => {
-    if (!overview) return '—';
-    return `${overview.ingestionSuccessLast7Days} ${messages.admin.ingestionSuccessLabel} · ${overview.ingestionFailedLast7Days} ${messages.admin.ingestionFailureLabel}`;
-  }, [overview, messages.admin.ingestionSuccessLabel, messages.admin.ingestionFailureLabel]);
-  const ingestionSecondary = useMemo(() => {
-    if (!overview) return messages.admin.ingestionHint;
-    const kind = overview.ingestionFailedLast7Days > 0 ? 'error' : 'ok';
-    const label = kind === 'error' ? messages.admin.ingestionStatusFailures : messages.admin.ingestionStatusOk;
-    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-    const colorBadge =
-      kind === 'error'
-        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
-        : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
-    return (
-      <span>
-        <span
-          className={`${baseBadge} ${colorBadge}`}
-          title={`Success ${overview.ingestionSuccessLast7Days} · Failures ${overview.ingestionFailedLast7Days}`}
-        >
-          {label}
-        </span>
-        <span className="mx-1 text-slate-600">·</span>
-        <span>{messages.admin.ingestionHint}</span>
-      </span>
-    );
-  }, [overview, messages.admin.ingestionHint, messages.admin.ingestionStatusFailures, messages.admin.ingestionStatusOk]);
 
-  const hitlSecondary = useMemo(() => {
-    if (!overview) return `${messages.admin.hitlMedianResponse} ${formatMinutes(null)}`;
-    const hasBacklog = (overview.hitlPending ?? 0) > 0;
-    const label = hasBacklog ? messages.admin.hitlStatusBacklog : messages.admin.hitlStatusOk;
-    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-    const colorBadge = hasBacklog
-      ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
-      : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
-    return (
-      <span>
-        <span
-          className={`${baseBadge} ${colorBadge}`}
-          title={`Pending ${overview.hitlPending} · Median ${formatMinutes(overview.hitlMedianResponseMinutes)}`}
-        >
-          {label}
-        </span>
-        <span className="mx-1 text-slate-600">·</span>
-        <span>
-          {messages.admin.hitlMedianResponse} {formatMinutes(overview.hitlMedianResponseMinutes)}
-        </span>
-      </span>
-    );
-  }, [overview, messages.admin.hitlStatusBacklog, messages.admin.hitlStatusOk, messages.admin.hitlMedianResponse]);
-
-  const highRiskSecondary = useMemo(() => {
-    const count = overview?.highRiskRuns ?? 0;
-    const kind = count > 0 ? 'warning' : 'ok';
-    const label = kind === 'ok' ? messages.admin.highRiskStatusOk : messages.admin.highRiskStatusPresent;
-    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-    const colorBadge =
-      kind === 'ok'
-        ? 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50'
-        : 'bg-amber-900/40 text-amber-200 border-amber-700/50';
-
-    // Allowlisted precision badge (green >=95%, amber >=90%, red otherwise)
-    const ratio = overview?.allowlistedCitationRatio ?? null;
-    let allowlistedKind: 'good' | 'ok' | 'low' | null = null;
-    if (typeof ratio === 'number') {
-      allowlistedKind = ratio >= 0.95 ? 'good' : ratio >= 0.9 ? 'ok' : 'low';
-    }
-    const allowlistedLabel =
-      allowlistedKind === 'good'
-        ? messages.admin.allowlistedStatusGood
-        : allowlistedKind === 'ok'
-          ? messages.admin.allowlistedStatusAcceptable
-          : allowlistedKind === 'low'
-            ? messages.admin.allowlistedStatusPoor
-            : null;
-    const allowlistedColor =
-      allowlistedKind === 'good'
-        ? 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50'
-        : allowlistedKind === 'ok'
-          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
-          : allowlistedKind === 'low'
-            ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
-            : null;
-    return (
-      <span>
-        {allowlistedLabel && allowlistedColor ? (
-          <>
-            <span
-              className={`${baseBadge} ${allowlistedColor}`}
-              title={`Allowlisted precision ${formatPercent(overview?.allowlistedCitationRatio)} (≥95% good, ≥90% acceptable)`}
-            >
-              {allowlistedLabel}
-            </span>
-            <span className="mx-1 text-slate-600">·</span>
-          </>
-        ) : null}
-        <span
-          className={`${baseBadge} ${colorBadge}`}
-          title={`${messages.admin.highRiskRunsLabel}: ${overview ? numberFormatter.format(count) : '—'}`}
-        >
-          {label}
-        </span>
-        <span className="mx-1 text-slate-600">·</span>
-        <span>
-          {messages.admin.highRiskRunsLabel} {overview ? numberFormatter.format(count) : '—'}
-        </span>
-      </span>
-    );
-  }, [overview, messages.admin.allowlistedStatusGood, messages.admin.allowlistedStatusAcceptable, messages.admin.allowlistedStatusPoor, messages.admin.highRiskStatusOk, messages.admin.highRiskStatusPresent, messages.admin.highRiskRunsLabel]);
-
-  const confidentialSecondary = useMemo(() => {
-    const count = overview?.confidentialRuns ?? 0;
-    const active = count > 0;
-    const label = active ? messages.admin.confidentialStatusActive : messages.admin.confidentialStatusNone;
-    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-    const colorBadge = active
-      ? 'bg-sky-900/40 text-sky-200 border-sky-700/50'
-      : 'bg-slate-800/40 text-slate-300 border-slate-700/50';
-    return (
-      <span>
-        <span
-          className={`${baseBadge} ${colorBadge}`}
-          title={`Confidential runs: ${numberFormatter.format(count)}`}
-        >
-          {label}
-        </span>
-        <span className="mx-1 text-slate-600">·</span>
-        <span>
-          {messages.admin.avgLatency} {overview ? decimalFormatter.format(overview.avgLatencyMs) : '—'} ms
-        </span>
-      </span>
-    );
-  }, [overview, messages.admin.confidentialStatusActive, messages.admin.confidentialStatusNone, messages.admin.avgLatency]);
-
-  const manifest = metricsQuery.data?.manifest ?? null;
-  const manifestStatus = useMemo(() => {
-    if (!manifest) return null;
-    const s = manifest.status ?? null;
-    if (s === 'errors') return messages.admin.manifestStatusErrors;
-    if (s === 'warnings') return messages.admin.manifestStatusWarnings;
-    if (s === 'ok') return messages.admin.manifestStatusOk;
-    if (manifest.errorCount > 0) return messages.admin.manifestStatusErrors;
-    if (manifest.warningCount > 0) return messages.admin.manifestStatusWarnings;
-    return messages.admin.manifestStatusOk;
-  }, [manifest, messages.admin.manifestStatusErrors, messages.admin.manifestStatusWarnings, messages.admin.manifestStatusOk]);
-  const manifestPrimary = useMemo(() => {
-    if (!manifest) return '—';
-    return `${numberFormatter.format(manifest.validCount)} / ${numberFormatter.format(manifest.fileCount)} · ${numberFormatter.format(manifest.warningCount)} ${messages.admin.manifestWarningsLabel} · ${numberFormatter.format(manifest.errorCount)} ${messages.admin.manifestErrorsLabel}`;
-  }, [manifest, messages.admin.manifestWarningsLabel, messages.admin.manifestErrorsLabel]);
-  const manifestSecondary = useMemo(() => {
-    if (!manifest) return messages.admin.manifestHint;
-    const name = manifest.manifestName ?? 'manifest.jsonl';
-    const statusLabel = manifestStatus ?? '';
-    const statusKind = manifest.status === 'errors' ? 'error' : manifest.status === 'warnings' ? 'warning' : 'ok';
-    const baseBadge =
-      'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-    const colorBadge =
-      statusKind === 'error'
-        ? 'bg-rose-900/40 text-rose-200 border-rose-700/50'
-        : statusKind === 'warning'
-          ? 'bg-amber-900/40 text-amber-200 border-amber-700/50'
-          : 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50';
-    const badge = statusLabel ? (
-      <span
-        className={`${baseBadge} ${colorBadge}`}
-        title={`Warnings ${manifest.warningCount} · Errors ${manifest.errorCount}`}
-      >
-        {statusLabel}
-      </span>
-    ) : null;
-    return (
-      <span>
-        {badge ? (
-          <>
-            {badge}
-            <span className="mx-1 text-slate-600">·</span>
-          </>
-        ) : null}
-        <span>{name}</span>
-        <span className="mx-1 text-slate-600">·</span>
-        <span>{formatDateTime(manifest.createdAt)}</span>
-      </span>
-    );
-  }, [manifest, manifestStatus, messages.admin.manifestHint]);
 
   return (
     <div className="space-y-6">
       <div className="grid gap-6 xl:grid-cols-[2fr_3fr]">
         <div className="space-y-6">
-          <Card className="glass-card border border-slate-800/60">
-            <CardHeader>
-              <CardTitle className="text-slate-100">{messages.admin.metricsTitle}</CardTitle>
-              <p className="text-sm text-slate-400">{messages.admin.metricsDescription}</p>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <MetricBlock
-                label={messages.admin.runs30d}
-                primary={overview ? numberFormatter.format(overview.runsLast30Days) : '—'}
-                secondary={(function () {
-                  const high = clientEnv.NEXT_PUBLIC_DASHBOARD_RUNS_HIGH;
-                  const medium = clientEnv.NEXT_PUBLIC_DASHBOARD_RUNS_MEDIUM;
-                  const count = overview?.runsLast30Days ?? 0;
-                  let kind: 'high' | 'medium' | 'low' = 'low';
-                  if (count >= high) kind = 'high';
-                  else if (count >= medium) kind = 'medium';
-                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-                  const { label, color } =
-                    kind === 'high'
-                      ? { label: messages.admin.runsStatusHigh, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
-                      : kind === 'medium'
-                        ? { label: messages.admin.runsStatusMedium, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
-                        : { label: messages.admin.runsStatusLow, color: 'bg-slate-800/40 text-slate-300 border-slate-700/50' };
-                  return (
-                    <span>
-                      <span
-                        className={`${baseBadge} ${color}`}
-                        title={`Runs(30d): ${numberFormatter.format(count)} (high ≥ ${high}, medium ≥ ${medium})`}
-                      >
-                        {label}
-                      </span>
-                      <span className="mx-1 text-slate-600">·</span>
-                      <span>
-                        {messages.admin.totalRunsLabel} {overview ? numberFormatter.format(overview.totalRuns) : '—'}
-                      </span>
-                    </span>
-                  );
-                })()}
-                loading={metricsQuery.isLoading}
-              />
-              <MetricBlock
-                label={messages.admin.allowlistedPrecision}
-                primary={formatPercent(overview?.allowlistedCitationRatio)}
-                secondary={highRiskSecondary}
-                loading={metricsQuery.isLoading}
-              />
-              <MetricBlock
-                label={messages.admin.hitlPending}
-                primary={overview ? numberFormatter.format(overview.hitlPending) : '—'}
-                secondary={hitlSecondary}
-                loading={metricsQuery.isLoading}
-              />
-              <MetricBlock
-                label={messages.admin.confidentialUsage}
-                primary={overview ? numberFormatter.format(overview.confidentialRuns) : '—'}
-                secondary={confidentialSecondary}
-                loading={metricsQuery.isLoading}
-              />
-              <MetricBlock
-                label={messages.admin.summaryCoverage}
-                primary={summaryPrimary}
-                secondary={summarySecondary}
-                loading={metricsQuery.isLoading}
-              />
-              <MetricBlock
-                label={messages.admin.ingestionHealth}
-                primary={ingestionSummary}
-                secondary={ingestionSecondary}
-                loading={metricsQuery.isLoading}
-              />
-              <MetricBlock
-                label={messages.admin.manifestStatus}
-                primary={manifestPrimary}
-                secondary={manifestSecondary}
-                loading={metricsQuery.isLoading}
-              />
-            </CardContent>
-          </Card>
+          <AdminTelemetryDashboard
+            messages={messages.admin}
+            overview={overview}
+            manifest={metricsQuery.data?.manifest ?? null}
+            loading={metricsQuery.isLoading}
+            thresholds={{
+              runsHigh: clientEnv.NEXT_PUBLIC_DASHBOARD_RUNS_HIGH,
+              runsMedium: clientEnv.NEXT_PUBLIC_DASHBOARD_RUNS_MEDIUM,
+            }}
+          />
 
           <OperationsOverviewCard
             messages={messages}
@@ -1917,42 +1582,11 @@ export function AdminView({ messages }: AdminViewProps) {
           </CardContent>
         </Card>
 
-        <Card className="glass-card border border-slate-800/60 xl:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.admin.auditTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.admin.auditDescription}</p>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            {auditQuery.isLoading ? (
-              <p className="text-sm text-slate-400">{messages.admin.loadingShort}</p>
-            ) : auditEvents.length === 0 ? (
-              <p className="text-sm text-slate-400">{messages.admin.auditEmpty}</p>
-            ) : (
-              <table className="min-w-full text-left text-sm text-slate-200">
-                <thead className="text-xs uppercase tracking-wide text-slate-400">
-                  <tr>
-                    <th className="py-2 pr-4">{messages.admin.auditEvent}</th>
-                    <th className="py-2 pr-4">{messages.admin.auditObject}</th>
-                    <th className="py-2 pr-4">{messages.admin.auditActor}</th>
-                    <th className="py-2">{messages.admin.auditDate}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {auditEvents.map((event) => (
-                    <tr key={event.id}>
-                      <td className="py-2 pr-4 font-medium text-slate-100">{event.kind}</td>
-                      <td className="py-2 pr-4 text-slate-300">{event.object}</td>
-                      <td className="py-2 pr-4 text-slate-400">
-                        {event.actor_user_id ?? messages.admin.auditSystem}
-                      </td>
-                      <td className="py-2 text-slate-400">{formatDateTime(event.created_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </CardContent>
-        </Card>
+        <AdminAuditLogPanel
+          loading={auditQuery.isLoading}
+          events={auditEvents}
+          messages={messages.admin}
+        />
       </div>
     </div>
   );
