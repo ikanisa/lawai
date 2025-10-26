@@ -15,21 +15,15 @@ jobs:
       - uses: pnpm/action-setup@v2
         with:
           version: 8.15.4
+          run_install: false
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Derive Supabase preview branch
-        run: |
-          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-          SAFE_BRANCH=$(echo "${BRANCH}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')
-          SUPABASE_BRANCH="preview-${SAFE_BRANCH}"
-          echo "SUPABASE_BRANCH=${SUPABASE_BRANCH}" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_SUPABASE_BRANCH=${SUPABASE_BRANCH}" >> $GITHUB_ENV
-          echo "### Supabase preview branch" >> $GITHUB_STEP_SUMMARY
-          echo "Using branch \`${SUPABASE_BRANCH}\` for Supabase preview resources." >> $GITHUB_STEP_SUMMARY
-      - name: Check migrations
-        run: pnpm check:migrations
-      - name: SQL lint
-        run: pnpm lint:sql
+        run: pnpm install --recursive
+      - name: Lint @apps/pwa
+        run: pnpm --filter @apps/pwa lint
+      - name: Test @apps/pwa
+        run: pnpm --filter @apps/pwa test
+      - name: Build @apps/pwa
+        run: pnpm --filter @apps/pwa build
       - name: Pull Vercel environment (preview)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

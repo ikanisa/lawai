@@ -58,66 +58,15 @@ packages/
    pnpm dev:web
    ```
 
-For a production-mode smoke test on a laptop follow the
-[local hosting guide](docs/local-hosting.md), which outlines the
-`pnpm install && pnpm build && pnpm start` flow and optional reverse proxy
-setups.
+## Deployment checklist
 
-## Environment Variables
+Follow this short list before promoting a change to production. A detailed walkthrough lives in [docs/deployment/vercel.md](docs/deployment/vercel.md).
 
-- `.env.local` (root) powers both the Fastify API and the Next.js console. Use
-  `.env` only for CI secrets that never leave the vault.
-- Required keys:
-  - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` for service-to-service calls.
-  - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` for the web
-    client.
-  - `OPENAI_API_KEY` and `OPENAI_VECTOR_STORE_AUTHORITIES_ID` for agent
-    orchestration.
-  - Feature toggles such as `FEAT_ADMIN_PANEL` and `APP_ENV` mirror the runtime
-    checks inside `apps/web/src/config/feature-flags.ts`.
-- The API performs runtime validation via `apps/api/src/env.server.ts`; the web
-  app mirrors this with `apps/web/src/env.server.ts`. Invalid or missing values
-  will surface as boot-time errors.
-
-## Run Commands
-
-| Command | Description |
-| ------- | ----------- |
-| `pnpm dev:api` | Start the Fastify API with hot reload on port 3333. |
-| `pnpm dev:web` | Run the Next.js operator console on http://localhost:3001. |
-| `pnpm typecheck` | Execute TypeScript checks across all workspaces. |
-| `pnpm lint` | Enforce ESLint rules in every package. |
-| `pnpm build` | Build API, web, PWA, and shared packages. |
-| `pnpm test` | Run the workspace test suites (Vitest, etc.). |
-| `pnpm check:binaries` | Guard-rail to prevent binary assets in Git history. |
-| `pnpm ops:foundation` | One-shot Supabase provisioning with safety checks. |
-| `pnpm ops:provision` | Re-run provisioning without the secrets audit. |
-| `pnpm ops:check` | Continuous environment compliance report. |
-
-## Supabase Notes
-
-- Database extensions (`pgvector`, `pg_trgm`, optional `pg_cron`) must be
-  enabled before `pnpm ops:foundation` succeeds.
-- The Supabase Edge functions listed in `supabase/config.toml` now rely on
-  manual scheduling—see [`scripts/cron.md`](scripts/cron.md) for the recommended
-  cadence and example runners.
-- `supabase/migrations/` contains canonical SQL. Run `pnpm db:migrate` against
-  the production database URL to keep parity with your Supabase project.
-- The Supabase CLI (`brew install supabase/tap/supabase`) is required for edge
-  deployments triggered in CI and for local function testing.
-
-## Vercel Decommissioning Summary
-
-- The Vercel preview workflow and cron configuration have been removed from the
-  repository. Preview builds now rely on local scripts instead of
-  `.github/workflows/vercel-preview-build.yml`.
-- Scheduled workloads should be wired through cron/Node runners documented in
-  [`scripts/cron.md`](scripts/cron.md).
-- Local production-style hosting is documented in
-  [`docs/local-hosting.md`](docs/local-hosting.md) so MacBook operators can
-  self-host without Vercel.
-
-## Ops automation reference
+1. Provision or refresh Supabase by running `npm run db:migrate` and `npm run ops:foundation` against the target project.
+2. Populate the Vercel environment variables (server secrets and `NEXT_PUBLIC_*` settings) exactly as described in the deployment guide.
+3. Run `pnpm --filter @apps/pwa lint`, `pnpm --filter @apps/pwa test`, and `pnpm --filter @apps/pwa build` locally (or the equivalent `npm run ... --workspace @apps/pwa` commands); fix any failures before opening a PR.
+4. Check that the **Vercel Preview Build** GitHub workflow is green on your branch.
+5. Trigger `vercel deploy --prebuilt` (or let the GitHub → Vercel integration promote the passing build) and smoke-test `/healthz` plus the admin panel.
 
 ### Assembler les fondations en une étape
 
