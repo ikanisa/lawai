@@ -5,12 +5,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import type { Messages } from '@/lib/i18n';
 import {
-  DEMO_ORG_ID,
   getGovernancePublications,
   getOperationsOverview,
   type GovernancePublicationsResponse,
   type OperationsOverviewResponse,
 } from '@/lib/api';
+import { useRequiredSession } from '@/components/session-provider';
 import { OperationsOverviewCard } from '@/components/governance/operations-overview-card';
 
 interface TrustCenterViewProps {
@@ -20,15 +20,16 @@ interface TrustCenterViewProps {
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' });
 
 export function TrustCenterView({ messages }: TrustCenterViewProps) {
+  const { orgId } = useRequiredSession();
   const operationsQuery = useQuery<OperationsOverviewResponse>({
-    queryKey: ['trust-operations-overview', DEMO_ORG_ID],
-    queryFn: () => getOperationsOverview(DEMO_ORG_ID),
+    queryKey: ['trust-operations-overview', orgId],
+    queryFn: () => getOperationsOverview(orgId),
     staleTime: 120_000,
   });
 
   const publicationsQuery = useQuery<GovernancePublicationsResponse>({
-    queryKey: ['trust-governance-publications'],
-    queryFn: () => getGovernancePublications({ status: 'published' }),
+    queryKey: ['trust-governance-publications', orgId],
+    queryFn: () => getGovernancePublications({ status: 'published', orgId }),
     staleTime: 120_000,
   });
 

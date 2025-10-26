@@ -11,12 +11,10 @@ import {
 } from 'lucide-react';
 
 import {
-  DEMO_ORG_ID,
   cancelChatkitSession,
   createChatkitSession,
   fetchChatkitSession,
   postChatkitEvent,
-  sendTelemetryEvent,
   type ChatkitSessionRecord,
 } from '@/lib/api';
 import { ChatkitClient, type ChatkitConnection, type ChatkitTransport } from '@/lib/chatkit-client';
@@ -28,6 +26,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/
 import { Separator } from '@/ui/separator';
 
 import { chatkitKeys, chatkitQueries } from '../api/queries';
+import { useRequiredSession } from '@/components/session-provider';
+import { useSessionTelemetry } from '@/hooks/use-session-telemetry';
 
 interface ChatkitSessionPanelProps {
   messages: Messages;
@@ -195,7 +195,7 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
   const [lastEventPayload, setLastEventPayload] = useState<string | null>(null);
   const [lastEventTimestamp, setLastEventTimestamp] = useState<string | null>(null);
 
-  const sessionsQuery = useQuery(chatkitQueries.sessions(DEMO_ORG_ID, 'active'));
+  const sessionsQuery = useQuery(chatkitQueries.sessions(orgId, 'active'));
   const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data]);
 
   useEffect(() => {
@@ -270,7 +270,7 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
               transport,
               eventType: event.type,
             });
-            void sendTelemetryEvent('chatkit_event_received', {
+            sendTelemetry('chatkit_event_received', {
               sessionId: hydrated.id,
               transport,
               eventType: event.type,
@@ -286,7 +286,7 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
               transport,
               eventType: event.type,
             });
-            void sendTelemetryEvent('chatkit_stream_error', {
+            sendTelemetry('chatkit_stream_error', {
               sessionId: hydrated.id,
               transport,
               eventType: event.type,
@@ -303,7 +303,7 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
         connectionRef.current = connection;
         setConnectionState(transport === 'webrtc' ? 'connected-webrtc' : 'connected');
         console.info('chatkit_stream_connected', { sessionId: hydrated.id, transport });
-        void sendTelemetryEvent('chatkit_stream_connected', {
+        sendTelemetry('chatkit_stream_connected', {
           sessionId: hydrated.id,
           transport,
         });
@@ -313,7 +313,7 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
         }
         setConnectionState('error');
         console.error('chatkit_stream_failed', error);
-        void sendTelemetryEvent('chatkit_stream_failed', {
+        sendTelemetry('chatkit_stream_failed', {
           sessionId: hydrated.id,
           message: error instanceof Error ? error.message : 'unknown',
         });
@@ -335,7 +335,7 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
     mutationFn: async () => {
       const metadataTasks = buildDefaultTaskMetadata(messages);
       const session = await createChatkitSession({
-        orgId: DEMO_ORG_ID,
+        orgId,
         metadata: {
           transport: 'sse',
           tasks: metadataTasks,
@@ -347,9 +347,9 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
     onSuccess: (session) => {
       setSelectedSessionId(session.id);
       setConnectionState('connecting');
-      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(DEMO_ORG_ID) });
+      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(orgId) });
       console.info('chatkit_session_started', { sessionId: session.id, agent: session.agentName });
-      void sendTelemetryEvent('chatkit_session_started', {
+      sendTelemetry('chatkit_session_started', {
         sessionId: session.id,
         agent: session.agentName,
         channel: session.channel,
@@ -357,7 +357,7 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
     },
     onError: (error) => {
       console.error('chatkit_session_start_failed', error);
-      void sendTelemetryEvent('chatkit_session_start_failed', {
+      sendTelemetry('chatkit_session_start_failed', {
         message: error instanceof Error ? error.message : 'unknown',
       });
     },
@@ -367,19 +367,19 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
     mutationFn: async (session: ChatkitSessionRecord) => cancelChatkitSession(session.id),
     onSuccess: (updated, original) => {
       sessionCache.current.set(updated.id, updated);
-      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(DEMO_ORG_ID) });
+      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(orgId) });
       if (selectedSessionId === updated.id) {
         setSelectedSessionId(null);
       }
       console.info('chatkit_session_cancelled', { sessionId: updated.id });
-      void sendTelemetryEvent('chatkit_session_cancelled', {
+      sendTelemetry('chatkit_session_cancelled', {
         sessionId: updated.id,
         previousStatus: original.status,
       });
     },
     onError: (error, session) => {
       console.error('chatkit_session_cancel_failed', error);
-      void sendTelemetryEvent('chatkit_session_cancel_failed', {
+      sendTelemetry('chatkit_session_cancel_failed', {
         sessionId: session.id,
         message: error instanceof Error ? error.message : 'unknown',
       });
@@ -398,15 +398,15 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
     },
     onSuccess: (_result, session) => {
       console.info('chatkit_hitl_escalated', { sessionId: session.id });
-      void sendTelemetryEvent('chatkit_hitl_escalated', {
+      sendTelemetry('chatkit_hitl_escalated', {
         sessionId: session.id,
         agent: session.agentName,
       });
-      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(DEMO_ORG_ID) });
+      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(orgId) });
     },
     onError: (error, session) => {
       console.error('chatkit_hitl_escalation_failed', error);
-      void sendTelemetryEvent('chatkit_hitl_escalation_failed', {
+      sendTelemetry('chatkit_hitl_escalation_failed', {
         sessionId: session.id,
         message: error instanceof Error ? error.message : 'unknown',
       });
@@ -430,8 +430,8 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
   }, [escalateMutation, selectedSession]);
 
   const handleRefresh = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(DEMO_ORG_ID) });
-  }, [queryClient]);
+    void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(orgId) });
+  }, [orgId, queryClient]);
 
   const connectionLabelMap: Record<ConnectionState, string> = {
     idle: copy.connection.idle,
