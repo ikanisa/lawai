@@ -1,3 +1,5 @@
-create extension if not exists "uuid-ossp";
-create extension if not exists pg_trgm;
-create extension if not exists vector;
+CREATE EXTENSION if NOT EXISTS "uuid-ossp";
+
+CREATE EXTENSION if NOT EXISTS pg_trgm;
+
+CREATE EXTENSION if NOT EXISTS vector;

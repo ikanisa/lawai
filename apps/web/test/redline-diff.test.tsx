@@ -1,8 +1,8 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import messagesFr from '../messages/fr.json';
-import type { Messages } from '../src/lib/i18n';
-import { RedlineDiff, type RedlineEntry } from '../src/components/drafting/redline-diff';
+import type { Messages } from '@/lib/i18n';
+import { RedlineDiff, type RedlineEntry } from '@/features/drafting/components/redline-diff';
 
 describe('RedlineDiff', () => {
   beforeAll(() => {

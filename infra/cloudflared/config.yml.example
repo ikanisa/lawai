@@ -1,0 +1,13 @@
+# Copy to infra/cloudflared/config.yml and fill values.
+# This publishes your local Caddy (http://localhost:8080) on your Cloudflare domain.
+# 1) Run: cloudflared login   (select your account & domain)
+# 2) It creates a credentials JSON in ~/.cloudflared/<TUNNEL_UUID>.json — point to it below.
+# 3) Replace ADMIN_HOSTNAME with your subdomain (e.g., admin.sacco-plus.com)
+
+tunnel: sacco-admin
+credentials-file: /Users/<YOUR_MAC_USER>/.cloudflared/<TUNNEL_UUID>.json
+
+ingress:
+  - hostname: admin.sacco-plus.com
+    service: http://localhost:8080
+  - service: http_status:404

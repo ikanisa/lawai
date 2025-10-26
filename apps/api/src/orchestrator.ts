@@ -11,6 +11,10 @@ import {
   ConnectorStatus,
   ConnectorType,
   DirectorCommandInput,
+  FinanceDirectorPlan,
+  FinanceDirectorPlanSchema,
+  FinanceSafetyReview,
+  FinanceSafetyReviewSchema,
   OrchestratorCommandEnvelope,
   OrchestratorCommandRecord,
   OrchestratorCommandResponse,
@@ -40,8 +44,8 @@ export interface RegisterConnectorInput {
 
 export interface UpdateSessionStateInput {
   sessionId: string;
-  directorState?: Record<string, unknown>;
-  safetyState?: Record<string, unknown>;
+  directorState?: FinanceDirectorPlan | null;
+  safetyState?: FinanceSafetyReview | null;
   metadata?: Record<string, unknown>;
   currentObjective?: string | null;
   status?: OrchestratorSessionRecord['status'];
@@ -98,6 +102,7 @@ function createDirectorAgent(): Agent {
     name: 'finance-director',
     instructions: DIRECTOR_INSTRUCTIONS,
     model: env.AGENT_MODEL,
+    outputType: FinanceDirectorPlanSchema,
   });
 }
 
@@ -107,6 +112,7 @@ function createSafetyAgent(): Agent {
     name: 'finance-safety',
     instructions: SAFETY_INSTRUCTIONS,
     model: env.AGENT_MODEL,
+    outputType: FinanceSafetyReviewSchema,
   });
 }
 
@@ -161,49 +167,32 @@ function requireNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function extractTextFromAgentOutput(output: unknown): string | null {
-  if (!output) return null;
-  // Try output_text shortcut
-  if (typeof (output as any)?.output_text === 'string' && (output as any).output_text.length > 0) {
-    return (output as any).output_text as string;
+function parseDirectorState(value: unknown): FinanceDirectorPlan | null {
+  if (!value || (typeof value === 'object' && Object.keys(value as Record<string, unknown>).length === 0)) {
+    return null;
   }
-  // Try array of items
-  if (Array.isArray((output as any))) {
-    for (const item of output as any[]) {
-      const text = (item as any)?.text ?? (item as any)?.content?.[0]?.text;
-      if (typeof text === 'string' && text.length > 0) return text;
-    }
-  }
-  return null;
+  const parsed = FinanceDirectorPlanSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
-function normaliseAgentOutputToObject(output: unknown): Record<string, unknown> {
-  if (output && typeof output === 'object' && !Array.isArray(output)) {
-    return output as Record<string, unknown>;
+function parseSafetyState(value: unknown): FinanceSafetyReview | null {
+  if (!value || (typeof value === 'object' && Object.keys(value as Record<string, unknown>).length === 0)) {
+    return null;
   }
-  const text = extractTextFromAgentOutput(output);
-  if (text) {
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-      return { text } as Record<string, unknown>;
-    } catch {
-      return { text } as Record<string, unknown>;
-    }
-  }
-  return {};
+  const parsed = FinanceSafetyReviewSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function mapSession(row: Record<string, unknown>): OrchestratorSessionRecord {
+  const directorState = parseDirectorState(row.director_state);
+  const safetyState = parseSafetyState(row.safety_state);
   return {
     id: requireString(row.id),
     orgId: requireString(row.org_id),
     chatSessionId: optionalString(row.chat_session_id),
     status: (row.status as OrchestratorSessionRecord['status']) ?? 'active',
-    directorState: asRecord(row.director_state),
-    safetyState: asRecord(row.safety_state),
+    directorState,
+    safetyState,
     metadata: asRecord(row.metadata),
     currentObjective: optionalString(row.current_objective),
     lastDirectorRunId: optionalString(row.last_director_run_id),
@@ -365,7 +354,7 @@ export async function runDirectorPlanning(
   objective: string,
   context: Record<string, unknown>,
   logger?: OrchestratorLogger,
-): Promise<Record<string, unknown>> {
+): Promise<FinanceDirectorPlan> {
   const agent = getDirectorAgent();
   const openai = getOpenAI();
   try {
@@ -380,7 +369,11 @@ export async function runDirectorPlanning(
       },
     } as any);
 
-    return normaliseAgentOutputToObject((response as any).output);
+    const plan = (response as { finalOutput?: FinanceDirectorPlan }).finalOutput;
+    if (!plan) {
+      throw new Error('director_plan_missing_output');
+    }
+    return plan;
   } catch (error) {
     await logOpenAIDebug('director_plan', error, logger);
     logger?.error?.(
@@ -416,27 +409,24 @@ export async function runSafetyAssessment(
       },
     } as any);
 
-    const output = normaliseAgentOutputToObject((response as any).output);
-    if (!output || typeof output !== 'object') {
+    const review = (response as { finalOutput?: FinanceSafetyReview }).finalOutput;
+    if (!review) {
       return {
-        status: 'approved',
-        reasons: [],
+        status: 'needs_hitl',
+        reasons: ['Safety review missing output, escalate to human'],
       };
     }
 
-    const status = (output as { status?: string }).status;
-    const reasons = Array.isArray((output as { reasons?: unknown }).reasons)
-      ? ((output as { reasons: unknown[] }).reasons as string[])
-      : [];
-    const mitigations = Array.isArray((output as { mitigations?: unknown }).mitigations)
-      ? ((output as { mitigations: unknown[] }).mitigations as string[])
-      : undefined;
+    const decision = review.decision;
+    const refusalReasons = review.refusal ? [review.refusal.reason] : [];
+    const reasons = [...decision.reasons, ...refusalReasons];
+    const mitigations = decision.mitigations;
 
-    if (status === 'needs_hitl') {
-      return { status: 'needs_hitl', reasons, mitigations };
-    }
-    if (status === 'rejected') {
+    if (review.refusal || decision.status === 'rejected') {
       return { status: 'rejected', reasons, mitigations };
+    }
+    if (decision.status === 'needs_hitl' || decision.hitlRequired) {
+      return { status: 'needs_hitl', reasons, mitigations };
     }
     return {
       status: 'approved',
@@ -602,11 +592,19 @@ export async function updateSessionState(
   input: UpdateSessionStateInput,
 ): Promise<void> {
   const patch: Record<string, unknown> = {};
-  if (input.directorState) {
-    patch.director_state = input.directorState;
+  if (input.directorState !== undefined) {
+    if (input.directorState === null) {
+      patch.director_state = {};
+    } else {
+      patch.director_state = FinanceDirectorPlanSchema.parse(input.directorState);
+    }
   }
-  if (input.safetyState) {
-    patch.safety_state = input.safetyState;
+  if (input.safetyState !== undefined) {
+    if (input.safetyState === null) {
+      patch.safety_state = {};
+    } else {
+      patch.safety_state = FinanceSafetyReviewSchema.parse(input.safetyState);
+    }
   }
   if (input.metadata) {
     patch.metadata = input.metadata;

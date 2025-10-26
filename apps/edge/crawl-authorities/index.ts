@@ -10,6 +10,7 @@ import {
 } from '../lib/akoma.ts';
 import { createOpenAIDenoClient, type OpenAIDenoClient } from '../lib/openai.ts';
 import { EdgeSupabaseClient, createEdgeClient, rowAs } from '../lib/supabase.ts';
+import { SupabaseScheduler } from '../../../packages/shared/src/scheduling/scheduler.ts';
 
 type SourceType = 'statute' | 'case' | 'gazette' | 'regulation';
 
@@ -44,6 +45,7 @@ type Adapter = {
 type IngestionRunRecord = {
   id: string;
   adapterId: string;
+  orgId: string;
 };
 
 interface CrawlRequestBody {
@@ -1810,18 +1812,12 @@ async function createIngestionRun(
   adapterId: string,
   orgId: string,
 ): Promise<IngestionRunRecord | null> {
-  const { data, error } = await supabase
-    .from('ingestion_runs')
-    .insert({ adapter_id: adapterId, org_id: orgId, status: 'running', started_at: new Date().toISOString() })
-    .select('id')
-    .single();
-
-  if (error) {
-    console.warn(`Unable to record ingestion start for ${adapterId}:`, error);
+  const scheduler = new SupabaseScheduler(supabase);
+  const record = await scheduler.startIngestionRun(adapterId, orgId);
+  if (!record) {
     return null;
   }
-
-  return { id: data.id as string, adapterId };
+  return { id: record.id, adapterId, orgId };
 }
 
 async function finalizeIngestionRun(
@@ -1835,21 +1831,16 @@ async function finalizeIngestionRun(
     return;
   }
 
-  const update = await supabase
-    .from('ingestion_runs')
-    .update({
-      status,
-      inserted_count: summary.inserted,
-      skipped_count: summary.skipped,
-      failed_count: summary.failures,
-      finished_at: new Date().toISOString(),
-      error_message: error ?? null,
-    })
-    .eq('id', record.id);
-
-  if (update.error) {
-    console.warn(`Unable to finalize ingestion run ${record.id}:`, update.error);
-  }
+  const scheduler = new SupabaseScheduler(supabase);
+  await scheduler.completeIngestionRun(record, {
+    adapterId: summary.adapterId,
+    orgId: record.orgId,
+    status,
+    insertedCount: summary.inserted,
+    skippedCount: summary.skipped,
+    failedCount: summary.failures,
+    errorMessage: error ?? null,
+  });
 }
 
 Deno.serve(async (req) => {
