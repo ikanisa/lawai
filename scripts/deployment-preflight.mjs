@@ -20,6 +20,14 @@ const requiredEnv = new Map([
     ],
   ],
   [
+    'apps/pwa',
+    [
+      'NEXT_PUBLIC_FEAT_AGENT_SHELL',
+      'NEXT_PUBLIC_FEAT_VOICE_REALTIME',
+      'NEXT_PUBLIC_DRIVE_INGESTION_ENABLED',
+    ],
+  ],
+  [
     'apps/ops',
     [
       'OPENAI_API_KEY',
@@ -67,6 +75,9 @@ async function main() {
     checkEnv();
     run('npm --version');
     run('npm ci --prefer-offline');
+    run('npm run lint --workspace @apps/pwa');
+    run('npm run test --workspace @apps/pwa');
+    run('npm run build --workspace @apps/pwa');
     run('npm run build --workspace @avocat-ai/web');
     run('npm run build --workspace @apps/api');
     console.log('Deployment preflight PASS');
