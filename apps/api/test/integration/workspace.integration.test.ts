@@ -46,6 +46,7 @@ describe('workspace routes', () => {
       method: 'GET',
       url: '/workspace',
       query: { orgId: '00000000-0000-0000-0000-000000000000' },
+      headers: { 'x-user-id': 'workspace-test-user' },
     });
 
     expect(response.statusCode).toBe(200);

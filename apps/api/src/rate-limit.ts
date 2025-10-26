@@ -285,7 +285,7 @@ interface RateLimiterFactoryConfig {
   logger?: { warn?: (info: unknown, msg?: string) => void };
 }
 
-interface RateLimiterFactory extends ((options: RateLimiterOptions) => RateLimiter) {
+export interface RateLimiterFactory extends ((options: RateLimiterOptions) => RateLimiter) {
   create(name: string, options: RateLimiterOptions): RateLimiter;
 }
 

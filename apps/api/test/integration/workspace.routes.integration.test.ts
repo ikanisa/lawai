@@ -21,13 +21,38 @@ vi.mock('../../src/routes/upload/index.js', () => ({ registerUploadRoutes: vi.fn
 vi.mock('../../src/routes/voice/index.js', () => ({ registerVoiceRoutes: vi.fn(noopRoute) }));
 vi.mock('../../src/routes/realtime/index.js', () => ({ registerRealtimeRoutes: vi.fn(noopRoute) }));
 
+const createAccessContext = (orgId = 'org-test', userId = 'user-test') => ({
+  orgId,
+  userId,
+  role: 'admin' as const,
+  policies: {
+    confidentialMode: false,
+    franceJudgeAnalyticsBlocked: false,
+    mfaRequired: false,
+    ipAllowlistEnforced: false,
+    consentRequirement: null,
+    councilOfEuropeRequirement: null,
+    sensitiveTopicHitl: false,
+    residencyZone: null,
+    residencyZones: null,
+  },
+  rawPolicies: {},
+  entitlements: new Map<string, { canRead: boolean; canWrite: boolean }>(),
+  ipAllowlistCidrs: [],
+  consent: { requirement: null, latest: null },
+  councilOfEurope: { requirement: null, acknowledgedVersion: null },
+});
+
+const authorizeRequestWithGuards = vi.fn(async (_action: string, orgId: string, userId: string) =>
+  createAccessContext(orgId, userId),
+);
+
+vi.mock('../../src/http/authorization.js', () => ({
+  authorizeRequestWithGuards,
+}));
+
 vi.mock('../../src/access-control.ts', () => ({
-  authorizeAction: vi.fn(async () => ({
-    orgId: 'org-test',
-    userId: 'user-test',
-    role: 'admin',
-    policies: { confidentialMode: false },
-  })),
+  authorizeAction: vi.fn(async () => createAccessContext()),
   ensureOrgAccessCompliance: vi.fn((ctx: unknown) => ctx),
 }));
 
@@ -191,11 +216,6 @@ describe('workspace domain routes', () => {
     // Reset fixtures for the legacy app invocation
     setWorkspaceQueryData();
 
-    const workspaceModule = await import('../../src/domain/workspace/routes.ts');
-    const registerWorkspaceRoutesSpy = vi
-      .spyOn(workspaceModule, 'registerWorkspaceRoutes')
-      .mockImplementation(async () => undefined);
-
     const legacy = await import('../../src/server.ts');
     await legacy.app.ready();
     const legacyResponse = await legacy.app.inject({
@@ -206,7 +226,6 @@ describe('workspace domain routes', () => {
     expect(legacyResponse.statusCode).toBe(200);
     const legacyPayload = legacyResponse.json();
     await legacy.app.close();
-    registerWorkspaceRoutesSpy.mockRestore();
 
     // Parity ensures both implementations expose the same workspace payload shape
     expect(domainPayload).toEqual(legacyPayload);
@@ -254,8 +273,9 @@ describe('workspace domain routes', () => {
       url: `/workspace?orgId=${ORG_ID}`,
       headers: { 'x-user-id': 'user-domain' },
     });
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(206);
     const payload = response.json();
+    expect(payload.meta.status).toBe('partial');
     expect(payload.complianceWatch).toHaveLength(1);
 
     expect(errorSpy).toHaveBeenCalledWith(

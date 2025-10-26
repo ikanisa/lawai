@@ -131,14 +131,14 @@ describe('workspace overview route', () => {
     const payload = response.json();
     expect(response.statusCode).toBe(200);
     expect(payload.meta).toEqual({ status: 'ok', warnings: [], errors: {} });
-    expect(payload.data.jurisdictions).toHaveLength(2);
-    expect(payload.data.matters[0]).toMatchObject({
+    expect(payload.jurisdictions).toHaveLength(2);
+    expect(payload.matters[0]).toMatchObject({
       id: 'run-1',
       question: 'Synthèse assignation Paris',
       jurisdiction: 'FR',
     });
-    expect(payload.data.complianceWatch).toHaveLength(1);
-    expect(payload.data.hitlInbox.pendingCount).toBe(1);
+    expect(payload.complianceWatch).toHaveLength(1);
+    expect(payload.hitlInbox.pendingCount).toBe(1);
   });
 
   it('returns partial data when a query reports an error', async () => {

@@ -204,7 +204,14 @@ describe('workspace routes', () => {
   it('validates query parameters', async () => {
     const response = await app.inject({ method: 'GET', url: '/workspace?orgId=invalid-uuid' });
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({ error: 'Invalid query parameters' });
+    expect(response.json()).toEqual({
+      error: 'invalid_query_parameters',
+      message: 'Invalid query parameters',
+      details: {
+        fieldErrors: { orgId: ['orgId must be a valid UUID'] },
+        formErrors: [],
+      },
+    });
   });
 
   it('requires an x-user-id header', async () => {

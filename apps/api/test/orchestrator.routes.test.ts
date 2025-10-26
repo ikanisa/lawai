@@ -22,13 +22,30 @@ vi.mock('../src/orchestrator.ts', () => ({
   registerConnector: vi.fn(async () => 'connector-1'),
 }));
 
+const createAccessContext = (orgId: string, userId: string) => ({
+  orgId,
+  userId,
+  role: 'admin' as const,
+  policies: {
+    confidentialMode: false,
+    franceJudgeAnalyticsBlocked: false,
+    mfaRequired: false,
+    ipAllowlistEnforced: false,
+    consentRequirement: null,
+    councilOfEuropeRequirement: null,
+    sensitiveTopicHitl: false,
+    residencyZone: null,
+    residencyZones: null,
+  },
+  rawPolicies: {},
+  entitlements: new Map<string, { canRead: boolean; canWrite: boolean }>(),
+  ipAllowlistCidrs: [],
+  consent: { requirement: null, latest: null },
+  councilOfEurope: { requirement: null, acknowledgedVersion: null },
+});
+
 vi.mock('../src/access-control.ts', () => ({
-  authorizeAction: vi.fn(async (_action: string, orgId: string, userId: string) => ({
-    orgId,
-    userId,
-    role: 'admin',
-    policies: { confidentialMode: false },
-  })),
+  authorizeAction: vi.fn(async (_action: string, orgId: string, userId: string) => createAccessContext(orgId, userId)),
   ensureOrgAccessCompliance: vi.fn((ctx: unknown) => ctx),
 }));
 

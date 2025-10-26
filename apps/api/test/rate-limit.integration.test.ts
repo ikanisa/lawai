@@ -58,6 +58,16 @@ vi.mock('../src/http/authorization.js', () => ({
   authorizeRequestWithGuards: authorizeRequestWithGuardsMock,
 }));
 
+vi.mock('../src/http/routes/orchestrator.js', () => ({
+  registerOrchestratorRoutes: vi.fn(),
+}));
+
+vi.mock('../src/telemetry.ts', () => ({
+  ensureTelemetryRuntime: vi.fn(async () => ({
+    shutdown: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 const runLegalAgentMock = vi.fn(async () => ({
   runId: 'run-123',
   payload: {
@@ -78,19 +88,20 @@ const envKeys = [
   'RATE_LIMIT_ENABLED',
   'RATE_LIMIT_PROVIDER',
   'RATE_LIMIT_RUNS_LIMIT',
-  'RATE_LIMIT_RUNS_WINDOW_SECONDS',
+  'RATE_LIMIT_RUNS_WINDOW_MS',
   'RATE_LIMIT_WORKSPACE_LIMIT',
-  'RATE_LIMIT_WORKSPACE_WINDOW_SECONDS',
+  'RATE_LIMIT_WORKSPACE_WINDOW_MS',
   'RATE_LIMIT_COMPLIANCE_LIMIT',
-  'RATE_LIMIT_COMPLIANCE_WINDOW_SECONDS',
+  'RATE_LIMIT_COMPLIANCE_WINDOW_MS',
   'RATE_LIMIT_TELEMETRY_LIMIT',
-  'RATE_LIMIT_TELEMETRY_WINDOW_SECONDS',
+  'RATE_LIMIT_TELEMETRY_WINDOW_MS',
   'SUPABASE_SERVICE_ROLE_KEY',
   'SUPABASE_URL',
 ];
 
 let originalEnv: Record<string, string | undefined> = {};
 let app: FastifyInstance;
+let rateLimitHits: Record<string, number> = {};
 
 describe('rate limiting integration', () => {
   beforeEach(async () => {
@@ -103,18 +114,35 @@ describe('rate limiting integration', () => {
     process.env.RATE_LIMIT_ENABLED = 'true';
     process.env.RATE_LIMIT_PROVIDER = 'memory';
     process.env.RATE_LIMIT_RUNS_LIMIT = '1';
-    process.env.RATE_LIMIT_RUNS_WINDOW_SECONDS = '60';
+    process.env.RATE_LIMIT_RUNS_WINDOW_MS = '60000';
     process.env.RATE_LIMIT_WORKSPACE_LIMIT = '1';
-    process.env.RATE_LIMIT_WORKSPACE_WINDOW_SECONDS = '60';
+    process.env.RATE_LIMIT_WORKSPACE_WINDOW_MS = '60000';
     process.env.RATE_LIMIT_COMPLIANCE_LIMIT = '1';
-    process.env.RATE_LIMIT_COMPLIANCE_WINDOW_SECONDS = '60';
+    process.env.RATE_LIMIT_COMPLIANCE_WINDOW_MS = '60000';
     process.env.RATE_LIMIT_TELEMETRY_LIMIT = '10';
-    process.env.RATE_LIMIT_TELEMETRY_WINDOW_SECONDS = '60';
+    process.env.RATE_LIMIT_TELEMETRY_WINDOW_MS = '60000';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'test';
     process.env.SUPABASE_URL = 'https://example.supabase.co';
 
+    rateLimitHits = {};
     supabaseMock.from.mockImplementation(() => createQueryBuilder());
-    supabaseMock.rpc.mockResolvedValue({ data: null, error: null });
+    supabaseMock.rpc.mockImplementation(async (fn: string, params: Record<string, unknown>) => {
+      if (fn === 'rate_limit_hit') {
+        const identifier = typeof params?.identifier === 'string' ? params.identifier : 'unknown';
+        const hits = (rateLimitHits[identifier] ?? 0) + 1;
+        rateLimitHits[identifier] = hits;
+        const allowed = hits <= 1;
+        return {
+          data: {
+            allowed,
+            remaining: allowed ? Math.max(0, (params.limit as number) - hits) : 0,
+            reset_at: new Date(Date.now() + 60_000).toISOString(),
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    });
     supabaseMock.storage.from.mockReturnValue({});
     authorizeRequestWithGuardsMock.mockClear();
     runLegalAgentMock.mockClear();
