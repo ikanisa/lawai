@@ -93,10 +93,17 @@ async function verifyJwt(token: string, secret: string, now: () => number): Prom
     ["verify"],
   )
 
+  let signatureBytes: Uint8Array
+  try {
+    signatureBytes = base64UrlToUint8Array(encodedSignature)
+  } catch {
+    return { ok: false, status: 403, error: "forbidden", reason: "jwt_signature_invalid" }
+  }
+
   const isValid = await crypto.subtle.verify(
     "HMAC",
     key,
-    base64UrlToUint8Array(encodedSignature),
+    signatureBytes,
     toUint8(`${encodedHeader}.${encodedPayload}`),
   )
 
