@@ -2,8 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "framework": "nextjs",
-  "buildCommand": "npm run build --workspace @avocat-ai/web",
-  "installCommand": "npm install",
+  "buildCommand": "pnpm --filter @avocat-ai/web build",
+  "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": ".next",
   "routes": [
     { "src": "/healthz", "dest": "/api/healthz" }

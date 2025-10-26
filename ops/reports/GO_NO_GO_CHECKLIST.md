@@ -46,10 +46,12 @@ G. Quality, Evals, and Telemetry
 
 - [ ] LegalBench/LexGLUE CI green; golden-set evals per jurisdiction.
 - [ ] Metrics thresholds met: ≥95% allowlisted citation precision; ≥95% temporal validity; 100% Maghreb warnings when applicable; ≥98% HITL recall on high-risk sets.
+- [ ] OpenAI Platform eval job (via `pnpm ops:evaluate`) completed for mapped datasets; results persisted to `agent_learning_jobs` and dashboards reflect pass/fail before launch.
 - [ ] Observability dashboards (citations accuracy, retrieval recall, HITL latency) live.
 
 H. Operations
 
+- [ ] CI `Deploy` : le préflight `scripts/deployment-preflight.mjs` passe avec les secrets de production (validation Supabase/OpenAI + `pnpm install`, `pnpm lint`, `pnpm typecheck`, `pnpm build`).
 - [ ] Cron: crawlers, backfills, nightly evals; quarantine flow working.
 - [ ] Incident response & rollback; model/policy versioning; change log.
 - [ ] SLO snapshots captured (`slo_snapshots`) and regulator dispatches logged (`regulator_dispatches`) for the launch window.

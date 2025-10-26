@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, EdgeSupabaseClient, rowsAs, rowAs } from '../lib/supabase.ts';
+import { SupabaseScheduler } from '../../../packages/shared/src/scheduling/scheduler.ts';
 
 type LearningJob = {
   id: string;
@@ -305,24 +306,19 @@ async function handleIndexingTicket(client: EdgeSupabaseClient, job: LearningJob
     return;
   }
 
-  const insert = await client
-    .from('agent_task_queue')
-    .insert({
+  const scheduler = new SupabaseScheduler(client);
+  try {
+    await scheduler.enqueueTask({
       type: 'indexing_review',
-      org_id: orgId,
+      orgId,
       priority: 5,
-      payload: {
-        question,
-        note,
-      },
-    } as Record<string, unknown>);
-
-  if (insert.error) {
-    await markStatus(client, job.id, 'failed', insert.error.message);
-    return;
+      payload: { question, note },
+    });
+    await markStatus(client, job.id, 'completed');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await markStatus(client, job.id, 'failed', message);
   }
-
-  await markStatus(client, job.id, 'completed');
 }
 
 async function handleQueryRewriteTicket(client: EdgeSupabaseClient, job: LearningJob) {
@@ -378,20 +374,17 @@ async function handleGuardrailTicket(client: EdgeSupabaseClient, job: LearningJo
   const payload = job.payload ?? {};
   const reason = typeof payload.reason === 'string' ? payload.reason : 'Ajustement de guardrail requis.';
 
-  const insert = await client
-    .from('agent_task_queue')
-    .insert({
+  const scheduler = new SupabaseScheduler(client);
+  try {
+    await scheduler.enqueueTask({
       type: 'guardrail_review',
-      org_id: orgId,
+      orgId,
       priority: 4,
-      payload: {
-        reason,
-        question: payload.question ?? null,
-      },
-    } as Record<string, unknown>);
-
-  if (insert.error) {
-    await markStatus(client, job.id, 'failed', insert.error.message);
+      payload: { reason, question: payload.question ?? null },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await markStatus(client, job.id, 'failed', message);
     return;
   }
 
@@ -424,26 +417,19 @@ async function handleReviewFeedbackTicket(client: EdgeSupabaseClient, job: Learn
   const resolutionMinutes =
     typeof payload.resolutionMinutes === 'number' ? payload.resolutionMinutes : null;
 
-  const insert = await client.from('agent_task_queue').insert({
-    type: 'review_feedback',
-    org_id: orgId,
-    priority: 3,
-    payload: {
-      runId,
-      hitlId,
-      action,
-      reviewerId,
-      comment,
-      resolutionMinutes,
-    },
-  } as Record<string, unknown>);
-
-  if (insert.error) {
-    await markStatus(client, job.id, 'failed', insert.error.message);
-    return;
+  const scheduler = new SupabaseScheduler(client);
+  try {
+    await scheduler.enqueueTask({
+      type: 'review_feedback',
+      orgId,
+      priority: 3,
+      payload: { runId, hitlId, action, reviewerId, comment, resolutionMinutes },
+    });
+    await markStatus(client, job.id, 'completed');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await markStatus(client, job.id, 'failed', message);
   }
-
-  await markStatus(client, job.id, 'completed');
 }
 
 async function upsertLearningReport(

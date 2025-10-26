@@ -1,0 +1,13 @@
+{
+  "$schema": "./deployment.schema.json",
+  "version": 1,
+  "framework": "nextjs",
+  "build": {
+    "install": "npm install",
+    "command": "npm run build --workspace @avocat-ai/web",
+    "output": ".next"
+  },
+  "routes": [
+    { "src": "/healthz", "dest": "/api/healthz" }
+  ]
+}

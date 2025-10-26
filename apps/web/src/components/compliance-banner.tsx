@@ -3,14 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Button } from './ui/button';
+import { Button } from '@/ui/button';
 import {
   DEMO_ORG_ID,
   acknowledgeCompliance,
   fetchComplianceStatus,
   type ComplianceAcknowledgements,
-} from '../lib/api';
-import type { Messages } from '../lib/i18n';
+} from '@/lib/api';
+import type { Messages } from '@/lib/i18n';
 
 interface ComplianceBannerProps {
   messages: Messages['app']['compliance'];

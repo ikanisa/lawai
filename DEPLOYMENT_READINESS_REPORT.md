@@ -1,12 +1,12 @@
 # Deployment Readiness Report
 
 ## Summary
-- **Primary target:** `apps/web` (Next.js 14) deploying to Vercel using npm workspaces and Node 20.
+- **Primary target:** `apps/web` (Next.js 14) deploying to Vercel using pnpm workspaces and Node 20.
 - **Supporting services:** `apps/api` (Fastify) and `apps/ops` (Node workers) with shared Supabase resources.
 - **Overall status:** **Amber** – configuration and validation in place, pending real secrets and verification of `vercel build` with production credentials.
 
 ## Inventory highlights
-- Package manager: npm 11.4.2 (`package-lock.json` committed) with Node `>=20 <21` (`.nvmrc` 20.11.0).
+- Package manager: pnpm 8.15.4 (`pnpm-lock.yaml` committed) with Node `>=20 <21` (`.nvmrc` 20.11.0).
 - Workspaces documented in `audit/inventory.json`.
 - New environment matrix published at `audit/env-matrix.csv` covering web, api, ops, and shared scripts.
 

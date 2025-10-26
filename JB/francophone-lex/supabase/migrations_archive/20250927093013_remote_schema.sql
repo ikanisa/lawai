@@ -1,2 +1,0 @@
--- This migration intentionally starts empty because the remote project only contains Supabase managed schemas.
--- Add your first custom migration to `supabase/migrations/20250927094558_initial_schema.sql` or create a new file via `supabase migration new`.
