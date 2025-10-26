@@ -187,6 +187,8 @@ function connectionBadgeVariant(state: ConnectionState): 'default' | 'success' |
 export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelProps) {
   const copy = messages.workspace.chatkit;
   const queryClient = useQueryClient();
+  const { orgId } = useRequiredSession();
+  const sendTelemetry = useSessionTelemetry();
   const chatkitClient = useMemo(() => new ChatkitClient(), []);
   const sessionCache = useRef<Map<string, ChatkitSessionRecord>>(new Map());
   const connectionRef = useRef<ChatkitConnection | null>(null);
@@ -327,7 +329,7 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
       connectionRef.current?.close();
       connectionRef.current = null;
     };
-  }, [chatkitClient, selectedSession]);
+  }, [chatkitClient, selectedSession, sendTelemetry]);
 
   const tasks = useMemo(() => normaliseTasks(selectedSession, messages), [selectedSession, messages]);
 
