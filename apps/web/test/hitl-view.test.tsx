@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import messagesFr from '../messages/fr.json';
-import type { Messages } from '../src/lib/i18n';
-import { HitlView } from '../src/components/hitl/hitl-view';
+import type { Messages } from '@/lib/i18n';
+import { HitlView } from '@/features/hitl/components/hitl-view';
 
 vi.mock('sonner', () => ({
   toast: {

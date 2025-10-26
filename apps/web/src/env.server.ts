@@ -1,6 +1,8 @@
 import 'server-only';
 import { z } from 'zod';
 
+const APP_ENV_VALUES = ['local', 'development', 'preview', 'staging', 'production', 'test'] as const;
+
 const serverSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']),
   APP_ENV: z.string().optional(),

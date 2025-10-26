@@ -46,6 +46,12 @@ vi.mock('../src/server/supabase/admin-client', async () => {
 });
 
 const adminClient = await import('../src/server/supabase/admin-client');
+vi.mock('../src/server/supabase/session', () => ({
+  getSupabaseSession: vi.fn(),
+}));
+
+const { getSupabaseSession } = await import('../src/server/supabase/session');
+const { requireAdminContext, AdminAccessError } = await import('../src/server/admin/auth');
 
 describe('admin panel service layer', () => {
   const orgId = 'org-demo';
@@ -80,5 +86,92 @@ describe('admin panel service layer', () => {
     expect(adminClient.appendAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'hitl.approve', object: 'hitl-123' })
     );
+  });
+});
+
+describe('requireAdminContext', () => {
+  const baseUser = {
+    id: 'user-1',
+    email: 'admin@example.com',
+    aud: 'authenticated',
+    role: 'authenticated',
+    created_at: new Date().toISOString(),
+    last_sign_in_at: new Date().toISOString(),
+    identities: [],
+    factors: [],
+    user_metadata: {},
+    app_metadata: {},
+    phone: '',
+    phone_confirmed_at: null,
+    email_confirmed_at: null,
+    confirmed_at: null,
+    is_anonymous: false,
+  } as any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('throws 401 when session is missing', async () => {
+    (getSupabaseSession as vi.Mock).mockResolvedValueOnce(null);
+
+    await requireAdminContext(new Request('http://localhost/api/admin/overview')).catch((error) => {
+      expect(error).toBeInstanceOf(AdminAccessError);
+      expect(error).toMatchObject({ status: 401 });
+    });
+  });
+
+  it('rejects non-admin sessions with 403', async () => {
+    (getSupabaseSession as vi.Mock).mockResolvedValueOnce({
+      user: { ...baseUser, app_metadata: { org_id: 'org-1' } },
+      accessToken: 'token',
+      roles: ['member'],
+      organizations: ['org-1'],
+      actorId: 'admin@example.com',
+    });
+
+    await expect(
+      requireAdminContext(new Request('http://localhost/api/admin/overview')),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('rejects requests for unauthorized organizations', async () => {
+    (getSupabaseSession as vi.Mock).mockResolvedValueOnce({
+      user: { ...baseUser, app_metadata: { org_id: 'org-1', roles: ['admin'] } },
+      accessToken: 'token',
+      roles: ['admin'],
+      organizations: ['org-1'],
+      actorId: 'admin@example.com',
+    });
+
+    const request = new Request('http://localhost/api/admin/overview?orgId=org-2', {
+      headers: { 'x-admin-org': 'org-2' },
+    });
+
+    await expect(requireAdminContext(request)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('returns derived actor/org identifiers for authorized sessions', async () => {
+    (getSupabaseSession as vi.Mock).mockResolvedValueOnce({
+      user: {
+        ...baseUser,
+        app_metadata: { org_id: 'org-1', roles: ['admin'] },
+        user_metadata: { actor_id: 'admin@example.com' },
+      },
+      accessToken: 'token',
+      roles: ['admin'],
+      organizations: ['org-1', 'org-2'],
+      actorId: 'admin@example.com',
+    });
+
+    const request = new Request('http://localhost/api/admin/overview', {
+      headers: { 'x-admin-org': 'org-2' },
+    });
+
+    const context = await requireAdminContext(request);
+    expect(context.orgId).toBe('org-2');
+    expect(context.actorId).toBe('admin@example.com');
+    expect(context.roles).toContain('admin');
+    expect(context.organizations).toEqual(expect.arrayContaining(['org-1', 'org-2']));
   });
 });

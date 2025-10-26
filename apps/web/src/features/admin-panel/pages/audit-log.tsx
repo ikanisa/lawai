@@ -3,12 +3,13 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, FileJson } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
-import { Input } from '../../../components/ui/input';
+import { Button } from '../@/ui/button';
+import { Input } from '../@/ui/input';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
 import { adminQueries } from '../api/client';
+import { useAdminSession } from '../session-context';
 
 const PLACEHOLDER_EVENTS = [
   {
@@ -23,7 +24,12 @@ const PLACEHOLDER_EVENTS = [
 export function AdminAuditLogPage() {
   const { activeOrg } = useAdminPanelContext();
   const [search, setSearch] = useState('');
-  const auditQuery = useQuery(adminQueries.audit(activeOrg.id));
+  const { session, loading: sessionLoading } = useAdminSession();
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const auditQuery = useQuery({
+    ...adminQueries.audit(activeOrg.id),
+    enabled: isSessionReady,
+  });
   const events = auditQuery.data?.events ?? PLACEHOLDER_EVENTS;
 
   const filtered = useMemo(() => {
@@ -38,7 +44,7 @@ export function AdminAuditLogPage() {
         title="Audit log"
         description="Search by actor, action, object, or timestamp. Export JSON diffs for compliance."
         actions={
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button variant="outline" size="sm" className="gap-2" disabled={!isSessionReady}>
             <FileJson className="h-4 w-4" /> Export JSON
           </Button>
         }

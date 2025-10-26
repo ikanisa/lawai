@@ -1,3 +1,5 @@
+'use client';
+
 import { queryOptions } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -5,15 +7,54 @@ interface FetchOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
+  orgId?: string;
+  actorId?: string;
 }
 
 interface AdminApiResponse<T> {
   data: T;
 }
 
+type SessionAccessor = () => { actorId: string | null; orgId: string | null } | null;
+
+let adminSessionAccessor: SessionAccessor | null = null;
+
+export function setAdminSessionAccessor(accessor: SessionAccessor) {
+  adminSessionAccessor = accessor;
+}
+
+function resolveSessionIdentifiers(options: FetchOptions): { actorId: string; orgId: string } {
+  const session = adminSessionAccessor?.() ?? null;
+
+  const actorId = options.actorId ?? session?.actorId ?? null;
+  let orgId = options.orgId ?? null;
+
+  if (!orgId && options.query && 'orgId' in options.query) {
+    const value = options.query.orgId;
+    if (value !== undefined) {
+      orgId = String(value);
+    }
+  }
+
+  if (!orgId) {
+    orgId = session?.orgId ?? null;
+  }
+
+  if (!actorId) {
+    throw new Error('Admin session is missing the actor identifier');
+  }
+
+  if (!orgId) {
+    throw new Error('Admin session is missing the organization identifier');
+  }
+
+  return { actorId, orgId };
+}
+
 async function fetchAdminApi<T>(path: string, options: FetchOptions = {}): Promise<T> {
   const { method = 'GET', body, query } = options;
-  const url = new URL(`/api/admin/${path}`, typeof window === 'undefined' ? 'http://localhost' : window.location.origin);
+  const origin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+  const url = new URL(`/api/admin/${path}`, origin);
   if (query) {
     Object.entries(query).forEach(([key, value]) => {
       if (value !== undefined) {
@@ -22,19 +63,25 @@ async function fetchAdminApi<T>(path: string, options: FetchOptions = {}): Promi
     });
   }
 
+  const { actorId, orgId } = resolveSessionIdentifiers(options);
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'x-admin-actor': actorId,
+    'x-admin-org': orgId,
   };
-  if (typeof window !== 'undefined') {
-    headers['x-admin-actor'] = localStorage.getItem('admin.actor') ?? 'dev-admin@local';
-  }
 
   const response = await fetch(url.toString(), {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
     cache: 'no-store',
+    credentials: 'include',
   });
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
 
   if (!response.ok) {
     const message = await response.text();
@@ -67,72 +114,72 @@ export const adminQueries = {
   overview: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.overview(orgId),
-      queryFn: () => fetchAdminApi<OverviewResponse>('overview', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<OverviewResponse>('overview', { query: { orgId }, orgId }),
     }),
   people: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.people(orgId),
-      queryFn: () => fetchAdminApi<PeopleResponse>('people', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<PeopleResponse>('people', { query: { orgId }, orgId }),
     }),
   policies: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.policies(orgId),
-      queryFn: () => fetchAdminApi<PolicyResponse>('policies', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<PolicyResponse>('policies', { query: { orgId }, orgId }),
     }),
   jurisdictions: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.jurisdictions(orgId),
-      queryFn: () => fetchAdminApi<JurisdictionResponse>('jurisdictions', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<JurisdictionResponse>('jurisdictions', { query: { orgId }, orgId }),
     }),
   agents: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.agents(orgId),
-      queryFn: () => fetchAdminApi<AgentResponse>('agents', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<AgentResponse>('agents', { query: { orgId }, orgId }),
     }),
   workflows: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.workflows(orgId),
-      queryFn: () => fetchAdminApi<WorkflowResponse>('workflows', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<WorkflowResponse>('workflows', { query: { orgId }, orgId }),
     }),
   hitl: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.hitl(orgId),
-      queryFn: () => fetchAdminApi<HitlResponse>('hitl', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<HitlResponse>('hitl', { query: { orgId }, orgId }),
     }),
   corpus: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.corpus(orgId),
-      queryFn: () => fetchAdminApi<CorpusResponse>('corpus', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<CorpusResponse>('corpus', { query: { orgId }, orgId }),
     }),
   ingestion: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.ingestion(orgId),
-      queryFn: () => fetchAdminApi<IngestionResponse>('ingestion', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<IngestionResponse>('ingestion', { query: { orgId }, orgId }),
     }),
   evaluations: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.evaluations(orgId),
-      queryFn: () => fetchAdminApi<EvaluationResponse>('evaluations', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<EvaluationResponse>('evaluations', { query: { orgId }, orgId }),
     }),
   telemetry: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.telemetry(orgId),
-      queryFn: () => fetchAdminApi<TelemetryResponse>('telemetry', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<TelemetryResponse>('telemetry', { query: { orgId }, orgId }),
     }),
   audit: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.audit(orgId),
-      queryFn: () => fetchAdminApi<AuditResponse>('audit-log', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<AuditResponse>('audit-log', { query: { orgId }, orgId }),
     }),
   billing: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.billing(orgId),
-      queryFn: () => fetchAdminApi<BillingResponse>('billing', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<BillingResponse>('billing', { query: { orgId }, orgId }),
     }),
   jobs: (orgId: string) =>
     queryOptions({
       queryKey: adminQueryKeys.jobs(orgId),
-      queryFn: () => fetchAdminApi<JobListResponse>('jobs', { query: { orgId } }),
+      queryFn: () => fetchAdminApi<JobListResponse>('jobs', { query: { orgId }, orgId }),
       refetchInterval: 5000,
     }),
 };
@@ -299,5 +346,75 @@ export async function triggerAdminJob(type: string, orgId: string, payload?: Rec
   await fetchAdminApi<JobListResponse>('jobs', {
     method: 'POST',
     body: { type, orgId, payload },
+    orgId,
+  });
+}
+
+export async function inviteAdminUser(orgId: string, payload: { email: string; role: string }) {
+  await fetchAdminApi<PeopleResponse>('people', {
+    method: 'POST',
+    body: { action: 'invite', payload },
+    orgId,
+  });
+}
+
+export async function updateAdminUser(
+  orgId: string,
+  payload: { id: string; role: string; capabilities: string[] },
+) {
+  await fetchAdminApi<PeopleResponse>('people', {
+    method: 'PATCH',
+    body: { action: 'update', payload },
+    orgId,
+  });
+}
+
+export async function toggleJurisdictionEntitlement(
+  orgId: string,
+  payload: { jurisdiction: string; entitlement: string; enabled: boolean },
+) {
+  await fetchAdminApi<JurisdictionResponse>('jurisdictions', {
+    method: 'POST',
+    body: { action: 'toggle', payload },
+    orgId,
+  });
+}
+
+export async function recordHitlDecision(
+  orgId: string,
+  payload: { id: string; action: 'approved' | 'revision-requested' | 'rejected' },
+) {
+  await fetchAdminApi<HitlResponse>('hitl', {
+    method: 'POST',
+    body: { action: 'decision', payload },
+    orgId,
+  });
+}
+
+export async function updateWorkflowStatus(
+  orgId: string,
+  action: 'promote' | 'rollback',
+  workflowId: string,
+) {
+  await fetchAdminApi<WorkflowResponse>('workflows', {
+    method: 'POST',
+    body: { action, payload: { workflowId } },
+    orgId,
+  });
+}
+
+export async function upsertAdminPolicy(orgId: string, payload: { key: string; value: unknown }) {
+  await fetchAdminApi<PolicyResponse>('policies', {
+    method: 'POST',
+    body: { action: 'upsert', payload },
+    orgId,
+  });
+}
+
+export async function controlIngestion(orgId: string, action: 'start' | 'stop' | 'backfill') {
+  await fetchAdminApi<IngestionResponse>('ingestion', {
+    method: 'POST',
+    body: { action },
+    orgId,
   });
 }
