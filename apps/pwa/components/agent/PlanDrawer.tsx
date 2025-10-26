@@ -10,15 +10,9 @@ import type { ResearchPlan, ResearchPlanStep } from "@/lib/data/research";
 import { useUIState } from "@/lib/state/ui-store";
 import { cn } from "@/lib/utils";
 
-export type ToolLogStatus = "running" | "success" | "error";
+import type { ToolLogEntry, ToolLogStatus } from "@/lib/research/types";
 
-export interface ToolLogEntry {
-  id: string;
-  name: string;
-  status: ToolLogStatus;
-  detail: string;
-  startedAt: string;
-}
+export type { ToolLogEntry, ToolLogStatus };
 
 interface PlanDrawerProps {
   plan: ResearchPlan;

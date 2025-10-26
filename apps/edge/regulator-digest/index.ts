@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, EdgeSupabaseClient, rowsAs } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 
 type Env = {
   supabaseUrl?: string;
@@ -96,7 +97,7 @@ function resolveNumber(input: unknown, fallback: number): number {
   return fallback;
 }
 
-Deno.serve(async (req) => {
+serveEdgeFunction(async (req) => {
   const payload: Env = {};
   if (req.method === 'POST') {
     const body = await req.json().catch(() => ({}));

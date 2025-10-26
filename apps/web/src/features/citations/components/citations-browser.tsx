@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import type { Locale, Messages } from '@/lib/i18n';
-import { DEMO_ORG_ID, fetchCitations, fetchCorpus, fetchSnapshotDiff } from '@/lib/api';
+import { fetchCitations, fetchCorpus, fetchSnapshotDiff } from '@/lib/api';
+import { useRequiredSession } from '@/components/session-provider';
 
 interface CitationsBrowserProps {
   messages: Messages;
@@ -33,14 +34,15 @@ interface SnapshotSummary {
 }
 
 export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
+  const { orgId } = useRequiredSession();
   const [search, setSearch] = useState('');
   const [jurisdictionFilter, setJurisdictionFilter] = useState<string | null>(null);
 
   const citationsQuery = useQuery({
-    queryKey: ['citations'],
-    queryFn: () => fetchCitations(DEMO_ORG_ID),
+    queryKey: ['citations', orgId],
+    queryFn: () => fetchCitations(orgId),
   });
-  const corpusQuery = useQuery({ queryKey: ['corpus'], queryFn: () => fetchCorpus(DEMO_ORG_ID) });
+  const corpusQuery = useQuery({ queryKey: ['corpus', orgId], queryFn: () => fetchCorpus(orgId) });
 
   const entries = useMemo<CitationEntry[]>(() => {
     const list = (citationsQuery.data?.entries ?? []) as CitationEntry[];
@@ -71,8 +73,8 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
   }, [snapshots, baseSnapshot, compareSnapshot]);
 
   const diffQuery = useQuery({
-    queryKey: ['snapshot-diff', baseSnapshot, compareSnapshot],
-    queryFn: () => fetchSnapshotDiff(DEMO_ORG_ID, baseSnapshot as string, compareSnapshot as string),
+    queryKey: ['snapshot-diff', orgId, baseSnapshot, compareSnapshot],
+    queryFn: () => fetchSnapshotDiff(orgId, baseSnapshot as string, compareSnapshot as string),
     enabled: Boolean(baseSnapshot && compareSnapshot),
   });
 

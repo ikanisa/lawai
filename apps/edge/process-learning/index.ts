@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient, EdgeSupabaseClient, rowsAs, rowAs } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 import { SupabaseScheduler } from '../../../packages/shared/src/scheduling/scheduler.ts';
 
 type LearningJob = {
@@ -646,7 +647,7 @@ async function processJob(client: EdgeSupabaseClient, job: LearningJob) {
   }
 }
 
-Deno.serve(async (req) => {
+serveEdgeFunction(async (req) => {
   const payload: Env = {};
   if (req.method === 'POST') {
     const body = await req.json().catch(() => ({}));

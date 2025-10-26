@@ -64,7 +64,7 @@ Follow this short list before promoting a change to production. A detailed walkt
 
 1. Provision or refresh Supabase by running `npm run db:migrate` and `npm run ops:foundation` against the target project.
 2. Populate the Vercel environment variables (server secrets and `NEXT_PUBLIC_*` settings) exactly as described in the deployment guide.
-3. Run `pnpm --filter @apps/pwa lint`, `pnpm --filter @apps/pwa test`, and `pnpm --filter @apps/pwa build` locally (or the equivalent `npm run ... --workspace @apps/pwa` commands); fix any failures before opening a PR.
+3. Run `npm run lint --workspace @apps/pwa`, `npm run test --workspace @apps/pwa`, and `npm run build --workspace @apps/pwa` locally (or the equivalent `pnpm --filter @apps/pwa ...` commands); fix any failures before opening a PR.
 4. Check that the **Vercel Preview Build** GitHub workflow is green on your branch.
 5. Trigger `vercel deploy --prebuilt` (or let the GitHub → Vercel integration promote the passing build) and smoke-test `/healthz` plus the admin panel.
 
@@ -96,7 +96,8 @@ Mettez à jour vos secrets avant déploiement pour éviter l'échec `configurati
 Le script `scripts/deployment-preflight.mjs` automatise les vérifications critiques avant une promotion en production :
 
 - Validation des secrets partagés via `@avocat-ai/shared/config/env` (échec immédiat si `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` ou `OPENAI_API_KEY` sont manquants ou encore en valeur factice).
-- Exécution séquentielle de `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck` et `pnpm build` avec propagation des codes de sortie.
+- Vérification de la présence des variables PWA (`NEXT_PUBLIC_FEAT_AGENT_SHELL`, `NEXT_PUBLIC_FEAT_VOICE_REALTIME`, `NEXT_PUBLIC_DRIVE_INGESTION_ENABLED`).
+- Exécution séquentielle de `npm --version`, `npm ci --prefer-offline`, `npm run lint/test/build --workspace @apps/pwa`, `npm run build --workspace @avocat-ai/web` et `npm run build --workspace @apps/api` avec propagation des codes de sortie.
 
 Lancez-le localement avec :
 

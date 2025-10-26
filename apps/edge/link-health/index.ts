@@ -1,6 +1,7 @@
 /// <reference lib="deno.unstable" />
 
 import { createEdgeClient } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 
 async function head(url: string): Promise<{ ok: boolean; status: number }> {
   try {
@@ -11,7 +12,7 @@ async function head(url: string): Promise<{ ok: boolean; status: number }> {
   }
 }
 
-Deno.serve(async () => {
+serveEdgeFunction(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !supabaseKey) {
