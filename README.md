@@ -8,8 +8,9 @@ This repository contains the production implementation scaffold for the Avocat-A
 apps/
   api/        # Fastify API service hosting the agent orchestrator and REST endpoints
   edge/       # Supabase Edge Functions (Deno) for crawlers, schedulers, and webhooks
-  ops/        # Command-line tooling for ingestion and evaluations
-  web/        # Next.js App Router front-end (liquid-glass UI, shadcn primitives, TanStack Query)
+  ops/        # Command-line tooling for ingestion, provisioning, and evaluations
+  pwa/        # Next.js PWA surface for litigants and reviewers (App Router, Radix UI, three.js)
+  web/        # Next.js operator console for admins and HITL reviewers (App Router, shadcn UI, TanStack Query)
 
 db/
   migrations/ # SQL migrations (Supabase/Postgres)
@@ -19,6 +20,14 @@ packages/
   shared/     # Shared TypeScript utilities (IRAC schema, allowlists, constants)
   supabase/   # Generated types and helpers for Supabase clients
 ```
+
+Key runbooks and deployment guides:
+
+- [`apps/api`](docs/operations/avocat-ai-launch-runbook.md) – Launch automation and smoke checks for the Fastify orchestrator.
+- [`apps/edge`](docs/ops/provenance-alerts.md) – Example edge deployment (provenance alerts) and environment guidance.
+- [`apps/ops`](docs/ops/cron.md) – Scheduler worker and CLI bootstrap instructions for operational tooling.
+- [`apps/pwa`](docs/deployment/vercel.md) – Vercel deployment checklist for the public-facing PWA.
+- [`apps/web`](docs/local-hosting.md) – Operator console runbook for local/self-hosted environments.
 
 ## Local Setup (MacBook)
 
@@ -45,7 +54,7 @@ packages/
    ```bash
    pnpm seed
    ```
-6. Generate the PWA icons before running a production web build:
+6. Generate the operator console icon sprite before running a production build:
    ```bash
    pnpm --filter @avocat-ai/web icons:generate
    ```
@@ -53,7 +62,11 @@ packages/
    ```bash
    pnpm dev:api
    ```
-8. Launch the operator console on http://localhost:3001:
+8. Launch the public-facing PWA on http://localhost:3000 (set `PORT=3002` if the default port is busy):
+   ```bash
+   pnpm --filter @apps/pwa dev
+   ```
+9. Launch the operator console on http://localhost:3001:
    ```bash
    pnpm dev:web
    ```
@@ -64,7 +77,7 @@ Follow this short list before promoting a change to production. A detailed walkt
 
 1. Provision or refresh Supabase by running `npm run db:migrate` and `npm run ops:foundation` against the target project.
 2. Populate the Vercel environment variables (server secrets and `NEXT_PUBLIC_*` settings) exactly as described in the deployment guide.
-3. Run `pnpm --filter @apps/pwa lint`, `pnpm --filter @apps/pwa test`, and `pnpm --filter @apps/pwa build` locally (or the equivalent `npm run ... --workspace @apps/pwa` commands); fix any failures before opening a PR.
+3. Run `npm run lint --workspace @apps/pwa`, `npm run test --workspace @apps/pwa`, and `npm run build --workspace @apps/pwa` locally (or the equivalent `pnpm --filter @apps/pwa ...` commands); fix any failures before opening a PR.
 4. Check that the **Vercel Preview Build** GitHub workflow is green on your branch.
 5. Trigger `vercel deploy --prebuilt` (or let the GitHub → Vercel integration promote the passing build) and smoke-test `/healthz` plus the admin panel.
 
@@ -96,7 +109,8 @@ Mettez à jour vos secrets avant déploiement pour éviter l'échec `configurati
 Le script `scripts/deployment-preflight.mjs` automatise les vérifications critiques avant une promotion en production :
 
 - Validation des secrets partagés via `@avocat-ai/shared/config/env` (échec immédiat si `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` ou `OPENAI_API_KEY` sont manquants ou encore en valeur factice).
-- Exécution séquentielle de `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck` et `pnpm build` avec propagation des codes de sortie.
+- Vérification de la présence des variables PWA (`NEXT_PUBLIC_FEAT_AGENT_SHELL`, `NEXT_PUBLIC_FEAT_VOICE_REALTIME`, `NEXT_PUBLIC_DRIVE_INGESTION_ENABLED`).
+- Exécution séquentielle de `npm --version`, `npm ci --prefer-offline`, `npm run lint/test/build --workspace @apps/pwa`, `npm run build --workspace @avocat-ai/web` et `npm run build --workspace @apps/api` avec propagation des codes de sortie.
 
 Lancez-le localement avec :
 

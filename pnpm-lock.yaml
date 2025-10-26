@@ -15,6 +15,9 @@ importers:
       sql-formatter:
         specifier: ^15.6.10
         version: 15.6.10
+      typescript:
+        specifier: ^5.4.5
+        version: 5.4.5
       zod:
         specifier: ^3.25.42
         version: 3.25.76
@@ -95,7 +98,11 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0(typescript@5.4.5)(zod@3.25.76)
 
-  apps/edge: {}
+  apps/edge:
+    devDependencies:
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.0(@types/node@20.14.10)(happy-dom@13.10.1)
 
   apps/ops:
     dependencies:
@@ -151,6 +158,9 @@ importers:
 
   apps/pwa:
     dependencies:
+      '@avocat-ai/ui-plan-drawer':
+        specifier: ^0.1.0
+        version: link:../../packages/ui-plan-drawer
       '@radix-ui/react-accordion':
         specifier: ^1.1.2
         version: 1.2.12(@types/react-dom@18.3.0)(@types/react@18.3.3)(react-dom@18.3.1)(react@18.3.1)
@@ -293,6 +303,9 @@ importers:
       '@avocat-ai/supabase':
         specifier: ^0.1.0
         version: link:../../packages/supabase
+      '@avocat-ai/ui-plan-drawer':
+        specifier: ^0.1.0
+        version: link:../../packages/ui-plan-drawer
       '@radix-ui/react-dialog':
         specifier: ^1.0.7
         version: 1.1.15(@types/react-dom@18.3.0)(@types/react@18.3.3)(react-dom@18.3.1)(react@18.3.1)
@@ -621,6 +634,40 @@ importers:
       vitest:
         specifier: ^1.6.0
         version: 1.6.0(@types/node@20.19.23)(jsdom@24.1.3)
+
+  packages/ui-plan-drawer:
+    dependencies:
+      clsx:
+        specifier: ^2.1.0
+        version: 2.1.1
+      lucide-react:
+        specifier: ^0.439.0
+        version: 0.439.0(react@18.3.1)
+      react:
+        specifier: ^18.0.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.0.0
+        version: 18.3.1(react@18.3.1)
+    devDependencies:
+      '@testing-library/jest-dom':
+        specifier: ^6.4.5
+        version: 6.4.5(vitest@1.6.0)
+      '@testing-library/react':
+        specifier: ^14.2.1
+        version: 14.2.1(react-dom@18.3.1)(react@18.3.1)
+      '@types/react':
+        specifier: ^18.3.3
+        version: 18.3.3
+      '@types/react-dom':
+        specifier: ^18.3.0
+        version: 18.3.0
+      typescript:
+        specifier: ^5.4.5
+        version: 5.4.5
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.0(@types/node@20.14.10)(happy-dom@13.10.1)
 
 packages:
 

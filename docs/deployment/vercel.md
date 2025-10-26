@@ -1,6 +1,8 @@
-# Deploying Avocat-AI to Vercel
+# Deploying the Avocat-AI PWA to Vercel
 
-This guide walks through the settings required to produce production-ready builds of the Avocat-AI console on Vercel. It covers the secrets that must be configured, the Supabase preparation needed before the first deployment, and the commands that reproduce the build pipeline locally.
+This guide walks through the settings required to produce production-ready builds of the **public PWA** that lives in [`apps/pwa`](../../apps/pwa). It covers the secrets that must be configured, the Supabase preparation needed before the first deployment, and the commands that reproduce the build pipeline locally.
+
+> ℹ️ The internal **operator console** (`apps/web`) ships through separate pipelines (self-hosted or container-based). Follow the [local hosting runbook](../local-hosting.md) or your platform-specific deployment guide when promoting the console so that it does not mix with the PWA artefacts described here.
 
 ## Prerequisites
 
@@ -102,6 +104,8 @@ npx vercel deploy --prebuilt --prod
 ```
 
 > Prefer `npm`? Replace the first four commands with `npm ci` followed by `npm run lint/test/build --workspace @apps/pwa`.
+
+When validating operator console changes locally, continue to use `pnpm dev:web`, `pnpm --filter @avocat-ai/web build`, and `pnpm --filter @avocat-ai/web test`. Keeping the command sets separated avoids deploying console artefacts to the PWA hosting project.
 
 - Use `--environment=preview` for staging builds.
 - The `vercel build` output is what Vercel serves in both preview and production environments.

@@ -10,6 +10,7 @@ import {
 } from '../lib/akoma.ts';
 import { createOpenAIDenoClient, type OpenAIDenoClient } from '../lib/openai.ts';
 import { EdgeSupabaseClient, createEdgeClient, rowAs } from '../lib/supabase.ts';
+import { serveEdgeFunction } from '../lib/serve.ts';
 import { SupabaseScheduler } from '../../../packages/shared/src/scheduling/scheduler.ts';
 
 type SourceType = 'statute' | 'case' | 'gazette' | 'regulation';
@@ -1843,7 +1844,7 @@ async function finalizeIngestionRun(
   });
 }
 
-Deno.serve(async (req) => {
+serveEdgeFunction(async (req) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }

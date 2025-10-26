@@ -5,13 +5,7 @@ import Link from "next/link";
 import type { ResearchCitation } from "@/lib/data/research";
 import { cn } from "@/lib/utils";
 
-export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  citations: ResearchCitation[];
-  createdAt: number;
-}
+import type { ChatMessage } from "@/lib/research/types";
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
