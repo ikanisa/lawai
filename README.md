@@ -22,9 +22,9 @@ packages/
 
 ## Getting Started
 
-1. Install dependencies with **pnpm** (ensure pnpm ≥ 8.15):
+1. Install dependencies with **pnpm@8.15.4** (Corepack will download the pinned version declared in `package.json`):
    ```bash
-   pnpm install
+   corepack pnpm install
    ```
 2. Copy `.env.example` to `.env` and fill in required secrets.
    The API no longer falls back to placeholder defaults for production-critical
