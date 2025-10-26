@@ -1,8 +1,95 @@
 #!/usr/bin/env node
-/**
- * TODO: Implement a local deployment preflight that validates secrets, pnpm installs,
- * and preview builds before promoting code to production. This stub replaces the
- * previous cloud-host-specific script and intentionally exits with success until
- * the new checks are defined.
- */
-console.log('deployment-preflight: TODO implement validation checks');
+import { execSync } from 'node:child_process';
+import process from 'node:process';
+
+const requiredEnv = new Map([
+  [
+    'apps/web',
+    [
+      'SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+    ],
+  ],
+  [
+    'apps/api',
+    [
+      'OPENAI_API_KEY',
+      'OPENAI_VECTOR_STORE_AUTHORITIES_ID',
+      'SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+    ],
+  ],
+  [
+    'apps/pwa',
+    [
+      'NEXT_PUBLIC_FEAT_AGENT_SHELL',
+      'NEXT_PUBLIC_FEAT_VOICE_REALTIME',
+      'NEXT_PUBLIC_DRIVE_INGESTION_ENABLED',
+    ],
+  ],
+  [
+    'apps/ops',
+    [
+      'OPENAI_API_KEY',
+      'SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+    ],
+  ],
+]);
+
+function run(cmd) {
+  console.log(`\n$ ${cmd}`);
+  execSync(cmd, { stdio: 'inherit' });
+}
+
+function assertNodeVersion() {
+  const version = process.versions.node;
+  const major = Number(version.split('.')[0]);
+  if (Number.isNaN(major) || major < 20) {
+    throw new Error(`Node.js >=20 is required. Detected ${version}`);
+  }
+  console.log(`Node version OK (${version})`);
+}
+
+function checkEnv() {
+  const missingByApp = [];
+  for (const [app, keys] of requiredEnv.entries()) {
+    const missing = keys.filter((key) => !process.env[key] || process.env[key]?.length === 0);
+    if (missing.length > 0) {
+      missingByApp.push({ app, missing });
+    }
+  }
+  if (missingByApp.length > 0) {
+    console.error('Missing environment variables:');
+    for (const { app, missing } of missingByApp) {
+      console.error(`  ${app}: ${missing.join(', ')}`);
+    }
+    throw new Error('Environment validation failed');
+  }
+  console.log('Environment variables OK');
+}
+
+async function main() {
+  try {
+    assertNodeVersion();
+    checkEnv();
+    run('npm --version');
+    run('npm ci --prefer-offline');
+    run('npm run lint --workspace @apps/pwa');
+    run('npm run test --workspace @apps/pwa');
+    run('npm run build --workspace @apps/pwa');
+    run('npm run build --workspace @avocat-ai/web');
+    run('npm run build --workspace @apps/api');
+    console.log('Deployment preflight PASS');
+  } catch (error) {
+    console.error('\nDeployment preflight FAILED');
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+}
+
+main();

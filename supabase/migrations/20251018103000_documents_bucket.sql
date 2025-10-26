@@ -1,16 +1,18 @@
 -- Introduce dedicated `documents` storage bucket for customer uploads.
 -- Also update RLS policies so org members can access the new bucket subject to residency checks.
+BEGIN;
 
-begin;
+INSERT INTO
+  storage.buckets (id, name, public)
+VALUES
+  ('documents', 'documents', FALSE)
+ON CONFLICT (id) DO NOTHING;
 
-insert into storage.buckets (id, name, public)
-values ('documents', 'documents', false)
-on conflict (id) do nothing;
+ALTER TABLE public.documents
+ALTER COLUMN bucket_id
+SET DEFAULT 'documents';
 
-alter table public.documents
-  alter column bucket_id set default 'documents';
-
-do $policy$
+DO $policy$
 declare
   owns_table boolean;
 begin
@@ -52,4 +54,4 @@ begin
 end;
 $policy$;
 
-commit;
+COMMIT;

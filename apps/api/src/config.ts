@@ -8,7 +8,8 @@ import {
   sharedSupabaseSchema,
 } from '@avocat-ai/shared';
 
-const envSchema = z.object({
+const envSchema = z
+  .object({
   PORT: z.coerce.number().default(3000),
   OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
   AGENT_MODEL: z.string().min(1, 'AGENT_MODEL is required'),
@@ -51,45 +52,29 @@ const envSchema = z.object({
   RATE_LIMIT_WORKSPACE_WINDOW_MS: z.coerce.number().default(60_000),
   RATE_LIMIT_TELEMETRY_LIMIT: z.coerce.number().default(60),
   RATE_LIMIT_TELEMETRY_WINDOW_MS: z.coerce.number().default(60_000),
-});
+  })
+  .superRefine((value, ctx) => {
+    if (!value.WA_PROVIDER) {
+      return;
+    }
+
+    const requiredKeys = ['WA_TOKEN', 'WA_PHONE_NUMBER_ID', 'WA_TEMPLATE_OTP_NAME'] as const;
+
+    for (const key of requiredKeys) {
+      const current = value[key];
+      if (!current || current.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${String(key)} is required when WA_PROVIDER is set`,
+        });
+      }
+    }
+  });
 
 export type Env = z.infer<typeof envSchema>;
 
 const parsed = loadServerEnv(envSchema);
-
-const SUPABASE_URL_PLACEHOLDER_PATTERNS = [
-  /example\.supabase\.co/i,
-  /project\.supabase\.co/i,
-  /localhost/i,
-];
-
-const OPENAI_KEY_PLACEHOLDER_PATTERNS = [
-  /CHANGEME/i,
-  /placeholder/i,
-  /test-openai-key/i,
-  /^sk-(?:test|demo|example|placeholder|dummy|sample)/i,
-];
-
-const SUPABASE_SERVICE_ROLE_PLACEHOLDER_PATTERNS = [
-  /placeholder/i,
-  /service-role-test/i,
-];
-
-const PRODUCTION_CRITICAL_KEYS = [
-  'OPENAI_API_KEY',
-  'SUPABASE_URL',
-  'SUPABASE_SERVICE_ROLE_KEY',
-  'OPENAI_VECTOR_STORE_AUTHORITIES_ID',
-] as const;
-
-type ProductionCriticalKey = (typeof PRODUCTION_CRITICAL_KEYS)[number];
-
-const PLACEHOLDER_PATTERNS: Record<ProductionCriticalKey, RegExp[]> = {
-  OPENAI_API_KEY: [/(?:changeme|placeholder)/i, /test-openai-key/i],
-  SUPABASE_URL: [/example\.supabase\.co/i, /localhost/i, /127\.0\.0\.1/],
-  SUPABASE_SERVICE_ROLE_KEY: [/placeholder/i, /service-role-test/i],
-  OPENAI_VECTOR_STORE_AUTHORITIES_ID: [/^vs_?test$/i, /placeholder/i, /changeme/i],
-};
 
 const REQUIRED_PROD_KEYS: Array<keyof Env> = [
   'OPENAI_API_KEY',
@@ -100,7 +85,7 @@ const REQUIRED_PROD_KEYS: Array<keyof Env> = [
   'OPENAI_VECTOR_STORE_AUTHORITIES_ID',
 ];
 
-const PLACEHOLDER_PATTERNS: Partial<Record<keyof Env, RegExp[]>> = {
+const ENV_PLACEHOLDER_PATTERNS: Partial<Record<keyof Env, RegExp[]>> = {
   OPENAI_API_KEY: [/\btest\b/i, /placeholder/i, /changeme/i],
   SUPABASE_URL: [/example\.supabase\.co/i],
   SUPABASE_SERVICE_ROLE_KEY: [/\btest\b/i, /placeholder/i],
@@ -121,8 +106,13 @@ function assertProductionEnv(e: Env) {
     }
   }
 
-  for (const [key, patterns] of Object.entries(PLACEHOLDER_PATTERNS)) {
-    const value = e[key as keyof Env];
+  const placeholderEntries = [
+    ...Object.entries(PRODUCTION_PLACEHOLDER_PATTERNS),
+    ...Object.entries(ENV_PLACEHOLDER_PATTERNS),
+  ] as Array<[keyof Env, RegExp[]]>;
+
+  for (const [key, patterns] of placeholderEntries) {
+    const value = e[key];
     if (!value || typeof value !== 'string') continue;
     for (const pattern of patterns ?? []) {
       if (pattern.test(value)) {

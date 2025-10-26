@@ -133,10 +133,14 @@ beforeEach(() => {
   spanEndMock.mockReset();
   spanRecordExceptionMock.mockReset();
   spanSetStatusMock.mockReset();
-  tracerStartSpanMock.mockReset();
-  contextActiveMock.mockReset();
-  contextWithMock.mockReset();
-  traceSetSpanMock.mockReset();
+  tracerStartSpanMock.mockReset().mockImplementation(() => ({
+    end: spanEndMock,
+    recordException: spanRecordExceptionMock,
+    setStatus: spanSetStatusMock,
+  }));
+  contextActiveMock.mockReset().mockReturnValue({});
+  contextWithMock.mockReset().mockImplementation((_ctx, fn: () => unknown) => fn());
+  traceSetSpanMock.mockReset().mockImplementation((_ctx, span) => span);
   diagSetLoggerMock.mockReset();
   counterAddMock.mockReset();
   histogramRecordMock.mockReset();
@@ -187,7 +191,7 @@ describe('edge telemetry helpers', () => {
     const meter = getEdgeMeter();
     expect(meter).toEqual(meterInstance);
 
-    const response = await (globalThis as any).Deno.serve(() => new Response('ok', { status: 204 }));
+    const response = await (globalThis as any).Deno.serve(() => new Response(null, { status: 204 }));
     expect(response.status).toBe(204);
     expect(counterAddMock).toHaveBeenCalledWith(1, expect.objectContaining({ 'http.status_code': 204 }));
 

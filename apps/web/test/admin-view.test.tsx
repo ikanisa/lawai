@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Messages } from '@/lib/i18n';
+import { createAdminTelemetryDashboardProps } from './fixtures/admin-telemetry-dashboard';
+import { createAdminAuditLogProps } from './fixtures/admin-audit-log';
 
 const {
   fetchGovernanceMetricsMock,
@@ -42,6 +44,17 @@ vi.mock('sonner', () => ({
   },
 }));
 
+vi.mock('@/env.client', () => ({
+  clientEnv: {
+    NEXT_PUBLIC_DASHBOARD_RUNS_HIGH: 1000,
+    NEXT_PUBLIC_DASHBOARD_RUNS_MEDIUM: 500,
+    NEXT_PUBLIC_EVAL_PASS_GOOD: 0.9,
+    NEXT_PUBLIC_EVAL_PASS_OK: 0.75,
+    NEXT_PUBLIC_TOOL_FAILURE_WARN: 0.05,
+    NEXT_PUBLIC_TOOL_FAILURE_CRIT: 0.1,
+  },
+}));
+
 type ApiModule = typeof import('../src/lib/api');
 
 vi.mock('../src/lib/api', async () => {
@@ -61,6 +74,8 @@ vi.mock('../src/lib/api', async () => {
 });
 
 const { AdminView } = await import('@/features/admin/components/admin-view');
+const { AdminTelemetryDashboard } = await import('@/features/admin/components/telemetry-dashboard');
+const { AdminAuditLogPanel } = await import('@/features/admin/components/audit-log-panel');
 
 describe('AdminView provenance dashboard', () => {
   beforeEach(() => {
@@ -271,5 +286,33 @@ describe('AdminView provenance dashboard', () => {
     expect(await screen.findByText(messagesFr.admin.policyEvidenceHint, { exact: false })).toBeInTheDocument();
     expect(await screen.findByText(messagesFr.admin.policySupport)).toBeInTheDocument();
     expect(await screen.findByText(messagesFr.admin.policyRegulator)).toBeInTheDocument();
+  });
+});
+
+describe('AdminTelemetryDashboard component', () => {
+  it('renders status badges for ingestion, manifest, and allowlisted ratios', () => {
+    const props = createAdminTelemetryDashboardProps();
+
+    render(<AdminTelemetryDashboard {...props} />);
+
+    expect(screen.getByText(props.messages.metricsTitle)).toBeInTheDocument();
+    expect(screen.getByText(props.messages.summaryStatusErrors)).toBeInTheDocument();
+    expect(screen.getByText(props.messages.ingestionStatusFailures)).toBeInTheDocument();
+    expect(screen.getByText(props.messages.manifestStatusWarnings)).toBeInTheDocument();
+    expect(screen.getByText(props.messages.allowlistedStatusGood)).toBeInTheDocument();
+    expect(screen.getByText(props.messages.hitlStatusBacklog)).toBeInTheDocument();
+  });
+});
+
+describe('AdminAuditLogPanel component', () => {
+  it('lists audit events and falls back to the system label', () => {
+    const props = createAdminAuditLogProps();
+
+    render(<AdminAuditLogPanel {...props} />);
+
+    expect(screen.getByText(props.messages.auditTitle)).toBeInTheDocument();
+    expect(screen.getByText(props.events[0].kind)).toBeInTheDocument();
+    expect(screen.getByText(props.events[0].actor_user_id ?? '')).toBeInTheDocument();
+    expect(screen.getByText(props.messages.auditSystem)).toBeInTheDocument();
   });
 });

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Deployment configuration",
+  "type": "object",
+  "required": ["version", "framework", "build", "routes"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "framework": {
+      "type": "string"
+    },
+    "build": {
+      "type": "object",
+      "required": ["install", "command", "output"],
+      "properties": {
+        "install": { "type": "string" },
+        "command": { "type": "string" },
+        "output": { "type": "string" }
+      }
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["src", "dest"],
+        "properties": {
+          "src": { "type": "string" },
+          "dest": { "type": "string" }
+        }
+      }
+    }
+  }
+}

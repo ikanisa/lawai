@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2025-10-22T22:27:39.479Z",
+  "generatedAt": "2025-10-26T08:00:41.891Z",
   "migrations": [
     {
       "id": "20240101000000_enable_pgcrypto",
@@ -1012,13 +1012,46 @@
       "rollbackStrategy": "reapply-migration"
     },
     {
+      "id": "20240925090000_ops_report_runs",
+      "file": "20240925090000_ops_report_runs.sql",
+      "timestamp": "20240925090000",
+      "slug": "ops_report_runs",
+      "checksum": "sha256:da5cd0ceec08ceb529823944bdcd5993c0b2baca25ef7f3c1d45ae5ad1acf089",
+      "dependsOn": [
+        "20240710120000_admin_panel"
+      ],
+      "rollbackStrategy": "reapply-migration"
+    },
+    {
+      "id": "20250109090000_rate_limit_supabase",
+      "file": "20250109090000_rate_limit_supabase.sql",
+      "timestamp": "20250109090000",
+      "slug": "rate_limit_supabase",
+      "checksum": "sha256:8faf17d8589ea706b380a0a750d2c9d4f3d13295067c448d8a86ea957d7e4afe",
+      "dependsOn": [
+        "20240925090000_ops_report_runs"
+      ],
+      "rollbackStrategy": "reapply-migration"
+    },
+    {
+      "id": "20251003171500_baseline",
+      "file": "20251003171500_baseline.sql",
+      "timestamp": "20251003171500",
+      "slug": "baseline",
+      "checksum": "sha256:d8a957038679125d4840554fc43375697e662283121561afdefc2c3fbecaf729",
+      "dependsOn": [
+        "20250109090000_rate_limit_supabase"
+      ],
+      "rollbackStrategy": "manual-restore"
+    },
+    {
       "id": "20251003173000_create_drafts",
       "file": "20251003173000_create_drafts.sql",
       "timestamp": "20251003173000",
       "slug": "create_drafts",
       "checksum": "sha256:6df927b06091b4514515e69067b195d5aaf00135663763fc71ee63543e1a0c6b",
       "dependsOn": [
-        "20240710120000_admin_panel"
+        "20251003171500_baseline"
       ],
       "rollbackStrategy": "reapply-migration"
     },
@@ -1067,13 +1100,24 @@
       "rollbackStrategy": "reapply-migration"
     },
     {
+      "id": "20251009000000_phase1_schema_tuning",
+      "file": "20251009000000_phase1_schema_tuning.sql",
+      "timestamp": "20251009000000",
+      "slug": "phase1_schema_tuning",
+      "checksum": "sha256:5a37405c84c1e2a35bee401957416d0dad0bc688256e3079ca065ccf854e8847",
+      "dependsOn": [
+        "20251003210000_finance_domain_sources"
+      ],
+      "rollbackStrategy": "reapply-migration"
+    },
+    {
       "id": "20251009191000_device_sessions",
       "file": "20251009191000_device_sessions.sql",
       "timestamp": "20251009191000",
       "slug": "device_sessions",
       "checksum": "sha256:1904dbc592869e2820be3336ad368fb6c73e3c118f978f6398f4b459732350a6",
       "dependsOn": [
-        "20251003210000_finance_domain_sources"
+        "20251009000000_phase1_schema_tuning"
       ],
       "rollbackStrategy": "reapply-migration"
     },
@@ -1104,8 +1148,32 @@
       "file": "20251010030000_tool_telemetry_metadata.sql",
       "timestamp": "20251010030000",
       "slug": "tool_telemetry_metadata",
-      "checksum": "sha256:68afd425b74b4fe558f5569eb1e3c36d31ea5dfe5c92abac641ebb29bfc4c289",
-      "dependsOn": "20251010020000_compliance_ack_transaction",
+      "checksum": "sha256:81d67bd47588308e2f3e906517fd1b05eb890159bd136b77e07b16327091526f",
+      "dependsOn": [
+        "20251010020000_compliance_ack_transaction"
+      ],
+      "rollbackStrategy": "manual-restore"
+    },
+    {
+      "id": "20251018093000_whatsapp_support",
+      "file": "20251018093000_whatsapp_support.sql",
+      "timestamp": "20251018093000",
+      "slug": "whatsapp_support",
+      "checksum": "sha256:2f8faecf48932b9413b773a52423339622f805c3fc9af61dc3e3209cd7d26686",
+      "dependsOn": [
+        "20251010030000_tool_telemetry_metadata"
+      ],
+      "rollbackStrategy": "reapply-migration"
+    },
+    {
+      "id": "20251018103000_documents_bucket",
+      "file": "20251018103000_documents_bucket.sql",
+      "timestamp": "20251018103000",
+      "slug": "documents_bucket",
+      "checksum": "sha256:56ed06d3add04277a1ed9e5c51c44087c5cb3ecdbf354ab2f9726573e62cbb63",
+      "dependsOn": [
+        "20251018093000_whatsapp_support"
+      ],
       "rollbackStrategy": "reapply-migration"
     }
   ]

@@ -1,5 +1,4 @@
-import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { AppContainer } from '../core/container.js';
+import type { RateLimitGuard } from '../rate-limit.js';
 import type { SupabaseServiceClient } from './supabase.js';
 
 export type RateLimitGuard = (

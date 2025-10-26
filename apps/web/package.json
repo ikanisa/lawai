@@ -23,6 +23,7 @@
     "@radix-ui/react-scroll-area": "^1.0.5",
     "@radix-ui/react-separator": "^1.0.3",
     "@radix-ui/react-tooltip": "^1.0.7",
+    "@avocat-ai/ui-plan-drawer": "^0.1.0",
     "@avocat-ai/supabase": "^0.1.0",
     "@supabase/supabase-js": "^2.75.1",
     "@tanstack/react-query": "^5.51.9",
@@ -52,7 +53,7 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "@playwright/test": "^1.45.2",
+    "@playwright/test": "^1.51.1",
     "@testing-library/jest-dom": "6.4.5",
     "@testing-library/react": "14.2.1",
     "@testing-library/user-event": "14.5.2",
@@ -63,7 +64,6 @@
     "dotenv": "^16.6.1",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.5",
-    "@playwright/test": "^1.51.1",
     "esbuild": "^0.21.5",
     "happy-dom": "^13.10.1",
     "postcss": "8.4.38",

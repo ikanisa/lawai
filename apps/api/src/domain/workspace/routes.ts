@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { authorizeRequestWithGuards } from '../../http/authorization.js';
 import type { AppFastifyInstance } from '../../types/fastify.js';
@@ -30,44 +31,19 @@ const SECTION_LABELS: Record<(typeof WORKSPACE_SECTIONS)[number], string> = {
   hitl: 'HITL inbox',
 };
 
-type SerializedError = {
-  message?: string;
-  name?: string;
-  stack?: string;
-  [key: string]: unknown;
-};
-
-function serializeError(error: unknown): SerializedError {
-  if (!error) {
-    return { message: 'Unknown error' };
-  }
-
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-    };
-  }
-
-  if (typeof error === 'string') {
-    return { message: error };
-  }
-
-  if (typeof error === 'object') {
-    return { ...(error as Record<string, unknown>) };
-  }
-
-  return { message: String(error) };
-}
+import { authorizeRequestWithGuards } from '../../http/authorization.js';
+import { buildPhaseCProcessNavigator } from '../../workspace.js';
+import type { AppContext } from '../../types/context.js';
+import { fetchWorkspaceOverview } from './services.js';
 
 export async function registerWorkspaceRoutes(
   app: AppFastifyInstance,
   ctx: AppContext,
-  services: WorkspaceServices = { fetchWorkspaceOverview: defaultFetchWorkspaceOverview },
-): Promise<void> {
+  services: Partial<WorkspaceServices> = {},
+) {
   const { supabase } = ctx;
-  const workspaceGuard = ctx.rateLimits.workspace;
+  const { fetchWorkspaceOverview, limiter } = { ...defaultServices, ...services };
+  const guard = ctx.rateLimits.workspace;
 
   app.get<{ Querystring: WorkspaceQuery; Headers: WorkspaceHeaders }>('/workspace', async (request, reply) => {
     const parsed = workspaceQuerySchema.safeParse(request.query);
@@ -115,50 +91,32 @@ export async function registerWorkspaceRoutes(
     try {
       const { data, errors } = await services.fetchWorkspaceOverview(supabase, parsed.data.orgId);
 
-      const errorEntries = Object.entries(errors ?? {}).filter((entry): entry is [
-        keyof WorkspaceFetchErrors,
-        unknown,
-      ] => Boolean(entry[1]));
+      const { data, errors } = await fetchWorkspaceOverview(supabase, orgId);
 
-      if (errorEntries.length === 0) {
-        return reply.send({
-          data,
-          meta: {
-            status: 'ok' as const,
-            warnings: [] as string[],
-            errors: {} as Record<string, never>,
-          },
-        });
+      if (errors.jurisdictions) {
+        request.log.error({ err: errors.jurisdictions }, 'workspace jurisdictions query failed');
+      }
+      if (errors.matters) {
+        request.log.error({ err: errors.matters }, 'workspace matters query failed');
+      }
+      if (errors.compliance) {
+        request.log.error({ err: errors.compliance }, 'workspace compliance query failed');
+      }
+      if (errors.hitl) {
+        request.log.error({ err: errors.hitl }, 'workspace hitl query failed');
       }
 
-      const serializedErrors: Partial<Record<keyof WorkspaceFetchErrors, SerializedError>> = {};
-      const warnings: string[] = [];
-
-      for (const [section, error] of errorEntries) {
-        serializedErrors[section] = serializeError(error);
-        const label = SECTION_LABELS[section] ?? section;
-        warnings.push(`Partial data: failed to load ${label}.`);
-      }
-
-      const allSectionsFailed = errorEntries.length === WORKSPACE_SECTIONS.length;
-      const statusCode = allSectionsFailed ? 502 : 206;
-      const status = allSectionsFailed ? 'error' : 'partial';
-
-      return reply.code(statusCode).send({
-        data,
-        meta: {
-          status,
-          warnings,
-          errors: serializedErrors,
-        },
-      });
+      return {
+        ...data,
+        navigator: buildPhaseCProcessNavigator(),
+      };
     } catch (error) {
-      request.log.error({ err: error }, 'workspace_overview_fetch_failed');
-      const message = error instanceof Error ? error.message : 'Unexpected error while fetching workspace overview.';
-      return reply.code(500).send({
-        error: 'workspace_fetch_failed',
-        message,
-      });
+      if (error instanceof Error && 'statusCode' in error && typeof (error as { statusCode?: unknown }).statusCode === 'number') {
+        return reply.code((error as { statusCode: number }).statusCode).send({ error: error.message });
+      }
+
+      request.log.error({ err: error }, 'workspace overview failed');
+      return reply.code(500).send({ error: 'workspace_failed' });
     }
   });
 }

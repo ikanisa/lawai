@@ -22,9 +22,18 @@ secret or configuration knob is introduced.
 | Variable group | Primary consumers | Source of truth | Notes |
 | --- | --- | --- | --- |
 | `OPENAI_CHATKIT_*` | API | Root `.env` | Enables chatkit session creation when configured. |
+| `OPENAI_ORGANIZATION`, `OPENAI_PROJECT`, `OPENAI_DEBUG_REQUESTS` | API, Ops | Root `.env` | Optional knobs for request routing and verbose logging when diagnosing OpenAI traffic. |
 | `JURIS_ALLOWLIST_JSON` | API, legacy bots | Root `.env` | Optional JSON array overriding jurisdiction allowlist. |
 | `WA_*` (WhatsApp OTP) | API, Francophone Lex | Root `.env` (with per-app overrides) | Leave unset to disable WhatsApp. Provide full set (`WA_TOKEN`, `WA_PHONE_NUMBER_ID`, `WA_TEMPLATE_*`, `WA_PROVIDER`) to enable. |
 | `C2PA_SIGNING_*` | API, Francophone Lex | Root `.env` | Controls provenance signing for exports. |
+
+## Operational observability and automation
+
+| Variable group | Primary consumers | Source of truth | Notes |
+| --- | --- | --- | --- |
+| `DEPLOY_PREVIEW_TOKEN` | Ops, Web | Root `.env` | Injected into preview deployments for smoke tests. |
+| `PROVENANCE_*` | Ops | Root `.env` | Thresholds governing provenance monitoring tasks. |
+| `ALERTS_*` | Ops | Root `.env` | Slack/email/webhook targets and alerting thresholds for automation jobs. |
 
 ## Service-specific configuration
 
@@ -46,7 +55,7 @@ secret or configuration knob is introduced.
 | `NODE_ENV` | Defaults to `development` through shared helper. | `apps/ops/.env.example`, `apps/ops/src/env.server.ts` |
 | `OPS_CHECK_DRY_RUN`, `VECTOR_STORE_DRY_RUN` | Safety switches for automation runs. | Same as above |
 | `API_BASE_URL` | Points to deployed API instance for orchestration commands. | Same as above |
-| `OPS_ORG_ID`, `OPS_USER_ID` variants (`EVAL_*`, `TRANSPARENCY_*`, `SLO_*`, `DISPATCH_*`, `LEARNING_*`, `PERF_*`, `RED_TEAM_*`) | Default identifiers for automation targets. | Same as above |
+| `OPS_ORG_ID`, `OPS_USER_ID`, `EVAL_*`, `TRANSPARENCY_*`, `SLO_*`, `DISPATCH_*`, `LEARNING_*`, `PERF_*`, `RED_TEAM_*` | Default identifiers for automation targets. | Same as above |
 | `PERF_WINDOW`, `EVAL_BENCHMARK` | Additional tuning inputs for ops runs. | Same as above |
 | Divergence | Ops requires non-empty Supabase and OpenAI credentials at parse time to fail fast locally. | `apps/ops/src/env.server.ts` |
 
@@ -56,6 +65,7 @@ secret or configuration knob is introduced.
 | --- | --- | --- |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Needed for server actions; must match shared values. | `apps/web/.env.example`, `apps/web/src/env.server.ts` |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Client-side Supabase initialisation. | Same |
+| `NEXT_PUBLIC_API_BASE_URL` | Points browser calls to the deployed API instance. | Same |
 | `APP_ENV` | Distinguish deployment target (e.g., `local`, `staging`, `production`). | Same |
 | `ADMIN_PANEL_ACTOR`, `ADMIN_PANEL_ORG`, `FEAT_ADMIN_PANEL` | Toggles privileged UI features. | Same |
 | `NEXT_PUBLIC_*` thresholds | Dashboard tuning knobs for front-end. | `apps/web/.env.example`, `apps/web/src/env.client.ts` |
@@ -63,11 +73,10 @@ secret or configuration knob is introduced.
 
 ### Legacy / project-specific snapshots
 
-Directories under `francophone-lex/` and `JB/` maintain historical configuration examples. They reuse the shared variables above and add bespoke integrations (Google Drive ingestion, payment APIs, Redis rate limiting). These examples now reference the shared matrix to reduce drift while preserving project-specific placeholders.
+Directories under `JB/` maintain historical configuration examples. They reuse the shared variables above and add bespoke integrations (Google Drive ingestion, payment APIs, Redis rate limiting). The legacy `francophone-lex/` scaffolds have been removed to avoid vendor-specific drift, so JB now serves as the lone reference area.
 
 ## Using the shared helper
 
 - Import `loadServerEnv` and the relevant schemas from `@avocat-ai/shared` when adding a new server-side loader.
 - Extend the shared schemas with service-specific validation (for example, requiring non-empty values in Ops or keeping relaxed defaults in the API).
 - Document any non-shared variables in this file so that future services know where to source configuration.
-

@@ -19,7 +19,7 @@
 
 1. **Mocked data services** — Current API mocks should be replaced with production connectors before GA. Track via launch runbook follow-up.
 2. **Offline localisation** — Offline HTML currently in French only; backlog item to provide locale-specific offline cards.
-3. **Preview hosting** — Artifacts require manual extraction; consider legacy hosting platform/Pages integration for stakeholder convenience.
+3. **Preview hosting** — Artifacts require manual extraction; consider managed preview integration for stakeholder convenience.
 
 ## Sign-off
 

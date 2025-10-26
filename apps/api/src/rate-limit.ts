@@ -87,40 +87,6 @@ export class InMemoryRateLimiter implements RateLimiter {
 }
 
 class RedisRateLimiter implements RateLimiter {
-  public readonly limit: number;
-
-  public readonly windowMs: number;
-
-  private readonly client: Redis;
-
-  private readonly keyPrefix: string;
-
-  constructor(client: Redis, options: RateLimiterOptions) {
-    this.client = client;
-    this.limit = Math.max(1, options.limit);
-    this.windowMs = Math.max(1000, options.windowMs);
-    this.keyPrefix = options.identifier ? `rl:${options.identifier}:` : 'rl:';
-  }
-
-  async hit(key: string): Promise<RateLimitResult> {
-    const redisKey = `${this.keyPrefix}${key}`;
-    const count = await this.client.incr(redisKey);
-    if (count === 1) {
-      await this.client.pexpire(redisKey, this.windowMs);
-    }
-    let ttl = await this.client.pttl(redisKey);
-    if (ttl < 0) {
-      await this.client.pexpire(redisKey, this.windowMs);
-      ttl = this.windowMs;
-    }
-    const allowed = count <= this.limit;
-    const remaining = allowed ? Math.max(0, this.limit - count) : 0;
-    const resetAt = Date.now() + (ttl > 0 ? ttl : this.windowMs);
-    return { allowed, remaining, resetAt };
-  }
-}
-
-class RedisRateLimiter implements RateLimiter {
   private readonly limit: number;
 
   private readonly windowMs: number;
@@ -307,4 +273,133 @@ export function createRateLimitPreHandler(options: RateLimitPreHandlerOptions) {
       request.log.warn({ err: error, identifier }, 'rate_limit_prehandler_failed');
     }
   };
+}
+
+
+interface RateLimiterFactoryConfig {
+  enabled?: boolean;
+  provider?: 'memory' | 'redis' | 'supabase';
+  driver?: 'memory' | 'redis' | 'supabase';
+  redis?: { client?: unknown };
+  supabase?: { client: SupabaseClient; functionName?: string };
+  logger?: { warn?: (info: unknown, msg?: string) => void };
+}
+
+interface RateLimiterFactory extends ((options: RateLimiterOptions) => RateLimiter) {
+  create(name: string, options: RateLimiterOptions): RateLimiter;
+}
+
+class SupabaseLimiterAdapter implements RateLimiter {
+  private readonly limiter: SupabaseRateLimiter;
+
+  constructor(options: { supabase: SupabaseClient; limit: number; windowMs: number; prefix: string }) {
+    this.limiter = new SupabaseRateLimiter({
+      supabase: options.supabase,
+      limit: options.limit,
+      windowSeconds: Math.max(1, Math.floor(options.windowMs / 1000)),
+      prefix: options.prefix,
+    });
+  }
+
+  async hit(key: string): Promise<RateLimitResult> {
+    const hit = await this.limiter.hit(key);
+    return { allowed: hit.allowed, remaining: hit.remaining, resetAt: hit.resetAt };
+  }
+
+  async reset(): Promise<void> {
+    // Supabase-backed limiter does not support explicit reset.
+  }
+
+  async block(): Promise<void> {
+    // Supabase-backed limiter does not support explicit blocking.
+  }
+}
+
+export function createRateLimiterFactory(config: RateLimiterFactoryConfig): RateLimiterFactory {
+  const enabled = config.enabled ?? true;
+  const provider = config.provider ?? config.driver ?? 'memory';
+
+  const createLimiter = (name: string, options: RateLimiterOptions): RateLimiter => {
+    if (!enabled) {
+      return new InMemoryRateLimiter({ ...options, prefix: name });
+    }
+
+    if (provider === 'supabase' && config.supabase?.client) {
+      return new SupabaseLimiterAdapter({
+        supabase: config.supabase.client,
+        limit: options.limit,
+        windowMs: options.windowMs,
+        prefix: name,
+      });
+    }
+
+    return new InMemoryRateLimiter({ ...options, prefix: name });
+  };
+
+  const factory = ((options: RateLimiterOptions) => createLimiter('default', options)) as RateLimiterFactory;
+  factory.create = (name: string, options: RateLimiterOptions) => createLimiter(name, options);
+  return factory;
+}
+
+export type RateLimitGuard = (
+  request: FastifyRequest,
+  reply: FastifyReply,
+  extraKeyParts?: unknown[],
+) => Promise<boolean>;
+
+interface RateLimitGuardOptions {
+  name?: string;
+  keyGenerator?: (request: FastifyRequest, extraKeyParts?: unknown[]) => string | null;
+  errorResponse?: (request: FastifyRequest) => unknown;
+}
+
+function buildKeyFromParts(parts?: unknown[]): string | null {
+  if (!Array.isArray(parts)) {
+    return null;
+  }
+  const tokens = parts.filter((value): value is string => typeof value === 'string' && value.length > 0);
+  return tokens.length > 0 ? tokens.join(':') : null;
+}
+
+export function createRateLimitGuard(
+  limiter: RateLimiter,
+  options: RateLimitGuardOptions = {},
+): RateLimitGuard {
+  return async (request, reply, extraKeyParts) => {
+    const generated = options.keyGenerator?.(request, extraKeyParts);
+    const key = generated ?? buildKeyFromParts(extraKeyParts) ?? request.ip;
+
+    if (!key) {
+      return false;
+    }
+
+    const allowed = await enforceRateLimit(limiter, request, reply, key, options.errorResponse);
+    return !allowed;
+  };
+}
+
+export async function enforceRateLimit(
+  limiter: RateLimiter,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  key: string,
+  errorResponse?: (request: FastifyRequest) => unknown,
+): Promise<boolean> {
+  try {
+    const result = await limiter.hit(key);
+    reply.header('x-rate-limit-remaining', String(Math.max(0, result.remaining)));
+    reply.header('x-rate-limit-reset', new Date(result.resetAt).toISOString());
+
+    if (!result.allowed) {
+      const retryAfter = Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000));
+      reply.header('retry-after', String(retryAfter));
+      await reply.code(429).send(errorResponse?.(request) ?? { error: 'rate_limit_exceeded' });
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    request.log?.warn?.({ err: error, key }, 'rate_limit_enforce_failed');
+    return true;
+  }
 }

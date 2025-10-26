@@ -1,1 +1,0 @@
-../../../docs/governance/responsible_ai_policy.md
