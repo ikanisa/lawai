@@ -213,8 +213,8 @@ Un nouveau panneau d'administration Next.js est livré derrière le flag `FEAT_A
 développement et en préproduction, et reste désactivé en production tant que `FEAT_ADMIN_PANEL=1` n'est pas fourni.
 
 - **Activer localement** : ajoutez `FEAT_ADMIN_PANEL=1` à votre `.env.local`.
-- **Prévisualisation hébergée** : les environnements `preview` héritent d'un comportement activé par défaut.
-- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans les variables d'environnement du fournisseur d'hébergement avant le déploiement.
+- **Prévisualisation hébergeur** : les environnements `preview` héritent d'un comportement activé par défaut.
+- **Production** : définir explicitement `FEAT_ADMIN_PANEL=1` dans les variables de la plateforme avant le déploiement.
 
 Les routes `/api/admin/*` valident systématiquement la présence des en-têtes `x-admin-actor` et `x-admin-org` (ou retombent sur
 les valeurs de configuration `ADMIN_PANEL_ACTOR`/`ADMIN_PANEL_ORG`).
