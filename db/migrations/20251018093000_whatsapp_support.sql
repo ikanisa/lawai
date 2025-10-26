@@ -1,69 +1,71 @@
 -- Restore WhatsApp/phone contact support objects missing from production.
 -- Idempotent DDL guarded with IF NOT EXISTS to avoid conflicts on re-run.
-
-begin;
+BEGIN;
 
 -- Ensure profiles table exposes phone numbers for OTP / WhatsApp flows.
-alter table public.profiles
-  add column if not exists phone_e164 text;
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS phone_e164 text;
 
 -- Add indexes used by account provisioning and lookup flows.
-create index if not exists idx_profiles_email
-  on public.profiles (lower(email));
+CREATE INDEX if NOT EXISTS idx_profiles_email ON public.profiles (lower(email));
 
-create index if not exists idx_profiles_phone
-  on public.profiles (phone_e164);
+CREATE INDEX if NOT EXISTS idx_profiles_phone ON public.profiles (phone_e164);
 
 -- WhatsApp identity mapping between WhatsApp sender IDs and users.
-create table if not exists public.wa_identities (
-  wa_id text primary key,
-  phone_e164 text not null,
-  user_id uuid references auth.users(id),
-  created_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.wa_identities (
+  wa_id text PRIMARY KEY,
+  phone_e164 text NOT NULL,
+  user_id uuid REFERENCES auth.users (id),
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists idx_wa_phone on public.wa_identities(phone_e164);
-create index if not exists idx_wa_user on public.wa_identities(user_id);
+CREATE INDEX if NOT EXISTS idx_wa_phone ON public.wa_identities (phone_e164);
 
-alter table public.wa_identities enable row level security;
+CREATE INDEX if NOT EXISTS idx_wa_user ON public.wa_identities (user_id);
 
-drop policy if exists "wa_identities_access" on public.wa_identities;
-create policy "wa_identities_access" on public.wa_identities
-  for all
-  using (
-    user_id is null
-    or auth.uid() = user_id
-    or exists (
-      select 1
-      from public.org_members om
-      where om.user_id = wa_identities.user_id
-        and public.is_org_member(om.org_id)
-    )
+ALTER TABLE public.wa_identities enable ROW level security;
+
+DROP POLICY if EXISTS "wa_identities_access" ON public.wa_identities;
+
+CREATE POLICY "wa_identities_access" ON public.wa_identities FOR ALL USING (
+  user_id IS NULL
+  OR auth.uid () = user_id
+  OR EXISTS (
+    SELECT
+      1
+    FROM
+      public.org_members om
+    WHERE
+      om.user_id = wa_identities.user_id
+      AND public.is_org_member (om.org_id)
   )
-  with check (
-    user_id is null
-    or auth.uid() = user_id
+)
+WITH
+  CHECK (
+    user_id IS NULL
+    OR auth.uid () = user_id
   );
 
 -- WhatsApp OTP scratch space (service-role only).
-create table if not exists public.wa_otp (
-  id uuid primary key default gen_random_uuid(),
-  phone_e164 text not null,
-  otp_hash text not null,
-  expires_at timestamptz not null,
-  attempts int not null default 0,
-  created_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.wa_otp (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone_e164 text NOT NULL,
+  otp_hash text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  attempts int NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists idx_wa_otp_phone on public.wa_otp(phone_e164);
-create index if not exists idx_wa_otp_expiry on public.wa_otp(expires_at);
+CREATE INDEX if NOT EXISTS idx_wa_otp_phone ON public.wa_otp (phone_e164);
 
-alter table public.wa_otp enable row level security;
+CREATE INDEX if NOT EXISTS idx_wa_otp_expiry ON public.wa_otp (expires_at);
 
-drop policy if exists "wa_otp_service" on public.wa_otp;
-create policy "wa_otp_service" on public.wa_otp
-  for all
-  using (auth.role() = 'service_role')
-  with check (auth.role() = 'service_role');
+ALTER TABLE public.wa_otp enable ROW level security;
 
-commit;
+DROP POLICY if EXISTS "wa_otp_service" ON public.wa_otp;
+
+CREATE POLICY "wa_otp_service" ON public.wa_otp FOR ALL USING (auth.role () = 'service_role')
+WITH
+  CHECK (auth.role () = 'service_role');
+
+COMMIT;

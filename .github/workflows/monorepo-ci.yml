@@ -27,6 +27,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check migrations
+        env:
+          ALLOW_SUPABASE_MIGRATIONS: '1'
         run: pnpm check:migrations
 
       - name: SQL lint
