@@ -2,9 +2,17 @@ name: Node CI
 
 on:
   push:
-    branches: [ work, main, master ]
+    branches:
+      - main
+      - master
   pull_request:
-    branches: [ work, main, master ]
+    branches:
+      - main
+      - master
+
+concurrency:
+  group: node-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   node-ci:
