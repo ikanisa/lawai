@@ -5,6 +5,9 @@
   "scripts": {
     "lint": "node ./scripts/run-lint.mjs",
     "typecheck": "node ./scripts/run-typecheck.mjs",
-    "test": "node ./scripts/run-typecheck.mjs"
+    "test": "pnpm run typecheck && vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
   }
 }
