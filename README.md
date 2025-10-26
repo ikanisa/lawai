@@ -327,10 +327,11 @@ Le service met automatiquement à jour `go_no_go_evidence` (section A) avec le
 
 ### Lancer le crawler Edge manuellement
 
-Déployez la fonction `crawl-authorities` puis exécutez-la en fournissant les identifiants suivants :
+Déployez la fonction `crawl-authorities` puis exécutez-la en fournissant les identifiants suivants (inclure `EDGE_SERVICE_SECRET` pour l’authentification) :
 
 ```bash
 curl -X POST https://<project-ref>.functions.supabase.co/crawl-authorities \
+  -H "x-service-secret: $EDGE_SERVICE_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
     "supabaseUrl": "'$SUPABASE_URL'",
@@ -357,6 +358,7 @@ appelez-la en transmettant l’identifiant d’organisation et un manifeste (JSO
 supabase functions deploy drive-watcher --project-ref <project-ref>
 
 curl -X POST https://<project-ref>.functions.supabase.co/drive-watcher \
+  -H "x-service-secret: $EDGE_SERVICE_SECRET" \
   -H "Content-Type: application/json" \
   -d '{
     "orgId": "00000000-0000-0000-0000-000000000000",

@@ -34,16 +34,16 @@ the Supabase Edge Function. Save the snippet below as `scripts/run-function.sh`:
    set -euo pipefail
 
    SUPABASE_URL=${SUPABASE_URL:-""}
-   SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-""}
+   EDGE_SERVICE_SECRET=${EDGE_SERVICE_SECRET:-""}
 
-   if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_SERVICE_ROLE_KEY" ]]; then
-     echo "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" >&2
+   if [[ -z "$SUPABASE_URL" || -z "$EDGE_SERVICE_SECRET" ]]; then
+     echo "Missing SUPABASE_URL or EDGE_SERVICE_SECRET" >&2
      exit 1
    fi
 
    FUNCTION="$1"; shift
    curl -sSf -X POST "${SUPABASE_URL%/}/functions/v1/${FUNCTION}" \
-     -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+     -H "x-service-secret: ${EDGE_SERVICE_SECRET}" \
      -H 'Content-Type: application/json' \
      -d "${1:-{}}"
    ```
@@ -70,16 +70,16 @@ import 'dotenv/config';
 import cron from 'node-cron';
 import fetch from 'node-fetch';
 
-const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local');
+const { SUPABASE_URL, EDGE_SERVICE_SECRET } = process.env;
+if (!SUPABASE_URL || !EDGE_SERVICE_SECRET) {
+  throw new Error('Set SUPABASE_URL and EDGE_SERVICE_SECRET in .env.local');
 }
 
 const callFunction = async (name, body = {}) => {
   const res = await fetch(`${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/${name}`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'x-service-secret': EDGE_SERVICE_SECRET,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),

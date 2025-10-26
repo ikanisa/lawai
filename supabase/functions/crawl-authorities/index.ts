@@ -4,11 +4,24 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 
+import { verifyRequest } from "../_shared/auth.ts"
+
 const FUNCTION_NAME = "crawl-authorities"
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204 })
+  }
+
+  const auth = await verifyRequest(req)
+  if (!auth.ok) {
+    console.warn(
+      `[${FUNCTION_NAME}] Rejected invocation (${auth.reason})`,
+    )
+    return new Response(JSON.stringify({ error: auth.error }), {
+      headers: { "Content-Type": "application/json" },
+      status: auth.status,
+    })
   }
 
   const invokedAt = new Date().toISOString()
@@ -21,7 +34,10 @@ Deno.serve(async (req) => {
     console.warn(`[${FUNCTION_NAME}] Failed to parse payload`, error)
   }
 
-  console.log(`[${FUNCTION_NAME}] Invocation at ${invokedAt}`, payload)
+  console.log(
+    `[${FUNCTION_NAME}] Invocation at ${invokedAt} (auth=${auth.method})`,
+    payload,
+  )
 
   const responseBody = {
     status: "ok",
