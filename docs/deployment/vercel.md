@@ -72,6 +72,21 @@ These values are safe to expose in the browser. Prefix them with `NEXT_PUBLIC_` 
 
 Refer to `docs/SUPABASE_AND_AGENT_MANIFEST.yaml` if you need a complete inventory of tables, policies, and storage assets that must exist in Supabase.
 
+## Edge Functions
+
+Supabase Edge Functions now reject unauthenticated traffic. Provision the shared secret once per project and use it whenever a scheduler, cron job, or operator triggers a function.
+
+1. Set the secret in Supabase (CLI or Dashboard):
+   ```bash
+   supabase secrets set EDGE_SERVICE_SECRET="<generate-long-random-string>" [EDGE_JWT_SECRET="<hs256-signing-secret>"]
+   ```
+2. When invoking an Edge Function, include at least one of the following headers:
+   - `X-Service-Secret: <EDGE_SERVICE_SECRET>` — recommended for cron jobs and operational tooling.
+   - `Authorization: Bearer <jwt>` — the JWT must be signed with `EDGE_JWT_SECRET` using HS256 and include a non-expired `exp` claim.
+3. Mirror the secret anywhere the functions are invoked (for example Vercel cron jobs, GitHub Actions, or the `apps/ops` scheduler) so that calls to `https://<project-ref>.functions.supabase.co/<function>` succeed.
+
+Keep the service secret in lock-step across environments: staging and production projects should each have their own value, and rotation requires updating both Supabase secrets and any schedulers that invoke the functions.
+
 ## Build and deploy steps
 
 Reproduce the build locally before pushing to Vercel:
