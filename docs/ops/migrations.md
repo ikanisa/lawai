@@ -10,7 +10,8 @@ Canonical location: `db/migrations`
 
 - File naming: strictly `YYYYMMDDHHMMSS_slug.sql`. CI generates [`db/migrations/manifest.json`](../../db/migrations/manifest.json) which captures ordering, checksums, and rollback strategy hints.
 - Dependency graph: the manifest stores canonical dependency arrays. Sequential migrations inherit a dependency on the previous ID automatically; add overrides in [`db/migrations/dependency-overrides.json`](../../db/migrations/dependency-overrides.json) when a migration depends on multiple predecessors. CI enforces that overrides point to existing, earlier migrations.
-- Use `pnpm lint:sql` to enforce formatting across `db/` and `supabase/` SQL files. The command runs in CI and via `.lefthook.yml`.
+- Run `pnpm lint:sql` to enforce formatting across `db/` and `supabase/` SQL files.
+- When formatting issues are detected locally, use `pnpm lint:sql:fix` (or pass `--fix`) to rewrite the files. The lint command runs in CI and via `.lefthook.yml`.
 - Regenerate the manifest after editing SQL with `node scripts/generate-migration-manifest.mjs` and commit the result.
 - Migrations should be idempotent and safe to run on empty databases.
 - RLS policies must be present for multi‑tenant tables; add an RLS smoke entry to the ops scripts when changing table access.
