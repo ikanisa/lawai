@@ -9,6 +9,7 @@ import { BilingualToggle } from '@/components/bilingual-toggle';
 import { IRACAccordion } from '@/components/irac-accordion';
 import { CitationCard } from '@/components/citation-card';
 import type { Messages } from '@/lib/i18n';
+import type { TrustPanelProvenanceSummary } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 import { RwandaLanguageTriage } from './rwanda-language-triage';
@@ -24,10 +25,12 @@ export interface TrustSummary {
   translationWarnings: string[];
   bindingSummary: string;
   bindingCountsMessage: string | null;
+  nonBindingRules: Array<IRACPayload['rules'][number]>;
   planSummary: string | null;
   riskLabelSummary: string | null;
   hitlSummary: string | null;
   citationHosts: Array<{ host: string; count: number }>;
+  provenance: TrustPanelProvenanceSummary | null;
 }
 
 export interface ResearchResultsPaneProps {
@@ -367,7 +370,80 @@ export function ResearchResultsPane({
               {trustSummary.bindingCountsMessage ? (
                 <p className="mt-1 text-xs text-slate-400">{trustSummary.bindingCountsMessage}</p>
               ) : null}
+              {trustSummary.nonBindingRules.length > 0 ? (
+                <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
+                  {trustSummary.nonBindingRules.map((rule, index) => (
+                    <li key={`${rule.citation}-${index}`}>{rule.citation}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
+
+            {trustSummary.provenance ? (
+              <div className="space-y-3">
+                <div>
+                  <h4 className="font-semibold text-slate-100">{trustMessages.provenanceHeading}</h4>
+                  <p className="mt-1">
+                    {trustMessages.provenanceSummary.replace(
+                      '{count}',
+                      trustSummary.provenance.totalSources.toString(),
+                    )}
+                  </p>
+                  <div className="mt-2 space-y-1 text-slate-300">
+                    <p>
+                      {trustMessages.provenanceEli.replace(
+                        '{count}',
+                        trustSummary.provenance.withEli.toString(),
+                      )}
+                    </p>
+                    <p>
+                      {trustMessages.provenanceEcli.replace(
+                        '{count}',
+                        trustSummary.provenance.withEcli.toString(),
+                      )}
+                    </p>
+                    <p>
+                      {trustMessages.provenanceAkoma.replace(
+                        '{count}',
+                        trustSummary.provenance.akomaArticles.toString(),
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-200">{trustMessages.provenanceResidencyHeading}</p>
+                  {trustSummary.provenance.residencyBreakdown.length > 0 ? (
+                    <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
+                      {trustSummary.provenance.residencyBreakdown.map(({ zone, count }) => (
+                        <li key={`${zone}-${count}`}>
+                          {trustMessages.provenanceResidencyItem
+                            .replace('{zone}', zone.toUpperCase())
+                            .replace('{count}', count.toString())}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-slate-400">{trustMessages.provenanceEmptyResidency}</p>
+                  )}
+                </div>
+                <div>
+                  <p className="font-medium text-slate-200">{trustMessages.provenanceBindingHeading}</p>
+                  {trustSummary.provenance.bindingLanguages.length > 0 ? (
+                    <ul className="mt-2 space-y-1 list-inside list-disc text-slate-300">
+                      {trustSummary.provenance.bindingLanguages.map(({ language, count }) => (
+                        <li key={`${language}-${count}`}>
+                          {trustMessages.provenanceBindingItem
+                            .replace('{language}', language.toUpperCase())
+                            .replace('{count}', count.toString())}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-slate-400">{trustMessages.provenanceEmptyBinding}</p>
+                  )}
+                </div>
+              </div>
+            ) : null}
 
             <div>
               <h4 className="font-semibold text-slate-100">{trustMessages.sourcesHeading}</h4>

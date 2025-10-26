@@ -289,6 +289,7 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
 
   const trustPanel = latestRun?.trustPanel ?? null;
   const trustCitationSummary = trustPanel?.citationSummary ?? null;
+  const trustProvenance = trustPanel?.provenance ?? null;
   const trustRisk = trustPanel?.risk ?? null;
   const verification = latestRun?.verification ?? trustRisk?.verification ?? null;
   const allowlistViolations = verification?.allowlistViolations ?? EMPTY_VIOLATIONS;
@@ -563,10 +564,12 @@ export function ResearchView({ messages, locale }: ResearchViewProps) {
     translationWarnings,
     bindingSummary,
     bindingCountsMessage,
+    nonBindingRules,
     planSummary,
     riskLabelSummary,
     hitlSummary,
     citationHosts,
+    provenance: trustProvenance,
   };
 
   return (

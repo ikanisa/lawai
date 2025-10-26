@@ -42,6 +42,16 @@ describe('ResearchResultsPane trust integrations', () => {
     const hostLabel = trustMessages.sourceHostMultiple
       .replace('{host}', 'legifrance.gouv.fr')
       .replace('{count}', '2');
+    const provenanceSummary = trustMessages.provenanceSummary.replace('{count}', '4');
+    const eliSummary = trustMessages.provenanceEli.replace('{count}', '3');
+    const ecliSummary = trustMessages.provenanceEcli.replace('{count}', '1');
+    const akomaSummary = trustMessages.provenanceAkoma.replace('{count}', '2');
+    const residencyLabel = trustMessages.provenanceResidencyItem
+      .replace('{zone}', 'EU')
+      .replace('{count}', '2');
+    const bindingLanguageLabel = trustMessages.provenanceBindingItem
+      .replace('{language}', 'FR')
+      .replace('{count}', '3');
 
     const props = renderPane({
       readingMode: 'research',
@@ -57,10 +67,26 @@ describe('ResearchResultsPane trust integrations', () => {
         bindingCountsMessage: trustMessages.bindingCounts
           .replace('{binding}', '2')
           .replace('{total}', '4'),
+        nonBindingRules: [
+          {
+            citation: 'Code rural, art. L123-1',
+            source_url: 'https://legifrance.gouv.fr/code/LEGIARTI000006543210/',
+            binding: false,
+            effective_date: '2023-01-01',
+          },
+        ],
         planSummary: trustMessages.planReused,
         riskLabelSummary: riskLabel,
         hitlSummary: trustMessages.hitlNotRequired,
         citationHosts: [{ host: 'legifrance.gouv.fr', count: 2 }],
+        provenance: {
+          totalSources: 4,
+          withEli: 3,
+          withEcli: 1,
+          akomaArticles: 2,
+          residencyBreakdown: [{ zone: 'eu', count: 2 }],
+          bindingLanguages: [{ language: 'fr', count: 3 }],
+        },
       },
       noticeMessages: ['Manual notice'],
     });
@@ -72,6 +98,13 @@ describe('ResearchResultsPane trust integrations', () => {
     expect(screen.getAllByText('Manual notice')).toHaveLength(2);
     expect(screen.getByText(hostLabel)).toBeInTheDocument();
     expect(screen.getByText(trustMessages.hitlNotRequired)).toBeInTheDocument();
+    expect(screen.getByText('Code rural, art. L123-1')).toBeInTheDocument();
+    expect(screen.getByText(provenanceSummary)).toBeInTheDocument();
+    expect(screen.getByText(eliSummary)).toBeInTheDocument();
+    expect(screen.getByText(ecliSummary)).toBeInTheDocument();
+    expect(screen.getByText(akomaSummary)).toBeInTheDocument();
+    expect(screen.getByText(residencyLabel)).toBeInTheDocument();
+    expect(screen.getByText(bindingLanguageLabel)).toBeInTheDocument();
     expect(props.trustSummary.citationHosts).toHaveLength(1);
   });
 

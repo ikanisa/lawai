@@ -53,10 +53,12 @@ const baseTrustSummary: TrustSummary = {
   translationWarnings: [],
   bindingSummary: 'All cited rules are binding.',
   bindingCountsMessage: null,
+  nonBindingRules: [],
   planSummary: 'New plan executed.',
   riskLabelSummary: 'Risk level: LOW',
   hitlSummary: 'Human review not required.',
   citationHosts: [{ host: 'legifrance.gouv.fr', count: 2 }],
+  provenance: null,
 };
 
 function mergeTrustSummary(overrides: Partial<TrustSummary> | undefined): TrustSummary {
