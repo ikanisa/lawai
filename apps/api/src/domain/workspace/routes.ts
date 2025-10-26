@@ -164,12 +164,26 @@ export async function registerWorkspaceRoutes(
         },
       });
     } catch (error) {
+      if (isHttpError(error)) {
+        throw error;
+      }
+
       request.log.error({ err: error }, 'workspace_overview_fetch_failed');
-      const message = error instanceof Error ? error.message : 'Unexpected error while fetching workspace overview.';
+      const message =
+        error instanceof Error ? error.message : 'Unexpected error while fetching workspace overview.';
       return reply.code(500).send({
         error: 'workspace_fetch_failed',
         message,
       });
     }
   });
+}
+
+function isHttpError(error: unknown): error is { statusCode: number } {
+  return Boolean(
+    error &&
+      typeof error === 'object' &&
+      'statusCode' in error &&
+      typeof (error as { statusCode?: unknown }).statusCode === 'number',
+  );
 }

@@ -119,9 +119,6 @@ const telemetryLimiter = limiterFactory.create('telemetry', {
 
 const telemetryRateLimitGuard = createRateLimitGuard(telemetryLimiter, {
   name: 'telemetry',
-  limit: env.RATE_LIMIT_TELEMETRY_LIMIT,
-  windowMs: env.RATE_LIMIT_TELEMETRY_WINDOW_SECONDS * 1000,
-  logger: app.log,
 });
 
 const runsRateLimitGuard = createRateLimitGuard(
@@ -131,9 +128,6 @@ const runsRateLimitGuard = createRateLimitGuard(
   }),
   {
     name: 'runs',
-    limit: env.RATE_LIMIT_RUNS_LIMIT,
-    windowMs: env.RATE_LIMIT_RUNS_WINDOW_SECONDS * 1000,
-    logger: app.log,
   },
 );
 
@@ -146,9 +140,6 @@ const workspaceRateLimitGuard = createRateLimitGuard(
   workspaceLimiter,
   {
     name: 'workspace',
-    limit: env.RATE_LIMIT_WORKSPACE_LIMIT,
-    windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_SECONDS * 1000,
-    logger: app.log,
   },
 );
 
@@ -159,9 +150,6 @@ const complianceRateLimitGuard = createRateLimitGuard(
   }),
   {
     name: 'compliance',
-    limit: env.RATE_LIMIT_COMPLIANCE_LIMIT,
-    windowMs: env.RATE_LIMIT_COMPLIANCE_WINDOW_SECONDS * 1000,
-    logger: app.log,
   },
 );
 
