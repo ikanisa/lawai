@@ -1,9 +1,10 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import type { Locale, Messages } from '../../lib/i18n';
+import type { Locale, Messages } from '@/lib/i18n';
 import { AdminPanelContextProvider } from './context';
 import { AdminPanelMessagesProvider } from './messages-context';
+import { AdminSessionProvider } from './session-context';
 
 interface ProviderProps {
   children: ReactNode;
@@ -13,8 +14,10 @@ interface ProviderProps {
 
 export function AdminPanelProviders({ children, messages, locale }: ProviderProps) {
   return (
-    <AdminPanelMessagesProvider messages={messages} locale={locale}>
-      <AdminPanelContextProvider>{children}</AdminPanelContextProvider>
-    </AdminPanelMessagesProvider>
+    <AdminSessionProvider>
+      <AdminPanelMessagesProvider messages={messages} locale={locale}>
+        <AdminPanelContextProvider>{children}</AdminPanelContextProvider>
+      </AdminPanelMessagesProvider>
+    </AdminSessionProvider>
   );
 }

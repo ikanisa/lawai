@@ -3,17 +3,23 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUpRight, RotateCcw, FileDiff, AlertTriangle } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
+import { Button } from '../@/ui/button';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
-import { adminQueries } from '../api/client';
+import { adminQueries, updateWorkflowStatus } from '../api/client';
+import { useAdminSession } from '../session-context';
 import { Sheet, SheetSection } from '../../../components/ui/sheet';
 
 export function AdminWorkflowsPage() {
   const { activeOrg, searchQuery } = useAdminPanelContext();
+  const { session, loading: sessionLoading } = useAdminSession();
   const queryClient = useQueryClient();
-  const workflowsQuery = useQuery(adminQueries.workflows(activeOrg.id));
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const workflowsQuery = useQuery({
+    ...adminQueries.workflows(activeOrg.id),
+    enabled: isSessionReady,
+  });
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const workflows = workflowsQuery.data?.workflows ?? [];
   const selectedWorkflow = selectedWorkflowId
@@ -21,46 +27,28 @@ export function AdminWorkflowsPage() {
     : undefined;
 
   const promoteMutation = useMutation({
-    mutationFn: async (workflowId: string) => {
-      const response = await fetch('/api/admin/workflows', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: activeOrg.id, action: 'promote', payload: { workflowId } }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to promote workflow');
-      }
-      return response.json();
-    },
+    mutationFn: async (workflowId: string) => updateWorkflowStatus(activeOrg.id, 'promote', workflowId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminQueries.workflows(activeOrg.id).queryKey });
     },
   });
 
   const rollbackMutation = useMutation({
-    mutationFn: async (workflowId: string) => {
-      const response = await fetch('/api/admin/workflows', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: activeOrg.id, action: 'rollback', payload: { workflowId } }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to rollback workflow');
-      }
-      return response.json();
-    },
+    mutationFn: async (workflowId: string) => updateWorkflowStatus(activeOrg.id, 'rollback', workflowId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminQueries.workflows(activeOrg.id).queryKey });
     },
   });
 
   const confirmPromote = (workflowId: string) => {
+    if (!isSessionReady) return;
     if (window.confirm('Promote workflow to production? Previous version will be archived.')) {
       promoteMutation.mutate(workflowId);
     }
   };
 
   const confirmRollback = (workflowId: string) => {
+    if (!isSessionReady) return;
     if (window.confirm('Rollback workflow to staging version? This will halt active runs.')) {
       rollbackMutation.mutate(workflowId);
     }
@@ -117,7 +105,7 @@ export function AdminWorkflowsPage() {
                   size="sm"
                   className="gap-2"
                   onClick={() => confirmPromote(selectedWorkflow.id)}
-                  disabled={promoteMutation.isPending || selectedWorkflow.status === 'production'}
+                  disabled={!isSessionReady || promoteMutation.isPending || selectedWorkflow.status === 'production'}
                 >
                   <ArrowUpRight className="h-4 w-4" /> Promote to production
                 </Button>
@@ -126,7 +114,7 @@ export function AdminWorkflowsPage() {
                   variant="outline"
                   className="gap-2"
                   onClick={() => confirmRollback(selectedWorkflow.id)}
-                  disabled={rollbackMutation.isPending || selectedWorkflow.status !== 'production'}
+                  disabled={!isSessionReady || rollbackMutation.isPending || selectedWorkflow.status !== 'production'}
                 >
                   <RotateCcw className="h-4 w-4" /> Rollback
                 </Button>

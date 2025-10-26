@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { FastifyInstance } from 'fastify';
+import type { AppFastifyInstance } from '../../types/fastify.js';
 import { AgentRunSchema, AgentRunRequestSchema, AgentStreamRequestSchema, type AgentRun, type ResearchStreamEvent, ResearchStreamPayloadSchema } from '@avocat-ai/shared';
 import type { AppContext } from '../../types/context.js';
 import { createResearchStream } from '../research/data.js';
@@ -26,7 +26,7 @@ function persistRun(runId: string, payload: SimulatedRun) {
   }
 }
 
-export async function registerAgentsRoutes(app: FastifyInstance, _ctx: AppContext) {
+export async function registerAgentsRoutes(app: AppFastifyInstance, _ctx: AppContext) {
   app.post('/agents/run', async (request, reply) => {
     const parse = AgentRunRequestSchema.safeParse(request.body ?? {});
     if (!parse.success) {
@@ -46,10 +46,11 @@ export async function registerAgentsRoutes(app: FastifyInstance, _ctx: AppContex
       updatedAt: now,
       input: body.input,
       jurisdiction: body.jurisdiction ?? null,
-      policyFlags: body.policy_flags ?? []
+      policyFlags: body.policy_flags ?? [],
+      webSearchMode: body.web_search_mode ?? 'allowlist'
     });
 
-    const events = createResearchStream(body.input, body.tools_enabled ?? []);
+    const events = createResearchStream(body.input, body.tools_enabled ?? [], run.webSearchMode);
     persistRun(runId, { run, events, createdAt: Date.now() });
 
     return run;

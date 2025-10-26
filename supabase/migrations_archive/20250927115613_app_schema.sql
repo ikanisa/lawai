@@ -1,14 +1,12 @@
 -- Application schema for the francophone lawyer AI agent.
 -- Creates core domain tables plus sensible defaults and row-level security policies.
-
 -- Ensure required extensions exist.
-create extension if not exists "vector" with schema extensions;
+CREATE EXTENSION if NOT EXISTS "vector"
+WITH
+  schema extensions;
 
 -- Helper function to keep updated_at columns current.
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-as $$
+CREATE OR REPLACE FUNCTION public.set_updated_at () returns trigger language plpgsql AS $$
 begin
   new.updated_at := now();
   return new;
@@ -44,75 +42,94 @@ BEGIN
 END
 $$;
 
-alter table public.profiles
-  add column if not exists id uuid,
-  add column if not exists preferred_language text,
-  add column if not exists role text,
-  add column if not exists organisation text,
-  add column if not exists timezone text,
-  add column if not exists metadata jsonb,
-  add column if not exists email text,
-  add column if not exists phone_e164 text,
-  add column if not exists professional_type text,
-  add column if not exists bar_number text,
-  add column if not exists court_id text,
-  add column if not exists verified boolean default false,
-  add column if not exists created_at timestamptz not null default now(),
-  add column if not exists updated_at timestamptz not null default now();
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS id uuid,
+ADD COLUMN IF NOT EXISTS preferred_language text,
+ADD COLUMN IF NOT EXISTS role text,
+ADD COLUMN IF NOT EXISTS organisation text,
+ADD COLUMN IF NOT EXISTS timezone text,
+ADD COLUMN IF NOT EXISTS metadata jsonb,
+ADD COLUMN IF NOT EXISTS email text,
+ADD COLUMN IF NOT EXISTS phone_e164 text,
+ADD COLUMN IF NOT EXISTS professional_type text,
+ADD COLUMN IF NOT EXISTS bar_number text,
+ADD COLUMN IF NOT EXISTS court_id text,
+ADD COLUMN IF NOT EXISTS verified boolean DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
-update public.profiles
-  set id = user_id
-  where id is null;
+UPDATE public.profiles
+SET
+  id = user_id
+WHERE
+  id IS NULL;
 
-update public.profiles
-  set preferred_language = coalesce(preferred_language, locale, 'fr');
+UPDATE public.profiles
+SET
+  preferred_language = coalesce(preferred_language, locale, 'fr');
 
-update public.profiles
-  set role = coalesce(role, 'client');
+UPDATE public.profiles
+SET ROLE = coalesce(role, 'client');
 
-update public.profiles
-  set timezone = coalesce(timezone, 'Europe/Paris');
+UPDATE public.profiles
+SET
+  timezone = coalesce(timezone, 'Europe/Paris');
 
-update public.profiles
-  set metadata = '{}'::jsonb
-  where metadata is null;
+UPDATE public.profiles
+SET
+  metadata = '{}'::jsonb
+WHERE
+  metadata IS NULL;
 
-update public.profiles
-  set verified = false
-  where verified is null;
+UPDATE public.profiles
+SET
+  verified = FALSE
+WHERE
+  verified IS NULL;
 
-alter table public.profiles
-  alter column id set not null;
+ALTER TABLE public.profiles
+ALTER COLUMN id
+SET NOT NULL;
 
-alter table public.profiles
-  alter column preferred_language set default 'fr';
+ALTER TABLE public.profiles
+ALTER COLUMN preferred_language
+SET DEFAULT 'fr';
 
-alter table public.profiles
-  alter column role set default 'client';
+ALTER TABLE public.profiles
+ALTER COLUMN role
+SET DEFAULT 'client';
 
-alter table public.profiles
-  alter column timezone set default 'Europe/Paris';
+ALTER TABLE public.profiles
+ALTER COLUMN timezone
+SET DEFAULT 'Europe/Paris';
 
-alter table public.profiles
-  alter column metadata set default '{}'::jsonb;
+ALTER TABLE public.profiles
+ALTER COLUMN metadata
+SET DEFAULT '{}'::jsonb;
 
-alter table public.profiles
-  alter column preferred_language set not null;
+ALTER TABLE public.profiles
+ALTER COLUMN preferred_language
+SET NOT NULL;
 
-alter table public.profiles
-  alter column role set not null;
+ALTER TABLE public.profiles
+ALTER COLUMN role
+SET NOT NULL;
 
-alter table public.profiles
-  alter column timezone set not null;
+ALTER TABLE public.profiles
+ALTER COLUMN timezone
+SET NOT NULL;
 
-alter table public.profiles
-  alter column metadata set not null;
+ALTER TABLE public.profiles
+ALTER COLUMN metadata
+SET NOT NULL;
 
-alter table public.profiles
-  alter column verified set default false;
+ALTER TABLE public.profiles
+ALTER COLUMN verified
+SET DEFAULT FALSE;
 
-alter table public.profiles
-  alter column verified set not null;
+ALTER TABLE public.profiles
+ALTER COLUMN verified
+SET NOT NULL;
 
 DO $$
 BEGIN
@@ -128,7 +145,7 @@ BEGIN
 END
 $$;
 
-do $$
+DO $$
 begin
   if not exists (
     select 1
@@ -148,191 +165,248 @@ begin
 end
 $$;
 
-drop trigger if exists set_profiles_updated_at on public.profiles;
+DROP TRIGGER if EXISTS set_profiles_updated_at ON public.profiles;
 
-create trigger set_profiles_updated_at
-  before update on public.profiles
-  for each row
-  execute procedure public.set_updated_at();
+CREATE TRIGGER set_profiles_updated_at before
+UPDATE ON public.profiles FOR each ROW
+EXECUTE procedure public.set_updated_at ();
 
 -- Cases ---------------------------------------------------------------------
-create table if not exists public.cases (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references public.profiles(id) on delete cascade,
-  title text not null,
+CREATE TABLE IF NOT EXISTS public.cases (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id uuid NOT NULL REFERENCES public.profiles (id) ON DELETE CASCADE,
+  title text NOT NULL,
   summary text,
-  status public.case_status not null default 'draft',
+  status public.case_status NOT NULL DEFAULT 'draft',
   jurisdiction text,
   matter_type text,
-  tags text[] default '{}',
-  opened_at timestamptz not null default now(),
+  tags TEXT[] DEFAULT '{}',
+  opened_at timestamptz NOT NULL DEFAULT now(),
   closed_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists cases_owner_idx on public.cases(owner_id);
-create index if not exists cases_status_idx on public.cases(status);
+CREATE INDEX if NOT EXISTS cases_owner_idx ON public.cases (owner_id);
 
-drop trigger if exists set_cases_updated_at on public.cases;
+CREATE INDEX if NOT EXISTS cases_status_idx ON public.cases (status);
 
-create trigger set_cases_updated_at
-  before update on public.cases
-  for each row
-  execute procedure public.set_updated_at();
+DROP TRIGGER if EXISTS set_cases_updated_at ON public.cases;
+
+CREATE TRIGGER set_cases_updated_at before
+UPDATE ON public.cases FOR each ROW
+EXECUTE procedure public.set_updated_at ();
 
 -- Documents -----------------------------------------------------------------
-create table if not exists public.case_documents (
-  id uuid primary key default gen_random_uuid(),
-  case_id uuid not null references public.cases(id) on delete cascade,
-  title text not null,
+CREATE TABLE IF NOT EXISTS public.case_documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_id uuid NOT NULL REFERENCES public.cases (id) ON DELETE CASCADE,
+  title text NOT NULL,
   doc_type text,
-  language text default 'fr',
+  language text DEFAULT 'fr',
   storage_path text,
   content_preview text,
-  embedding vector(1536),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  embedding vector (1536),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists case_documents_case_idx on public.case_documents(case_id);
-create index if not exists case_documents_language_idx on public.case_documents(language);
+CREATE INDEX if NOT EXISTS case_documents_case_idx ON public.case_documents (case_id);
 
-drop trigger if exists set_case_documents_updated_at on public.case_documents;
+CREATE INDEX if NOT EXISTS case_documents_language_idx ON public.case_documents (language);
 
-create trigger set_case_documents_updated_at
-  before update on public.case_documents
-  for each row
-  execute procedure public.set_updated_at();
+DROP TRIGGER if EXISTS set_case_documents_updated_at ON public.case_documents;
+
+CREATE TRIGGER set_case_documents_updated_at before
+UPDATE ON public.case_documents FOR each ROW
+EXECUTE procedure public.set_updated_at ();
 
 -- Messages ------------------------------------------------------------------
-create table if not exists public.case_messages (
-  id uuid primary key default gen_random_uuid(),
-  case_id uuid not null references public.cases(id) on delete cascade,
-  actor public.message_actor not null,
-  sender_id uuid references public.profiles(id) on delete set null,
-  content text not null,
-  tokens int check (tokens >= 0),
+CREATE TABLE IF NOT EXISTS public.case_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_id uuid NOT NULL REFERENCES public.cases (id) ON DELETE CASCADE,
+  actor public.message_actor NOT NULL,
+  sender_id uuid REFERENCES public.profiles (id) ON DELETE SET NULL,
+  content text NOT NULL,
+  tokens int CHECK (tokens >= 0),
   model text,
-  created_at timestamptz not null default now()
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists case_messages_case_idx on public.case_messages(case_id, created_at);
+CREATE INDEX if NOT EXISTS case_messages_case_idx ON public.case_messages (case_id, created_at);
 
 -- Task tracking -------------------------------------------------------------
-create table if not exists public.tasks (
-  id uuid primary key default gen_random_uuid(),
-  case_id uuid not null references public.cases(id) on delete cascade,
-  owner_id uuid references public.profiles(id) on delete set null,
-  title text not null,
+CREATE TABLE IF NOT EXISTS public.tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_id uuid NOT NULL REFERENCES public.cases (id) ON DELETE CASCADE,
+  owner_id uuid REFERENCES public.profiles (id) ON DELETE SET NULL,
+  title text NOT NULL,
   description text,
   due_date date,
-  status text not null default 'todo' check (status in ('todo', 'in_progress', 'blocked', 'done')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  status text NOT NULL DEFAULT 'todo' CHECK (
+    status IN ('todo', 'in_progress', 'blocked', 'done')
+  ),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists tasks_case_idx on public.tasks(case_id);
-create index if not exists tasks_owner_idx on public.tasks(owner_id);
+CREATE INDEX if NOT EXISTS tasks_case_idx ON public.tasks (case_id);
 
-drop trigger if exists set_tasks_updated_at on public.tasks;
+CREATE INDEX if NOT EXISTS tasks_owner_idx ON public.tasks (owner_id);
 
-create trigger set_tasks_updated_at
-  before update on public.tasks
-  for each row
-  execute procedure public.set_updated_at();
+DROP TRIGGER if EXISTS set_tasks_updated_at ON public.tasks;
+
+CREATE TRIGGER set_tasks_updated_at before
+UPDATE ON public.tasks FOR each ROW
+EXECUTE procedure public.set_updated_at ();
 
 -- Row-Level Security --------------------------------------------------------
-alter table public.profiles enable row level security;
-alter table public.cases enable row level security;
-alter table public.case_documents enable row level security;
-alter table public.case_messages enable row level security;
-alter table public.tasks enable row level security;
+ALTER TABLE public.profiles enable ROW level security;
 
-drop policy if exists "Profiles are accessible by owner" on public.profiles;
-create policy "Profiles are accessible by owner"
-  on public.profiles
-  using (id = auth.uid())
-  with check (id = auth.uid());
+ALTER TABLE public.cases enable ROW level security;
+
+ALTER TABLE public.case_documents enable ROW level security;
+
+ALTER TABLE public.case_messages enable ROW level security;
+
+ALTER TABLE public.tasks enable ROW level security;
+
+DROP POLICY if EXISTS "Profiles are accessible by owner" ON public.profiles;
+
+CREATE POLICY "Profiles are accessible by owner" ON public.profiles USING (id = auth.uid ())
+WITH
+  CHECK (id = auth.uid ());
 
 -- Allow the authenticated user to create a profile matching their UID.
-drop policy if exists "Insert own profile" on public.profiles;
-create policy "Insert own profile"
-  on public.profiles
-  for insert
-  with check (id = auth.uid());
+DROP POLICY if EXISTS "Insert own profile" ON public.profiles;
+
+CREATE POLICY "Insert own profile" ON public.profiles FOR insert
+WITH
+  CHECK (id = auth.uid ());
 
 -- Cases: owner-based access.
-drop policy if exists "Cases visible to owner" on public.cases;
-create policy "Cases visible to owner"
-  on public.cases
-  for select using (owner_id = auth.uid());
+DROP POLICY if EXISTS "Cases visible to owner" ON public.cases;
 
-drop policy if exists "Cases modifiable by owner" on public.cases;
-create policy "Cases modifiable by owner"
-  on public.cases
-  for all
-  using (owner_id = auth.uid())
-  with check (owner_id = auth.uid());
+CREATE POLICY "Cases visible to owner" ON public.cases FOR
+SELECT
+  USING (owner_id = auth.uid ());
+
+DROP POLICY if EXISTS "Cases modifiable by owner" ON public.cases;
+
+CREATE POLICY "Cases modifiable by owner" ON public.cases FOR ALL USING (owner_id = auth.uid ())
+WITH
+  CHECK (owner_id = auth.uid ());
 
 -- Documents follow case ownership.
-drop policy if exists "Documents follow case ownership" on public.case_documents;
-create policy "Documents follow case ownership"
-  on public.case_documents
-  using (exists (
-    select 1 from public.cases c
-    where c.id = case_documents.case_id
-      and c.owner_id = auth.uid()
-  ))
-  with check (exists (
-    select 1 from public.cases c
-    where c.id = case_documents.case_id
-      and c.owner_id = auth.uid()
-  ));
+DROP POLICY if EXISTS "Documents follow case ownership" ON public.case_documents;
 
-drop policy if exists "Messages follow case ownership" on public.case_messages;
-create policy "Messages follow case ownership"
-  on public.case_messages
-  using (exists (
-    select 1 from public.cases c
-    where c.id = case_messages.case_id
-      and c.owner_id = auth.uid()
-  ))
-  with check (exists (
-    select 1 from public.cases c
-    where c.id = case_messages.case_id
-      and c.owner_id = auth.uid()
-  ));
+CREATE POLICY "Documents follow case ownership" ON public.case_documents USING (
+  EXISTS (
+    SELECT
+      1
+    FROM
+      public.cases c
+    WHERE
+      c.id = case_documents.case_id
+      AND c.owner_id = auth.uid ()
+  )
+)
+WITH
+  CHECK (
+    EXISTS (
+      SELECT
+        1
+      FROM
+        public.cases c
+      WHERE
+        c.id = case_documents.case_id
+        AND c.owner_id = auth.uid ()
+    )
+  );
 
-drop policy if exists "Tasks follow case ownership" on public.tasks;
-create policy "Tasks follow case ownership"
-  on public.tasks
-  using (exists (
-    select 1 from public.cases c
-    where c.id = tasks.case_id
-      and c.owner_id = auth.uid()
-  ))
-  with check (exists (
-    select 1 from public.cases c
-    where c.id = tasks.case_id
-      and c.owner_id = auth.uid()
-  ));
+DROP POLICY if EXISTS "Messages follow case ownership" ON public.case_messages;
+
+CREATE POLICY "Messages follow case ownership" ON public.case_messages USING (
+  EXISTS (
+    SELECT
+      1
+    FROM
+      public.cases c
+    WHERE
+      c.id = case_messages.case_id
+      AND c.owner_id = auth.uid ()
+  )
+)
+WITH
+  CHECK (
+    EXISTS (
+      SELECT
+        1
+      FROM
+        public.cases c
+      WHERE
+        c.id = case_messages.case_id
+        AND c.owner_id = auth.uid ()
+    )
+  );
+
+DROP POLICY if EXISTS "Tasks follow case ownership" ON public.tasks;
+
+CREATE POLICY "Tasks follow case ownership" ON public.tasks USING (
+  EXISTS (
+    SELECT
+      1
+    FROM
+      public.cases c
+    WHERE
+      c.id = tasks.case_id
+      AND c.owner_id = auth.uid ()
+  )
+)
+WITH
+  CHECK (
+    EXISTS (
+      SELECT
+        1
+      FROM
+        public.cases c
+      WHERE
+        c.id = tasks.case_id
+        AND c.owner_id = auth.uid ()
+    )
+  );
 
 -- Default privileges & type grants -----------------------------------------
-grant usage on type public.case_status to anon, authenticated, service_role;
-grant usage on type public.message_actor to anon, authenticated, service_role;
+GRANT usage ON type public.case_status TO anon,
+authenticated,
+service_role;
 
-alter default privileges in schema public
-  grant select on tables to anon;
+GRANT usage ON type public.message_actor TO anon,
+authenticated,
+service_role;
 
-alter default privileges in schema public
-  grant select, insert, update, delete on tables to authenticated;
+ALTER DEFAULT PRIVILEGES IN schema public
+GRANT
+SELECT
+  ON tables TO anon;
 
-alter default privileges in schema public
-  grant usage, select on sequences to authenticated;
+ALTER DEFAULT PRIVILEGES IN schema public
+GRANT
+SELECT
+,
+  insert,
+UPDATE,
+delete ON tables TO authenticated;
 
-alter default privileges in schema public
-  grant all on tables to service_role;
+ALTER DEFAULT PRIVILEGES IN schema public
+GRANT usage,
+SELECT
+  ON sequences TO authenticated;
 
-alter default privileges in schema public
-  grant usage, select on sequences to service_role;
+ALTER DEFAULT PRIVILEGES IN schema public
+GRANT ALL ON tables TO service_role;
+
+ALTER DEFAULT PRIVILEGES IN schema public
+GRANT usage,
+SELECT
+  ON sequences TO service_role;

@@ -1,15 +1,24 @@
 -- Product and operations change log entries
-create table if not exists public.change_log_entries (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  entry_date date not null,
-  title text not null,
-  category text not null check (category in ('product','policy','ops','compliance','incident','release')),
+CREATE TABLE IF NOT EXISTS public.change_log_entries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  entry_date date NOT NULL,
+  title text NOT NULL,
+  category text NOT NULL CHECK (
+    category IN (
+      'product',
+      'policy',
+      'ops',
+      'compliance',
+      'incident',
+      'release'
+    )
+  ),
   summary text,
   release_tag text,
   links jsonb,
-  recorded_by uuid not null,
-  recorded_at timestamptz not null default now()
+  recorded_by uuid NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT now()
 );
 
-create index if not exists change_log_entries_org_idx on public.change_log_entries(org_id, entry_date desc);
+CREATE INDEX if NOT EXISTS change_log_entries_org_idx ON public.change_log_entries (org_id, entry_date DESC);
