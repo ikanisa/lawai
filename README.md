@@ -8,8 +8,9 @@ This repository contains the production implementation scaffold for the Avocat-A
 apps/
   api/        # Fastify API service hosting the agent orchestrator and REST endpoints
   edge/       # Supabase Edge Functions (Deno) for crawlers, schedulers, and webhooks
-  ops/        # Command-line tooling for ingestion and evaluations
-  web/        # Next.js App Router front-end (liquid-glass UI, shadcn primitives, TanStack Query)
+  ops/        # Command-line tooling for ingestion, provisioning, and evaluations
+  pwa/        # Next.js PWA surface for litigants and reviewers (App Router, Radix UI, three.js)
+  web/        # Next.js operator console for admins and HITL reviewers (App Router, shadcn UI, TanStack Query)
 
 db/
   migrations/ # SQL migrations (Supabase/Postgres)
@@ -19,6 +20,14 @@ packages/
   shared/     # Shared TypeScript utilities (IRAC schema, allowlists, constants)
   supabase/   # Generated types and helpers for Supabase clients
 ```
+
+Key runbooks and deployment guides:
+
+- [`apps/api`](docs/operations/avocat-ai-launch-runbook.md) – Launch automation and smoke checks for the Fastify orchestrator.
+- [`apps/edge`](docs/ops/provenance-alerts.md) – Example edge deployment (provenance alerts) and environment guidance.
+- [`apps/ops`](docs/ops/cron.md) – Scheduler worker and CLI bootstrap instructions for operational tooling.
+- [`apps/pwa`](docs/deployment/vercel.md) – Vercel deployment checklist for the public-facing PWA.
+- [`apps/web`](docs/local-hosting.md) – Operator console runbook for local/self-hosted environments.
 
 ## Local Setup (MacBook)
 
@@ -45,7 +54,7 @@ packages/
    ```bash
    pnpm seed
    ```
-6. Generate the PWA icons before running a production web build:
+6. Generate the operator console icon sprite before running a production build:
    ```bash
    pnpm --filter @avocat-ai/web icons:generate
    ```
@@ -53,7 +62,11 @@ packages/
    ```bash
    pnpm dev:api
    ```
-8. Launch the operator console on http://localhost:3001:
+8. Launch the public-facing PWA on http://localhost:3000 (set `PORT=3002` if the default port is busy):
+   ```bash
+   pnpm --filter @apps/pwa dev
+   ```
+9. Launch the operator console on http://localhost:3001:
    ```bash
    pnpm dev:web
    ```
