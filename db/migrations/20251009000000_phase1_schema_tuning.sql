@@ -2,37 +2,38 @@
 -- - Deduplicate and protect document_chunks ordering
 -- - Improve agent_runs / hitl_queue query performance
 -- - Allow org members to view their roster
-
-begin;
+BEGIN;
 
 -- Remove duplicate chunk sequences per document before adding the constraint.
-with ranked_chunks as (
-  select
-    id,
-    row_number() over (
-      partition by document_id, seq
-      order by created_at asc, id asc
-    ) as rn
-  from public.document_chunks
-)
-delete from public.document_chunks dc
-using ranked_chunks r
-where dc.id = r.id
-  and r.rn > 1;
+WITH
+  ranked_chunks AS (
+    SELECT
+      id,
+      row_number() OVER (
+        PARTITION BY
+          document_id,
+          seq
+        ORDER BY
+          created_at ASC,
+          id ASC
+      ) AS rn
+    FROM
+      public.document_chunks
+  )
+DELETE FROM public.document_chunks dc USING ranked_chunks r
+WHERE
+  dc.id = r.id
+  AND r.rn > 1;
 
-alter table public.document_chunks
-  add constraint document_chunks_document_seq_unique
-  unique (document_id, seq);
+ALTER TABLE public.document_chunks
+ADD CONSTRAINT document_chunks_document_seq_unique UNIQUE (document_id, seq);
 
-create index if not exists agent_runs_org_status_idx
-  on public.agent_runs (org_id, status, started_at desc);
+CREATE INDEX if NOT EXISTS agent_runs_org_status_idx ON public.agent_runs (org_id, status, started_at DESC);
 
-create index if not exists hitl_queue_org_status_idx
-  on public.hitl_queue (org_id, status, created_at desc);
+CREATE INDEX if NOT EXISTS hitl_queue_org_status_idx ON public.hitl_queue (org_id, status, created_at DESC);
 
-create policy "org_members read by org"
-  on public.org_members
-  for select
-  using (public.is_org_member(org_id));
+CREATE POLICY "org_members read by org" ON public.org_members FOR
+SELECT
+  USING (public.is_org_member (org_id));
 
-commit;
+COMMIT;

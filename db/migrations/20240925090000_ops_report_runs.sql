@@ -1,21 +1,26 @@
 -- Create table to store generated ops reports
-create table if not exists public.ops_report_runs (
-    id uuid primary key default gen_random_uuid(),
-    org_id uuid not null,
-    report_kind text not null,
-    requested_by uuid not null,
-    payload jsonb not null,
-    created_at timestamptz not null default now(),
-    metadata jsonb,
-    status text default 'completed'
+CREATE TABLE IF NOT EXISTS public.ops_report_runs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  report_kind text NOT NULL,
+  requested_by uuid NOT NULL,
+  payload jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  metadata jsonb,
+  status text DEFAULT 'completed'
 );
 
-create index if not exists ops_report_runs_org_kind_idx on public.ops_report_runs (org_id, report_kind, created_at desc);
+CREATE INDEX if NOT EXISTS ops_report_runs_org_kind_idx ON public.ops_report_runs (org_id, report_kind, created_at DESC);
 
-alter table public.ops_report_runs enable row level security;
+ALTER TABLE public.ops_report_runs enable ROW level security;
 
-create policy "org members can read ops report runs" on public.ops_report_runs
-  for select using (auth.uid() = requested_by or auth.role() = 'service_role');
+CREATE POLICY "org members can read ops report runs" ON public.ops_report_runs FOR
+SELECT
+  USING (
+    auth.uid () = requested_by
+    OR auth.role () = 'service_role'
+  );
 
-create policy "service role can insert ops report runs" on public.ops_report_runs
-  for insert with check (auth.role() = 'service_role');
+CREATE POLICY "service role can insert ops report runs" ON public.ops_report_runs FOR insert
+WITH
+  CHECK (auth.role () = 'service_role');

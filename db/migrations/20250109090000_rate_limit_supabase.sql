@@ -1,25 +1,22 @@
-create table if not exists public.rate_limit_counters (
-  key text primary key,
-  count integer not null,
-  reset_at timestamptz not null,
-  updated_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.rate_limit_counters (
+  key text PRIMARY KEY,
+  count integer NOT NULL,
+  reset_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-comment on table public.rate_limit_counters is 'Tracks request counts for distributed rate limiting.';
+comment ON TABLE public.rate_limit_counters IS 'Tracks request counts for distributed rate limiting.';
 
-create index if not exists rate_limit_counters_reset_idx on public.rate_limit_counters (reset_at);
+CREATE INDEX if NOT EXISTS rate_limit_counters_reset_idx ON public.rate_limit_counters (reset_at);
 
-create or replace function public.rate_limit_hit(
+CREATE OR REPLACE FUNCTION public.rate_limit_hit (
   identifier text,
-  limit integer,
-  window_seconds integer,
-  weight integer default 1
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
+  LIMIT
+    integer, window_seconds integer,
+    weight integer DEFAULT 1
+) returns jsonb language plpgsql security definer
+SET
+  search_path = public AS $$
 declare
   now_ts timestamptz := now();
   new_reset_at timestamptz := now_ts + make_interval(secs => window_seconds);
@@ -70,12 +67,9 @@ begin
 end;
 $$;
 
-create or replace function public.rate_limit_reset(identifier text)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
+CREATE OR REPLACE FUNCTION public.rate_limit_reset (identifier text) returns void language plpgsql security definer
+SET
+  search_path = public AS $$
 begin
   delete from public.rate_limit_counters where key = identifier;
 end;
