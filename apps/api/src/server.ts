@@ -1,17 +1,14 @@
 import { createApp } from './app.js';
 import Fastify, { type FastifyReply } from 'fastify';
-import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
 import { diffWordsWithSpace } from 'diff';
 import { WebSearchModeSchema } from '@avocat-ai/shared';
 import type { IRACPayload, WebSearchMode } from '@avocat-ai/shared';
 import { z } from 'zod';
-import { env } from './config.js';
+import { env, rateLimitConfig } from './config.js';
 import type Redis from 'ioredis';
-import { IRACPayloadSchema } from './schemas/irac.js';
 import { getOpenAI, logOpenAIDebug, setOpenAILogger } from './openai.js';
-import { getHybridRetrievalContext, runLegalAgent } from './agent-wrapper.js';
+import { getHybridRetrievalContext } from './agent-wrapper.js';
 import { summariseDocumentFromPayload } from './summarization.js';
-import { registerComplianceRoutes } from './domain/compliance/routes.js';
 // Defer finance workers to runtime without affecting typecheck
 try {
   const dyn = new Function('p', 'return import(p)');
@@ -69,13 +66,14 @@ import {
   SupabaseRateLimiter,
   createRateLimitPreHandler,
   createRateLimitGuard,
-  createRateLimiterFactory,
   enforceRateLimit,
 } from './rate-limit.js';
 import { withRequestSpan } from './observability/spans.js';
 import { incrementCounter } from './observability/metrics.js';
 import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js';
 import { extractCountry } from './utils/jurisdictions.js';
+import { ensureTelemetryRuntime } from './telemetry.js';
+import { registerGracefulShutdown } from './core/lifecycle/graceful-shutdown.js';
 
 const telemetry = await ensureTelemetryRuntime();
 const { app, context } = await createApp();
@@ -93,116 +91,37 @@ app.addHook('onClose', async () => {
 
 setOpenAILogger(app.log);
 
-const limiterFactory = createRateLimiterFactory({
-  enabled: env.RATE_LIMIT_ENABLED,
-  provider: env.RATE_LIMIT_PROVIDER,
-  redis:
-    env.RATE_LIMIT_PROVIDER === 'redis'
-      ? {
-          url: env.RATE_LIMIT_REDIS_URL,
-        }
-      : undefined,
-  supabase:
-    env.RATE_LIMIT_PROVIDER === 'supabase'
-      ? {
-          client: supabase,
-          functionName: env.RATE_LIMIT_SUPABASE_FUNCTION,
-        }
-      : undefined,
-  logger: app.log,
-});
+const limiterFactory = context.rateLimiterFactory;
 
-const telemetryLimiter = limiterFactory.create('telemetry', {
-  limit: env.RATE_LIMIT_TELEMETRY_LIMIT,
-  windowMs: env.RATE_LIMIT_TELEMETRY_WINDOW_SECONDS * 1000,
-});
+const telemetryLimiter = limiterFactory.create('telemetry', rateLimitConfig.buckets.telemetry);
 
 const telemetryRateLimitGuard = createRateLimitGuard(telemetryLimiter, {
   name: 'telemetry',
 });
 
-const runsRateLimitGuard = createRateLimitGuard(
-  limiterFactory.create('runs', {
-    limit: env.RATE_LIMIT_RUNS_LIMIT,
-    windowMs: env.RATE_LIMIT_RUNS_WINDOW_SECONDS * 1000,
-  }),
-  {
-    name: 'runs',
-  },
-);
-
-const workspaceLimiter = limiterFactory.create('workspace', {
-  limit: env.RATE_LIMIT_WORKSPACE_LIMIT,
-  windowMs: env.RATE_LIMIT_WORKSPACE_WINDOW_SECONDS * 1000,
-});
-
-const workspaceRateLimitGuard = createRateLimitGuard(
-  workspaceLimiter,
-  {
-    name: 'workspace',
-  },
-);
-
-const complianceRateLimitGuard = createRateLimitGuard(
-  limiterFactory.create('compliance', {
-    limit: env.RATE_LIMIT_COMPLIANCE_LIMIT,
-    windowMs: env.RATE_LIMIT_COMPLIANCE_WINDOW_SECONDS * 1000,
-  }),
-  {
-    name: 'compliance',
-  },
-);
-
+const workspaceLimiter =
+  context.limiters.workspace ?? limiterFactory.create('workspace', rateLimitConfig.buckets.workspace);
+if (!context.limiters.workspace) {
+  context.limiters.workspace = workspaceLimiter;
+}
+const workspaceRateLimitGuard =
+  context.rateLimits.workspace ?? createRateLimitGuard(workspaceLimiter, { name: 'workspace' });
 context.rateLimits.workspace = workspaceRateLimitGuard;
 
-await registerWorkspaceRoutes(app, context, { limiter: workspaceLimiter });
+const complianceLimiter =
+  context.limiters.compliance ?? limiterFactory.create('compliance', rateLimitConfig.buckets.compliance);
+if (!context.limiters.compliance) {
+  context.limiters.compliance = complianceLimiter;
+}
+const complianceRateLimitGuard =
+  context.rateLimits.compliance ?? createRateLimitGuard(complianceLimiter, { name: 'compliance' });
+context.rateLimits.compliance = complianceRateLimitGuard;
 
 const sensitiveRateLimiter = new SupabaseRateLimiter({
   supabase,
   limit: 30,
   windowSeconds: 60,
   prefix: 'sensitive',
-});
-
-const complianceAcknowledgementsRateLimit = createRateLimitPreHandler({
-  limiter: sensitiveRateLimiter,
-  keyGenerator: (request) => {
-    const userHeader = request.headers['x-user-id'];
-    const orgHeader = request.headers['x-org-id'];
-    if (typeof userHeader === 'string' && typeof orgHeader === 'string') {
-      return `${orgHeader}:${userHeader}:compliance`;
-    }
-    return null;
-  },
-});
-
-const complianceStatusRateLimit = createRateLimitPreHandler({
-  limiter: sensitiveRateLimiter,
-  keyGenerator: (request) => {
-    const userHeader = request.headers['x-user-id'];
-    const orgHeader = request.headers['x-org-id'];
-    if (typeof userHeader === 'string' && typeof orgHeader === 'string') {
-      return `${orgHeader}:${userHeader}:compliance-status`;
-    }
-    return null;
-  },
-});
-
-const runExecutionRateLimit = createRateLimitPreHandler({
-  limiter: sensitiveRateLimiter,
-  keyGenerator: (request) => {
-    const body = request.body as { orgId?: unknown; userId?: unknown } | undefined;
-    const bodyOrg = typeof body?.orgId === 'string' ? body.orgId : undefined;
-    const bodyUser = typeof body?.userId === 'string' ? body.userId : undefined;
-    const orgHeader = typeof request.headers['x-org-id'] === 'string' ? (request.headers['x-org-id'] as string) : undefined;
-    const userHeader = typeof request.headers['x-user-id'] === 'string' ? (request.headers['x-user-id'] as string) : undefined;
-    const orgId = bodyOrg ?? orgHeader ?? null;
-    const userId = bodyUser ?? userHeader ?? null;
-    if (orgId && userId) {
-      return `${orgId}:${userId}:runs`;
-    }
-    return request.ip ? `${request.ip}:runs` : null;
-  },
 });
 
 const securityRateLimit = createRateLimitPreHandler({
@@ -214,13 +133,6 @@ const securityRateLimit = createRateLimitPreHandler({
       return `${orgHeader}:${userHeader}:security`;
     }
     return request.ip ? `${request.ip}:security` : null;
-  },
-});
-
-await registerComplianceRoutes(app, context, {
-  rateLimiters: {
-    acknowledgements: complianceAcknowledgementsRateLimit,
-    status: complianceStatusRateLimit,
   },
 });
 
@@ -654,75 +566,6 @@ app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/di
 );
 
 app.get('/healthz', async () => ({ status: 'ok' }));
-
-app.post<{
-  Body: { question: string; context?: string; orgId?: string; userId?: string; confidentialMode?: boolean };
-}>('/runs', { preHandler: [runExecutionRateLimit] }, async (request, reply) => {
-  const bodySchema = z.object({
-    question: z.string().min(1),
-    context: z.string().optional(),
-    orgId: z.string().uuid(),
-    userId: z.string().uuid(),
-    confidentialMode: z.coerce.boolean().optional(),
-    userLocation: z.string().optional(),
-  });
-  const parsed = bodySchema.safeParse(request.body ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
-  }
-  const { question, context, orgId, userId, confidentialMode, userLocation } = parsed.data;
-
-  const allowed = await enforceRateLimit(runsLimiter, request, reply, `runs:${orgId}:${userId}`);
-  if (!allowed) {
-    return;
-  }
-
-  if (await runsRateLimitGuard(request, reply, [orgId, userId])) {
-    return;
-  }
-
-  try {
-    const access = await authorizeRequestWithGuards('runs:execute', orgId, userId, request);
-    const effectiveConfidential = access.policies.confidentialMode || Boolean(confidentialMode);
-    const result = await runLegalAgent(
-      {
-        question,
-        context,
-        orgId,
-        userId,
-        confidentialMode: effectiveConfidential,
-        userLocationOverride: userLocation?.trim() ?? null,
-      },
-      access,
-    );
-    // Validate payload at the boundary with a conservative schema
-    const safePayload = IRACPayloadSchema.safeParse(result.payload);
-
-    // Redact intermediate reasoning/tool logs from API responses to avoid chain-of-thought leakage.
-    const redactedToolLogs: unknown[] = [];
-    const redactedPlan: unknown[] = [];
-
-    return {
-      runId: result.runId,
-      data: safePayload.success ? (safePayload.data as unknown as IRACPayload) : (result.payload as unknown as IRACPayload),
-      toolLogs: redactedToolLogs,
-      plan: redactedPlan,
-      notices: result.notices ?? [],
-      reused: Boolean(result.reused),
-      verification: result.verification ?? null,
-      trustPanel: result.trustPanel ?? null,
-    };
-  } catch (error) {
-    request.log.error({ err: error }, 'agent execution failed');
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    return reply.code(502).send({
-      error: 'agent_failed',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
 
 app.get<{ Querystring: { orgId?: string } }>(
   '/metrics/governance',

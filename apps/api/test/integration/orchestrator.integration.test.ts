@@ -202,13 +202,38 @@ process.env.NODE_ENV = 'test';
 process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'test-service-role';
 process.env.SUPABASE_SERVICE_URL = process.env.SUPABASE_SERVICE_URL ?? 'http://localhost:54321';
 
+const createAccessContext = (orgId: string, userId: string) => ({
+  orgId,
+  userId,
+  role: 'admin' as const,
+  policies: {
+    confidentialMode: false,
+    franceJudgeAnalyticsBlocked: false,
+    mfaRequired: false,
+    ipAllowlistEnforced: false,
+    consentRequirement: null,
+    councilOfEuropeRequirement: null,
+    sensitiveTopicHitl: false,
+    residencyZone: null,
+    residencyZones: null,
+  },
+  rawPolicies: {},
+  entitlements: new Map<string, { canRead: boolean; canWrite: boolean }>(),
+  ipAllowlistCidrs: [],
+  consent: { requirement: null, latest: null },
+  councilOfEurope: { requirement: null, acknowledgedVersion: null },
+});
+
+const authorizeRequestWithGuards = vi.fn(async (_action: string, orgId: string, userId: string) =>
+  createAccessContext(orgId, userId),
+);
+
+vi.mock('../../src/http/authorization.js', () => ({
+  authorizeRequestWithGuards,
+}));
+
 vi.mock('../../src/access-control.ts', () => ({
-  authorizeAction: vi.fn(async (_action: string, orgId: string, userId: string) => ({
-    orgId,
-    userId,
-    role: 'admin',
-    policies: { confidentialMode: false },
-  })),
+  authorizeAction: vi.fn(async (_action: string, orgId: string, userId: string) => createAccessContext(orgId, userId)),
   ensureOrgAccessCompliance: vi.fn((ctx: unknown) => ctx),
 }));
 

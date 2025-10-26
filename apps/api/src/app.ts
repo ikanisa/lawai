@@ -1,7 +1,10 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { observabilityPlugin } from './plugins/observability.js';
+import { workspacePlugin } from './plugins/workspace.js';
+import { compliancePlugin } from './plugins/compliance.js';
+import { agentRunsPlugin } from './plugins/agent-runs.js';
 import { createAppContainer } from './container.js';
-import { createRateLimiterFactory } from './rate-limit.js';
+import { createRateLimiterFactory, createRateLimitGuard } from './rate-limit.js';
 import { registerAgentsRoutes } from './routes/agents/index.js';
 import { registerCitationsRoutes } from './routes/citations/index.js';
 import { registerCorpusRoutes } from './routes/corpus/index.js';
@@ -12,11 +15,12 @@ import { registerRealtimeRoutes } from './routes/realtime/index.js';
 import { registerResearchRoutes } from './routes/research/index.js';
 import { registerUploadRoutes } from './routes/upload/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
-import type { AppContext } from './types/context';
+import type { AppContext } from './types/context.js';
 import type { AppAssembly, AppFastifyInstance } from './types/fastify.js';
 import { env, rateLimitConfig } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
 import type { CreateAppOptions } from './types/app';
+import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
 
 export async function createApp(options: CreateAppOptions = {}): Promise<AppAssembly> {
   const app: AppFastifyInstance = Fastify({
@@ -42,16 +46,15 @@ export async function createApp(options: CreateAppOptions = {}): Promise<AppAsse
     trustProxy: true,
   });
 
-  await app.register(observabilityPlugin);
-
   const {
     supabase: supabaseOverride,
     overrides,
     registerWorkspaceRoutes: _registerWorkspaceRoutes = true,
-    includeWorkspaceDomainRoutes: _includeWorkspaceDomainRoutes = false,
+    includeWorkspaceDomainRoutes: _includeWorkspaceDomainRoutes = true,
   } = options;
 
   const supabase = supabaseOverride ?? serviceClient;
+  await app.register(observabilityPlugin);
   const container = createAppContainer({
     supabase,
     ...(overrides ?? {}),
@@ -61,7 +64,10 @@ export async function createApp(options: CreateAppOptions = {}): Promise<AppAsse
     driver: rateLimitConfig.driver,
     namespace: rateLimitConfig.namespace,
     functionName: rateLimitConfig.functionName,
-    supabase: rateLimitConfig.driver === 'supabase' ? supabase : undefined,
+    supabase:
+      rateLimitConfig.driver === 'supabase'
+        ? { client: supabase, functionName: rateLimitConfig.functionName }
+        : undefined,
     logger: app.log,
   });
 
@@ -74,8 +80,34 @@ export async function createApp(options: CreateAppOptions = {}): Promise<AppAsse
         baseUrl: process.env.OPENAI_BASE_URL,
       },
     },
+    rateLimiterFactory,
     rateLimits: {},
+    limiters: {},
   };
+
+  await app.register(agentRunsPlugin, { context, rateLimiterFactory });
+  await app.register(compliancePlugin, { context, rateLimiterFactory });
+
+  if (_registerWorkspaceRoutes) {
+    await app.register(workspacePlugin, { context, rateLimiterFactory });
+  }
+
+  if (_includeWorkspaceDomainRoutes) {
+    const workspaceLimiter =
+      context.limiters.workspace ?? rateLimiterFactory.create('workspace', rateLimitConfig.buckets.workspace);
+    if (!context.limiters.workspace) {
+      context.limiters.workspace = workspaceLimiter;
+    }
+    const workspaceGuard =
+      context.rateLimits.workspace ??
+      createRateLimitGuard(workspaceLimiter, {
+        name: 'workspace',
+        errorResponse: () => ({ error: 'rate_limited', scope: 'workspace' }),
+      });
+    context.rateLimits.workspace = workspaceGuard;
+
+    await registerWorkspaceRoutes(app, context);
+  }
 
   await app.register(async (instance: FastifyInstance) => {
     await registerAgentsRoutes(instance, context);

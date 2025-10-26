@@ -24,6 +24,7 @@ export default defineConfig({
     alias: {
       '@avocat-ai/shared': resolveFromRoot('../../packages/shared/src/index.ts'),
       '@avocat-ai/supabase': resolveFromRoot('../../packages/supabase/src/index.ts'),
+      '@avocat-ai/observability': resolveFromRoot('../../packages/observability/src/index.ts'),
     },
   },
 });

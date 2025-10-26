@@ -24,6 +24,7 @@ import {
   SafetyAssessmentResult,
 } from '@avocat-ai/shared';
 import { env } from './config.js';
+import { validateDirectorPlanBudget } from './services/orchestration/director-plan-budget.js';
 import { getOpenAI, logOpenAIDebug } from './openai.js';
 
 export interface OrchestratorLogger {
@@ -81,9 +82,6 @@ let providerConfigured = false;
 let directorAgentInstance: Agent | null = null;
 let safetyAgentInstance: Agent | null = null;
 
-const MAX_STEP_TOOL_BUDGET_TOKENS = 32;
-const MAX_PLAN_TOOL_BUDGET_TOKENS = 128;
-
 async function drainAgentStream(response: unknown, logger?: OrchestratorLogger): Promise<void> {
   if (!response || typeof response !== 'object') {
     return;
@@ -110,32 +108,6 @@ async function drainAgentStream(response: unknown, logger?: OrchestratorLogger):
       { err: error instanceof Error ? error.message : error },
       'director_plan_stream_drain_failed',
     );
-  }
-}
-
-function ensureDirectorPlanBudget(plan: FinanceDirectorPlan, logger?: OrchestratorLogger): void {
-  let totalTokens = 0;
-
-  for (const step of plan.steps ?? []) {
-    const tokens = step.envelope?.budget?.tokens;
-    if (typeof tokens === 'number') {
-      if (tokens > MAX_STEP_TOOL_BUDGET_TOKENS) {
-        logger?.warn?.(
-          { stepId: step.id, tokens, limit: MAX_STEP_TOOL_BUDGET_TOKENS },
-          'director_plan_budget_exceeded',
-        );
-        throw new Error('director_plan_budget_exceeded');
-      }
-      totalTokens += tokens;
-    }
-  }
-
-  if (totalTokens > MAX_PLAN_TOOL_BUDGET_TOKENS) {
-    logger?.warn?.(
-      { totalTokens, limit: MAX_PLAN_TOOL_BUDGET_TOKENS },
-      'director_plan_budget_total_exceeded',
-    );
-    throw new Error('director_plan_budget_total_exceeded');
   }
 }
 
@@ -435,7 +407,7 @@ export async function runDirectorPlanning(
     if (!plan) {
       throw new Error('director_plan_missing_output');
     }
-    ensureDirectorPlanBudget(plan, logger);
+    validateDirectorPlanBudget(plan, logger);
     return plan;
   } catch (error) {
     await logOpenAIDebug('director_plan', error, logger);
