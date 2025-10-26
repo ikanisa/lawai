@@ -1,15 +1,15 @@
 -- Compliance assessment snapshot per agent run
-create table if not exists public.compliance_assessments (
-  id uuid primary key default gen_random_uuid(),
-  org_id uuid not null references public.organizations(id) on delete cascade,
-  run_id uuid not null references public.agent_runs(id) on delete cascade,
-  fria_required boolean not null default false,
-  fria_reasons text[] not null default array[]::text[],
-  cepej_passed boolean not null default true,
-  cepej_violations text[] not null default array[]::text[],
-  statute_passed boolean not null default true,
-  statute_violations text[] not null default array[]::text[],
-  disclosures_missing text[] not null default array[]::text[],
-  created_at timestamptz not null default now(),
-  unique (run_id)
+CREATE TABLE IF NOT EXISTS public.compliance_assessments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+  run_id uuid NOT NULL REFERENCES public.agent_runs (id) ON DELETE CASCADE,
+  fria_required boolean NOT NULL DEFAULT FALSE,
+  fria_reasons TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  cepej_passed boolean NOT NULL DEFAULT TRUE,
+  cepej_violations TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  statute_passed boolean NOT NULL DEFAULT TRUE,
+  statute_violations TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  disclosures_missing TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (run_id)
 );

@@ -1,0 +1,17 @@
+# Default ownership aligns with the Platform squad that stewards shared services.
+* @avocat-ai/platform-squad
+
+# API gateway, shared packages, and workers sit with the Platform squad.
+/apps/api/ @avocat-ai/platform-squad
+/apps/edge/ @avocat-ai/platform-squad
+/packages/shared/ @avocat-ai/platform-squad
+/packages/supabase/ @avocat-ai/platform-squad
+
+# Front-end operator console changes route to the Frontend squad.
+/apps/web/ @avocat-ai/frontend-squad
+
+# Operational tooling lives with the Ops team.
+/apps/ops/ @avocat-ai/ops-team
+
+# Supabase migrations require both Platform and Ops review.
+/db/migrations/ @avocat-ai/platform-squad @avocat-ai/ops-team

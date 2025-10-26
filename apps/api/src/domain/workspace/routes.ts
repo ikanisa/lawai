@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 import { authorizeRequestWithGuards } from '../../http/authorization.js';
@@ -6,15 +6,23 @@ import { buildPhaseCProcessNavigator } from '../../workspace.js';
 import type { AppContext } from '../../types/context.js';
 import { fetchWorkspaceOverview } from './services.js';
 
-const workspaceQuerySchema = z.object({
-  orgId: z.string().uuid(),
-});
+export async function registerWorkspaceRoutes(
+  app: AppFastifyInstance,
+  ctx: AppContext,
+  services: Partial<WorkspaceServices> = {},
+) {
+  const { supabase } = ctx;
+  const { fetchWorkspaceOverview, limiter } = { ...defaultServices, ...services };
+  const guard = ctx.rateLimits.workspace;
 
-export async function registerWorkspaceRoutes(app: FastifyInstance, ctx: AppContext) {
-  app.get<{ Querystring: z.infer<typeof workspaceQuerySchema> }>('/workspace', async (request, reply) => {
-    const parse = workspaceQuerySchema.safeParse(request.query);
-    if (!parse.success) {
-      return reply.code(400).send({ error: 'Invalid query parameters' });
+  app.get<{ Querystring: WorkspaceQuery }>('/workspace', async (request, reply) => {
+    const parsed = workspaceQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: 'invalid_query_parameters',
+        message: 'Invalid query parameters',
+        details: parsed.error.flatten(),
+      });
     }
 
     const { orgId } = parse.data;

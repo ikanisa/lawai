@@ -2,11 +2,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { CreditCard, ReceiptText } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
+import { Button } from '../@/ui/button';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';
 import { adminQueries } from '../api/client';
+import { useAdminSession } from '../session-context';
 
 const PLACEHOLDER_USAGE = [
   { id: 'runs', label: 'Agent runs', quantity: 12840, cost: '€512.00' },
@@ -15,7 +16,12 @@ const PLACEHOLDER_USAGE = [
 
 export function AdminBillingPage() {
   const { activeOrg } = useAdminPanelContext();
-  const billingQuery = useQuery(adminQueries.billing?.(activeOrg.id) ?? { queryKey: ['admin', 'billing', activeOrg.id], queryFn: async () => ({ usage: PLACEHOLDER_USAGE }) });
+  const { session, loading: sessionLoading } = useAdminSession();
+  const isSessionReady = Boolean(session) && !sessionLoading;
+  const billingQuery = useQuery({
+    ...adminQueries.billing(activeOrg.id),
+    enabled: isSessionReady,
+  });
   const usage = billingQuery.data?.usage ?? PLACEHOLDER_USAGE;
 
   return (
@@ -24,7 +30,7 @@ export function AdminBillingPage() {
         title="Billing"
         description="Track usage and invoices per tenant. Integrations with finance systems can be added here."
         actions={
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button variant="outline" size="sm" className="gap-2" disabled={!isSessionReady}>
             <ReceiptText className="h-4 w-4" /> Download invoice
           </Button>
         }
@@ -40,7 +46,7 @@ export function AdminBillingPage() {
         emptyState="No usage recorded"
       />
 
-      <Button variant="secondary" size="sm" className="gap-2">
+      <Button variant="secondary" size="sm" className="gap-2" disabled={!isSessionReady}>
         <CreditCard className="h-4 w-4" /> Update payment method
       </Button>
     </div>
