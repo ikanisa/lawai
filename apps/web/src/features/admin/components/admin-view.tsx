@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Input } from '@/ui/input';
 import { OperationsOverviewCard } from '@/components/governance/operations-overview-card';
 import {
-  orgId,
   fetchGovernanceMetrics,
   type GovernanceMetricsResponse,
   fetchRetrievalMetrics,
@@ -87,7 +86,7 @@ function formatDateTime(value: string | null | undefined): string {
   return dateTimeFormatter.format(date);
 }
 
-function useGovernanceMetrics() {
+function useGovernanceMetrics(orgId: string) {
   return useQuery<GovernanceMetricsResponse>({
     queryKey: ['governance-metrics', orgId],
     queryFn: () => fetchGovernanceMetrics(orgId),
@@ -97,7 +96,8 @@ function useGovernanceMetrics() {
 
 export function AdminView({ messages }: AdminViewProps) {
   const queryClient = useQueryClient();
-  const metricsQuery = useGovernanceMetrics();
+  const { orgId } = useRequiredSession();
+  const metricsQuery = useGovernanceMetrics(orgId);
   const overview = metricsQuery.data?.overview ?? null;
   const toolRows = metricsQuery.data?.tools ?? [];
   const jurisdictionLabels = useMemo(() => {

@@ -59,7 +59,7 @@ function resolveOrgId(orgId?: string) {
 }
 
 function resolveUserId(userId?: string) {
-  return userId ?? sessionAccessor?.()?.resolveUserId(userId);
+  return userId ?? sessionAccessor?.()?.userId ?? DEMO_USER_ID;
 }
 
 export type VerificationSeverity = 'info' | 'warning' | 'critical';
