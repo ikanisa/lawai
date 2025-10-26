@@ -41,7 +41,7 @@ export function startResearchRun(
     jurisdiction,
     policyFlags = [],
     userLocation,
-    webSearchMode = "allowlist"
+    webSearchMode = "allowlist",
   }: StartResearchRunOptions = {}
 ): () => void {
   const controller = new AbortController();
