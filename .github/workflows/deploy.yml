@@ -20,7 +20,7 @@ jobs:
           run_install: false
       - name: pnpm version
         run: pnpm -v
-      - name: Install dependencies for preflight
+      - name: Install dependencies for preflight checks
         run: pnpm install --frozen-lockfile
       - name: Deployment preflight
         env:
