@@ -19,7 +19,6 @@
     "src/types/**/*.d.ts",
     "src/routes/**/*.ts",
     "src/domain/workspace/routes.ts",
-    "src/domain/workspace/services.ts",
     "src/domain/workspace/overview.ts",
     "src/domain/workspace/acknowledgements.ts",
     "src/domain/workspace/navigator.ts",
