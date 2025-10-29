@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppContainerOverrides } from '../core/container.js';
-import type { AppContext } from './context';
+import type { AppContext } from './context.js';
 import type { SupabaseServiceClient } from './supabase.js';
 
 export interface CreateAppOptions {

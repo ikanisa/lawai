@@ -19,7 +19,7 @@ import type { AppContext } from './types/context.js';
 import type { AppAssembly, AppFastifyInstance } from './types/fastify.js';
 import { env, rateLimitConfig } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
-import type { CreateAppOptions } from './types/app';
+import type { CreateAppOptions } from './types/app.js';
 import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
 
 export async function createApp(options: CreateAppOptions = {}): Promise<AppAssembly> {
