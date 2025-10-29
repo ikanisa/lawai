@@ -2,7 +2,6 @@ import {
   AgentPlanNotice,
   AgentPlanStep,
   IRACPayload,
-  ProcessNavigatorFlow,
   WorkspaceDesk,
 } from '@avocat-ai/shared';
 
@@ -1114,7 +1113,7 @@ export interface WorkspaceOverviewResponse {
     pendingCount: number;
   };
   desk?: WorkspaceDesk;
-  navigator?: ProcessNavigatorFlow[];
+  navigator?: unknown[];
 }
 
 export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOverviewResponse> {
