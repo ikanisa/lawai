@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Input } from '@/ui/input';
 import { OperationsOverviewCard } from '@/components/governance/operations-overview-card';
 import {
-  DEMO_ORG_ID,
   fetchRetrievalMetrics,
   type RetrievalMetricsResponse,
   fetchEvaluationMetrics,
@@ -38,6 +37,7 @@ import {
 } from '@/lib/api';
 import type { Messages } from '@/lib/i18n';
 import { clientEnv } from '@/env.client';
+import { useSession } from '@/components/session-provider';
 import { useGovernanceMetrics } from '../hooks/use-governance-metrics';
 import { AdminTelemetryDashboard } from './telemetry-dashboard';
 import { AdminAuditLogPanel } from './audit-log-panel';
@@ -61,7 +61,33 @@ const selectClassName =
 
 export function AdminView({ messages }: AdminViewProps) {
   const queryClient = useQueryClient();
+  const { status: sessionStatus, session } = useSession();
+  const orgId = session?.orgId;
+  const userId = session?.userId;
+  const canQuery = sessionStatus === 'authenticated' && Boolean(orgId && userId);
+  
   const metricsQuery = useGovernanceMetrics();
+  
+  if (sessionStatus === 'loading') {
+    return (
+      <div className="rounded-3xl border border-slate-800/60 bg-slate-900/40 p-6 text-slate-200">
+        <h2 className="text-lg font-semibold text-slate-100">Console administrateur</h2>
+        <p className="mt-1 text-sm text-slate-400">Chargement de votre session sécurisée…</p>
+      </div>
+    );
+  }
+
+  if (!canQuery) {
+    return (
+      <div className="rounded-3xl border border-amber-500/40 bg-amber-500/10 p-6 text-amber-100">
+        <h2 className="text-lg font-semibold text-amber-100">Accès restreint</h2>
+        <p className="mt-1 text-sm text-amber-100/80">
+          Vous devez être connecté avec un compte autorisé pour consulter le tableau de bord de gouvernance.
+        </p>
+      </div>
+    );
+  }
+
   const overview = metricsQuery.data?.overview ?? null;
   const toolRows = metricsQuery.data?.tools ?? [];
   const jurisdictionLabels = useMemo(() => {

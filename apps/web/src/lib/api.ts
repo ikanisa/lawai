@@ -867,9 +867,9 @@ export interface ScimTokenResponse {
   expiresAt?: string | null;
 }
 
-export async function fetchScimTokens(orgId: string) {
+export async function fetchScimTokens(orgId: string, options?: { userId?: string }) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
-    headers: { 'x-user-id': resolveUserId() },
+    headers: { 'x-user-id': resolveUserId(options?.userId) },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SCIM tokens');
@@ -962,10 +962,10 @@ export async function fetchComplianceDashboard(orgId: string, options?: { userId
   return response.json() as Promise<ComplianceDashboardResponse>;
 }
 
-export async function fetchAuditEvents(orgId: string, limit = 50) {
+export async function fetchAuditEvents(orgId: string, limit = 50, options?: { userId?: string }) {
   const response = await fetch(
     `${API_BASE}/admin/org/${orgId}/audit-events?limit=${encodeURIComponent(String(limit))}`,
-    { headers: { 'x-user-id': resolveUserId() } },
+    { headers: { 'x-user-id': resolveUserId(options?.userId) } },
   );
   if (!response.ok) {
     throw new Error('Unable to fetch audit events');
@@ -1033,9 +1033,9 @@ export async function revokeDeviceSession(orgId: string, sessionId: string, reas
   return response.json() as Promise<{ session: { id: string; revokedAt: string } }>;
 }
 
-export async function fetchIpAllowlist(orgId: string) {
+export async function fetchIpAllowlist(orgId: string, options?: { userId?: string }) {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist`, {
-    headers: { 'x-user-id': resolveUserId() },
+    headers: { 'x-user-id': resolveUserId(options?.userId) },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch IP allowlist');
@@ -1125,9 +1125,9 @@ export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOv
   return response.json();
 }
 
-export async function getOperationsOverview(orgId: string): Promise<OperationsOverviewResponse> {
+export async function getOperationsOverview(orgId: string, options?: { userId?: string }): Promise<OperationsOverviewResponse> {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/operations/overview`, {
-    headers: { 'x-user-id': resolveUserId() },
+    headers: { 'x-user-id': resolveUserId(options?.userId) },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch operations overview');
