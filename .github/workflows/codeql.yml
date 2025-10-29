@@ -1,0 +1,107 @@
+name: "CodeQL Security Scan"
+
+on:
+  push:
+    branches: [ "main", "master", "work", "copilot/**" ]
+  pull_request:
+    branches: [ "main", "master", "work" ]
+  schedule:
+    # Run at 2 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      # Required for all workflows
+      security-events: write
+      # Required to fetch internal or private CodeQL packs
+      packages: read
+      # Only required for workflows in private repositories
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'javascript-typescript' ]
+        # CodeQL supports: 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'swift'
+        # Learn more: https://aka.ms/codeql-docs/language-support
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Initializes the CodeQL tools for scanning.
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        # If you wish to specify custom queries, you can do so here or in a config file.
+        # By default, queries listed here will override any specified in a config file.
+        # Prefix the list here with "+" to use these queries and those in the config file.
+        
+        # Use default queries for maximum coverage
+        queries: +security-extended,security-and-quality
+        
+        # CodeQL config file (optional)
+        # config-file: ./.github/codeql/codeql-config.yml
+
+    # Setup Node.js and dependencies for better analysis of TypeScript code
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8.15.4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'pnpm'
+
+    # Install dependencies to allow CodeQL to analyze the full dependency graph
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile --ignore-scripts
+      # Use --ignore-scripts to avoid Cypress download issues in CI
+
+    # Autobuild attempts to build any compiled languages (C/C++, C#, Go, Java, or Swift).
+    # For JavaScript/TypeScript, this step is optional but helps with analysis
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    # Perform CodeQL Analysis
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"
+        # Upload SARIF file for viewing in GitHub Security tab
+        upload: true
+        # Output SARIF file location
+        output: sarif-results
+        
+    # Upload SARIF as artifact for debugging if needed
+    - name: Upload SARIF as artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: codeql-sarif-${{ matrix.language }}
+        path: sarif-results
+        retention-days: 30
+
+    # Optional: Fail the workflow if high or critical severity findings are detected
+    - name: Check for high severity findings
+      if: always()
+      run: |
+        echo "CodeQL analysis complete. Review findings in the Security tab."
+        # Uncomment to fail on high/critical findings:
+        # if grep -q '"level": "error"' sarif-results/*.sarif; then
+        #   echo "High or critical severity findings detected!"
+        #   exit 1
+        # fi

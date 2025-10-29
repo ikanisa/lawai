@@ -1,0 +1,181 @@
+version: 2
+updates:
+  # Enable version updates for npm (pnpm uses package.json)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "avocat-ai/platform-squad"
+    labels:
+      - "dependencies"
+      - "automated"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    # Group updates for patch and minor versions
+    groups:
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "patch"
+          - "minor"
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+          - "patch"
+    # Ignore specific dependencies if needed
+    ignore:
+      # Ignore major version updates for critical dependencies (handle manually)
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "fastify"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+    # Rebase strategy
+    rebase-strategy: "auto"
+    # Allow automatic merging of patch updates for dev dependencies
+    allow:
+      - dependency-type: "development"
+
+  # Workspace: apps/api
+  - package-ecosystem: "npm"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "avocat-ai/platform-squad"
+    labels:
+      - "dependencies"
+      - "apps/api"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+
+  # Workspace: apps/web
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "avocat-ai/frontend-squad"
+    labels:
+      - "dependencies"
+      - "apps/web"
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Workspace: apps/pwa
+  - package-ecosystem: "npm"
+    directory: "/apps/pwa"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "avocat-ai/frontend-squad"
+    labels:
+      - "dependencies"
+      - "apps/pwa"
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Workspace: apps/ops
+  - package-ecosystem: "npm"
+    directory: "/apps/ops"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "avocat-ai/ops-team"
+    labels:
+      - "dependencies"
+      - "apps/ops"
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Workspace: packages/shared
+  - package-ecosystem: "npm"
+    directory: "/packages/shared"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "avocat-ai/platform-squad"
+    labels:
+      - "dependencies"
+      - "packages/shared"
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Workspace: packages/supabase
+  - package-ecosystem: "npm"
+    directory: "/packages/supabase"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "avocat-ai/platform-squad"
+    labels:
+      - "dependencies"
+      - "packages/supabase"
+    commit-message:
+      prefix: "chore(deps)"
+
+  # GitHub Actions workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "avocat-ai/platform-squad"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(ci)"
+
+  # Docker (if Dockerfiles exist)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "avocat-ai/platform-squad"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(docker)"
