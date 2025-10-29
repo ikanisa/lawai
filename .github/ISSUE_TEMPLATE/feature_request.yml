@@ -1,0 +1,107 @@
+name: Feature Request
+description: Suggest an idea or enhancement for this project
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please provide details below.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Use Case
+      description: Describe the problem you're trying to solve or the use case for this feature
+      placeholder: |
+        As a [type of user], I want [goal] so that [benefit].
+        
+        Current situation: ...
+        Problem: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe your proposed solution or how you'd like this feature to work
+      placeholder: Describe your ideal solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What alternative solutions or features have you considered?
+      placeholder: Describe any alternative approaches
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component would this feature affect?
+      options:
+        - apps/api (Fastify REST API)
+        - apps/web (Operator Console)
+        - apps/pwa (Public PWA)
+        - apps/ops (CLI Operations)
+        - apps/edge (Edge Functions)
+        - packages/shared (Shared Packages)
+        - Cross-cutting (multiple components)
+        - Infrastructure/DevOps
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - High - Critical for our use case
+        - Medium - Would significantly improve experience
+        - Low - Nice to have
+    validations:
+      required: true
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups or Examples
+      description: Visual aids, mockups, or examples from other systems
+      placeholder: Drag and drop images or provide links
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who would benefit from this feature and how?
+      placeholder: |
+        - User groups affected: ...
+        - Expected benefits: ...
+        - Frequency of use: ...
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context or information about the feature request
+      placeholder: Add any other relevant information
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues and feature requests
+          required: true
+        - label: I have clearly described the problem and proposed solution
+          required: true
+        - label: I am willing to contribute to implementing this feature
+          required: false
