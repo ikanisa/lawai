@@ -1,43 +1,10 @@
 import {
-  DEMO_ORG_ID,
-  DEMO_USER_ID,
-  createRestClient,
-  type AgentPlanNotice,
-  type AgentPlanStep,
-  type AgentRunResponse,
-  type ComplianceAcknowledgements,
-  type ComplianceAssessmentSummary,
-  type ComplianceStatusEntry,
-  type ComplianceStatusResponse,
-  type DeviceSession,
-  type EvaluationMetricsResponse,
-  type GovernanceMetricsResponse,
-  type GovernancePublication,
-  type GovernancePublicationsResponse,
-  type HitlDetailResponse,
-  type HitlMetricsResponse,
-  type OperationsChangeLogEntry,
-  type OperationsGoNoGoCriterion,
-  type OperationsIncident,
-  type OperationsOverviewResponse,
-  type OperationsSloSnapshot,
-  type OperationsSloSummary,
-  type RetrievalMetricsResponse,
-  type SloMetricsResponse,
-  type SloSnapshot,
-  type SloSummary,
-  type TrustPanelCaseQualitySummary,
-  type TrustPanelCitationSummary,
-  type TrustPanelPayload,
-  type TrustPanelProvenanceSummary,
-  type TrustPanelRetrievalSummary,
-  type TrustPanelRiskSummary,
-  type VerificationNote,
-  type VerificationResult,
-  type VerificationSeverity,
-  type VerificationStatus,
-  type WorkspaceDesk,
-} from '@avocat-ai/api-clients';
+  AgentPlanNotice,
+  AgentPlanStep,
+  IRACPayload,
+  ProcessNavigatorFlow,
+  WorkspaceDesk,
+} from '@avocat-ai/shared';
 
 import { clientEnv } from '../env.client';
 
@@ -46,20 +13,26 @@ export const API_BASE = clientEnv.NEXT_PUBLIC_API_BASE_URL;
 export const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000000';
 
-type SessionAccessor = () => { orgId: string; userId: string } | null;
+const ALLOW_DEMO_FALLBACK = process.env.NODE_ENV !== 'production';
 
-let sessionAccessor: SessionAccessor | null = null;
-
-export function setApiSessionAccessor(accessor: SessionAccessor) {
-  sessionAccessor = accessor;
+function resolveOrgId(orgId?: string | null): string {
+  if (orgId && orgId.trim()) {
+    return orgId;
+  }
+  if (ALLOW_DEMO_FALLBACK) {
+    return DEMO_ORG_ID;
+  }
+  throw new Error('org_id_required');
 }
 
-function resolveOrgId(orgId?: string) {
-  return orgId ?? sessionAccessor?.()?.orgId ?? DEMO_ORG_ID;
-}
-
-function resolveUserId(userId?: string) {
-  return userId ?? sessionAccessor?.()?.resolveUserId(userId);
+function resolveUserId(userId?: string | null): string {
+  if (userId && userId.trim()) {
+    return userId;
+  }
+  if (ALLOW_DEMO_FALLBACK) {
+    return DEMO_USER_ID;
+  }
+  throw new Error('user_id_required');
 }
 
 export type VerificationSeverity = 'info' | 'warning' | 'critical';
@@ -735,10 +708,10 @@ export interface GovernanceMetricsResponse {
   }>;
 }
 
-export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceMetricsResponse> {
+export async function fetchGovernanceMetrics(orgId: string, options?: { userId?: string }): Promise<GovernanceMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/governance?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': resolveUserId(),
+      'x-user-id': resolveUserId(options?.userId),
     },
   });
   if (!response.ok) {
@@ -747,10 +720,10 @@ export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceM
   return response.json();
 }
 
-export async function fetchRetrievalMetrics(orgId: string): Promise<RetrievalMetricsResponse> {
+export async function fetchRetrievalMetrics(orgId: string, options?: { userId?: string }): Promise<RetrievalMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/retrieval?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': resolveUserId(),
+      'x-user-id': resolveUserId(options?.userId),
     },
   });
 
@@ -784,10 +757,10 @@ export interface EvaluationMetricsResponse {
   }>;
 }
 
-export async function fetchEvaluationMetrics(orgId: string): Promise<EvaluationMetricsResponse> {
+export async function fetchEvaluationMetrics(orgId: string, options?: { userId?: string }): Promise<EvaluationMetricsResponse> {
   const response = await fetch(`${API_BASE}/metrics/evaluations?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': resolveUserId(),
+      'x-user-id': resolveUserId(options?.userId),
     },
   });
 
@@ -798,11 +771,11 @@ export async function fetchEvaluationMetrics(orgId: string): Promise<EvaluationM
   return response.json();
 }
 
-export async function fetchSloMetrics(orgId: string, limit = 6): Promise<SloMetricsResponse> {
+export async function fetchSloMetrics(orgId: string, limit = 6, options?: { userId?: string }): Promise<SloMetricsResponse> {
   const params = new URLSearchParams({ orgId, limit: String(limit) });
   const response = await fetch(`${API_BASE}/metrics/slo?${params.toString()}`, {
     headers: {
-      'x-user-id': resolveUserId(),
+      'x-user-id': resolveUserId(options?.userId),
     },
   });
 
@@ -846,9 +819,9 @@ export interface SsoConnectionResponse {
   }>;
 }
 
-export async function fetchSsoConnections(orgId: string): Promise<SsoConnectionResponse> {
+export async function fetchSsoConnections(orgId: string, options?: { userId?: string }): Promise<SsoConnectionResponse> {
   const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
-    headers: { 'x-user-id': resolveUserId() },
+    headers: { 'x-user-id': resolveUserId(options?.userId) },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SSO connections');

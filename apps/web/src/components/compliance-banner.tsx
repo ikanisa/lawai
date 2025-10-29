@@ -3,18 +3,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Button } from '@/ui/button';
-import { acknowledgeCompliance, fetchComplianceStatus, type ComplianceAcknowledgements } from '@/lib/api';
-import { useRequiredSession } from './session-provider';
-import type { Messages } from '@/lib/i18n';
+import { Button } from './ui/button';
+import {
+  acknowledgeCompliance,
+  fetchComplianceStatus,
+  type ComplianceAcknowledgements,
+} from '../lib/api';
+import type { Messages } from '../lib/i18n';
+import { useSession } from './session-provider';
 
 interface ComplianceBannerProps {
   messages: Messages['app']['compliance'];
 }
 
 export function ComplianceBanner({ messages }: ComplianceBannerProps) {
-  const { orgId } = useRequiredSession();
   const [isOffline, setIsOffline] = useState(false);
+  const { status: sessionStatus, session } = useSession();
+
+  const orgId = session?.orgId;
+  const userId = session?.userId;
+  const canQuery = sessionStatus === 'authenticated' && Boolean(orgId && userId);
 
   useEffect(() => {
     function syncStatus() {
@@ -36,8 +44,12 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   }, []);
 
   const statusQuery = useQuery({
-    queryKey: ['compliance-status', orgId],
-    queryFn: () => fetchComplianceStatus(orgId),
+    queryKey: ['compliance-status', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchComplianceStatus(orgId, { userId });
+    },
+    enabled: canQuery,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -75,7 +87,10 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
       if (!payload.consent && !payload.councilOfEurope) {
         return null;
       }
-      return acknowledgeCompliance(orgId, payload);
+      if (!orgId) {
+        throw new Error('missing_org');
+      }
+      return acknowledgeCompliance(orgId, { ...payload, userId });
     },
     onSuccess: () => {
       toast.success(messages.acknowledged);
@@ -89,6 +104,25 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   const hasPending = Boolean(pending.consent || pending.council);
   const isError = statusQuery.isError;
   const isSuccess = statusQuery.isSuccess;
+
+  if (!canQuery) {
+    if (sessionStatus === 'loading') {
+      return (
+        <div
+          className="mb-6 rounded-3xl border border-amber-400/60 bg-amber-500/10 p-5 text-sm text-amber-100"
+          role="status"
+          aria-live="polite"
+        >
+          {messages.loading}
+        </div>
+      );
+    }
+    return null;
+  }
+
+  if (sessionStatus === 'unauthenticated') {
+    return null;
+  }
 
   if (statusQuery.isLoading) {
     return (
