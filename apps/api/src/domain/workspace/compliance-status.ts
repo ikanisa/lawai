@@ -1,12 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest, FastifySchema } from 'fastify';
 import { authorizeRequestWithGuards } from '../../http/authorization.js';
-import type { AppContext } from '../../types/context';
+import type { AppContext } from '../../types/context.js';
 import {
   fetchAcknowledgementEvents,
   mergeDisclosuresWithAcknowledgements,
   summariseAcknowledgements,
   toStringArray,
-} from './compliance';
+} from './compliance.js';
 
 const errorResponseSchema = {
   type: 'object',
