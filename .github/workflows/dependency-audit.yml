@@ -22,7 +22,7 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Setup pnpm
       uses: pnpm/action-setup@v2
@@ -108,7 +108,7 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Run OSV Scanner
       uses: google/osv-scanner-action@v1
@@ -135,7 +135,7 @@ jobs:
   #   
   #   steps:
   #   - name: Checkout repository
-  #     uses: actions/checkout@v4
+  #     uses: actions/checkout@v5
   #   
   #   - name: Run Snyk to check for vulnerabilities
   #     uses: snyk/actions/node@master
@@ -152,7 +152,7 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Download audit artifacts
       uses: actions/download-artifact@v4
