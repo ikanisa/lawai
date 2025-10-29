@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { enableDigestNotifications, isDigestEnabled } from '../lib/pwa';
+import { enableDigestNotifications, isDigestEnabled } from '@/lib/pwa';
 
 export function useDigest() {
   const [enabled, setEnabled] = useState(false);
