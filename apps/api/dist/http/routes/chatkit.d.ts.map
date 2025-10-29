@@ -1,0 +1,1 @@
+{"version":3,"file":"chatkit.d.ts","sourceRoot":"","sources":["../../../src/http/routes/chatkit.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,SAAS,CAAC;AAC/C,OAAO,KAAK,EAAE,cAAc,EAAE,MAAM,uBAAuB,CAAC;AAc5D,UAAU,mBAAmB;IAC3B,QAAQ,EAAE,cAAc,CAAC;CAC1B;AA0BD,wBAAgB,qBAAqB,CAAC,GAAG,EAAE,eAAe,EAAE,EAAE,QAAQ,EAAE,EAAE,mBAAmB,GAAG,IAAI,CAsWnG"}

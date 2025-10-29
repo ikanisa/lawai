@@ -1,0 +1,1 @@
+{"version":3,"file":"workspace-repository.d.ts","sourceRoot":"","sources":["../../../src/core/repositories/workspace-repository.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,mBAAmB;IAClC,EAAE,EAAE,MAAM,CAAC;CACZ;AAED,MAAM,WAAW,mBAAmB;IAClC,cAAc,CAAC,KAAK,EAAE,MAAM,EAAE,KAAK,CAAC,EAAE,MAAM,GAAG,OAAO,CAAC,mBAAmB,EAAE,CAAC,CAAC;CAC/E"}

@@ -1,0 +1,490 @@
+import { Agent, OpenAIProvider, run as runAgent, setDefaultModelProvider, setDefaultOpenAIKey, setOpenAIAPI, } from '@openai/agents';
+import { FinanceDirectorPlanSchema, FinanceSafetyReviewSchema, } from '@avocat-ai/shared';
+import { env } from './config.js';
+import { validateDirectorPlanBudget } from './services/orchestration/director-plan-budget.js';
+import { getOpenAI, logOpenAIDebug } from './openai.js';
+const DIRECTOR_INSTRUCTIONS = `Tu es "Le Directeur", l'orchestrateur MCP des agents financiers (taxe, audit, AP, CFO, risque, conformité).
+
+Ta mission:
+1. Analyser l'objectif métier et le contexte conversationnel (session ChatKit + Supabase).
+2. Planifier des étapes explicites avec agents délégués, budgets outils, critères de succès et garde-fous HITL.
+3. S'appuyer sur l'état persistant (Supabase) pour mémoriser décisions, blockers et métadonnées.
+4. Déléguer aux agents de domaine via des commandes structurées, en respectant les politiques résidence/confidentialité.
+5. Synchroniser les connecteurs (ERP, fiscalité, compta) avant de déclencher une action qui en dépend.
+6. Toujours informer la Safety Agent si la tâche implique un risque élevé, une divulgation réglementaire ou un écart de politique.
+
+Contraintes:
+- Pas de chaîne de pensée: retourne uniquement plans structurés, commandes ou résumés homologables.
+- Si l'objectif te semble ambigu, créer une commande "clarify" pour l'utilisateur humain.
+- Pour chaque commande, indique le worker cible (domain|director|safety), priorité, détection HITL, dépendances.
+- Ne jamais ignorer les signaux de politique Supabase (ban analytique juge, confidentialité, résidence).
+`;
+const SAFETY_INSTRUCTIONS = `Tu es "Safety", garante de la conformité et des politiques de sécurité:
+- Vérifie chaque commande/directive reçue du Directeur.
+- Signale les anomalies (confidentialité, résidence, guardrails, obligations réglementaires) et propose des mitigations.
+- Peut basculer une commande en HITL ou refuser l'exécution.
+- Maintient un journal Supabase des contrôles effectués.
+`;
+let providerConfigured = false;
+let directorAgentInstance = null;
+let safetyAgentInstance = null;
+async function drainAgentStream(response, logger) {
+    if (!response || typeof response !== 'object') {
+        return;
+    }
+    const candidate = response.stream ??
+        response.eventStream ??
+        response.events ??
+        null;
+    if (!candidate || typeof candidate !== 'object' || typeof candidate[Symbol.asyncIterator] !== 'function') {
+        return;
+    }
+    const iterable = candidate;
+    try {
+        for await (const _event of iterable) {
+            // Consume the iterator to avoid leaking open handles from streaming responses
+        }
+    }
+    catch (error) {
+        logger?.warn?.({ err: error instanceof Error ? error.message : error }, 'director_plan_stream_drain_failed');
+    }
+}
+function ensureOpenAIProvider() {
+    if (providerConfigured) {
+        return;
+    }
+    setDefaultOpenAIKey(env.OPENAI_API_KEY);
+    setOpenAIAPI('responses');
+    setDefaultModelProvider(new OpenAIProvider({
+        apiKey: env.OPENAI_API_KEY,
+        useResponses: true,
+    }));
+    providerConfigured = true;
+}
+function createDirectorAgent() {
+    ensureOpenAIProvider();
+    return new Agent({
+        name: 'finance-director',
+        instructions: DIRECTOR_INSTRUCTIONS,
+        model: env.AGENT_MODEL,
+        outputType: FinanceDirectorPlanSchema,
+    });
+}
+function createSafetyAgent() {
+    ensureOpenAIProvider();
+    return new Agent({
+        name: 'finance-safety',
+        instructions: SAFETY_INSTRUCTIONS,
+        model: env.AGENT_MODEL,
+        outputType: FinanceSafetyReviewSchema,
+    });
+}
+export function getDirectorAgent() {
+    if (!directorAgentInstance) {
+        directorAgentInstance = createDirectorAgent();
+    }
+    return directorAgentInstance;
+}
+export function getSafetyAgent() {
+    if (!safetyAgentInstance) {
+        safetyAgentInstance = createSafetyAgent();
+    }
+    return safetyAgentInstance;
+}
+function asRecord(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value;
+    }
+    return {};
+}
+function optionalString(value) {
+    if (typeof value === 'string' && value.length > 0) {
+        return value;
+    }
+    return null;
+}
+function requireString(value, fallback = '') {
+    if (typeof value === 'string') {
+        return value;
+    }
+    if (value === null || value === undefined) {
+        return fallback;
+    }
+    return String(value);
+}
+function requireNumber(value, fallback = 0) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === 'string') {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+            return parsed;
+        }
+    }
+    return fallback;
+}
+function parseDirectorState(value) {
+    if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) {
+        return null;
+    }
+    const parsed = FinanceDirectorPlanSchema.safeParse(value);
+    return parsed.success ? parsed.data : null;
+}
+function parseSafetyState(value) {
+    if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) {
+        return null;
+    }
+    const parsed = FinanceSafetyReviewSchema.safeParse(value);
+    return parsed.success ? parsed.data : null;
+}
+function mapSession(row) {
+    const directorState = parseDirectorState(row.director_state);
+    const safetyState = parseSafetyState(row.safety_state);
+    return {
+        id: requireString(row.id),
+        orgId: requireString(row.org_id),
+        chatSessionId: optionalString(row.chat_session_id),
+        status: row.status ?? 'active',
+        directorState,
+        safetyState,
+        metadata: asRecord(row.metadata),
+        currentObjective: optionalString(row.current_objective),
+        lastDirectorRunId: optionalString(row.last_director_run_id),
+        lastSafetyRunId: optionalString(row.last_safety_run_id),
+        createdAt: requireString(row.created_at),
+        updatedAt: requireString(row.updated_at),
+        closedAt: optionalString(row.closed_at),
+    };
+}
+function mapCommand(row) {
+    return {
+        id: requireString(row.id),
+        orgId: requireString(row.org_id),
+        sessionId: requireString(row.session_id),
+        commandType: requireString(row.command_type),
+        payload: asRecord(row.payload),
+        status: row.status ?? 'queued',
+        priority: requireNumber(row.priority, 100),
+        scheduledFor: requireString(row.scheduled_for),
+        startedAt: optionalString(row.started_at),
+        completedAt: optionalString(row.completed_at),
+        failedAt: optionalString(row.failed_at),
+        result: row.result && typeof row.result === 'object' ? row.result : null,
+        lastError: optionalString(row.last_error),
+        metadata: asRecord(row.metadata ?? {}),
+        createdAt: requireString(row.created_at),
+        updatedAt: requireString(row.updated_at),
+    };
+}
+function mapJob(row) {
+    return {
+        id: requireString(row.id),
+        orgId: requireString(row.org_id),
+        commandId: requireString(row.command_id),
+        worker: row.worker ?? 'director',
+        domainAgent: optionalString(row.domain_agent),
+        status: row.status ?? 'pending',
+        attempts: requireNumber(row.attempts, 0),
+        scheduledAt: requireString(row.scheduled_at),
+        startedAt: optionalString(row.started_at),
+        completedAt: optionalString(row.completed_at),
+        failedAt: optionalString(row.failed_at),
+        lastError: optionalString(row.last_error),
+        metadata: asRecord(row.metadata ?? {}),
+        createdAt: requireString(row.created_at),
+        updatedAt: requireString(row.updated_at),
+    };
+}
+function mapConnector(row) {
+    return {
+        id: requireString(row.id),
+        orgId: requireString(row.org_id),
+        connectorType: row.connector_type ?? 'erp',
+        name: requireString(row.name),
+        status: row.status ?? 'inactive',
+        config: asRecord(row.config),
+        metadata: asRecord(row.metadata),
+        lastSyncedAt: optionalString(row.last_synced_at),
+        lastError: optionalString(row.last_error),
+        createdAt: requireString(row.created_at),
+        updatedAt: requireString(row.updated_at),
+    };
+}
+async function fetchCommandEnvelope(supabase, commandId) {
+    const commandQuery = await supabase
+        .from('orchestrator_commands')
+        .select('id, org_id, session_id, command_type, payload, status, priority, scheduled_for, started_at, completed_at, failed_at, result, last_error, metadata, created_at, updated_at')
+        .eq('id', commandId)
+        .maybeSingle();
+    if (commandQuery.error || !commandQuery.data) {
+        throw new Error(commandQuery.error?.message ?? 'command_not_found');
+    }
+    const command = mapCommand(commandQuery.data);
+    const sessionQuery = await supabase
+        .from('orchestrator_sessions')
+        .select('id, org_id, chat_session_id, status, director_state, safety_state, metadata, current_objective, last_director_run_id, last_safety_run_id, created_at, updated_at, closed_at')
+        .eq('id', command.sessionId)
+        .maybeSingle();
+    if (sessionQuery.error || !sessionQuery.data) {
+        throw new Error(sessionQuery.error?.message ?? 'orchestrator_session_not_found');
+    }
+    const session = mapSession(sessionQuery.data);
+    const jobQuery = await supabase
+        .from('orchestrator_jobs')
+        .select('id, org_id, command_id, worker, domain_agent, status, attempts, scheduled_at, started_at, completed_at, failed_at, last_error, metadata, created_at, updated_at')
+        .eq('command_id', commandId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+    if (jobQuery.error || !jobQuery.data) {
+        throw new Error(jobQuery.error?.message ?? 'orchestrator_job_not_found');
+    }
+    const job = mapJob(jobQuery.data);
+    return { command, session, job };
+}
+export async function getCommandEnvelope(supabase, commandId) {
+    return fetchCommandEnvelope(supabase, commandId);
+}
+export async function enqueueDirectorCommand(supabase, input, logger) {
+    const rpcResult = await supabase.rpc('enqueue_orchestrator_command', {
+        p_org_id: input.orgId,
+        p_session_id: input.sessionId,
+        p_command_type: input.commandType,
+        p_payload: input.payload ?? {},
+        p_created_by: input.issuedBy,
+        p_priority: input.priority ?? 100,
+        p_scheduled_for: input.scheduledFor ?? null,
+        p_worker: input.worker ?? 'director',
+    });
+    if (rpcResult.error || !rpcResult.data) {
+        logger?.error?.({ err: rpcResult.error, input }, 'enqueue_orchestrator_command_failed');
+        throw new Error(rpcResult.error?.message ?? 'enqueue_orchestrator_command_failed');
+    }
+    const envelope = await fetchCommandEnvelope(supabase, rpcResult.data);
+    return {
+        commandId: envelope.command.id,
+        jobId: envelope.job.id,
+        sessionId: envelope.session.id,
+        status: envelope.command.status,
+        scheduledFor: envelope.command.scheduledFor,
+    };
+}
+export async function runDirectorPlanning(supabase, session, objective, context, logger) {
+    const agent = getDirectorAgent();
+    const openai = getOpenAI();
+    try {
+        const input = `${DIRECTOR_INSTRUCTIONS}\n\n${JSON.stringify({ session, objective, context })}`;
+        const response = await runAgent(agent, input, {
+            model: env.AGENT_MODEL,
+            metadata: {
+                orgId: session.orgId,
+                sessionId: session.id,
+                objective,
+                kind: 'director_plan',
+            },
+        });
+        let plan = response.finalOutput;
+        await drainAgentStream(response, logger);
+        if (!plan) {
+            plan = response.finalOutput;
+        }
+        if (!plan) {
+            throw new Error('director_plan_missing_output');
+        }
+        validateDirectorPlanBudget(plan, logger);
+        return plan;
+    }
+    catch (error) {
+        await logOpenAIDebug('director_plan', error, logger);
+        logger?.error?.({
+            err: error instanceof Error ? error.message : error,
+            sessionId: session.id,
+            objective,
+        }, 'director_plan_failed');
+        throw error instanceof Error ? error : new Error('director_plan_failed');
+    }
+    finally {
+        void openai;
+    }
+}
+export async function runSafetyAssessment(supabase, envelope, logger) {
+    const agent = getSafetyAgent();
+    const openai = getOpenAI();
+    try {
+        const input = `${SAFETY_INSTRUCTIONS}\n\n${JSON.stringify({ session: envelope.session, command: envelope.command, job: envelope.job })}`;
+        const response = await runAgent(agent, input, {
+            model: env.AGENT_MODEL,
+            metadata: {
+                orgId: envelope.session.orgId,
+                sessionId: envelope.session.id,
+                commandId: envelope.command.id,
+                kind: 'safety_review',
+            },
+        });
+        const review = response.finalOutput;
+        if (!review) {
+            return {
+                status: 'needs_hitl',
+                reasons: ['Safety review missing output, escalate to human'],
+            };
+        }
+        const decision = review.decision;
+        const refusalReasons = review.refusal ? [review.refusal.reason] : [];
+        const reasons = [...decision.reasons, ...refusalReasons];
+        const mitigations = decision.mitigations;
+        if (review.refusal || decision.status === 'rejected') {
+            return { status: 'rejected', reasons, mitigations };
+        }
+        if (decision.status === 'needs_hitl' || decision.hitlRequired) {
+            return { status: 'needs_hitl', reasons, mitigations };
+        }
+        return {
+            status: 'approved',
+            reasons,
+            mitigations,
+        };
+    }
+    catch (error) {
+        await logOpenAIDebug('safety_review', error, logger);
+        logger?.error?.({
+            err: error instanceof Error ? error.message : error,
+            commandId: envelope.command.id,
+        }, 'safety_review_failed');
+        return {
+            status: 'needs_hitl',
+            reasons: ['Safety agent failure, escalate to human'],
+        };
+    }
+    finally {
+        void openai;
+    }
+}
+export async function listPendingJobs(supabase, orgId, worker, limit = 10) {
+    const jobQuery = await supabase
+        .from('orchestrator_jobs')
+        .select('id, org_id, command_id, worker, domain_agent, status, attempts, scheduled_at, started_at, completed_at, failed_at, last_error, metadata, created_at, updated_at')
+        .eq('org_id', orgId)
+        .eq('worker', worker)
+        .eq('status', 'pending')
+        .order('scheduled_at', { ascending: true })
+        .limit(limit);
+    if (jobQuery.error) {
+        throw new Error(jobQuery.error.message);
+    }
+    const envelopes = [];
+    for (const row of jobQuery.data ?? []) {
+        const job = mapJob(row);
+        const envelope = await fetchCommandEnvelope(supabase, job.commandId);
+        envelopes.push(envelope);
+    }
+    return envelopes;
+}
+export async function listCommandsForSession(supabase, sessionId, limit = 50) {
+    const query = await supabase
+        .from('orchestrator_commands')
+        .select('id, org_id, session_id, command_type, payload, status, priority, scheduled_for, started_at, completed_at, failed_at, result, last_error, metadata, created_at, updated_at')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+    if (query.error) {
+        throw new Error(query.error.message);
+    }
+    return (query.data ?? []).map((row) => mapCommand(row));
+}
+export async function listOrgConnectors(supabase, orgId) {
+    const query = await supabase
+        .from('org_connectors')
+        .select('id, org_id, connector_type, name, status, config, metadata, last_synced_at, last_error, created_at, updated_at')
+        .eq('org_id', orgId)
+        .order('name', { ascending: true });
+    if (query.error) {
+        throw new Error(query.error.message);
+    }
+    return (query.data ?? []).map((row) => mapConnector(row));
+}
+export async function updateCommandStatus(supabase, commandId, status, patch) {
+    const updatePayload = {
+        status,
+        ...patch,
+    };
+    const { error } = await supabase
+        .from('orchestrator_commands')
+        .update(updatePayload)
+        .eq('id', commandId);
+    if (error) {
+        throw new Error(error.message);
+    }
+}
+export async function updateJobStatus(supabase, jobId, status, patch) {
+    const payload = {
+        status,
+        ...patch,
+    };
+    const { error } = await supabase
+        .from('orchestrator_jobs')
+        .update(payload)
+        .eq('id', jobId);
+    if (error) {
+        throw new Error(error.message);
+    }
+}
+export async function registerConnector(supabase, input) {
+    const rpcResult = await supabase.rpc('register_org_connector', {
+        p_org_id: input.orgId,
+        p_connector_type: input.connectorType,
+        p_name: input.name,
+        p_config: input.config ?? {},
+        p_status: input.status ?? 'pending',
+        p_metadata: input.metadata ?? {},
+        p_created_by: input.createdBy ?? null,
+    });
+    if (rpcResult.error || !rpcResult.data) {
+        throw new Error(rpcResult.error?.message ?? 'register_connector_failed');
+    }
+    return rpcResult.data;
+}
+export async function updateSessionState(supabase, input) {
+    const patch = {};
+    if (input.directorState !== undefined) {
+        if (input.directorState === null) {
+            patch.director_state = {};
+        }
+        else {
+            patch.director_state = FinanceDirectorPlanSchema.parse(input.directorState);
+        }
+    }
+    if (input.safetyState !== undefined) {
+        if (input.safetyState === null) {
+            patch.safety_state = {};
+        }
+        else {
+            patch.safety_state = FinanceSafetyReviewSchema.parse(input.safetyState);
+        }
+    }
+    if (input.metadata) {
+        patch.metadata = input.metadata;
+    }
+    if (input.currentObjective !== undefined) {
+        patch.current_objective = input.currentObjective;
+    }
+    if (input.status) {
+        patch.status = input.status;
+    }
+    if (input.lastDirectorRunId !== undefined) {
+        patch.last_director_run_id = input.lastDirectorRunId;
+    }
+    if (input.lastSafetyRunId !== undefined) {
+        patch.last_safety_run_id = input.lastSafetyRunId;
+    }
+    if (Object.keys(patch).length === 0) {
+        return;
+    }
+    const { error } = await supabase
+        .from('orchestrator_sessions')
+        .update(patch)
+        .eq('id', input.sessionId);
+    if (error) {
+        throw new Error(error.message);
+    }
+}
