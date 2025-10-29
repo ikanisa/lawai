@@ -98,11 +98,7 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0(typescript@5.4.5)(zod@3.25.76)
 
-  apps/edge:
-    devDependencies:
-      vitest:
-        specifier: ^1.6.0
-        version: 1.6.0(@types/node@20.14.10)(happy-dom@13.10.1)
+  apps/edge: {}
 
   apps/ops:
     dependencies:

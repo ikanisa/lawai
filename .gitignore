@@ -11,12 +11,16 @@ coverage
 *.log
 /dist
 apps/dist
+apps/*/dist
 /build
 /.turbo
 /tmp
 playwright-report/
 test-results/
 apps/web/public/sw.js
+*.tsbuildinfo
+packages/*/tsconfig.tsbuildinfo
+db/*/dist
 
 # Generated PWA icons
 apps/web/public/icons/icon-*.png
