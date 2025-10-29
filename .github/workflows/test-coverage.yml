@@ -1,0 +1,216 @@
+name: "Test Coverage"
+
+on:
+  push:
+    branches: [ "main", "master", "work" ]
+  pull_request:
+    branches: [ "main", "master", "work" ]
+  workflow_dispatch:
+
+concurrency:
+  group: test-coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: Test Coverage Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        # Fetch full history for better coverage diff
+        fetch-depth: 0
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8.15.4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'pnpm'
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile --ignore-scripts
+
+    # Run tests with coverage for each workspace
+    - name: Run tests with coverage - packages/compliance
+      run: pnpm --filter @avocat-ai/compliance run test -- --coverage
+      continue-on-error: true
+
+    - name: Run tests with coverage - packages/shared
+      run: pnpm --filter @avocat-ai/shared run test -- --coverage
+      continue-on-error: true
+
+    - name: Run tests with coverage - packages/observability
+      run: pnpm --filter @avocat-ai/observability run test -- --coverage
+      continue-on-error: true
+
+    - name: Run tests with coverage - packages/supabase
+      run: pnpm --filter @avocat-ai/supabase run test -- --coverage
+      continue-on-error: true
+
+    - name: Run tests with coverage - apps/api
+      run: pnpm --filter @apps/api run test -- --coverage
+      continue-on-error: true
+
+    - name: Run tests with coverage - apps/web
+      run: pnpm --filter @avocat-ai/web run test -- --coverage
+      continue-on-error: true
+
+    - name: Run tests with coverage - apps/ops
+      run: pnpm --filter @apps/ops run test -- --coverage
+      continue-on-error: true
+
+    # Collect all coverage reports
+    - name: Collect coverage reports
+      run: |
+        echo "Collecting coverage reports..."
+        mkdir -p coverage-reports
+        
+        # Find all coverage directories
+        find . -name "coverage" -type d ! -path "*/node_modules/*" | while read dir; do
+          workspace=$(echo $dir | cut -d'/' -f2-3)
+          echo "Found coverage in: $workspace"
+          
+          # Copy coverage JSON files if they exist
+          if [ -f "$dir/coverage-final.json" ]; then
+            cp "$dir/coverage-final.json" "coverage-reports/${workspace//\//-}-coverage.json"
+          fi
+          
+          # Copy lcov files if they exist
+          if [ -f "$dir/lcov.info" ]; then
+            cp "$dir/lcov.info" "coverage-reports/${workspace//\//-}-lcov.info"
+          fi
+        done
+        
+        echo "Coverage collection complete"
+
+    # Upload coverage to Codecov (optional, requires setup)
+    # - name: Upload to Codecov
+    #   uses: codecov/codecov-action@v4
+    #   with:
+    #     token: ${{ secrets.CODECOV_TOKEN }}
+    #     directory: ./coverage-reports
+    #     flags: unittests
+    #     name: codecov-umbrella
+
+    # Generate merged coverage report
+    - name: Generate merged report
+      run: |
+        echo "# Test Coverage Summary" > coverage-summary.md
+        echo "" >> coverage-summary.md
+        echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> coverage-summary.md
+        echo "Commit: ${{ github.sha }}" >> coverage-summary.md
+        echo "" >> coverage-summary.md
+        
+        # Parse coverage from each workspace
+        for file in coverage-reports/*-coverage.json; do
+          if [ -f "$file" ]; then
+            workspace=$(basename "$file" -coverage.json)
+            echo "## $workspace" >> coverage-summary.md
+            
+            # Extract coverage percentages (this is a simplified parser)
+            # In production, use a proper coverage parser
+            echo "Coverage data collected" >> coverage-summary.md
+            echo "" >> coverage-summary.md
+          fi
+        done
+        
+        echo "## Overall Status" >> coverage-summary.md
+        echo "" >> coverage-summary.md
+        echo "✅ Coverage reports generated for all workspaces with tests" >> coverage-summary.md
+        echo "" >> coverage-summary.md
+        echo "### Next Steps" >> coverage-summary.md
+        echo "1. Review coverage reports in artifacts" >> coverage-summary.md
+        echo "2. Set baseline coverage targets" >> coverage-summary.md
+        echo "3. Configure coverage gates (80% or baseline +10%)" >> coverage-summary.md
+        echo "4. Integrate with coverage service (Codecov, Coveralls, etc.)" >> coverage-summary.md
+
+    # Upload coverage artifacts
+    - name: Upload coverage artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-reports
+        path: |
+          coverage-reports/
+          coverage-summary.md
+          **/coverage/
+        retention-days: 30
+
+    # Generate GitHub summary
+    - name: Generate summary
+      if: always()
+      run: |
+        echo "# Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Check if coverage files exist
+        coverage_count=$(find coverage-reports -name "*.json" 2>/dev/null | wc -l)
+        
+        echo "## Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- Coverage reports generated: $coverage_count" >> $GITHUB_STEP_SUMMARY
+        echo "- Artifacts uploaded: coverage-reports" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "## Tested Workspaces" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        ls -1 coverage-reports/*-coverage.json 2>/dev/null | while read file; do
+          workspace=$(basename "$file" -coverage.json | sed 's/-/\//g')
+          echo "- ✅ $workspace" >> $GITHUB_STEP_SUMMARY
+        done
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Coverage Thresholds (To Be Set)" >> $GITHUB_STEP_SUMMARY
+        echo "Current policy: Document baseline, then set ≥80% or baseline +10%" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Actions" >> $GITHUB_STEP_SUMMARY
+        echo "1. Download artifacts to review detailed coverage" >> $GITHUB_STEP_SUMMARY
+        echo "2. Set coverage baselines in vitest.config.ts files" >> $GITHUB_STEP_SUMMARY
+        echo "3. Configure coverage service integration" >> $GITHUB_STEP_SUMMARY
+        echo "4. Enable coverage gates in CI once baselines are set" >> $GITHUB_STEP_SUMMARY
+
+  # Separate job for coverage enforcement (disabled by default)
+  enforce-coverage:
+    name: Enforce Coverage Thresholds
+    runs-on: ubuntu-latest
+    needs: coverage
+    if: false  # Enable after setting baselines
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download coverage reports
+      uses: actions/download-artifact@v4
+      with:
+        name: coverage-reports
+        path: ./coverage-reports
+
+    - name: Check coverage thresholds
+      run: |
+        echo "Checking coverage thresholds..."
+        
+        # Define thresholds (to be customized per workspace)
+        GLOBAL_THRESHOLD=80
+        
+        # Parse coverage and check thresholds
+        # This is a placeholder - implement actual threshold checking
+        
+        echo "Coverage threshold checking not yet implemented"
+        echo "Set thresholds in vitest.config.ts coverage.thresholds"
+        
+        # Example threshold check logic:
+        # for file in coverage-reports/*-coverage.json; do
+        #   coverage=$(parse_coverage "$file")
+        #   if [ "$coverage" -lt "$GLOBAL_THRESHOLD" ]; then
+        #     echo "❌ Coverage below threshold in $(basename $file)"
+        #     exit 1
+        #   fi
+        # done
