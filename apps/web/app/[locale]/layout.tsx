@@ -1,17 +1,16 @@
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 
-import { AppShell } from '@/components/app-shell';
-import { AppProviders } from '@/components/providers';
+import { AppShell } from '@/features/shell';
+import { AppProviders } from '@/features/platform/providers/app-providers';
 import { AuthGuard } from '@/features/auth/components/auth-guard';
 import { getMessages, isLocale, locales, type Locale } from '@/lib/i18n';
-import { resolveClientSession } from '@/server/session';
 
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
 
-export default async function LocaleLayout({
+export default function LocaleLayout({
   children,
   params,
 }: {
@@ -23,10 +22,9 @@ export default async function LocaleLayout({
   }
   const locale = params.locale as Locale;
   const messages = getMessages(locale);
-  const initialSession = await resolveClientSession();
 
   return (
-    <AppProviders initialSession={initialSession}>
+    <AppProviders>
       <AuthGuard locale={locale}>
         <AppShell messages={messages} locale={locale}>
           {children}
