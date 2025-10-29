@@ -1,0 +1,110 @@
+name: Generate SBOM
+
+on:
+  push:
+    branches: [ main, master, work ]
+  pull_request:
+    branches: [ main, master, work ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+jobs:
+  generate-sbom:
+    name: Generate Software Bill of Materials
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install CycloneDX CLI
+        run: |
+          npm install -g @cyclonedx/cyclonedx-npm
+
+      - name: Create SBOM directory
+        run: mkdir -p docs/sbom
+
+      - name: Generate SBOM for root workspace
+        run: |
+          cyclonedx-npm --output-file docs/sbom/root-sbom.json --output-format json
+        continue-on-error: true
+
+      - name: Generate SBOM for apps/api
+        run: |
+          cd apps/api
+          cyclonedx-npm --output-file ../../docs/sbom/api-sbom.json --output-format json
+        continue-on-error: true
+
+      - name: Generate SBOM for apps/web
+        run: |
+          cd apps/web
+          cyclonedx-npm --output-file ../../docs/sbom/web-sbom.json --output-format json
+        continue-on-error: true
+
+      - name: Generate SBOM for apps/pwa
+        run: |
+          cd apps/pwa
+          cyclonedx-npm --output-file ../../docs/sbom/pwa-sbom.json --output-format json
+        continue-on-error: true
+
+      - name: Generate SBOM for apps/ops
+        run: |
+          cd apps/ops
+          cyclonedx-npm --output-file ../../docs/sbom/ops-sbom.json --output-format json
+        continue-on-error: true
+
+      - name: Generate SBOM for apps/edge
+        run: |
+          cd apps/edge
+          cyclonedx-npm --output-file ../../docs/sbom/edge-sbom.json --output-format json
+        continue-on-error: true
+
+      - name: Generate SBOM for packages/shared
+        run: |
+          cd packages/shared
+          cyclonedx-npm --output-file ../../docs/sbom/shared-sbom.json --output-format json
+        continue-on-error: true
+
+      - name: Generate SBOM for packages/supabase
+        run: |
+          cd packages/supabase
+          cyclonedx-npm --output-file ../../docs/sbom/supabase-sbom.json --output-format json
+        continue-on-error: true
+
+      - name: List generated SBOMs
+        run: |
+          echo "Generated SBOM files:"
+          ls -lh docs/sbom/
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: docs/sbom/*.json
+          retention-days: 90
+
+      - name: Commit SBOM files (on main/master/work)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/work')
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add docs/sbom/*.json || true
+          git diff --staged --quiet || git commit -m "chore: update SBOM artifacts [skip ci]"
+          git push || true
