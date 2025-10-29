@@ -1,0 +1,79 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# top-most EditorConfig file
+root = true
+
+# Unix-style newlines with a newline ending every file
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+trim_trailing_whitespace = true
+
+# TypeScript, JavaScript, JSON
+[*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc}]
+indent_style = space
+indent_size = 2
+max_line_length = 120
+
+# JSON files (stricter formatting)
+[*.json]
+indent_size = 2
+max_line_length = off
+
+# Markdown
+[*.md]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = false
+max_line_length = off
+
+# YAML
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# SQL
+[*.sql]
+indent_style = space
+indent_size = 2
+
+# Shell scripts
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# Makefiles
+[Makefile]
+indent_style = tab
+
+# Package files
+[{package.json,package-lock.json,pnpm-lock.yaml}]
+indent_size = 2
+
+# Configuration files
+[*.config.{js,ts,mjs,cjs}]
+indent_size = 2
+
+# Environment files
+[.env*]
+indent_size = 2
+trim_trailing_whitespace = false
+
+# Docker
+[Dockerfile*]
+indent_style = space
+indent_size = 2
+
+[*.dockerignore]
+indent_style = space
+indent_size = 2
+
+# Git
+[.gitignore]
+indent_style = space
+indent_size = 2
+
+[.gitattributes]
+indent_style = space
+indent_size = 2
