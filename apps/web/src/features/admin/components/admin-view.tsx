@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Input } from '@/ui/input';
 import { OperationsOverviewCard } from '@/components/governance/operations-overview-card';
 import {
-  DEMO_ORG_ID,
   fetchRetrievalMetrics,
   type RetrievalMetricsResponse,
   fetchEvaluationMetrics,
@@ -38,6 +37,7 @@ import {
 } from '@/lib/api';
 import type { Messages } from '@/lib/i18n';
 import { clientEnv } from '@/env.client';
+import { useSession } from '@/components/session-provider';
 import { useGovernanceMetrics } from '../hooks/use-governance-metrics';
 import { AdminTelemetryDashboard } from './telemetry-dashboard';
 import { AdminAuditLogPanel } from './audit-log-panel';
@@ -61,7 +61,33 @@ const selectClassName =
 
 export function AdminView({ messages }: AdminViewProps) {
   const queryClient = useQueryClient();
-  const metricsQuery = useGovernanceMetrics();
+  const { status: sessionStatus, session } = useSession();
+  const orgId = session?.orgId;
+  const userId = session?.userId;
+  const canQuery = sessionStatus === 'authenticated' && Boolean(orgId && userId);
+  
+  const metricsQuery = useGovernanceMetrics(orgId, userId, canQuery);
+  
+  if (sessionStatus === 'loading') {
+    return (
+      <div className="rounded-3xl border border-slate-800/60 bg-slate-900/40 p-6 text-slate-200">
+        <h2 className="text-lg font-semibold text-slate-100">Console administrateur</h2>
+        <p className="mt-1 text-sm text-slate-400">Chargement de votre session sécurisée…</p>
+      </div>
+    );
+  }
+
+  if (!canQuery) {
+    return (
+      <div className="rounded-3xl border border-amber-500/40 bg-amber-500/10 p-6 text-amber-100">
+        <h2 className="text-lg font-semibold text-amber-100">Accès restreint</h2>
+        <p className="mt-1 text-sm text-amber-100/80">
+          Vous devez être connecté avec un compte autorisé pour consulter le tableau de bord de gouvernance.
+        </p>
+      </div>
+    );
+  }
+
   const overview = metricsQuery.data?.overview ?? null;
   const toolRows = metricsQuery.data?.tools ?? [];
   const jurisdictionLabels = useMemo(() => {
@@ -87,8 +113,12 @@ export function AdminView({ messages }: AdminViewProps) {
       })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [metricsQuery.data, jurisdictionLabels]);
   const retrievalQuery = useQuery<RetrievalMetricsResponse>({
-    queryKey: ['retrieval-metrics', orgId],
-    queryFn: () => fetchRetrievalMetrics(orgId),
+    queryKey: ['retrieval-metrics', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchRetrievalMetrics(orgId, { userId });
+    },
+    enabled: canQuery,
     staleTime: 60_000,
   });
   const retrievalSummary = retrievalQuery.data?.summary ?? null;
@@ -106,8 +136,12 @@ export function AdminView({ messages }: AdminViewProps) {
       .slice(0, 8);
   }, [retrievalQuery.data]);
   const evaluationQuery = useQuery<EvaluationMetricsResponse>({
-    queryKey: ['evaluation-metrics', orgId],
-    queryFn: () => fetchEvaluationMetrics(orgId),
+    queryKey: ['evaluation-metrics', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchEvaluationMetrics(orgId, { userId });
+    },
+    enabled: canQuery,
     staleTime: 60_000,
   });
   const evaluationSummary = evaluationQuery.data?.summary ?? null;
@@ -125,43 +159,75 @@ export function AdminView({ messages }: AdminViewProps) {
       })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [evaluationQuery.data, jurisdictionLabels, messages.admin.evaluationJurisdictionUnknown]);
   const sloQuery = useQuery<SloMetricsResponse>({
-    queryKey: ['slo-metrics', orgId],
-    queryFn: () => fetchSloMetrics(orgId),
+    queryKey: ['slo-metrics', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchSloMetrics(orgId, 6, { userId });
+    },
+    enabled: canQuery,
     staleTime: 60_000,
   });
   const sloSummary = sloQuery.data?.summary ?? null;
   const sloSnapshots = sloQuery.data?.snapshots ?? [];
   const operationsQuery = useQuery<OperationsOverviewResponse>({
-    queryKey: ['operations-overview', orgId],
-    queryFn: () => getOperationsOverview(orgId),
+    queryKey: ['operations-overview', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return getOperationsOverview(orgId, { userId });
+    },
+    enabled: canQuery,
     staleTime: 60_000,
   });
   const operationsOverview = operationsQuery.data ?? null;
   const ssoQuery = useQuery({
-    queryKey: ['admin-sso', orgId],
-    queryFn: () => fetchSsoConnections(orgId),
+    queryKey: ['admin-sso', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchSsoConnections(orgId, { userId });
+    },
+    enabled: canQuery,
   });
   const scimQuery = useQuery({
-    queryKey: ['admin-scim', orgId],
-    queryFn: () => fetchScimTokens(orgId),
+    queryKey: ['admin-scim', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchScimTokens(orgId, { userId });
+    },
+    enabled: canQuery,
   });
   const auditQuery = useQuery({
-    queryKey: ['admin-audit', orgId],
-    queryFn: () => fetchAuditEvents(orgId, 25),
+    queryKey: ['admin-audit', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchAuditEvents(orgId, 25, { userId });
+    },
+    enabled: canQuery,
   });
   const ipQuery = useQuery({
-    queryKey: ['admin-ip', orgId],
-    queryFn: () => fetchIpAllowlist(orgId),
+    queryKey: ['admin-ip', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchIpAllowlist(orgId, { userId });
+    },
+    enabled: canQuery,
   });
   const deviceSessionsQuery = useQuery({
-    queryKey: ['admin-device-sessions', orgId],
-    queryFn: () => fetchDeviceSessions(orgId, { includeRevoked: false, limit: 200 }),
+    queryKey: ['admin-device-sessions', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchDeviceSessions(orgId, { includeRevoked: false, limit: 200, userId });
+    },
+    enabled: canQuery,
     staleTime: 30_000,
   });
   const deviceSessions = (deviceSessionsQuery.data?.sessions ?? []) as DeviceSession[];
   const complianceDashboardQuery = useQuery<ComplianceDashboardResponse>({
-    queryKey: ['compliance-dashboard', orgId],
-    queryFn: () => fetchComplianceDashboard(orgId),
+    queryKey: ['compliance-dashboard', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchComplianceDashboard(orgId, { userId });
+    },
+    enabled: canQuery,
     staleTime: 60_000,
   });
   const complianceDashboard = complianceDashboardQuery.data ?? null;

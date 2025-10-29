@@ -10,7 +10,6 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { setApiSessionAccessor } from '@/lib/api';
 
 export interface SessionValue {
   orgId: string;
@@ -92,7 +91,7 @@ function readBootstrapSession(initial?: SessionValue | null): SessionValue | nul
 
 const DEFAULT_LOADER = async (): Promise<SessionValue | null> => {
   try {
-    const response = await fetch('/api/session', { cache: 'no-store', credentials: 'include' });
+    const response = await fetch('/api/auth/session', { cache: 'no-store', credentials: 'include' });
     if (!response.ok) {
       return null;
     }
@@ -192,10 +191,6 @@ export function SessionProvider({ children, initialSession, loader }: SessionPro
 
 useEffect(() => {
   notify(session, status);
-}, [session, status]);
-
-useEffect(() => {
-  setApiSessionAccessor(() => cachedSession);
 }, [session, status]);
 
   const value = useMemo<SessionContextValue>(

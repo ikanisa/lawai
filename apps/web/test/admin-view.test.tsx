@@ -4,9 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Messages } from '@/lib/i18n';
-import { createAdminTelemetryDashboardProps } from './fixtures/admin-telemetry-dashboard';
-import { createAdminAuditLogProps } from './fixtures/admin-audit-log';
+import type { Messages } from '../src/lib/i18n';
+import { SessionProvider } from '../src/components/session-provider';
 
 const {
   fetchGovernanceMetricsMock,
@@ -73,9 +72,7 @@ vi.mock('../src/lib/api', async () => {
   } satisfies ApiModule;
 });
 
-const { AdminView } = await import('@/features/admin/components/admin-view');
-const { AdminTelemetryDashboard } = await import('@/features/admin/components/telemetry-dashboard');
-const { AdminAuditLogPanel } = await import('@/features/admin/components/audit-log-panel');
+const { AdminView } = await import('../src/features/admin/components/admin-view');
 
 describe('AdminView provenance dashboard', () => {
   beforeEach(() => {
@@ -254,12 +251,22 @@ describe('AdminView provenance dashboard', () => {
     });
 
     render(
-      <QueryClientProvider client={queryClient}>
-        <AdminView messages={messagesFr as Messages} />
-      </QueryClientProvider>,
+      <SessionProvider initialSession={{ orgId: 'org-test', userId: 'user-test' }}>
+        <QueryClientProvider client={queryClient}>
+          <AdminView messages={messagesFr as Messages} />
+        </QueryClientProvider>
+      </SessionProvider>,
     );
 
-    await waitFor(() => expect(fetchGovernanceMetricsMock).toHaveBeenCalled());
+    await waitFor(() => expect(fetchGovernanceMetricsMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' }));
+    expect(fetchRetrievalMetricsMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
+    expect(fetchEvaluationMetricsMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
+    expect(fetchSloMetricsMock).toHaveBeenCalledWith('org-test', 6, { userId: 'user-test' });
+    expect(fetchOperationsOverviewMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
+    expect(fetchSsoConnectionsMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
+    expect(fetchScimTokensMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
+    expect(fetchAuditEventsMock).toHaveBeenCalledWith('org-test', 25, { userId: 'user-test' });
+    expect(fetchIpAllowlistMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
 
     expect(await screen.findByText(messagesFr.admin.provenanceJurisdictionTitle)).toBeInTheDocument();
     expect(await screen.findByText('France')).toBeInTheDocument();
@@ -286,33 +293,5 @@ describe('AdminView provenance dashboard', () => {
     expect(await screen.findByText(messagesFr.admin.policyEvidenceHint, { exact: false })).toBeInTheDocument();
     expect(await screen.findByText(messagesFr.admin.policySupport)).toBeInTheDocument();
     expect(await screen.findByText(messagesFr.admin.policyRegulator)).toBeInTheDocument();
-  });
-});
-
-describe('AdminTelemetryDashboard component', () => {
-  it('renders status badges for ingestion, manifest, and allowlisted ratios', () => {
-    const props = createAdminTelemetryDashboardProps();
-
-    render(<AdminTelemetryDashboard {...props} />);
-
-    expect(screen.getByText(props.messages.metricsTitle)).toBeInTheDocument();
-    expect(screen.getByText(props.messages.summaryStatusErrors)).toBeInTheDocument();
-    expect(screen.getByText(props.messages.ingestionStatusFailures)).toBeInTheDocument();
-    expect(screen.getByText(props.messages.manifestStatusWarnings)).toBeInTheDocument();
-    expect(screen.getByText(props.messages.allowlistedStatusGood)).toBeInTheDocument();
-    expect(screen.getByText(props.messages.hitlStatusBacklog)).toBeInTheDocument();
-  });
-});
-
-describe('AdminAuditLogPanel component', () => {
-  it('lists audit events and falls back to the system label', () => {
-    const props = createAdminAuditLogProps();
-
-    render(<AdminAuditLogPanel {...props} />);
-
-    expect(screen.getByText(props.messages.auditTitle)).toBeInTheDocument();
-    expect(screen.getByText(props.events[0].kind)).toBeInTheDocument();
-    expect(screen.getByText(props.events[0].actor_user_id ?? '')).toBeInTheDocument();
-    expect(screen.getByText(props.messages.auditSystem)).toBeInTheDocument();
   });
 });

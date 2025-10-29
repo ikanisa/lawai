@@ -1,11 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { DEMO_ORG_ID, fetchGovernanceMetrics, type GovernanceMetricsResponse } from '@/lib/api';
+import { fetchGovernanceMetrics, type GovernanceMetricsResponse } from '@/lib/api';
 
-export function useGovernanceMetrics() {
+export function useGovernanceMetrics(orgId?: string, userId?: string, enabled = false) {
   return useQuery<GovernanceMetricsResponse>({
-    queryKey: ['governance-metrics', DEMO_ORG_ID],
-    queryFn: () => fetchGovernanceMetrics(DEMO_ORG_ID),
+    queryKey: ['governance-metrics', orgId, userId],
+    queryFn: () => {
+      if (!orgId || !userId) {
+        throw new Error('session_required');
+      }
+      return fetchGovernanceMetrics(orgId, { userId });
+    },
+    enabled,
     staleTime: 60_000,
   });
 }
