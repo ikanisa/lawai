@@ -23,22 +23,19 @@ import {
   Inbox,
   WifiOff,
 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Switch } from './ui/switch';
-import { cn } from '../lib/utils';
-import type { Messages, Locale } from '../lib/i18n';
+import { Button } from '@/ui/button';
+import { cn } from '@/lib/utils';
+import type { Messages, Locale } from '@/lib/i18n';
 import { CommandPalette, type CommandPaletteAction } from './command-palette';
+import { sendTelemetryEvent } from '@/lib/api';
 import { toast } from 'sonner';
 import { ConfidentialModeBanner } from './confidential-mode-banner';
 import { ComplianceBanner } from './compliance-banner';
 import { useConfidentialMode } from '@/state/confidential-mode';
 import { useShallow } from 'zustand/react/shallow';
-import { useOutbox } from '@/hooks/use-outbox';
-import { useOnlineStatus } from '@/hooks/use-online-status';
+import { useOutbox } from '@/features/platform/hooks/use-outbox';
+import { useOnlineStatus } from '@/features/platform/hooks/use-online-status';
 import { PwaInstallPrompt } from './pwa-install-prompt';
-import { PwaPreferenceToggle } from './pwa-preference-toggle';
-import { usePwaPreference } from '@/hooks/use-pwa-preference';
-import { useSessionTelemetry } from '@/hooks/use-session-telemetry';
 
 interface AppShellProps {
   children: ReactNode;
@@ -77,8 +74,6 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   const { pendingCount: outboxCount, hasItems: hasOutbox, stalenessMs } = useOutbox();
   const online = useOnlineStatus();
   const statusBarMessages = messages.app.statusBar;
-  const { enabled: pwaOptIn, ready: pwaPreferenceReady, setEnabled: setPwaOptIn } = usePwaPreference();
-  const sendUserTelemetry = useSessionTelemetry();
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -96,8 +91,8 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
     if (toastMessage) {
       toast.info(toastMessage);
     }
-    sendUserTelemetry('confidential_mode_toggled', { enabled: next });
-  }, [confidentialMode, sendUserTelemetry, setConfidentialMode, statusMessages]);
+    void sendTelemetryEvent('confidential_mode_toggled', { enabled: next });
+  }, [confidentialMode, setConfidentialMode, statusMessages]);
 
   const confidentialToggleLabel = confidentialMode
     ? confidentialActions?.disable?.label ?? confidentialMessages?.cta ?? 'Disable confidential mode'
@@ -199,7 +194,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
 
   const handleCommandButton = () => {
     setCommandOpen(true);
-    sendUserTelemetry('command_palette_button');
+    void sendTelemetryEvent('command_palette_button');
   };
 
   const handleFabPointerDown = (event: ReactPointerEvent<HTMLAnchorElement>) => {
@@ -227,19 +222,6 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   };
 
   const installMessages = messages.app.install;
-  const optInMessages = installMessages?.optIn;
-  const handlePwaToggle = useCallback(() => {
-    const next = !pwaOptIn;
-    setPwaOptIn(next);
-    const feedback = next
-      ? optInMessages?.on ?? optInMessages?.label
-      : optInMessages?.off ?? optInMessages?.label;
-    if (feedback) {
-      toast.info(feedback);
-    }
-    sendUserTelemetry('pwa_opt_in_toggled', { enabled: next });
-  }, [optInMessages, pwaOptIn, sendUserTelemetry, setPwaOptIn]);
-  const canTogglePwa = clientEnv.NEXT_PUBLIC_ENABLE_PWA && Boolean(optInMessages);
   const outboxAgeLabel = useMemo(() => {
     if (!statusBarMessages || !hasOutbox) {
       return null;
@@ -248,29 +230,29 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   }, [statusBarMessages, hasOutbox, stalenessMs, locale]);
 
   return (
-    <div className="relative flex min-h-screen bg-slate-950 text-slate-100">
+    <div className="relative flex min-h-screen bg-background text-foreground">
       <a href="#main" className="skip-link">
         {messages.app.skipToContent}
       </a>
       {confidentialMode ? (
-        <div aria-hidden className="pointer-events-none fixed inset-0 z-20 bg-slate-950/20 backdrop-blur-sm" />
+        <div aria-hidden className="pointer-events-none fixed inset-0 z-20 bg-background/60 backdrop-blur-sm" />
       ) : null}
       {navOpen && (
         <div
-          className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-30 bg-background/80 backdrop-blur-sm lg:hidden"
           role="presentation"
           onClick={() => setNavOpen(false)}
         />
       )}
       <aside
         className={cn(
-          'glass-card fixed inset-y-0 left-0 z-40 hidden w-64 flex-col gap-6 border-r border-slate-800/60 px-6 py-8 lg:flex',
+          'glass-card fixed inset-y-0 left-0 z-40 hidden w-64 flex-col gap-6 border-r border-border/70 px-6 py-8 lg:flex',
           navOpen && 'flex',
         )}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-lg font-semibold">
-            <Globe2 className="h-5 w-5 text-teal-300" aria-hidden />
+            <Globe2 className="h-5 w-5 text-primary" aria-hidden />
             <span>{messages.app.title}</span>
           </div>
           <button
@@ -297,8 +279,8 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
                   className={cn(
                     'focus-ring flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-wide transition',
                     isActive
-                      ? 'bg-grad-1 text-slate-900 shadow-lg'
-                      : 'bg-slate-900/40 text-slate-300 hover:bg-slate-800/50 hover:text-white',
+                      ? 'bg-primary text-primary-foreground shadow-lg'
+                      : 'bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground',
                   )}
                 >
                   <Icon className="h-4 w-4" aria-hidden />
@@ -310,7 +292,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
         </nav>
       </aside>
       <button
-        className="focus-ring fixed left-4 top-4 z-50 inline-flex items-center gap-2 rounded-full bg-slate-900/80 px-4 py-2 text-sm font-semibold text-slate-100 shadow-lg backdrop-blur lg:hidden"
+        className="focus-ring fixed left-4 top-4 z-50 inline-flex items-center gap-2 rounded-full bg-card/80 px-4 py-2 text-sm font-semibold text-foreground shadow-lg backdrop-blur lg:hidden"
         onClick={() => setNavOpen((prev) => !prev)}
         aria-expanded={navOpen}
         aria-controls="mobile-nav"
@@ -318,15 +300,15 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
         <Menu className="h-4 w-4" aria-hidden /> Menu
       </button>
       <div className="flex flex-1 flex-col lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-slate-800/60 bg-slate-950/80 px-6 backdrop-blur">
+        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-border/70 bg-background/80 px-6 backdrop-blur">
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
               size="sm"
               onClick={handleCommandButton}
-              className="hidden items-center gap-2 rounded-full bg-slate-900/60 text-xs font-semibold uppercase tracking-wide text-slate-100 hover:bg-slate-800/60 sm:inline-flex"
+              className="hidden items-center gap-2 rounded-full bg-muted/60 text-xs font-semibold uppercase tracking-wide text-foreground hover:bg-muted/80 sm:inline-flex"
             >
-              <Command className="h-4 w-4 text-teal-200" aria-hidden />
+              <Command className="h-4 w-4 text-primary" aria-hidden />
               {messages.app.commandButton}
             </Button>
             <Button
@@ -338,47 +320,28 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
             >
               <Command className="h-5 w-5" aria-hidden />
             </Button>
-            <p className="hidden text-xs text-slate-400 md:block">{messages.app.commandPlaceholder}</p>
+            <p className="hidden text-xs text-muted-foreground md:block">{messages.app.commandPlaceholder}</p>
         </div>
         <div className="flex items-center gap-3">
-          {canTogglePwa ? (
-            <Switch
-              type="button"
-              checked={pwaOptIn}
-              disabled={!pwaPreferenceReady}
-              onClick={handlePwaToggle}
-              label={
-                pwaOptIn
-                  ? optInMessages?.on ?? optInMessages?.label
-                  : optInMessages?.off ?? optInMessages?.label
-              }
-              className="hidden bg-slate-900/60 text-[11px] sm:inline-flex"
-              title={optInMessages?.description}
-            />
-          ) : null}
           {statusBarMessages && !online ? (
             <span className="hidden items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-200 sm:inline-flex">
               <WifiOff className="h-4 w-4" aria-hidden />
               {statusBarMessages.offline}
             </span>
           ) : null}
-          <PwaPreferenceToggle
-            className="hidden xl:inline-flex"
-            messages={installMessages?.preference}
-          />
           {statusBarMessages && hasOutbox ? (
             <Link
               href={localizedHref('/research#outbox-panel')}
-              className="focus-ring hidden items-center gap-2 rounded-full border border-teal-400/40 bg-teal-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-teal-100 shadow-sm transition hover:bg-teal-500/20 sm:flex"
+              className="focus-ring hidden items-center gap-2 rounded-full border border-primary/50 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm transition hover:bg-primary/20 sm:flex"
               aria-label={`${statusBarMessages.outbox} (${outboxCount})`}
             >
               <Inbox className="h-4 w-4" aria-hidden />
               <span>{statusBarMessages.outbox}</span>
-              <span className="rounded-full bg-teal-400/20 px-2 py-0.5 text-[11px] font-semibold text-teal-50">
+              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
                 {outboxCount}
               </span>
               {outboxAgeLabel ? (
-                <span className="text-[10px] font-normal text-teal-100/80">{outboxAgeLabel}</span>
+                <span className="text-[10px] font-normal text-primary/80">{outboxAgeLabel}</span>
               ) : null}
             </Link>
           ) : null}
@@ -404,7 +367,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
               <Database className="h-5 w-5" aria-hidden />
             </Button>
             <Button variant="ghost" size="icon" aria-label="Profil utilisateur">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-800/70 text-sm font-semibold">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-muted/70 text-sm font-semibold">
                 AV
               </span>
             </Button>
@@ -420,7 +383,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
           <nav
             id="mobile-nav"
             aria-label="Navigation principale mobile"
-            className="pointer-events-auto glass-card flex items-center justify-between rounded-3xl border border-slate-800/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide"
+            className="pointer-events-auto glass-card flex items-center justify-between rounded-3xl border border-border/70 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide"
           >
             {MOBILE_PRIMARY_NAV.map((key) => {
               const item = NAVIGATION.find((nav) => nav.key === key)!;
@@ -433,7 +396,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
                   href={href}
                   className={cn(
                     'focus-ring flex flex-col items-center gap-1 rounded-full px-2 py-1',
-                    isActive ? 'text-teal-200' : 'text-slate-400 hover:text-white',
+                    isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
                   )}
                   aria-label={messages.nav[item.key as keyof typeof messages.nav]}
                 >
@@ -445,7 +408,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
           </nav>
           <Link
             href={localizedHref('/research')}
-            className="pointer-events-auto focus-ring absolute -top-9 left-1/2 inline-flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-grad-1 text-slate-950 shadow-2xl"
+            className="pointer-events-auto focus-ring absolute -top-9 left-1/2 inline-flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl"
             aria-label={messages.actions.ask}
             onPointerDown={handleFabPointerDown}
             onPointerUp={handleFabPointerUp}

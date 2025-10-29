@@ -43,7 +43,6 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions =
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
-  const [resultsAnnouncement, setResultsAnnouncement] = useState('');
   const storeOpen = useCommandPalette((state) => state.open);
   const setStoreOpen = useCommandPalette((state) => state.setOpen);
   const resolvedOpen = typeof open === 'boolean' ? open : storeOpen;
@@ -203,25 +202,60 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions =
     [activeIndex, flattenedActions, handleSelect],
   );
 
-  const labels = useMemo(() => messages.app.commandPalette, [messages]);
+  const labels = messages.app.commandPalette;
   const listboxId = 'command-palette-options';
   const keyboardHintId = 'command-palette-hint';
   const activeOption = flattenedActions[activeIndex];
   const activeOptionId = activeOption ? `command-option-${activeOption.action.id}` : undefined;
   const resultsCount = flattenedActions.length;
-  const listboxActiveDescendant = activeOptionId ?? undefined;
-
-  useEffect(() => {
-    if (!resolvedOpen) {
-      setResultsAnnouncement('');
-      return;
-    }
-
-    const template = labels.semanticResultsCount ?? labels.resultsCount;
-    setResultsAnnouncement(template.replace('{count}', resultsCount.toString()));
-  }, [labels.resultsCount, labels.semanticResultsCount, resolvedOpen, resultsCount, query]);
-
   let optionOffset = -1;
+  const renderedGroups = groupedActions.map(({ section, items }) => (
+    <div key={section} role="group" aria-label={labels.sections[section]}>
+      <p className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        {labels.sections[section]}
+      </p>
+      <ul className="mt-1 space-y-1" role="presentation">
+        {items.map((action) => {
+          optionOffset += 1;
+          const optionId = `command-option-${action.id}`;
+          const isActive = optionOffset === activeIndex;
+          return (
+            <li key={action.id} role="presentation">
+              <button
+                type="button"
+                id={optionId}
+                role="option"
+                aria-selected={isActive}
+                tabIndex={-1}
+                data-active={isActive ? 'true' : undefined}
+                onMouseEnter={() => setActiveIndex(optionOffset)}
+                onFocus={() => setActiveIndex(optionOffset)}
+                onClick={() => handleSelect(action)}
+                className={cn(
+                  'focus-ring flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left text-sm transition',
+                  'bg-slate-900/60 text-slate-100 hover:bg-slate-800 hover:text-white',
+                  isActive && 'ring-2 ring-teal-300/60 hover:bg-slate-800',
+                )}
+              >
+                <div>
+                  <p className="font-semibold">{action.label}</p>
+                  {action.description ? <p className="text-xs text-slate-400">{action.description}</p> : null}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  {action.shortcut ? <span>{action.shortcut}</span> : null}
+                  {action.href ? (
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+                  ) : (
+                    <CommandIcon className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  ));
 
   return (
     <Dialog.Root open={resolvedOpen} onOpenChange={changeOpen}>
@@ -257,7 +291,7 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions =
               aria-haspopup="listbox"
               aria-controls={listboxId}
               aria-describedby={`command-palette-description ${keyboardHintId}`}
-              aria-activedescendant={listboxActiveDescendant}
+              aria-activedescendant={activeOptionId}
               onKeyDown={handleInputKeyDown}
               className="flex-1 border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
             />
@@ -268,72 +302,14 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions =
           </div>
           <div className="mt-3 max-h-[50vh] overflow-y-auto" role="presentation">
             <div className="sr-only" aria-live="polite" role="status">
-              {resultsAnnouncement}
+              {labels.resultsCount.replace('{count}', resultsCount.toString())}
             </div>
             {groupedActions.length === 0 ? (
               <p className="px-2 py-6 text-center text-sm text-slate-400">{labels.empty}</p>
             ) : (
-              <ul
-                id={listboxId}
-                role="listbox"
-                aria-label={labels.title}
-                aria-activedescendant={listboxActiveDescendant}
-                className="space-y-3 list-none"
-              >
-                {groupedActions.map(({ section, items }) => (
-                  <li key={section} role="presentation">
-                    <div role="group" aria-label={labels.sections[section]}>
-                      <p className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        {labels.sections[section]}
-                      </p>
-                      <ul className="mt-1 space-y-1 list-none" role="presentation">
-                        {items.map((action) => {
-                          optionOffset += 1;
-                          const optionId = `command-option-${action.id}`;
-                          const isActive = optionOffset === activeIndex;
-                          return (
-                            <li
-                              key={action.id}
-                              id={optionId}
-                              role="option"
-                              aria-selected={isActive}
-                              data-active={isActive ? 'true' : undefined}
-                            >
-                              <button
-                                type="button"
-                                tabIndex={-1}
-                                onMouseEnter={() => setActiveIndex(optionOffset)}
-                                onFocus={() => setActiveIndex(optionOffset)}
-                                onClick={() => handleSelect(action)}
-                                className={cn(
-                                  'focus-ring flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left text-sm transition',
-                                  'bg-slate-900/60 text-slate-100 hover:bg-slate-800 hover:text-white',
-                                  isActive && 'ring-2 ring-teal-300/60 hover:bg-slate-800',
-                                )}
-                              >
-                                <div>
-                                  <p className="font-semibold">{action.label}</p>
-                                  {action.description ? (
-                                    <p className="text-xs text-slate-400">{action.description}</p>
-                                  ) : null}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-slate-500">
-                                  {action.shortcut ? <span>{action.shortcut}</span> : null}
-                                  {action.href ? (
-                                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
-                                  ) : (
-                                    <CommandIcon className="h-3.5 w-3.5" aria-hidden />
-                                  )}
-                                </div>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <div id={listboxId} role="listbox" aria-label={labels.title} className="space-y-3">
+                {renderedGroups}
+              </div>
             )}
           </div>
         </Dialog.Content>

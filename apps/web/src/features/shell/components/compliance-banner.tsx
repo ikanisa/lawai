@@ -4,8 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/ui/button';
-import { acknowledgeCompliance, fetchComplianceStatus, type ComplianceAcknowledgements } from '@/lib/api';
-import { useRequiredSession } from './session-provider';
+import {
+  DEMO_ORG_ID,
+  acknowledgeCompliance,
+  fetchComplianceStatus,
+  type ComplianceAcknowledgements,
+} from '@/lib/api';
+import { queryKeys } from '@/lib/query';
 import type { Messages } from '@/lib/i18n';
 
 interface ComplianceBannerProps {
@@ -13,7 +18,6 @@ interface ComplianceBannerProps {
 }
 
 export function ComplianceBanner({ messages }: ComplianceBannerProps) {
-  const { orgId } = useRequiredSession();
   const [isOffline, setIsOffline] = useState(false);
 
   useEffect(() => {
@@ -36,8 +40,8 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   }, []);
 
   const statusQuery = useQuery({
-    queryKey: ['compliance-status', orgId],
-    queryFn: () => fetchComplianceStatus(orgId),
+    queryKey: queryKeys.compliance(DEMO_ORG_ID),
+    queryFn: () => fetchComplianceStatus(DEMO_ORG_ID),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -75,7 +79,7 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
       if (!payload.consent && !payload.councilOfEurope) {
         return null;
       }
-      return acknowledgeCompliance(orgId, payload);
+      return acknowledgeCompliance(DEMO_ORG_ID, payload);
     },
     onSuccess: () => {
       toast.success(messages.acknowledged);
@@ -93,7 +97,7 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   if (statusQuery.isLoading) {
     return (
       <div
-        className="mb-6 rounded-3xl border border-amber-400/60 bg-amber-500/10 p-5 text-sm text-amber-100"
+        className="mb-6 rounded-3xl border border-warning/60 bg-warning/10 p-5 text-sm text-warning-foreground"
         role="status"
         aria-live="polite"
       >
@@ -105,19 +109,20 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   if (isError) {
     return (
       <div
-        className="mb-6 space-y-4 rounded-3xl border border-amber-400/80 bg-amber-500/10 p-5 text-sm text-amber-100 shadow-lg"
+        className="mb-6 space-y-4 rounded-3xl border border-warning/80 bg-warning/10 p-5 text-sm text-warning-foreground shadow-lg"
         role="alert"
         aria-live="assertive"
       >
         <div>
-          <h3 className="text-base font-semibold text-amber-100">{messages.errorTitle}</h3>
-          <p className="mt-1 text-amber-100/80">{isOffline ? messages.offline : messages.error}</p>
+          <h3 className="text-base font-semibold text-warning-foreground">{messages.errorTitle}</h3>
+          <p className="mt-1 text-sm text-warning-foreground/80">{isOffline ? messages.offline : messages.error}</p>
         </div>
         <Button
           size="sm"
           onClick={() => statusQuery.refetch()}
           disabled={statusQuery.isRefetching}
-          className="bg-amber-400 text-slate-900 hover:bg-amber-300"
+          variant="outline"
+          className="border-warning/60 text-warning-foreground hover:bg-warning/20"
         >
           {messages.retry}
         </Button>
@@ -128,12 +133,12 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   if (!hasPending && isSuccess) {
     return (
       <div
-        className="mb-6 rounded-3xl border border-emerald-400/70 bg-emerald-500/10 p-5 text-sm text-emerald-50 shadow-lg"
+        className="mb-6 rounded-3xl border border-success/60 bg-success/10 p-5 text-sm text-success-foreground shadow-lg"
         role="status"
         aria-live="polite"
       >
-        <h3 className="text-base font-semibold text-emerald-100">{messages.clearTitle}</h3>
-        <p className="mt-1 text-emerald-100/80">{messages.clearDescription}</p>
+        <h3 className="text-base font-semibold text-success-foreground">{messages.clearTitle}</h3>
+        <p className="mt-1 text-sm text-success-foreground/80">{messages.clearDescription}</p>
       </div>
     );
   }
@@ -143,12 +148,12 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
   }
 
   return (
-    <div className="mb-6 space-y-4 rounded-3xl border border-amber-400/80 bg-amber-500/10 p-5 text-sm text-amber-50 shadow-lg">
+    <div className="mb-6 space-y-4 rounded-3xl border border-warning/80 bg-warning/10 p-5 text-sm text-warning-foreground shadow-lg">
       <div>
-        <h3 className="text-base font-semibold text-amber-100">{messages.title}</h3>
-        <p className="mt-1 text-amber-100/80">{messages.description}</p>
+        <h3 className="text-base font-semibold text-warning-foreground">{messages.title}</h3>
+        <p className="mt-1 text-sm text-warning-foreground/80">{messages.description}</p>
       </div>
-      <ul className="space-y-2 text-amber-100">
+      <ul className="space-y-2 text-warning-foreground">
         {pending.consent ? (
           <li>{messages.consentRequired.replace('{version}', pending.consent.version)}</li>
         ) : null}
@@ -161,11 +166,12 @@ export function ComplianceBanner({ messages }: ComplianceBannerProps) {
         onClick={() => ackMutation.mutate()}
         disabled={ackMutation.isLoading}
         aria-busy={ackMutation.isLoading}
-        className="bg-amber-400 text-slate-900 hover:bg-amber-300"
+        variant="outline"
+        className="border-warning/60 text-warning-foreground hover:bg-warning/20"
       >
         {messages.acknowledge}
       </Button>
-      <p className="text-xs text-amber-100/70">{messages.footer}</p>
+      <p className="text-xs text-warning-foreground/70">{messages.footer}</p>
     </div>
   );
 }

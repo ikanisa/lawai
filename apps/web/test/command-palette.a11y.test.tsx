@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import messagesEn from '../messages/en.json';
 import type { Messages } from '@/lib/i18n';
-import { CommandPalette } from '@/components/command-palette';
+import { CommandPalette } from '@/features/shell';
 import { useCommandPalette } from '../src/state/command-palette';
 
 const pushMock = vi.fn();

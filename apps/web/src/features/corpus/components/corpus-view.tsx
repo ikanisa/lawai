@@ -7,9 +7,8 @@ import { Button } from '@/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
 import { Badge } from '@/ui/badge';
 import type { Locale, Messages } from '@/lib/i18n';
-import { fetchCorpus, toggleAllowlistDomain, resummarizeDocument } from '@/lib/api';
+import { fetchCorpus, toggleAllowlistDomain, resummarizeDocument, sendTelemetryEvent } from '@/lib/api';
 import { useRequiredSession } from '@/components/session-provider';
-import { useSessionTelemetry } from '@/hooks/use-session-telemetry';
 
 interface CorpusViewProps {
   messages: Messages;
@@ -56,7 +55,6 @@ interface IngestionRunRow {
 
 export function CorpusView({ messages, locale }: CorpusViewProps) {
   const { orgId } = useRequiredSession();
-  const sendUserTelemetry = useSessionTelemetry();
   const queryClient = useQueryClient();
   const corpusQuery = useQuery({ queryKey: ['corpus', orgId], queryFn: () => fetchCorpus(orgId) });
 
@@ -65,7 +63,7 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
       toggleAllowlistDomain(host, active, jurisdiction),
     onSuccess: (_data, variables) => {
       toast.success(locale === 'fr' ? 'Domaine mis à jour' : 'Domain updated');
-      sendUserTelemetry('allowlist_toggled', {
+      void sendTelemetryEvent('allowlist_toggled', {
         host: variables.host,
         active: variables.active,
         jurisdiction: variables.jurisdiction ?? null,
@@ -75,7 +73,7 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
     onError: (_error, variables) => {
       toast.error(locale === 'fr' ? 'Échec de la mise à jour' : 'Update failed');
       if (variables) {
-        sendUserTelemetry('allowlist_toggle_failed', {
+        void sendTelemetryEvent('allowlist_toggle_failed', {
           host: variables.host,
           active: variables.active,
           jurisdiction: variables.jurisdiction ?? null,
@@ -88,13 +86,13 @@ export function CorpusView({ messages, locale }: CorpusViewProps) {
     mutationFn: (documentId: string) => resummarizeDocument(orgId, documentId),
     onSuccess: (data) => {
       toast.success(messages.corpus.resummarizeSuccess);
-      sendUserTelemetry('corpus_resummarize', { documentId: data.documentId, status: data.summaryStatus });
+      void sendTelemetryEvent('corpus_resummarize', { documentId: data.documentId, status: data.summaryStatus });
       queryClient.invalidateQueries({ queryKey: ['corpus'] });
     },
     onError: (_error, variables) => {
       toast.error(messages.corpus.resummarizeError);
       if (variables) {
-        sendUserTelemetry('corpus_resummarize_failed', { documentId: variables });
+        void sendTelemetryEvent('corpus_resummarize_failed', { documentId: variables });
       }
     },
   });
