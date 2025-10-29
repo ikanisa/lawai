@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "sql-formatter": "^15.6.10",
-    "typescript": "^5.4.5",
+    "typescript": "^5.9.3",
     "zod": "^3.25.42"
   }
 }
