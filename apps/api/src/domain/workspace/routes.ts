@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { authorizeRequestWithGuards } from '../../http/authorization.js';
 import type { AppFastifyInstance } from '../../types/fastify.js';
 import type { AppContext } from '../../types/context.js';
-import { fetchWorkspaceOverview as defaultFetchWorkspaceOverview } from './services.js';
+import { fetchWorkspaceOverview as defaultFetchWorkspaceOverview } from './index.js';
 import type { WorkspaceFetchErrors } from './overview.js';
 
 const workspaceQuerySchema = z.object({

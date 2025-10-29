@@ -1,6 +1,6 @@
 import type { PostgrestSingleResponse, SupabaseClient } from '@supabase/supabase-js';
 
-import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from '../../workspace.js';
+import { buildPhaseCProcessNavigator, buildPhaseCWorkspaceDesk } from './navigator.js';
 import { buildHitlInbox, HITL_OVERVIEW_FIELDS, type HitlInbox, type HitlQueueRow, type HitlQueryResult } from './hitl.js';
 
 export interface JurisdictionRow {
@@ -223,4 +223,13 @@ export async function getWorkspaceOverview(
     },
     errors: collectWorkspaceFetchErrors(results),
   };
+}
+
+// Alias for compatibility with routes that expect { data, errors } structure
+export async function fetchWorkspaceOverview(
+  supabase: SupabaseClient,
+  orgId: string,
+): Promise<{ data: WorkspaceOverviewWithNavigator; errors: WorkspaceFetchErrors }> {
+  const { overview, errors } = await getWorkspaceOverview(supabase, orgId);
+  return { data: overview, errors };
 }
