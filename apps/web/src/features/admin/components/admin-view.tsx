@@ -66,7 +66,7 @@ export function AdminView({ messages }: AdminViewProps) {
   const userId = session?.userId;
   const canQuery = sessionStatus === 'authenticated' && Boolean(orgId && userId);
   
-  const metricsQuery = useGovernanceMetrics();
+  const metricsQuery = useGovernanceMetrics(orgId, userId, canQuery);
   
   if (sessionStatus === 'loading') {
     return (
@@ -113,8 +113,12 @@ export function AdminView({ messages }: AdminViewProps) {
       })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [metricsQuery.data, jurisdictionLabels]);
   const retrievalQuery = useQuery<RetrievalMetricsResponse>({
-    queryKey: ['retrieval-metrics', orgId],
-    queryFn: () => fetchRetrievalMetrics(orgId),
+    queryKey: ['retrieval-metrics', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchRetrievalMetrics(orgId, { userId });
+    },
+    enabled: canQuery,
     staleTime: 60_000,
   });
   const retrievalSummary = retrievalQuery.data?.summary ?? null;
@@ -132,8 +136,12 @@ export function AdminView({ messages }: AdminViewProps) {
       .slice(0, 8);
   }, [retrievalQuery.data]);
   const evaluationQuery = useQuery<EvaluationMetricsResponse>({
-    queryKey: ['evaluation-metrics', orgId],
-    queryFn: () => fetchEvaluationMetrics(orgId),
+    queryKey: ['evaluation-metrics', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchEvaluationMetrics(orgId, { userId });
+    },
+    enabled: canQuery,
     staleTime: 60_000,
   });
   const evaluationSummary = evaluationQuery.data?.summary ?? null;
@@ -151,43 +159,75 @@ export function AdminView({ messages }: AdminViewProps) {
       })) as Row[]).sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }, [evaluationQuery.data, jurisdictionLabels, messages.admin.evaluationJurisdictionUnknown]);
   const sloQuery = useQuery<SloMetricsResponse>({
-    queryKey: ['slo-metrics', orgId],
-    queryFn: () => fetchSloMetrics(orgId),
+    queryKey: ['slo-metrics', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchSloMetrics(orgId, 6, { userId });
+    },
+    enabled: canQuery,
     staleTime: 60_000,
   });
   const sloSummary = sloQuery.data?.summary ?? null;
   const sloSnapshots = sloQuery.data?.snapshots ?? [];
   const operationsQuery = useQuery<OperationsOverviewResponse>({
-    queryKey: ['operations-overview', orgId],
-    queryFn: () => getOperationsOverview(orgId),
+    queryKey: ['operations-overview', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return getOperationsOverview(orgId, { userId });
+    },
+    enabled: canQuery,
     staleTime: 60_000,
   });
   const operationsOverview = operationsQuery.data ?? null;
   const ssoQuery = useQuery({
-    queryKey: ['admin-sso', orgId],
-    queryFn: () => fetchSsoConnections(orgId),
+    queryKey: ['admin-sso', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchSsoConnections(orgId, { userId });
+    },
+    enabled: canQuery,
   });
   const scimQuery = useQuery({
-    queryKey: ['admin-scim', orgId],
-    queryFn: () => fetchScimTokens(orgId),
+    queryKey: ['admin-scim', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchScimTokens(orgId, { userId });
+    },
+    enabled: canQuery,
   });
   const auditQuery = useQuery({
-    queryKey: ['admin-audit', orgId],
-    queryFn: () => fetchAuditEvents(orgId, 25),
+    queryKey: ['admin-audit', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchAuditEvents(orgId, 25, { userId });
+    },
+    enabled: canQuery,
   });
   const ipQuery = useQuery({
-    queryKey: ['admin-ip', orgId],
-    queryFn: () => fetchIpAllowlist(orgId),
+    queryKey: ['admin-ip', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchIpAllowlist(orgId, { userId });
+    },
+    enabled: canQuery,
   });
   const deviceSessionsQuery = useQuery({
-    queryKey: ['admin-device-sessions', orgId],
-    queryFn: () => fetchDeviceSessions(orgId, { includeRevoked: false, limit: 200 }),
+    queryKey: ['admin-device-sessions', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchDeviceSessions(orgId, { includeRevoked: false, limit: 200, userId });
+    },
+    enabled: canQuery,
     staleTime: 30_000,
   });
   const deviceSessions = (deviceSessionsQuery.data?.sessions ?? []) as DeviceSession[];
   const complianceDashboardQuery = useQuery<ComplianceDashboardResponse>({
-    queryKey: ['compliance-dashboard', orgId],
-    queryFn: () => fetchComplianceDashboard(orgId),
+    queryKey: ['compliance-dashboard', orgId, userId],
+    queryFn: () => {
+      if (!orgId) throw new Error('missing_org');
+      return fetchComplianceDashboard(orgId, { userId });
+    },
+    enabled: canQuery,
     staleTime: 60_000,
   });
   const complianceDashboard = complianceDashboardQuery.data ?? null;

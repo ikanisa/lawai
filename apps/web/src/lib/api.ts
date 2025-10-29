@@ -983,7 +983,7 @@ export async function fetchDeviceSessions(
   if (options?.userId) params.set('userId', options.userId);
 
   const response = await fetch(`${API_BASE}/security/devices?${params.toString()}`, {
-    headers: { 'x-user-id': resolveUserId() },
+    headers: { 'x-user-id': resolveUserId(options?.userId) },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch device sessions');
