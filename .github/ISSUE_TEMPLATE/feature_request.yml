@@ -1,107 +1,70 @@
+---
 name: Feature Request
-description: Suggest an idea or enhancement for this project
-title: "[Feature]: "
-labels: ["enhancement", "needs-triage"]
+about: Suggest an idea or enhancement for this project
+title: '[FEATURE] '
+labels: ['enhancement', 'needs-triage']
 assignees: []
-body:
-  - type: markdown
-    attributes:
-      value: |
-        Thanks for suggesting a feature! Please provide details below.
+---
 
-  - type: textarea
-    id: problem
-    attributes:
-      label: Problem or Use Case
-      description: Describe the problem you're trying to solve or the use case for this feature
-      placeholder: |
-        As a [type of user], I want [goal] so that [benefit].
-        
-        Current situation: ...
-        Problem: ...
-    validations:
-      required: true
+## Feature Description
 
-  - type: textarea
-    id: solution
-    attributes:
-      label: Proposed Solution
-      description: Describe your proposed solution or how you'd like this feature to work
-      placeholder: Describe your ideal solution
-    validations:
-      required: true
+<!-- A clear and concise description of the feature you'd like to see -->
 
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternatives Considered
-      description: What alternative solutions or features have you considered?
-      placeholder: Describe any alternative approaches
+## Problem Statement
 
-  - type: dropdown
-    id: component
-    attributes:
-      label: Component
-      description: Which component would this feature affect?
-      options:
-        - apps/api (Fastify REST API)
-        - apps/web (Operator Console)
-        - apps/pwa (Public PWA)
-        - apps/ops (CLI Operations)
-        - apps/edge (Edge Functions)
-        - packages/shared (Shared Packages)
-        - Cross-cutting (multiple components)
-        - Infrastructure/DevOps
-        - Documentation
-        - Other
-    validations:
-      required: true
+<!-- Describe the problem this feature would solve -->
+<!-- Example: "I'm always frustrated when..." -->
 
-  - type: dropdown
-    id: priority
-    attributes:
-      label: Priority
-      description: How important is this feature to you?
-      options:
-        - High - Critical for our use case
-        - Medium - Would significantly improve experience
-        - Low - Nice to have
-    validations:
-      required: true
+## Proposed Solution
 
-  - type: textarea
-    id: mockups
-    attributes:
-      label: Mockups or Examples
-      description: Visual aids, mockups, or examples from other systems
-      placeholder: Drag and drop images or provide links
+<!-- Describe how you envision this feature working -->
 
-  - type: textarea
-    id: impact
-    attributes:
-      label: Impact
-      description: Who would benefit from this feature and how?
-      placeholder: |
-        - User groups affected: ...
-        - Expected benefits: ...
-        - Frequency of use: ...
+## Alternatives Considered
 
-  - type: textarea
-    id: additional
-    attributes:
-      label: Additional Context
-      description: Any other context or information about the feature request
-      placeholder: Add any other relevant information
+<!-- Describe any alternative solutions or features you've considered -->
 
-  - type: checkboxes
-    id: checklist
-    attributes:
-      label: Checklist
-      description: Please confirm the following
-      options:
-        - label: I have searched existing issues and feature requests
-          required: true
-        - label: I have clearly described the problem and proposed solution
-          required: true
-        - label: I am willing to contribute to implementing this feature
-          required: false
+## Use Cases
+
+<!-- Who would benefit from this feature and how? -->
+
+1. **Use case 1**: 
+2. **Use case 2**: 
+
+## Impact
+
+<!-- What would be the impact if this feature is not implemented? -->
+
+## Implementation Considerations
+
+<!-- Optional: Technical details, dependencies, or concerns -->
+
+### Affected Components
+
+- [ ] apps/api (Fastify REST API)
+- [ ] apps/web (Next.js operator console)
+- [ ] apps/pwa (Next.js public PWA)
+- [ ] apps/ops (CLI operational tooling)
+- [ ] apps/edge (Supabase Edge Functions)
+- [ ] packages/shared (Shared utilities)
+- [ ] packages/supabase (Supabase types)
+- [ ] Database migrations
+- [ ] Documentation
+- [ ] CI/CD
+
+### Complexity Estimate
+
+- [ ] Low (< 1 day)
+- [ ] Medium (1-3 days)
+- [ ] High (1 week)
+- [ ] Very High (> 1 week)
+
+## Additional Context
+
+<!-- Any other context, mockups, or examples about the feature request -->
+
+## Checklist
+
+- [ ] I have searched existing issues to ensure this is not a duplicate
+- [ ] I have described the problem this feature solves
+- [ ] I have outlined potential use cases
+- [ ] I have considered alternative solutions
