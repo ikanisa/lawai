@@ -155,14 +155,14 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Download audit artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v6
       with:
         name: dependency-audit-results
         path: ./audit-results
       continue-on-error: true
 
     - name: Download OSV results
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v6
       with:
         name: osv-scan-results
         path: ./osv-results

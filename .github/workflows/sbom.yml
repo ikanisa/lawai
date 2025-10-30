@@ -1,23 +1,18 @@
-name: "Generate SBOM"
+name: Generate SBOM
 
 on:
   push:
-    branches: [ "main", "master" ]
-    tags:
-      - 'v*'
+    branches: [ main, master, work ]
+  pull_request:
+    branches: [ main, master, work ]
   release:
-    types: [published]
+    types: [ published ]
   workflow_dispatch:
-
-concurrency:
-  group: sbom-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   generate-sbom:
     name: Generate Software Bill of Materials
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     permissions:
       contents: write
       packages: read
@@ -96,73 +91,9 @@ jobs:
         echo "## Development Dependencies" >> sbom-output/dependencies.md
         pnpm list --dev --depth=1 >> sbom-output/dependencies.md || true
 
-    # Generate license report
-    - name: Generate license report
-      run: |
-        echo "Generating license report..."
-        echo "# License Report" > sbom-output/licenses.md
-        echo "" >> sbom-output/licenses.md
-        echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> sbom-output/licenses.md
-        echo "" >> sbom-output/licenses.md
-        pnpm licenses list >> sbom-output/licenses.md || true
-
-    # Create checksums for SBOM files
-    - name: Generate checksums
-      run: |
-        cd sbom-output
-        sha256sum * > checksums.txt
-        cd ..
-
-    # Upload SBOM as artifacts
-    - name: Upload SBOM artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: sbom-${{ github.sha }}
-        path: sbom-output/
-        retention-days: 90
-
-    # Attach SBOM to release (if this is a release)
-    - name: Attach SBOM to release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          sbom-output/sbom-root.json
-          sbom-output/dependencies.md
-          sbom-output/licenses.md
-          sbom-output/checksums.txt
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    # Generate summary
-    - name: Generate summary
-      if: always()
-      run: |
-        echo "# SBOM Generation Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "## Files Generated" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        ls -lh sbom-output/ >> $GITHUB_STEP_SUMMARY || true
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "## Artifact" >> $GITHUB_STEP_SUMMARY
-        echo "SBOM artifacts uploaded: sbom-${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "## Usage" >> $GITHUB_STEP_SUMMARY
-        echo "1. Download the SBOM artifact from this workflow run" >> $GITHUB_STEP_SUMMARY
-        echo "2. Use for compliance and vulnerability tracking" >> $GITHUB_STEP_SUMMARY
-        echo "3. Share with security team for review" >> $GITHUB_STEP_SUMMARY
-        echo "4. Include in release documentation" >> $GITHUB_STEP_SUMMARY
-
-  # Verify SBOM completeness
-  verify-sbom:
-    name: Verify SBOM
-    runs-on: ubuntu-latest
-    needs: generate-sbom
-    if: always() && needs.generate-sbom.result == 'success'
-    
     steps:
     - name: Download SBOM artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v6
       with:
         name: sbom-${{ github.sha }}
         path: ./sbom
