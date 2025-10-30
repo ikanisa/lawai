@@ -1,0 +1,69 @@
+---
+name: Documentation Update
+about: Suggest improvements to documentation
+title: '[DOCS] '
+labels: ['documentation', 'needs-triage']
+assignees: []
+---
+
+## Documentation Issue
+
+<!-- Describe what documentation needs to be added, updated, or clarified -->
+
+## Location
+
+<!-- Where should this documentation live? -->
+
+- **File**: <!-- e.g., README.md, docs/operations/runbook.md, CONTRIBUTING.md -->
+- **Section**: <!-- e.g., Setup, Deployment, API Reference -->
+
+## Current State
+
+<!-- What is currently documented (if anything)? -->
+
+## Desired State
+
+<!-- What should the documentation say or include? -->
+
+## Why This is Needed
+
+<!-- Why is this documentation important? Who will benefit? -->
+
+## Type of Documentation
+
+- [ ] Getting Started / Setup
+- [ ] Architecture / Design
+- [ ] API Reference
+- [ ] Operational Runbook
+- [ ] Troubleshooting Guide
+- [ ] Contributing Guide
+- [ ] Security / Compliance
+- [ ] Examples / Tutorials
+- [ ] Code Comments
+- [ ] Other (please specify)
+
+## Target Audience
+
+- [ ] New contributors
+- [ ] Developers
+- [ ] Operators / DevOps
+- [ ] Security team
+- [ ] End users
+- [ ] Compliance / Legal
+
+## Related Issues or PRs
+
+<!-- Optional: Link to related issues or PRs -->
+
+- 
+
+## Additional Context
+
+<!-- Any other relevant information, examples, or links -->
+
+## Checklist
+
+- [ ] I have searched existing issues to ensure this is not a duplicate
+- [ ] I have identified the specific documentation file or section
+- [ ] I have explained why this documentation is needed
+- [ ] I have considered the target audience

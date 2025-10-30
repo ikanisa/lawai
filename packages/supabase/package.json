@@ -12,13 +12,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.43.5",
+    "@supabase/supabase-js": "^2.77.0",
     "zod": "^3.25.42"
   },
   "devDependencies": {
-    "typescript": "^5.4.5",
+    "typescript": "^5.9.3",
     "vitest": "^1.6.0",
-    "@types/node": "^20.12.7",
+    "@types/node": "^24.9.2",
     "eslint": "^8.57.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0"
