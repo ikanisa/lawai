@@ -15,6 +15,81 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 8.15.4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'pnpm'
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile --ignore-scripts
+
+    # Generate SBOM using CycloneDX format (industry standard)
+    - name: Generate CycloneDX SBOM
+      run: |
+        echo "Installing CycloneDX generator..."
+        pnpm add -g @cyclonedx/cyclonedx-npm
+        
+        echo "Generating SBOM..."
+        mkdir -p sbom-output
+        
+        # Generate SBOM for root
+        cyclonedx-npm --output-file sbom-output/sbom-root.json
+        
+        # Generate SBOM for each workspace (optional, can be large)
+        # for workspace in apps/api apps/web apps/pwa apps/ops packages/shared packages/supabase; do
+        #   if [ -d "$workspace" ]; then
+        #     echo "Generating SBOM for $workspace..."
+        #     cd "$workspace"
+        #     cyclonedx-npm --output-file "../../sbom-output/sbom-$(basename $workspace).json"
+        #     cd ../..
+        #   fi
+        # done
+        
+        echo "SBOM generation complete"
+
+    # Generate SBOM using SPDX format (alternative format)
+    - name: Generate SPDX SBOM
+      run: |
+        echo "Installing SPDX SBOM generator..."
+        npm install -g @microsoft/sbom-tool
+        
+        echo "Generating SPDX SBOM..."
+        sbom-tool generate \
+          -b ./sbom-output \
+          -bc . \
+          -pn "avocat-ai-monorepo" \
+          -pv "$(git describe --tags --always)" \
+          -ps "ikanisa" \
+          -nsb "https://github.com/ikanisa/lawai" \
+          -V Verbose || echo "SPDX generation may have warnings"
+      continue-on-error: true
+
+    # Generate a human-readable dependency list
+    - name: Generate dependency list
+      run: |
+        echo "Generating human-readable dependency list..."
+        echo "# Avocat-AI Dependencies" > sbom-output/dependencies.md
+        echo "" >> sbom-output/dependencies.md
+        echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> sbom-output/dependencies.md
+        echo "Commit: ${{ github.sha }}" >> sbom-output/dependencies.md
+        echo "" >> sbom-output/dependencies.md
+        echo "## Production Dependencies" >> sbom-output/dependencies.md
+        pnpm list --prod --depth=1 >> sbom-output/dependencies.md || true
+        echo "" >> sbom-output/dependencies.md
+        echo "## Development Dependencies" >> sbom-output/dependencies.md
+        pnpm list --dev --depth=1 >> sbom-output/dependencies.md || true
 
     steps:
     - name: Download SBOM artifacts
