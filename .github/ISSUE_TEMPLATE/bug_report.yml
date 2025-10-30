@@ -1,134 +1,65 @@
+---
 name: Bug Report
-description: Report a bug or unexpected behavior
-title: "[Bug]: "
-labels: ["bug", "needs-triage"]
+about: Report a bug or unexpected behavior
+title: '[BUG] '
+labels: ['bug', 'needs-triage']
 assignees: []
-body:
-  - type: markdown
-    attributes:
-      value: |
-        Thanks for taking the time to report a bug! Please fill out the information below to help us resolve the issue.
+---
 
-  - type: textarea
-    id: description
-    attributes:
-      label: Description
-      description: A clear and concise description of the bug
-      placeholder: What happened?
-    validations:
-      required: true
+## Bug Description
 
-  - type: textarea
-    id: steps
-    attributes:
-      label: Steps to Reproduce
-      description: Detailed steps to reproduce the behavior
-      placeholder: |
-        1. Go to '...'
-        2. Click on '...'
-        3. Scroll down to '...'
-        4. See error
-    validations:
-      required: true
+<!-- A clear and concise description of what the bug is -->
 
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected Behavior
-      description: What you expected to happen
-      placeholder: Describe the expected behavior
-    validations:
-      required: true
+## Steps to Reproduce
 
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual Behavior
-      description: What actually happened
-      placeholder: Describe what actually happened instead
-    validations:
-      required: true
+1. Go to '...'
+2. Click on '...'
+3. Scroll down to '...'
+4. See error
 
-  - type: dropdown
-    id: severity
-    attributes:
-      label: Severity
-      description: How severe is this issue?
-      options:
-        - S0 - Critical (production down, data loss)
-        - S1 - High (major feature broken, security issue)
-        - S2 - Medium (feature partially broken, workaround exists)
-        - S3 - Low (minor issue, cosmetic)
-    validations:
-      required: true
+## Expected Behavior
 
-  - type: dropdown
-    id: component
-    attributes:
-      label: Component
-      description: Which component is affected?
-      options:
-        - apps/api (Fastify REST API)
-        - apps/web (Operator Console)
-        - apps/pwa (Public PWA)
-        - apps/ops (CLI Operations)
-        - apps/edge (Edge Functions)
-        - packages/shared (Shared Packages)
-        - packages/supabase (Supabase Client)
-        - Database/Migrations
-        - CI/CD
-        - Documentation
-        - Other
-    validations:
-      required: true
+<!-- What you expected to happen -->
 
-  - type: textarea
-    id: environment
-    attributes:
-      label: Environment
-      description: Environment details
-      value: |
-        - Node.js version: [e.g., 20.11.0]
-        - PNPM version: [e.g., 8.15.4]
-        - Operating System: [e.g., macOS 14.0, Ubuntu 22.04]
-        - Browser (if applicable): [e.g., Chrome 120, Safari 17]
-        - Deployment environment: [e.g., local, staging, production]
-    validations:
-      required: true
+## Actual Behavior
 
-  - type: textarea
-    id: logs
-    attributes:
-      label: Logs and Error Messages
-      description: Relevant error messages, logs, or stack traces
-      placeholder: Paste logs here
-      render: shell
+<!-- What actually happened -->
 
-  - type: textarea
-    id: screenshots
-    attributes:
-      label: Screenshots
-      description: If applicable, add screenshots to help explain your problem
-      placeholder: Drag and drop images here
+## Environment
 
-  - type: textarea
-    id: additional
-    attributes:
-      label: Additional Context
-      description: Any other context about the problem
-      placeholder: Add any other relevant information
+- **Node.js version**: <!-- e.g., 20.19.5 -->
+- **pnpm version**: <!-- e.g., 8.15.4 -->
+- **OS**: <!-- e.g., macOS 14, Ubuntu 22.04 -->
+- **Browser** (if applicable): <!-- e.g., Chrome 120, Safari 17 -->
+- **Deployment platform**: <!-- e.g., local, Vercel, Docker -->
 
-  - type: checkboxes
-    id: checklist
-    attributes:
-      label: Checklist
-      description: Please confirm the following
-      options:
-        - label: I have searched existing issues to avoid duplicates
-          required: true
-        - label: I have provided all required information above
-          required: true
-        - label: I have included steps to reproduce the issue
-          required: true
-        - label: This is not a security vulnerability (if it is, see SECURITY.md)
-          required: true
+## Logs / Error Messages
+
+<!-- 
+Paste relevant error messages or logs here.
+Use triple backticks for code formatting.
+REDACT any secrets or sensitive information.
+-->
+
+```
+Error messages here
+```
+
+## Screenshots
+
+<!-- If applicable, add screenshots to help explain the problem -->
+
+## Additional Context
+
+<!-- Any other relevant information about the problem -->
+
+## Possible Solution
+
+<!-- Optional: Suggest a fix or reason for the bug -->
+
+## Checklist
+
+- [ ] I have searched existing issues to ensure this is not a duplicate
+- [ ] I have included steps to reproduce
+- [ ] I have provided environment details
+- [ ] I have redacted any sensitive information from logs
