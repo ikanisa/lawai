@@ -36,11 +36,11 @@ export declare const financeCommandPayloadSchema: z.ZodObject<{
     }>>;
     metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
 }, "strip", z.ZodTypeAny, {
-    domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
+    guardrails: string[];
     intent: "tax.prepare_filing" | "tax.respond_audit" | "tax.check_deadline" | "ap.process_invoice" | "ap.schedule_payment" | "audit.prepare_walkthrough" | "audit.update_pbc" | "risk.update_register" | "risk.assess_control" | "cfo.generate_board_pack" | "cfo.run_scenario" | "regulatory.prepare_filing" | "regulatory.track_deadline";
+    domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
     objective: string;
     inputs: Record<string, unknown>;
-    guardrails: string[];
     telemetry: string[];
     connectors: Record<string, {
         status?: "active" | "pending" | "inactive" | "error" | undefined;
@@ -53,21 +53,21 @@ export declare const financeCommandPayloadSchema: z.ZodObject<{
     } | undefined;
     metadata?: Record<string, unknown> | undefined;
 }, {
-    domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
     intent: "tax.prepare_filing" | "tax.respond_audit" | "tax.check_deadline" | "ap.process_invoice" | "ap.schedule_payment" | "audit.prepare_walkthrough" | "audit.update_pbc" | "risk.update_register" | "risk.assess_control" | "cfo.generate_board_pack" | "cfo.run_scenario" | "regulatory.prepare_filing" | "regulatory.track_deadline";
+    domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
     objective: string;
-    safety?: {
-        riskLevel?: "low" | "medium" | "high" | undefined;
-        rationale?: string | undefined;
-        requiredMitigations?: string[] | undefined;
-    } | undefined;
-    inputs?: Record<string, unknown> | undefined;
     guardrails?: string[] | undefined;
+    inputs?: Record<string, unknown> | undefined;
     telemetry?: string[] | undefined;
     connectors?: Record<string, {
         status?: "active" | "pending" | "inactive" | "error" | undefined;
         required?: boolean | undefined;
     }> | undefined;
+    safety?: {
+        riskLevel?: "low" | "medium" | "high" | undefined;
+        rationale?: string | undefined;
+        requiredMitigations?: string[] | undefined;
+    } | undefined;
     metadata?: Record<string, unknown> | undefined;
 }>;
 export type FinanceCommandPayload = z.infer<typeof financeCommandPayloadSchema>;
@@ -108,11 +108,11 @@ export declare const financeCommandResultSchema: z.ZodObject<{
     } & {
         intent: z.ZodEnum<["tax.prepare_filing", "tax.respond_audit", "tax.check_deadline", "ap.process_invoice", "ap.schedule_payment", "audit.prepare_walkthrough", "audit.update_pbc", "risk.update_register", "risk.assess_control", "cfo.generate_board_pack", "cfo.run_scenario", "regulatory.prepare_filing", "regulatory.track_deadline"]>;
     }, "strip", z.ZodTypeAny, {
-        domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
+        guardrails: string[];
         intent: "tax.prepare_filing" | "tax.respond_audit" | "tax.check_deadline" | "ap.process_invoice" | "ap.schedule_payment" | "audit.prepare_walkthrough" | "audit.update_pbc" | "risk.update_register" | "risk.assess_control" | "cfo.generate_board_pack" | "cfo.run_scenario" | "regulatory.prepare_filing" | "regulatory.track_deadline";
+        domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
         objective: string;
         inputs: Record<string, unknown>;
-        guardrails: string[];
         telemetry: string[];
         connectors: Record<string, {
             status?: "active" | "pending" | "inactive" | "error" | undefined;
@@ -125,21 +125,21 @@ export declare const financeCommandResultSchema: z.ZodObject<{
         } | undefined;
         metadata?: Record<string, unknown> | undefined;
     }, {
-        domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
         intent: "tax.prepare_filing" | "tax.respond_audit" | "tax.check_deadline" | "ap.process_invoice" | "ap.schedule_payment" | "audit.prepare_walkthrough" | "audit.update_pbc" | "risk.update_register" | "risk.assess_control" | "cfo.generate_board_pack" | "cfo.run_scenario" | "regulatory.prepare_filing" | "regulatory.track_deadline";
+        domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
         objective: string;
-        safety?: {
-            riskLevel?: "low" | "medium" | "high" | undefined;
-            rationale?: string | undefined;
-            requiredMitigations?: string[] | undefined;
-        } | undefined;
-        inputs?: Record<string, unknown> | undefined;
         guardrails?: string[] | undefined;
+        inputs?: Record<string, unknown> | undefined;
         telemetry?: string[] | undefined;
         connectors?: Record<string, {
             status?: "active" | "pending" | "inactive" | "error" | undefined;
             required?: boolean | undefined;
         }> | undefined;
+        safety?: {
+            riskLevel?: "low" | "medium" | "high" | undefined;
+            rationale?: string | undefined;
+            requiredMitigations?: string[] | undefined;
+        } | undefined;
         metadata?: Record<string, unknown> | undefined;
     }>, "many">>;
     telemetry: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodNumber, z.ZodString]>>>;
@@ -148,11 +148,11 @@ export declare const financeCommandResultSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     notices: string[];
     followUps: {
-        domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
+        guardrails: string[];
         intent: "tax.prepare_filing" | "tax.respond_audit" | "tax.check_deadline" | "ap.process_invoice" | "ap.schedule_payment" | "audit.prepare_walkthrough" | "audit.update_pbc" | "risk.update_register" | "risk.assess_control" | "cfo.generate_board_pack" | "cfo.run_scenario" | "regulatory.prepare_filing" | "regulatory.track_deadline";
+        domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
         objective: string;
         inputs: Record<string, unknown>;
-        guardrails: string[];
         telemetry: string[];
         connectors: Record<string, {
             status?: "active" | "pending" | "inactive" | "error" | undefined;
@@ -165,32 +165,32 @@ export declare const financeCommandResultSchema: z.ZodObject<{
         } | undefined;
         metadata?: Record<string, unknown> | undefined;
     }[];
-    status?: "failed" | "completed" | "needs_hitl" | undefined;
+    status?: "completed" | "failed" | "needs_hitl" | undefined;
     telemetry?: Record<string, string | number> | undefined;
     output?: Record<string, unknown> | undefined;
     errorCode?: string | undefined;
     hitlReason?: string | undefined;
 }, {
-    status?: "failed" | "completed" | "needs_hitl" | undefined;
+    status?: "completed" | "failed" | "needs_hitl" | undefined;
     telemetry?: Record<string, string | number> | undefined;
     output?: Record<string, unknown> | undefined;
     notices?: string[] | undefined;
     followUps?: {
-        domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
         intent: "tax.prepare_filing" | "tax.respond_audit" | "tax.check_deadline" | "ap.process_invoice" | "ap.schedule_payment" | "audit.prepare_walkthrough" | "audit.update_pbc" | "risk.update_register" | "risk.assess_control" | "cfo.generate_board_pack" | "cfo.run_scenario" | "regulatory.prepare_filing" | "regulatory.track_deadline";
+        domain: "tax_compliance" | "accounts_payable" | "audit_assurance" | "cfo_strategy" | "risk_controls" | "regulatory_filings";
         objective: string;
-        safety?: {
-            riskLevel?: "low" | "medium" | "high" | undefined;
-            rationale?: string | undefined;
-            requiredMitigations?: string[] | undefined;
-        } | undefined;
-        inputs?: Record<string, unknown> | undefined;
         guardrails?: string[] | undefined;
+        inputs?: Record<string, unknown> | undefined;
         telemetry?: string[] | undefined;
         connectors?: Record<string, {
             status?: "active" | "pending" | "inactive" | "error" | undefined;
             required?: boolean | undefined;
         }> | undefined;
+        safety?: {
+            riskLevel?: "low" | "medium" | "high" | undefined;
+            rationale?: string | undefined;
+            requiredMitigations?: string[] | undefined;
+        } | undefined;
         metadata?: Record<string, unknown> | undefined;
     }[] | undefined;
     errorCode?: string | undefined;

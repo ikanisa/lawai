@@ -7,6 +7,8 @@ export * from './types/plan-drawer.js';
 export * from './types/web-search.js';
 export * from './akoma.js';
 export * from './openai/client.js';
+export * from './openai/vector-stores.js';
+export * from './openai/vector-store-schemas.js';
 export * from './orchestrator.js';
 export * from './orchestrator-schemas.js';
 export * from './orchestrator-capabilities.js';

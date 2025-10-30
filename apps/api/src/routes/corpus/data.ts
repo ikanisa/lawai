@@ -221,3 +221,45 @@ export async function fetchCorpusDashboard(
 
   return CorpusDashboardDataSchema.parse(payload);
 }
+
+import {
+  SearchParamsSchema,
+  type SearchResultsPage,
+  getOpenAIClient,
+  getVectorStoreApi,
+} from '@avocat-ai/shared';
+import { env } from '../../config.js';
+
+export async function searchVectorStore(requestBody: unknown): Promise<SearchResultsPage> {
+  // Validate request body
+  const parseResult = SearchParamsSchema.safeParse(requestBody);
+  if (!parseResult.success) {
+    throw new Error(`Invalid search parameters: ${parseResult.error.message}`);
+  }
+
+  const searchParams = parseResult.data;
+  const vectorStoreId = process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID || env.OPENAI_VECTOR_STORE_AUTHORITIES_ID;
+
+  if (!vectorStoreId) {
+    throw new Error('Vector store ID is not configured');
+  }
+
+  // Get OpenAI client and vector store API
+  const openai = getOpenAIClient({
+    apiKey: env.OPENAI_API_KEY,
+    cacheKeySuffix: 'api-corpus-search',
+    requestTags: process.env.OPENAI_REQUEST_TAGS_API ?? process.env.OPENAI_REQUEST_TAGS ?? 'service=api,component=corpus-search',
+  });
+
+  const vectorStoreApi = getVectorStoreApi(openai);
+
+  // Check if search is supported
+  if (!vectorStoreApi.search) {
+    throw new Error('Vector store search is not supported by this OpenAI client version');
+  }
+
+  // Perform the search
+  const result = await vectorStoreApi.search(vectorStoreId, searchParams);
+
+  return result;
+}

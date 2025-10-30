@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as shared from '@avocat-ai/shared';
 import { chunkText } from '../src/lib/embeddings.js';
 import { validateVectorStore } from '../src/lib/vector-store.js';
-import { getOpenAIClient } from '@avocat-ai/shared';
+import { getOpenAIClient, SearchParamsSchema } from '@avocat-ai/shared';
 
 vi.mock('@avocat-ai/shared', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@avocat-ai/shared')>();
@@ -68,5 +68,88 @@ describe('chunkText article markers', () => {
     const chunks = chunkText(text, 200, 50);
     expect(chunks).toHaveLength(1);
     expect(chunks[0].marker).toBeNull();
+  });
+});
+
+describe('SearchParamsSchema', () => {
+  it('validates basic search parameters', () => {
+    const result = SearchParamsSchema.safeParse({
+      query: 'test query',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.query).toBe('test query');
+    }
+  });
+
+  it('validates search parameters with all optional fields', () => {
+    const result = SearchParamsSchema.safeParse({
+      query: 'test query',
+      rewrite_query: true,
+      max_num_results: 25,
+      attribute_filter: {
+        type: 'eq',
+        key: 'region',
+        value: 'North America',
+      },
+      ranking_options: {
+        ranker: 'auto',
+        score_threshold: 0.75,
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects empty query', () => {
+    const result = SearchParamsSchema.safeParse({
+      query: '',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects max_num_results above 50', () => {
+    const result = SearchParamsSchema.safeParse({
+      query: 'test',
+      max_num_results: 100,
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects score_threshold above 1.0', () => {
+    const result = SearchParamsSchema.safeParse({
+      query: 'test',
+      ranking_options: {
+        score_threshold: 1.5,
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('validates compound attribute filters', () => {
+    const result = SearchParamsSchema.safeParse({
+      query: 'test query',
+      attribute_filter: {
+        type: 'and',
+        filters: [
+          {
+            type: 'eq',
+            key: 'region',
+            value: 'North America',
+          },
+          {
+            type: 'gte',
+            key: 'date',
+            value: 1672531200,
+          },
+        ],
+      },
+    });
+
+    expect(result.success).toBe(true);
   });
 });

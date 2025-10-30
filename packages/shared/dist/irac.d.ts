@@ -5,13 +5,13 @@ export declare const IRACSchema: z.ZodObject<{
         eu: z.ZodBoolean;
         ohada: z.ZodBoolean;
     }, "strip", z.ZodTypeAny, {
-        country: string;
-        eu: boolean;
         ohada: boolean;
+        eu: boolean;
+        country: string;
     }, {
-        country: string;
-        eu: boolean;
         ohada: boolean;
+        eu: boolean;
+        country: string;
     }>;
     issue: z.ZodString;
     rules: z.ZodArray<z.ZodObject<{
@@ -66,9 +66,9 @@ export declare const IRACSchema: z.ZodObject<{
     }>;
 }, "strip", z.ZodTypeAny, {
     jurisdiction: {
-        country: string;
-        eu: boolean;
         ohada: boolean;
+        eu: boolean;
+        country: string;
     };
     issue: string;
     rules: {
@@ -93,9 +93,9 @@ export declare const IRACSchema: z.ZodObject<{
     };
 }, {
     jurisdiction: {
-        country: string;
-        eu: boolean;
         ohada: boolean;
+        eu: boolean;
+        country: string;
     };
     issue: string;
     rules: {

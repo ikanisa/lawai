@@ -2,15 +2,16 @@ function buildHeaders(config, options = {}) {
     if (!config.apiKey) {
         throw new Error('OPENAI_API_KEY is required for Deno client');
     }
+    const denoEnvGet = (key) => globalThis.Deno?.env?.get?.(key);
     const headers = new Headers();
     headers.set('Authorization', `Bearer ${config.apiKey}`);
     headers.set('OpenAI-Beta', 'assistants=v2');
-    const requestTags = config.requestTags ?? Deno.env.get('OPENAI_REQUEST_TAGS') ?? 'service=edge,component=crawl-authorities';
+    const requestTags = config.requestTags ?? denoEnvGet('OPENAI_REQUEST_TAGS') ?? 'service=edge,component=crawl-authorities';
     if (requestTags) {
         headers.set('OpenAI-Request-Tags', requestTags);
     }
-    const organization = config.organization ?? Deno.env.get('OPENAI_ORGANIZATION');
-    const project = config.project ?? Deno.env.get('OPENAI_PROJECT');
+    const organization = config.organization ?? denoEnvGet('OPENAI_ORGANIZATION');
+    const project = config.project ?? denoEnvGet('OPENAI_PROJECT');
     if (organization) {
         headers.set('OpenAI-Organization', organization);
     }
