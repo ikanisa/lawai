@@ -11,9 +11,9 @@ export declare const FinanceHitlRequirementSchema: z.ZodObject<{
     reviewer?: string | undefined;
 }, {
     required: boolean;
-    reviewer?: string | undefined;
     reasons?: string[] | undefined;
     mitigations?: string[] | undefined;
+    reviewer?: string | undefined;
 }>;
 export declare const FinanceCommandBudgetSchema: z.ZodObject<{
     tokens: z.ZodOptional<z.ZodNumber>;
@@ -64,9 +64,9 @@ export declare const FinanceCommandEnvelopeSchema: z.ZodObject<{
         reviewer?: string | undefined;
     }, {
         required: boolean;
-        reviewer?: string | undefined;
         reasons?: string[] | undefined;
         mitigations?: string[] | undefined;
+        reviewer?: string | undefined;
     }>>;
     budget: z.ZodOptional<z.ZodObject<{
         tokens: z.ZodOptional<z.ZodNumber>;
@@ -85,19 +85,19 @@ export declare const FinanceCommandEnvelopeSchema: z.ZodObject<{
         amount?: number | undefined;
     }>>;
 }, "strict", z.ZodTypeAny, {
+    title: string;
+    description: string;
     guardrails: {
         residency: string[];
         safetyPolicies: string[];
     };
-    title: string;
-    telemetry: string[];
     worker: "director" | "domain" | "safety";
     commandType: string;
-    description: string;
     payload: Record<string, unknown>;
     successCriteria: string[];
     dependencies: string[];
     connectorDependencies: string[];
+    telemetry: string[];
     domain?: string | undefined;
     hitl?: {
         required: boolean;
@@ -113,24 +113,24 @@ export declare const FinanceCommandEnvelopeSchema: z.ZodObject<{
     } | undefined;
 }, {
     title: string;
+    description: string;
     worker: "director" | "domain" | "safety";
     commandType: string;
-    description: string;
     guardrails?: {
         residency?: string[] | undefined;
         safetyPolicies?: string[] | undefined;
     } | undefined;
     domain?: string | undefined;
-    telemetry?: string[] | undefined;
     payload?: Record<string, unknown> | undefined;
     successCriteria?: string[] | undefined;
     dependencies?: string[] | undefined;
     connectorDependencies?: string[] | undefined;
+    telemetry?: string[] | undefined;
     hitl?: {
         required: boolean;
-        reviewer?: string | undefined;
         reasons?: string[] | undefined;
         mitigations?: string[] | undefined;
+        reviewer?: string | undefined;
     } | undefined;
     budget?: {
         notes?: string | undefined;
@@ -175,9 +175,9 @@ export declare const FinanceDirectorPlanStepSchema: z.ZodObject<{
             reviewer?: string | undefined;
         }, {
             required: boolean;
-            reviewer?: string | undefined;
             reasons?: string[] | undefined;
             mitigations?: string[] | undefined;
+            reviewer?: string | undefined;
         }>>;
         budget: z.ZodOptional<z.ZodObject<{
             tokens: z.ZodOptional<z.ZodNumber>;
@@ -196,19 +196,19 @@ export declare const FinanceDirectorPlanStepSchema: z.ZodObject<{
             amount?: number | undefined;
         }>>;
     }, "strict", z.ZodTypeAny, {
+        title: string;
+        description: string;
         guardrails: {
             residency: string[];
             safetyPolicies: string[];
         };
-        title: string;
-        telemetry: string[];
         worker: "director" | "domain" | "safety";
         commandType: string;
-        description: string;
         payload: Record<string, unknown>;
         successCriteria: string[];
         dependencies: string[];
         connectorDependencies: string[];
+        telemetry: string[];
         domain?: string | undefined;
         hitl?: {
             required: boolean;
@@ -224,24 +224,24 @@ export declare const FinanceDirectorPlanStepSchema: z.ZodObject<{
         } | undefined;
     }, {
         title: string;
+        description: string;
         worker: "director" | "domain" | "safety";
         commandType: string;
-        description: string;
         guardrails?: {
             residency?: string[] | undefined;
             safetyPolicies?: string[] | undefined;
         } | undefined;
         domain?: string | undefined;
-        telemetry?: string[] | undefined;
         payload?: Record<string, unknown> | undefined;
         successCriteria?: string[] | undefined;
         dependencies?: string[] | undefined;
         connectorDependencies?: string[] | undefined;
+        telemetry?: string[] | undefined;
         hitl?: {
             required: boolean;
-            reviewer?: string | undefined;
             reasons?: string[] | undefined;
             mitigations?: string[] | undefined;
+            reviewer?: string | undefined;
         } | undefined;
         budget?: {
             notes?: string | undefined;
@@ -256,19 +256,19 @@ export declare const FinanceDirectorPlanStepSchema: z.ZodObject<{
     notes: string[];
     id: string;
     envelope: {
+        title: string;
+        description: string;
         guardrails: {
             residency: string[];
             safetyPolicies: string[];
         };
-        title: string;
-        telemetry: string[];
         worker: "director" | "domain" | "safety";
         commandType: string;
-        description: string;
         payload: Record<string, unknown>;
         successCriteria: string[];
         dependencies: string[];
         connectorDependencies: string[];
+        telemetry: string[];
         domain?: string | undefined;
         hitl?: {
             required: boolean;
@@ -288,24 +288,24 @@ export declare const FinanceDirectorPlanStepSchema: z.ZodObject<{
     id: string;
     envelope: {
         title: string;
+        description: string;
         worker: "director" | "domain" | "safety";
         commandType: string;
-        description: string;
         guardrails?: {
             residency?: string[] | undefined;
             safetyPolicies?: string[] | undefined;
         } | undefined;
         domain?: string | undefined;
-        telemetry?: string[] | undefined;
         payload?: Record<string, unknown> | undefined;
         successCriteria?: string[] | undefined;
         dependencies?: string[] | undefined;
         connectorDependencies?: string[] | undefined;
+        telemetry?: string[] | undefined;
         hitl?: {
             required: boolean;
-            reviewer?: string | undefined;
             reasons?: string[] | undefined;
             mitigations?: string[] | undefined;
+            reviewer?: string | undefined;
         } | undefined;
         budget?: {
             notes?: string | undefined;
@@ -357,9 +357,9 @@ export declare const FinanceDirectorPlanSchema: z.ZodObject<{
                 reviewer?: string | undefined;
             }, {
                 required: boolean;
-                reviewer?: string | undefined;
                 reasons?: string[] | undefined;
                 mitigations?: string[] | undefined;
+                reviewer?: string | undefined;
             }>>;
             budget: z.ZodOptional<z.ZodObject<{
                 tokens: z.ZodOptional<z.ZodNumber>;
@@ -378,19 +378,19 @@ export declare const FinanceDirectorPlanSchema: z.ZodObject<{
                 amount?: number | undefined;
             }>>;
         }, "strict", z.ZodTypeAny, {
+            title: string;
+            description: string;
             guardrails: {
                 residency: string[];
                 safetyPolicies: string[];
             };
-            title: string;
-            telemetry: string[];
             worker: "director" | "domain" | "safety";
             commandType: string;
-            description: string;
             payload: Record<string, unknown>;
             successCriteria: string[];
             dependencies: string[];
             connectorDependencies: string[];
+            telemetry: string[];
             domain?: string | undefined;
             hitl?: {
                 required: boolean;
@@ -406,24 +406,24 @@ export declare const FinanceDirectorPlanSchema: z.ZodObject<{
             } | undefined;
         }, {
             title: string;
+            description: string;
             worker: "director" | "domain" | "safety";
             commandType: string;
-            description: string;
             guardrails?: {
                 residency?: string[] | undefined;
                 safetyPolicies?: string[] | undefined;
             } | undefined;
             domain?: string | undefined;
-            telemetry?: string[] | undefined;
             payload?: Record<string, unknown> | undefined;
             successCriteria?: string[] | undefined;
             dependencies?: string[] | undefined;
             connectorDependencies?: string[] | undefined;
+            telemetry?: string[] | undefined;
             hitl?: {
                 required: boolean;
-                reviewer?: string | undefined;
                 reasons?: string[] | undefined;
                 mitigations?: string[] | undefined;
+                reviewer?: string | undefined;
             } | undefined;
             budget?: {
                 notes?: string | undefined;
@@ -438,19 +438,19 @@ export declare const FinanceDirectorPlanSchema: z.ZodObject<{
         notes: string[];
         id: string;
         envelope: {
+            title: string;
+            description: string;
             guardrails: {
                 residency: string[];
                 safetyPolicies: string[];
             };
-            title: string;
-            telemetry: string[];
             worker: "director" | "domain" | "safety";
             commandType: string;
-            description: string;
             payload: Record<string, unknown>;
             successCriteria: string[];
             dependencies: string[];
             connectorDependencies: string[];
+            telemetry: string[];
             domain?: string | undefined;
             hitl?: {
                 required: boolean;
@@ -470,24 +470,24 @@ export declare const FinanceDirectorPlanSchema: z.ZodObject<{
         id: string;
         envelope: {
             title: string;
+            description: string;
             worker: "director" | "domain" | "safety";
             commandType: string;
-            description: string;
             guardrails?: {
                 residency?: string[] | undefined;
                 safetyPolicies?: string[] | undefined;
             } | undefined;
             domain?: string | undefined;
-            telemetry?: string[] | undefined;
             payload?: Record<string, unknown> | undefined;
             successCriteria?: string[] | undefined;
             dependencies?: string[] | undefined;
             connectorDependencies?: string[] | undefined;
+            telemetry?: string[] | undefined;
             hitl?: {
                 required: boolean;
-                reviewer?: string | undefined;
                 reasons?: string[] | undefined;
                 mitigations?: string[] | undefined;
+                reviewer?: string | undefined;
             } | undefined;
             budget?: {
                 notes?: string | undefined;
@@ -510,33 +510,30 @@ export declare const FinanceDirectorPlanSchema: z.ZodObject<{
         reviewer?: string | undefined;
     }, {
         required: boolean;
-        reviewer?: string | undefined;
         reasons?: string[] | undefined;
         mitigations?: string[] | undefined;
+        reviewer?: string | undefined;
     }>>;
 }, "strict", z.ZodTypeAny, {
     summary: string;
-    objective: string;
-    version: string;
-    decisionLog: string[];
     steps: {
         status: "pending" | "ready" | "in_progress" | "blocked" | "complete";
         notes: string[];
         id: string;
         envelope: {
+            title: string;
+            description: string;
             guardrails: {
                 residency: string[];
                 safetyPolicies: string[];
             };
-            title: string;
-            telemetry: string[];
             worker: "director" | "domain" | "safety";
             commandType: string;
-            description: string;
             payload: Record<string, unknown>;
             successCriteria: string[];
             dependencies: string[];
             connectorDependencies: string[];
+            telemetry: string[];
             domain?: string | undefined;
             hitl?: {
                 required: boolean;
@@ -552,6 +549,9 @@ export declare const FinanceDirectorPlanSchema: z.ZodObject<{
             } | undefined;
         };
     }[];
+    version: string;
+    objective: string;
+    decisionLog: string[];
     globalHitl?: {
         required: boolean;
         reasons: string[];
@@ -560,31 +560,29 @@ export declare const FinanceDirectorPlanSchema: z.ZodObject<{
     } | undefined;
 }, {
     summary: string;
-    objective: string;
-    version: string;
     steps: {
         status: "pending" | "ready" | "in_progress" | "blocked" | "complete";
         id: string;
         envelope: {
             title: string;
+            description: string;
             worker: "director" | "domain" | "safety";
             commandType: string;
-            description: string;
             guardrails?: {
                 residency?: string[] | undefined;
                 safetyPolicies?: string[] | undefined;
             } | undefined;
             domain?: string | undefined;
-            telemetry?: string[] | undefined;
             payload?: Record<string, unknown> | undefined;
             successCriteria?: string[] | undefined;
             dependencies?: string[] | undefined;
             connectorDependencies?: string[] | undefined;
+            telemetry?: string[] | undefined;
             hitl?: {
                 required: boolean;
-                reviewer?: string | undefined;
                 reasons?: string[] | undefined;
                 mitigations?: string[] | undefined;
+                reviewer?: string | undefined;
             } | undefined;
             budget?: {
                 notes?: string | undefined;
@@ -595,12 +593,14 @@ export declare const FinanceDirectorPlanSchema: z.ZodObject<{
         };
         notes?: string[] | undefined;
     }[];
+    version: string;
+    objective: string;
     decisionLog?: string[] | undefined;
     globalHitl?: {
         required: boolean;
-        reviewer?: string | undefined;
         reasons?: string[] | undefined;
         mitigations?: string[] | undefined;
+        reviewer?: string | undefined;
     } | undefined;
 }>;
 export declare const FinanceSafetyDecisionSchema: z.ZodObject<{
@@ -609,12 +609,12 @@ export declare const FinanceSafetyDecisionSchema: z.ZodObject<{
     mitigations: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     hitlRequired: z.ZodDefault<z.ZodBoolean>;
 }, "strict", z.ZodTypeAny, {
-    status: "needs_hitl" | "approved" | "rejected";
+    status: "approved" | "rejected" | "needs_hitl";
     reasons: string[];
     mitigations: string[];
     hitlRequired: boolean;
 }, {
-    status: "needs_hitl" | "approved" | "rejected";
+    status: "approved" | "rejected" | "needs_hitl";
     reasons?: string[] | undefined;
     mitigations?: string[] | undefined;
     hitlRequired?: boolean | undefined;
@@ -637,14 +637,14 @@ export declare const FinanceSafetyReviewSchema: z.ZodObject<{
             reviewer?: string | undefined;
         }, {
             required: boolean;
-            reviewer?: string | undefined;
             reasons?: string[] | undefined;
             mitigations?: string[] | undefined;
+            reviewer?: string | undefined;
         }>>;
     }, "strict", z.ZodTypeAny, {
+        id: string;
         worker: "director" | "domain" | "safety";
         commandType: string;
-        id: string;
         payloadFingerprint: string;
         hitl?: {
             required: boolean;
@@ -653,15 +653,15 @@ export declare const FinanceSafetyReviewSchema: z.ZodObject<{
             reviewer?: string | undefined;
         } | undefined;
     }, {
+        id: string;
         worker: "director" | "domain" | "safety";
         commandType: string;
-        id: string;
         payloadFingerprint: string;
         hitl?: {
             required: boolean;
-            reviewer?: string | undefined;
             reasons?: string[] | undefined;
             mitigations?: string[] | undefined;
+            reviewer?: string | undefined;
         } | undefined;
     }>;
     envelope: z.ZodObject<{
@@ -683,12 +683,12 @@ export declare const FinanceSafetyReviewSchema: z.ZodObject<{
         mitigations: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
         hitlRequired: z.ZodDefault<z.ZodBoolean>;
     }, "strict", z.ZodTypeAny, {
-        status: "needs_hitl" | "approved" | "rejected";
+        status: "approved" | "rejected" | "needs_hitl";
         reasons: string[];
         mitigations: string[];
         hitlRequired: boolean;
     }, {
-        status: "needs_hitl" | "approved" | "rejected";
+        status: "approved" | "rejected" | "needs_hitl";
         reasons?: string[] | undefined;
         mitigations?: string[] | undefined;
         hitlRequired?: boolean | undefined;
@@ -714,10 +714,15 @@ export declare const FinanceSafetyReviewSchema: z.ZodObject<{
         reviewedAt?: string | undefined;
     }>>;
 }, "strict", z.ZodTypeAny, {
+    envelope: {
+        sessionId: string;
+        orgId: string;
+        jobId?: string | undefined;
+    };
     command: {
+        id: string;
         worker: "director" | "domain" | "safety";
         commandType: string;
-        id: string;
         payloadFingerprint: string;
         hitl?: {
             required: boolean;
@@ -726,13 +731,8 @@ export declare const FinanceSafetyReviewSchema: z.ZodObject<{
             reviewer?: string | undefined;
         } | undefined;
     };
-    envelope: {
-        sessionId: string;
-        orgId: string;
-        jobId?: string | undefined;
-    };
     decision: {
-        status: "needs_hitl" | "approved" | "rejected";
+        status: "approved" | "rejected" | "needs_hitl";
         reasons: string[];
         mitigations: string[];
         hitlRequired: boolean;
@@ -746,25 +746,25 @@ export declare const FinanceSafetyReviewSchema: z.ZodObject<{
         reviewedAt?: string | undefined;
     } | undefined;
 }, {
-    command: {
-        worker: "director" | "domain" | "safety";
-        commandType: string;
-        id: string;
-        payloadFingerprint: string;
-        hitl?: {
-            required: boolean;
-            reviewer?: string | undefined;
-            reasons?: string[] | undefined;
-            mitigations?: string[] | undefined;
-        } | undefined;
-    };
     envelope: {
         sessionId: string;
         orgId: string;
         jobId?: string | undefined;
     };
+    command: {
+        id: string;
+        worker: "director" | "domain" | "safety";
+        commandType: string;
+        payloadFingerprint: string;
+        hitl?: {
+            required: boolean;
+            reasons?: string[] | undefined;
+            mitigations?: string[] | undefined;
+            reviewer?: string | undefined;
+        } | undefined;
+    };
     decision: {
-        status: "needs_hitl" | "approved" | "rejected";
+        status: "approved" | "rejected" | "needs_hitl";
         reasons?: string[] | undefined;
         mitigations?: string[] | undefined;
         hitlRequired?: boolean | undefined;

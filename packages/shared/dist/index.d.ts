@@ -5,7 +5,6 @@ export * from './constants/thresholds.js';
 export * from './plan.js';
 export * from './types/plan-drawer.js';
 export * from './types/web-search.js';
-export * from './types/file-search.js';
 export * from './akoma.js';
 export * from './openai/client.js';
 export * from './orchestrator.js';
@@ -17,4 +16,5 @@ export * from './workspace.js';
 export * from './transparency/digest.js';
 export * from './scheduling/scheduler.js';
 export * from './config/env.js';
+export * from './semantic-search.js';
 //# sourceMappingURL=index.d.ts.map

@@ -130,22 +130,22 @@ export declare const WebSearchActionSchema: z.ZodObject<{
     }>, "many">>;
 }, "strip", z.ZodTypeAny, {
     type: "search" | "open_page" | "find_in_page";
+    query?: string | undefined;
+    domains?: string[] | undefined;
     sources?: {
         url: string;
         type?: string | undefined;
         title?: string | undefined;
     }[] | undefined;
-    query?: string | undefined;
-    domains?: string[] | undefined;
 }, {
     type: "search" | "open_page" | "find_in_page";
+    query?: string | undefined;
+    domains?: string[] | undefined;
     sources?: {
         url: string;
         type?: string | undefined;
         title?: string | undefined;
     }[] | undefined;
-    query?: string | undefined;
-    domains?: string[] | undefined;
 }>;
 export type WebSearchAction = z.infer<typeof WebSearchActionSchema>;
 /**
@@ -197,50 +197,50 @@ export declare const WebSearchCallItemSchema: z.ZodObject<{
         }>, "many">>;
     }, "strip", z.ZodTypeAny, {
         type: "search" | "open_page" | "find_in_page";
+        query?: string | undefined;
+        domains?: string[] | undefined;
         sources?: {
             url: string;
             type?: string | undefined;
             title?: string | undefined;
         }[] | undefined;
-        query?: string | undefined;
-        domains?: string[] | undefined;
     }, {
         type: "search" | "open_page" | "find_in_page";
+        query?: string | undefined;
+        domains?: string[] | undefined;
         sources?: {
             url: string;
             type?: string | undefined;
             title?: string | undefined;
         }[] | undefined;
-        query?: string | undefined;
-        domains?: string[] | undefined;
     }>>;
 }, "strip", z.ZodTypeAny, {
     type: "web_search_call";
-    status: "queued" | "completed" | "failed" | "in_progress";
+    status: "failed" | "queued" | "completed" | "in_progress";
     id: string;
     action?: {
         type: "search" | "open_page" | "find_in_page";
+        query?: string | undefined;
+        domains?: string[] | undefined;
         sources?: {
             url: string;
             type?: string | undefined;
             title?: string | undefined;
         }[] | undefined;
-        query?: string | undefined;
-        domains?: string[] | undefined;
     } | undefined;
 }, {
     type: "web_search_call";
-    status: "queued" | "completed" | "failed" | "in_progress";
+    status: "failed" | "queued" | "completed" | "in_progress";
     id: string;
     action?: {
         type: "search" | "open_page" | "find_in_page";
+        query?: string | undefined;
+        domains?: string[] | undefined;
         sources?: {
             url: string;
             type?: string | undefined;
             title?: string | undefined;
         }[] | undefined;
-        query?: string | undefined;
-        domains?: string[] | undefined;
     } | undefined;
 }>;
 export type WebSearchCallItem = z.infer<typeof WebSearchCallItemSchema>;
@@ -344,7 +344,7 @@ export declare const MessageItemSchema: z.ZodObject<{
     }>, "many">;
 }, "strip", z.ZodTypeAny, {
     type: "message";
-    status: "queued" | "completed" | "failed" | "in_progress";
+    status: "failed" | "queued" | "completed" | "in_progress";
     id: string;
     content: {
         type: "output_text";
@@ -360,7 +360,7 @@ export declare const MessageItemSchema: z.ZodObject<{
     role: "user" | "assistant" | "system";
 }, {
     type: "message";
-    status: "queued" | "completed" | "failed" | "in_progress";
+    status: "failed" | "queued" | "completed" | "in_progress";
     id: string;
     content: {
         type: "output_text";
@@ -402,50 +402,50 @@ export declare const WebSearchOutputItemSchema: z.ZodDiscriminatedUnion<"type", 
         }>, "many">>;
     }, "strip", z.ZodTypeAny, {
         type: "search" | "open_page" | "find_in_page";
+        query?: string | undefined;
+        domains?: string[] | undefined;
         sources?: {
             url: string;
             type?: string | undefined;
             title?: string | undefined;
         }[] | undefined;
-        query?: string | undefined;
-        domains?: string[] | undefined;
     }, {
         type: "search" | "open_page" | "find_in_page";
+        query?: string | undefined;
+        domains?: string[] | undefined;
         sources?: {
             url: string;
             type?: string | undefined;
             title?: string | undefined;
         }[] | undefined;
-        query?: string | undefined;
-        domains?: string[] | undefined;
     }>>;
 }, "strip", z.ZodTypeAny, {
     type: "web_search_call";
-    status: "queued" | "completed" | "failed" | "in_progress";
+    status: "failed" | "queued" | "completed" | "in_progress";
     id: string;
     action?: {
         type: "search" | "open_page" | "find_in_page";
+        query?: string | undefined;
+        domains?: string[] | undefined;
         sources?: {
             url: string;
             type?: string | undefined;
             title?: string | undefined;
         }[] | undefined;
-        query?: string | undefined;
-        domains?: string[] | undefined;
     } | undefined;
 }, {
     type: "web_search_call";
-    status: "queued" | "completed" | "failed" | "in_progress";
+    status: "failed" | "queued" | "completed" | "in_progress";
     id: string;
     action?: {
         type: "search" | "open_page" | "find_in_page";
+        query?: string | undefined;
+        domains?: string[] | undefined;
         sources?: {
             url: string;
             type?: string | undefined;
             title?: string | undefined;
         }[] | undefined;
-        query?: string | undefined;
-        domains?: string[] | undefined;
     } | undefined;
 }>, z.ZodObject<{
     id: z.ZodString;
@@ -497,7 +497,7 @@ export declare const WebSearchOutputItemSchema: z.ZodDiscriminatedUnion<"type", 
     }>, "many">;
 }, "strip", z.ZodTypeAny, {
     type: "message";
-    status: "queued" | "completed" | "failed" | "in_progress";
+    status: "failed" | "queued" | "completed" | "in_progress";
     id: string;
     content: {
         type: "output_text";
@@ -513,7 +513,7 @@ export declare const WebSearchOutputItemSchema: z.ZodDiscriminatedUnion<"type", 
     role: "user" | "assistant" | "system";
 }, {
     type: "message";
-    status: "queued" | "completed" | "failed" | "in_progress";
+    status: "failed" | "queued" | "completed" | "in_progress";
     id: string;
     content: {
         type: "output_text";

@@ -32,17 +32,17 @@ export declare const sharedOpenAiSchema: z.ZodObject<{
     OPENAI_REQUEST_TAGS_EDGE: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     OPENAI_API_KEY: string;
+    OPENAI_REQUEST_TAGS?: string | undefined;
     OPENAI_BASE_URL?: string | undefined;
     OPENAI_VECTOR_STORE_AUTHORITIES_ID?: string | undefined;
-    OPENAI_REQUEST_TAGS?: string | undefined;
     OPENAI_REQUEST_TAGS_API?: string | undefined;
     OPENAI_REQUEST_TAGS_OPS?: string | undefined;
     OPENAI_REQUEST_TAGS_EDGE?: string | undefined;
 }, {
     OPENAI_API_KEY: string;
+    OPENAI_REQUEST_TAGS?: string | undefined;
     OPENAI_BASE_URL?: string | undefined;
     OPENAI_VECTOR_STORE_AUTHORITIES_ID?: string | undefined;
-    OPENAI_REQUEST_TAGS?: string | undefined;
     OPENAI_REQUEST_TAGS_API?: string | undefined;
     OPENAI_REQUEST_TAGS_OPS?: string | undefined;
     OPENAI_REQUEST_TAGS_EDGE?: string | undefined;

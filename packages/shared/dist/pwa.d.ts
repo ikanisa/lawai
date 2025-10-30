@@ -136,13 +136,13 @@ export declare const ResearchPlanStepSchema: z.ZodObject<{
     status: z.ZodEnum<["done", "active", "pending"]>;
     summary: z.ZodString;
 }, "strict", z.ZodTypeAny, {
-    status: "active" | "pending" | "done";
+    status: "done" | "active" | "pending";
     title: string;
     summary: string;
     id: string;
     tool: string;
 }, {
-    status: "active" | "pending" | "done";
+    status: "done" | "active" | "pending";
     title: string;
     summary: string;
     id: string;
@@ -162,13 +162,13 @@ export declare const ResearchPlanSchema: z.ZodObject<{
         status: z.ZodEnum<["done", "active", "pending"]>;
         summary: z.ZodString;
     }, "strict", z.ZodTypeAny, {
-        status: "active" | "pending" | "done";
+        status: "done" | "active" | "pending";
         title: string;
         summary: string;
         id: string;
         tool: string;
     }, {
-        status: "active" | "pending" | "done";
+        status: "done" | "active" | "pending";
         title: string;
         summary: string;
         id: string;
@@ -177,10 +177,11 @@ export declare const ResearchPlanSchema: z.ZodObject<{
 }, "strict", z.ZodTypeAny, {
     jurisdiction: string;
     title: string;
-    riskLevel: "LOW" | "HIGH" | "MED";
     id: string;
+    riskLevel: "LOW" | "HIGH" | "MED";
+    riskSummary: string;
     steps: {
-        status: "active" | "pending" | "done";
+        status: "done" | "active" | "pending";
         title: string;
         summary: string;
         id: string;
@@ -190,10 +191,11 @@ export declare const ResearchPlanSchema: z.ZodObject<{
 }, {
     jurisdiction: string;
     title: string;
-    riskLevel: "LOW" | "HIGH" | "MED";
     id: string;
+    riskLevel: "LOW" | "HIGH" | "MED";
+    riskSummary: string;
     steps: {
-        status: "active" | "pending" | "done";
+        status: "done" | "active" | "pending";
         title: string;
         summary: string;
         id: string;
@@ -256,13 +258,13 @@ export declare const ResearchDeskContextSchema: z.ZodObject<{
             status: z.ZodEnum<["done", "active", "pending"]>;
             summary: z.ZodString;
         }, "strict", z.ZodTypeAny, {
-            status: "active" | "pending" | "done";
+            status: "done" | "active" | "pending";
             title: string;
             summary: string;
             id: string;
             tool: string;
         }, {
-            status: "active" | "pending" | "done";
+            status: "done" | "active" | "pending";
             title: string;
             summary: string;
             id: string;
@@ -271,10 +273,11 @@ export declare const ResearchDeskContextSchema: z.ZodObject<{
     }, "strict", z.ZodTypeAny, {
         jurisdiction: string;
         title: string;
-        riskLevel: "LOW" | "HIGH" | "MED";
         id: string;
+        riskLevel: "LOW" | "HIGH" | "MED";
+        riskSummary: string;
         steps: {
-            status: "active" | "pending" | "done";
+            status: "done" | "active" | "pending";
             title: string;
             summary: string;
             id: string;
@@ -284,10 +287,11 @@ export declare const ResearchDeskContextSchema: z.ZodObject<{
     }, {
         jurisdiction: string;
         title: string;
-        riskLevel: "LOW" | "HIGH" | "MED";
         id: string;
+        riskLevel: "LOW" | "HIGH" | "MED";
+        riskSummary: string;
         steps: {
-            status: "active" | "pending" | "done";
+            status: "done" | "active" | "pending";
             title: string;
             summary: string;
             id: string;
@@ -375,10 +379,11 @@ export declare const ResearchDeskContextSchema: z.ZodObject<{
     plan: {
         jurisdiction: string;
         title: string;
-        riskLevel: "LOW" | "HIGH" | "MED";
         id: string;
+        riskLevel: "LOW" | "HIGH" | "MED";
+        riskSummary: string;
         steps: {
-            status: "active" | "pending" | "done";
+            status: "done" | "active" | "pending";
             title: string;
             summary: string;
             id: string;
@@ -412,10 +417,11 @@ export declare const ResearchDeskContextSchema: z.ZodObject<{
     plan: {
         jurisdiction: string;
         title: string;
-        riskLevel: "LOW" | "HIGH" | "MED";
         id: string;
+        riskLevel: "LOW" | "HIGH" | "MED";
+        riskSummary: string;
         steps: {
-            status: "active" | "pending" | "done";
+            status: "done" | "active" | "pending";
             title: string;
             summary: string;
             id: string;
@@ -636,8 +642,6 @@ export declare const CitationDocumentSchema: z.ZodObject<{
     type: "statute" | "regulation" | "case" | "doctrine";
     jurisdiction: string;
     title: string;
-    summary: string;
-    metadata: Record<string, string>;
     id: string;
     entryIntoForce: string;
     eli: string;
@@ -655,6 +659,7 @@ export declare const CitationDocumentSchema: z.ZodObject<{
         isConsolidated: boolean;
         diffSummary: string;
     }[];
+    metadata: Record<string, string>;
     content: {
         heading: string;
         text: string;
@@ -664,8 +669,6 @@ export declare const CitationDocumentSchema: z.ZodObject<{
     type: "statute" | "regulation" | "case" | "doctrine";
     jurisdiction: string;
     title: string;
-    summary: string;
-    metadata: Record<string, string>;
     id: string;
     entryIntoForce: string;
     eli: string;
@@ -683,6 +686,7 @@ export declare const CitationDocumentSchema: z.ZodObject<{
         isConsolidated: boolean;
         diffSummary: string;
     }[];
+    metadata: Record<string, string>;
     content: {
         heading: string;
         text: string;
@@ -751,8 +755,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
-        summary: string;
-        metadata: Record<string, string>;
         id: string;
         entryIntoForce: string;
         eli: string;
@@ -770,6 +772,7 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
             isConsolidated: boolean;
             diffSummary: string;
         }[];
+        metadata: Record<string, string>;
         content: {
             heading: string;
             text: string;
@@ -779,8 +782,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
-        summary: string;
-        metadata: Record<string, string>;
         id: string;
         entryIntoForce: string;
         eli: string;
@@ -798,6 +799,7 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
             isConsolidated: boolean;
             diffSummary: string;
         }[];
+        metadata: Record<string, string>;
         content: {
             heading: string;
             text: string;
@@ -864,8 +866,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
-        summary: string;
-        metadata: Record<string, string>;
         id: string;
         entryIntoForce: string;
         eli: string;
@@ -883,6 +883,7 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
             isConsolidated: boolean;
             diffSummary: string;
         }[];
+        metadata: Record<string, string>;
         content: {
             heading: string;
             text: string;
@@ -892,8 +893,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
-        summary: string;
-        metadata: Record<string, string>;
         id: string;
         entryIntoForce: string;
         eli: string;
@@ -911,6 +910,7 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
             isConsolidated: boolean;
             diffSummary: string;
         }[];
+        metadata: Record<string, string>;
         content: {
             heading: string;
             text: string;
@@ -922,8 +922,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
-        summary: string;
-        metadata: Record<string, string>;
         id: string;
         entryIntoForce: string;
         eli: string;
@@ -941,6 +939,7 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
             isConsolidated: boolean;
             diffSummary: string;
         }[];
+        metadata: Record<string, string>;
         content: {
             heading: string;
             text: string;
@@ -951,8 +950,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
-        summary: string;
-        metadata: Record<string, string>;
         id: string;
         entryIntoForce: string;
         eli: string;
@@ -970,6 +967,7 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
             isConsolidated: boolean;
             diffSummary: string;
         }[];
+        metadata: Record<string, string>;
         content: {
             heading: string;
             text: string;
@@ -981,8 +979,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
-        summary: string;
-        metadata: Record<string, string>;
         id: string;
         entryIntoForce: string;
         eli: string;
@@ -1000,6 +996,7 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
             isConsolidated: boolean;
             diffSummary: string;
         }[];
+        metadata: Record<string, string>;
         content: {
             heading: string;
             text: string;
@@ -1010,8 +1007,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
-        summary: string;
-        metadata: Record<string, string>;
         id: string;
         entryIntoForce: string;
         eli: string;
@@ -1029,6 +1024,7 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
             isConsolidated: boolean;
             diffSummary: string;
         }[];
+        metadata: Record<string, string>;
         content: {
             heading: string;
             text: string;
@@ -1105,16 +1101,16 @@ export declare const MatterSummarySchema: z.ZodObject<{
     documents: z.ZodArray<z.ZodType<{
         id: string;
         title: string;
-        kind: "pleading" | "evidence" | "correspondence" | "analysis" | "order";
-        citeCheck: "clean" | "issues" | "pending";
+        kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
+        citeCheck: 'clean' | 'issues' | 'pending';
         updatedAt: string;
         author: string;
         children?: any;
     }, z.ZodTypeDef, {
         id: string;
         title: string;
-        kind: "pleading" | "evidence" | "correspondence" | "analysis" | "order";
-        citeCheck: "clean" | "issues" | "pending";
+        kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
+        citeCheck: 'clean' | 'issues' | 'pending';
         updatedAt: string;
         author: string;
         children?: any;
@@ -1161,11 +1157,20 @@ export declare const MatterSummarySchema: z.ZodObject<{
         actor: string;
     }>, "many">;
 }, "strict", z.ZodTypeAny, {
+    id: string;
+    name: string;
+    riskLevel: "low" | "medium" | "high";
+    client: string;
+    opposing: string;
+    governingLaw: string;
+    stage: string;
+    nextHearing: string;
+    principalIssue: string;
     documents: {
         id: string;
         title: string;
-        kind: "pleading" | "evidence" | "correspondence" | "analysis" | "order";
-        citeCheck: "clean" | "issues" | "pending";
+        kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
+        citeCheck: 'clean' | 'issues' | 'pending';
         updatedAt: string;
         author: string;
         children?: any;
@@ -1195,11 +1200,20 @@ export declare const MatterSummarySchema: z.ZodObject<{
         actor: string;
     }[];
 }, {
+    id: string;
+    name: string;
+    riskLevel: "low" | "medium" | "high";
+    client: string;
+    opposing: string;
+    governingLaw: string;
+    stage: string;
+    nextHearing: string;
+    principalIssue: string;
     documents: {
         id: string;
         title: string;
-        kind: "pleading" | "evidence" | "correspondence" | "analysis" | "order";
-        citeCheck: "clean" | "issues" | "pending";
+        kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
+        citeCheck: 'clean' | 'issues' | 'pending';
         updatedAt: string;
         author: string;
         children?: any;
@@ -1244,16 +1258,16 @@ export declare const MattersOverviewSchema: z.ZodObject<{
         documents: z.ZodArray<z.ZodType<{
             id: string;
             title: string;
-            kind: "pleading" | "evidence" | "correspondence" | "analysis" | "order";
-            citeCheck: "clean" | "issues" | "pending";
+            kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
+            citeCheck: 'clean' | 'issues' | 'pending';
             updatedAt: string;
             author: string;
             children?: any;
         }, z.ZodTypeDef, {
             id: string;
             title: string;
-            kind: "pleading" | "evidence" | "correspondence" | "analysis" | "order";
-            citeCheck: "clean" | "issues" | "pending";
+            kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
+            citeCheck: 'clean' | 'issues' | 'pending';
             updatedAt: string;
             author: string;
             children?: any;
@@ -1300,11 +1314,20 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             actor: string;
         }>, "many">;
     }, "strict", z.ZodTypeAny, {
+        id: string;
+        name: string;
+        riskLevel: "low" | "medium" | "high";
+        client: string;
+        opposing: string;
+        governingLaw: string;
+        stage: string;
+        nextHearing: string;
+        principalIssue: string;
         documents: {
             id: string;
             title: string;
-            kind: "pleading" | "evidence" | "correspondence" | "analysis" | "order";
-            citeCheck: "clean" | "issues" | "pending";
+            kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
+            citeCheck: 'clean' | 'issues' | 'pending';
             updatedAt: string;
             author: string;
             children?: any;
@@ -1334,11 +1357,20 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             actor: string;
         }[];
     }, {
+        id: string;
+        name: string;
+        riskLevel: "low" | "medium" | "high";
+        client: string;
+        opposing: string;
+        governingLaw: string;
+        stage: string;
+        nextHearing: string;
+        principalIssue: string;
         documents: {
             id: string;
             title: string;
-            kind: "pleading" | "evidence" | "correspondence" | "analysis" | "order";
-            citeCheck: "clean" | "issues" | "pending";
+            kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
+            citeCheck: 'clean' | 'issues' | 'pending';
             updatedAt: string;
             author: string;
             children?: any;
@@ -1370,11 +1402,20 @@ export declare const MattersOverviewSchema: z.ZodObject<{
     }>, "many">;
 }, "strict", z.ZodTypeAny, {
     matters: {
+        id: string;
+        name: string;
+        riskLevel: "low" | "medium" | "high";
+        client: string;
+        opposing: string;
+        governingLaw: string;
+        stage: string;
+        nextHearing: string;
+        principalIssue: string;
         documents: {
             id: string;
             title: string;
-            kind: "pleading" | "evidence" | "correspondence" | "analysis" | "order";
-            citeCheck: "clean" | "issues" | "pending";
+            kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
+            citeCheck: 'clean' | 'issues' | 'pending';
             updatedAt: string;
             author: string;
             children?: any;
@@ -1406,11 +1447,20 @@ export declare const MattersOverviewSchema: z.ZodObject<{
     }[];
 }, {
     matters: {
+        id: string;
+        name: string;
+        riskLevel: "low" | "medium" | "high";
+        client: string;
+        opposing: string;
+        governingLaw: string;
+        stage: string;
+        nextHearing: string;
+        principalIssue: string;
         documents: {
             id: string;
             title: string;
-            kind: "pleading" | "evidence" | "correspondence" | "analysis" | "order";
-            citeCheck: "clean" | "issues" | "pending";
+            kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
+            citeCheck: 'clean' | 'issues' | 'pending';
             updatedAt: string;
             author: string;
             children?: any;
@@ -1524,6 +1574,9 @@ export declare const HitlReviewItemSchema: z.ZodObject<{
     }>, "many">;
     deltas: z.ZodArray<z.ZodString, "many">;
 }, "strict", z.ZodTypeAny, {
+    id: string;
+    summary: string;
+    riskLevel: "low" | "medium" | "high";
     evidence: {
         type: "statute" | "regulation" | "case" | "doctrine";
         id: string;
@@ -1547,6 +1600,9 @@ export declare const HitlReviewItemSchema: z.ZodObject<{
     };
     deltas: string[];
 }, {
+    id: string;
+    summary: string;
+    riskLevel: "low" | "medium" | "high";
     evidence: {
         type: "statute" | "regulation" | "case" | "doctrine";
         id: string;
@@ -1616,6 +1672,9 @@ export declare const HitlQueueDataSchema: z.ZodObject<{
         }>, "many">;
         deltas: z.ZodArray<z.ZodString, "many">;
     }, "strict", z.ZodTypeAny, {
+        id: string;
+        summary: string;
+        riskLevel: "low" | "medium" | "high";
         evidence: {
             type: "statute" | "regulation" | "case" | "doctrine";
             id: string;
@@ -1639,6 +1698,9 @@ export declare const HitlQueueDataSchema: z.ZodObject<{
         };
         deltas: string[];
     }, {
+        id: string;
+        summary: string;
+        riskLevel: "low" | "medium" | "high";
         evidence: {
             type: "statute" | "regulation" | "case" | "doctrine";
             id: string;
@@ -1664,6 +1726,9 @@ export declare const HitlQueueDataSchema: z.ZodObject<{
     }>, "many">;
 }, "strict", z.ZodTypeAny, {
     queue: {
+        id: string;
+        summary: string;
+        riskLevel: "low" | "medium" | "high";
         evidence: {
             type: "statute" | "regulation" | "case" | "doctrine";
             id: string;
@@ -1689,6 +1754,9 @@ export declare const HitlQueueDataSchema: z.ZodObject<{
     }[];
 }, {
     queue: {
+        id: string;
+        summary: string;
+        riskLevel: "low" | "medium" | "high";
         evidence: {
             type: "statute" | "regulation" | "case" | "doctrine";
             id: string;
@@ -2159,14 +2227,12 @@ export declare const VoiceToolIntentSchema: z.ZodObject<{
     status: z.ZodEnum<["scheduled", "running", "completed", "requires_hitl"]>;
     detail: z.ZodString;
 }, "strict", z.ZodTypeAny, {
-    status: "completed" | "running" | "requires_hitl" | "scheduled";
-    detail: string;
+    status: "running" | "requires_hitl" | "scheduled" | "completed";
     id: string;
     name: string;
     tool: string;
 }, {
-    status: "completed" | "running" | "requires_hitl" | "scheduled";
-    detail: string;
+    status: "running" | "requires_hitl" | "scheduled" | "completed";
     id: string;
     name: string;
     tool: string;
@@ -2181,12 +2247,12 @@ export declare const VoiceSessionIntentSchema: z.ZodObject<{
     id: string;
     name: string;
     tool: string;
-    status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+    status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
 }, {
     id: string;
     name: string;
     tool: string;
-    status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+    status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
 }>;
 export type VoiceSessionIntent = z.infer<typeof VoiceSessionIntentSchema>;
 export declare const VoiceCitationSchema: z.ZodObject<{
@@ -2237,12 +2303,12 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
         id: string;
         name: string;
         tool: string;
-        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+        status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
     }, {
         id: string;
         name: string;
         tool: string;
-        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+        status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
     }>, "many">;
 }, "strict", z.ZodTypeAny, {
     citations: {
@@ -2260,7 +2326,7 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
         id: string;
         name: string;
         tool: string;
-        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+        status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
     }[];
 }, {
     citations: {
@@ -2278,7 +2344,7 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
         id: string;
         name: string;
         tool: string;
-        status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+        status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
     }[];
 }>;
 export type VoiceSessionSummary = z.infer<typeof VoiceSessionSummarySchema>;
@@ -2291,14 +2357,12 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
         status: z.ZodEnum<["scheduled", "running", "completed", "requires_hitl"]>;
         detail: z.ZodString;
     }, "strict", z.ZodTypeAny, {
-        status: "completed" | "running" | "requires_hitl" | "scheduled";
-        detail: string;
+        status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
         tool: string;
     }, {
-        status: "completed" | "running" | "requires_hitl" | "scheduled";
-        detail: string;
+        status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
         tool: string;
@@ -2334,12 +2398,12 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
             id: string;
             name: string;
             tool: string;
-            status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+            status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
         }, {
             id: string;
             name: string;
             tool: string;
-            status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+            status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
         }>, "many">;
     }, "strict", z.ZodTypeAny, {
         citations: {
@@ -2357,7 +2421,7 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
             id: string;
             name: string;
             tool: string;
-            status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+            status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
         }[];
     }, {
         citations: {
@@ -2375,16 +2439,14 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
             id: string;
             name: string;
             tool: string;
-            status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+            status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
         }[];
     }>, "many">;
     guardrails: z.ZodArray<z.ZodString, "many">;
 }, "strict", z.ZodTypeAny, {
-    guardrails: string[];
     suggestions: string[];
     quickIntents: {
-        status: "completed" | "running" | "requires_hitl" | "scheduled";
-        detail: string;
+        status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
         tool: string;
@@ -2405,15 +2467,14 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
             id: string;
             name: string;
             tool: string;
-            status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+            status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
         }[];
     }[];
+    guardrails: string[];
 }, {
-    guardrails: string[];
     suggestions: string[];
     quickIntents: {
-        status: "completed" | "running" | "requires_hitl" | "scheduled";
-        detail: string;
+        status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
         tool: string;
@@ -2434,9 +2495,10 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
             id: string;
             name: string;
             tool: string;
-            status?: "completed" | "running" | "requires_hitl" | "scheduled" | undefined;
+            status?: "running" | "requires_hitl" | "scheduled" | "completed" | undefined;
         }[];
     }[];
+    guardrails: string[];
 }>;
 export type VoiceConsoleContext = z.infer<typeof VoiceConsoleContextSchema>;
 export declare const VoiceRunRequestSchema: z.ZodObject<{
@@ -2486,14 +2548,12 @@ export declare const VoiceRunResponseSchema: z.ZodObject<{
         status: z.ZodEnum<["scheduled", "running", "completed", "requires_hitl"]>;
         detail: z.ZodString;
     }, "strict", z.ZodTypeAny, {
-        status: "completed" | "running" | "requires_hitl" | "scheduled";
-        detail: string;
+        status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
         tool: string;
     }, {
-        status: "completed" | "running" | "requires_hitl" | "scheduled";
-        detail: string;
+        status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
         tool: string;
@@ -2508,17 +2568,16 @@ export declare const VoiceRunResponseSchema: z.ZodObject<{
         href: string;
         snippet: string;
     }[];
+    id: string;
     summary: string;
     riskLevel: "LOW" | "HIGH" | "MED";
-    followUps: string[];
-    id: string;
     intents: {
-        status: "completed" | "running" | "requires_hitl" | "scheduled";
-        detail: string;
+        status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
         tool: string;
     }[];
+    followUps: string[];
     readback: string[];
     clarifications: string[];
 }, {
@@ -2528,16 +2587,14 @@ export declare const VoiceRunResponseSchema: z.ZodObject<{
         href: string;
         snippet: string;
     }[];
-    summary: string;
-    followUps: string[];
     id: string;
     intents: {
-        status: "completed" | "running" | "requires_hitl" | "scheduled";
-        detail: string;
+        status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
         tool: string;
     }[];
+    followUps: string[];
     readback: string[];
     riskLevel?: "LOW" | "HIGH" | "MED" | undefined;
     clarifications?: string[] | undefined;

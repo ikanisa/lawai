@@ -14,6 +14,7 @@ import { registerMattersRoutes } from './routes/matters/index.js';
 import { registerRealtimeRoutes } from './routes/realtime/index.js';
 import { registerResearchRoutes } from './routes/research/index.js';
 import { registerUploadRoutes } from './routes/upload/index.js';
+import { registerVectorStoreRoutes } from './routes/vector-stores/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
 import { registerWebSearchRoutes } from './routes/web-search/index.js';
 import type { AppContext } from './types/context.js';
@@ -119,6 +120,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<AppAsse
     await registerHitlRoutes(instance, context);
     await registerDeadlineRoutes(instance, context);
     await registerUploadRoutes(instance, context);
+    await registerVectorStoreRoutes(instance, context);
     await registerVoiceRoutes(instance, context);
     await registerRealtimeRoutes(instance, context);
     await registerWebSearchRoutes(instance, context);
