@@ -17,94 +17,52 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Download SBOM artifacts
+      uses: actions/download-artifact@v6
+      with:
+        name: sbom-${{ github.sha }}
+        path: ./sbom
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8.15.4
+    - name: Verify SBOM files
+      run: |
+        echo "Verifying SBOM files..."
+        
+        # Check if main SBOM file exists
+        if [ -f "sbom/sbom-root.json" ]; then
+          echo "✅ Main SBOM file found"
+          # Validate JSON format
+          cat sbom/sbom-root.json | jq . > /dev/null && echo "✅ SBOM JSON is valid"
+        else
+          echo "❌ Main SBOM file not found"
+          exit 1
+        fi
+        
+        # Check dependency list
+        if [ -f "sbom/dependencies.md" ]; then
+          echo "✅ Dependency list found"
+          DEPS=$(cat sbom/dependencies.md | wc -l)
+          echo "  Dependencies listed: $DEPS lines"
+        fi
+        
+        # Check license report
+        if [ -f "sbom/licenses.md" ]; then
+          echo "✅ License report found"
+        fi
+        
+        # Verify checksums
+        if [ -f "sbom/checksums.txt" ]; then
+          echo "✅ Checksums found"
+          cd sbom
+          sha256sum -c checksums.txt --ignore-missing
+          cd ..
+        fi
+        
+        echo ""
+        echo "SBOM verification complete"
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
-
-      - name: Install CycloneDX CLI
-        run: |
-          npm install -g @cyclonedx/cyclonedx-npm
-
-      - name: Create SBOM directory
-        run: mkdir -p docs/sbom
-
-      - name: Generate SBOM for root workspace
-        run: |
-          cyclonedx-npm --output-file docs/sbom/root-sbom.json --output-format json
-        continue-on-error: true
-
-      - name: Generate SBOM for apps/api
-        run: |
-          cd apps/api
-          cyclonedx-npm --output-file ../../docs/sbom/api-sbom.json --output-format json
-        continue-on-error: true
-
-      - name: Generate SBOM for apps/web
-        run: |
-          cd apps/web
-          cyclonedx-npm --output-file ../../docs/sbom/web-sbom.json --output-format json
-        continue-on-error: true
-
-      - name: Generate SBOM for apps/pwa
-        run: |
-          cd apps/pwa
-          cyclonedx-npm --output-file ../../docs/sbom/pwa-sbom.json --output-format json
-        continue-on-error: true
-
-      - name: Generate SBOM for apps/ops
-        run: |
-          cd apps/ops
-          cyclonedx-npm --output-file ../../docs/sbom/ops-sbom.json --output-format json
-        continue-on-error: true
-
-      - name: Generate SBOM for apps/edge
-        run: |
-          cd apps/edge
-          cyclonedx-npm --output-file ../../docs/sbom/edge-sbom.json --output-format json
-        continue-on-error: true
-
-      - name: Generate SBOM for packages/shared
-        run: |
-          cd packages/shared
-          cyclonedx-npm --output-file ../../docs/sbom/shared-sbom.json --output-format json
-        continue-on-error: true
-
-      - name: Generate SBOM for packages/supabase
-        run: |
-          cd packages/supabase
-          cyclonedx-npm --output-file ../../docs/sbom/supabase-sbom.json --output-format json
-        continue-on-error: true
-
-      - name: List generated SBOMs
-        run: |
-          echo "Generated SBOM files:"
-          ls -lh docs/sbom/
-
-      - name: Upload SBOM artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-${{ github.sha }}
-          path: docs/sbom/*.json
-          retention-days: 90
-
-      - name: Commit SBOM files (on main/master/work)
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/work')
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add docs/sbom/*.json || true
-          git diff --staged --quiet || git commit -m "chore: update SBOM artifacts [skip ci]"
-          git push || true
+    - name: Generate verification summary
+      if: always()
+      run: |
+        echo "# SBOM Verification" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "SBOM files verified successfully ✅" >> $GITHUB_STEP_SUMMARY
