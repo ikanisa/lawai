@@ -279,7 +279,7 @@ const completion = await fetch('https://api.openai.com/v1/chat/completions', {
     model: "gpt-4",
     messages: [
       {
-        role: "developer",
+        role: "system",
         content: "Produce a concise answer to the query based on the provided sources."
       },
       {
