@@ -15,6 +15,7 @@ import { registerRealtimeRoutes } from './routes/realtime/index.js';
 import { registerResearchRoutes } from './routes/research/index.js';
 import { registerUploadRoutes } from './routes/upload/index.js';
 import { registerVoiceRoutes } from './routes/voice/index.js';
+import { registerWebSearchRoutes } from './routes/web-search/index.js';
 import type { AppContext } from './types/context.js';
 import type { AppAssembly, AppFastifyInstance } from './types/fastify.js';
 import { env, rateLimitConfig } from './config.js';
@@ -120,6 +121,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<AppAsse
     await registerUploadRoutes(instance, context);
     await registerVoiceRoutes(instance, context);
     await registerRealtimeRoutes(instance, context);
+    await registerWebSearchRoutes(instance, context);
   }, { prefix: '/api' });
 
   return { app, context };

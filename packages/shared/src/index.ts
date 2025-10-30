@@ -4,6 +4,7 @@ export * from './constants/jurisdictions.js';
 export * from './constants/thresholds.js';
 export * from './plan.js';
 export * from './types/plan-drawer.js';
+export * from './types/web-search.js';
 export * from './akoma.js';
 export * from './openai/client.js';
 export * from './orchestrator.js';
