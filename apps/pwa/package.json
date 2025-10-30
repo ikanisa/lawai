@@ -58,7 +58,7 @@
     "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^5.1.0",
     "cypress": "^13.8.1",
-    "eslint": "^8.57.0",
+    "eslint": "^9.38.0",
     "eslint-config-next": "^14.2.3",
     "jsdom": "^24.0.0",
     "typescript": "^5.4.5",
