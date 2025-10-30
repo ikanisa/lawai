@@ -15,7 +15,7 @@
     "@avocat-ai/shared": "file:../../packages/shared",
     "@avocat-ai/supabase": "file:../../packages/supabase",
     "@openai/agents": "0.1.9",
-    "date-fns": "^3.6.0",
+    "date-fns": "^4.1.0",
     "diff": "5.1.0",
     "ioredis": "^5.4.1",
     "dotenv": "^16.4.5",
