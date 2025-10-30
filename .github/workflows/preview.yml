@@ -15,10 +15,10 @@ jobs:
       PREVIEW_API_BASE_URL: ${{ secrets.PREVIEW_API_BASE_URL || 'https://staging.api.avocat-ai.test' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
           version: 8.15.4
 

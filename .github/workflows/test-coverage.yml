@@ -19,13 +19,13 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         # Fetch full history for better coverage diff
         fetch-depth: 0
 
     - name: Setup pnpm
-      uses: pnpm/action-setup@v2
+      uses: pnpm/action-setup@v4
       with:
         version: 8.15.4
 
@@ -185,10 +185,10 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Download coverage reports
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v6
       with:
         name: coverage-reports
         path: ./coverage-reports

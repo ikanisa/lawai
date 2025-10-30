@@ -1,757 +1,758 @@
 # Release Runbook
 
-_Last updated: 2025-10-29_
-
-This runbook provides step-by-step procedures for building, testing, deploying, and rolling back releases of the Avocat-AI system. It covers all applications in the monorepo and includes smoke tests, rollback procedures, and on-call handoff.
-
-## Table of Contents
-
-1. [Pre-Release Checklist](#pre-release-checklist)
-2. [Build Procedures](#build-procedures)
-3. [Testing & Validation](#testing--validation)
-4. [Deployment Procedures](#deployment-procedures)
-5. [Smoke Tests](#smoke-tests)
-6. [Rollback Procedures](#rollback-procedures)
-7. [Post-Deployment](#post-deployment)
-8. [Monitoring & Alerts](#monitoring--alerts)
-9. [On-Call Handoff](#on-call-handoff)
-10. [Incident Response](#incident-response)
+**Project**: Avocat-AI Francophone Monorepo  
+**Last Updated**: 2025-10-29  
+**Version**: 1.0  
+**Owner**: Platform Squad + Ops Team
 
 ---
 
-## Pre-Release Checklist
+## Overview
 
-### Code Freeze & Preparation
-
-- [ ] **Code freeze announced** (24h before release)
-- [ ] **Release branch created** from `main`/`master`
-- [ ] **Changelog updated** with user-facing changes
-- [ ] **Version numbers bumped** (follow semantic versioning)
-- [ ] **Migration scripts reviewed** (if applicable)
-- [ ] **Feature flags configured** for gradual rollout
-- [ ] **Secrets rotated** if required (use `pnpm ops:rotate-secrets`)
-
-### Quality Gates
-
-- [ ] **All CI checks passing** on release branch
-  - [ ] Typecheck: `pnpm typecheck` (workspace-specific for known issues)
-  - [ ] Lint: `pnpm lint` (workspace-specific for known issues)
-  - [ ] Tests: `pnpm test` (all tests passing)
-  - [ ] Build: `pnpm build` (all apps build successfully)
-- [ ] **Migration checks passing**: `ALLOW_SUPABASE_MIGRATIONS=1 pnpm check:migrations`
-- [ ] **Binary assets check passing**: `pnpm check:binaries`
-- [ ] **SQL linting passing**: `pnpm lint:sql`
-- [ ] **Environment validation passing**: `pnpm env:validate`
-- [ ] **Security scans completed** (CodeQL, dependency audit)
-- [ ] **Test coverage meets threshold** (≥80% or baseline +10%)
-
-### Documentation
-
-- [ ] **Architecture docs updated** if architecture changed
-- [ ] **API documentation updated** if endpoints changed
-- [ ] **Environment variables documented** in `.env.example`
-- [ ] **Breaking changes documented** with migration guide
-- [ ] **Runbook updated** if deployment procedures changed
-
-### Stakeholder Approval
-
-- [ ] **Product Owner sign-off** for feature changes
-- [ ] **Security team review** for security-related changes
-- [ ] **Ops team notified** of deployment window
-- [ ] **Go/No-Go meeting completed**: `pnpm ops:go-no-go --release <tag>`
+This runbook describes the end-to-end release process for the Avocat-AI platform, including build, test, staging deployment, production deployment, smoke testing, rollback procedures, and on-call handoff.
 
 ---
 
-## Build Procedures
+## Release Workflow
 
-### Local Build Verification
-
-Before deploying, verify builds locally with production configuration:
-
-```bash
-# 1. Ensure environment is clean
-git status
-git checkout <release-branch>
-git pull origin <release-branch>
-
-# 2. Clean install dependencies
-rm -rf node_modules
-pnpm install --frozen-lockfile
-
-# 3. Build all workspaces
-pnpm build
-
-# 4. Verify specific app builds
-pnpm --filter @apps/api build
-pnpm --filter @avocat-ai/web build
-pnpm --filter @apps/pwa build
-
-# 5. Check bundle sizes (PWA)
-pnpm --filter @apps/pwa bundle:check
 ```
-
-### CI Build
-
-All builds must pass in CI before deployment:
-
-```bash
-# Monitor CI status
-gh run list --branch <release-branch>
-gh run view <run-id>
-```
-
-### Artifact Generation
-
-For each release, generate and archive:
-
-1. **Build artifacts**: `.next/` directories, compiled bundles
-2. **SBOM (Software Bill of Materials)**: Dependency manifest
-3. **Source maps**: For error tracking (store securely)
-4. **Database migration checksums**: For verification
-
-```bash
-# Generate SBOM (to be implemented)
-# pnpm generate:sbom > release-artifacts/sbom-<version>.json
-
-# Archive build artifacts
-tar -czf release-artifacts/web-<version>.tar.gz -C apps/web/.next .
-tar -czf release-artifacts/pwa-<version>.tar.gz -C apps/pwa/.next .
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Development │────▶│   Staging    │────▶│  Production  │────▶│  Monitor &   │
+│   & Testing  │     │  Validation  │     │  Deployment  │     │   Support    │
+└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+       │                     │                     │                     │
+       ├─ Build              ├─ Smoke Tests        ├─ Blue-Green (TBD)  ├─ Health Checks
+       ├─ Lint               ├─ Integration Tests  ├─ Feature Flags     ├─ Error Tracking
+       ├─ Unit Tests         ├─ Migration Test     ├─ Canary (TBD)      ├─ On-Call Handoff
+       ├─ E2E Tests          └─ Load Test          └─ Smoke Tests       └─ Incident Response
+       └─ Security Scans
 ```
 
 ---
 
-## Testing & Validation
+## Phase 1: Pre-Release (Development)
 
-### Staging Environment Tests
+### 1.1 Code Changes & PR
 
-Deploy to staging first and run comprehensive tests:
+**Owner**: Developer  
+**Duration**: Variable
 
-```bash
-# 1. Deploy to staging (see Deployment Procedures)
+**Steps**:
 
-# 2. Run ops checks
-pnpm ops:check
+1. Create feature branch from `main`:
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b feature/your-feature-name
+   ```
 
-# 3. Run RLS smoke tests
-pnpm ops:rls-smoke
+2. Make changes and commit using Conventional Commits:
+   ```bash
+   git commit -m "feat(api): add circuit breaker for OpenAI calls"
+   ```
 
-# 4. Run evaluation harness
-pnpm ops:evaluate --org <staging-org-uuid> --user <staging-user-uuid>
+3. Run pre-commit checks locally:
+   ```bash
+   pnpm lint
+   pnpm typecheck
+   pnpm test
+   ALLOW_SUPABASE_MIGRATIONS=1 pnpm check:migrations
+   pnpm check:binaries
+   ```
 
-# 5. Run red team tests
-pnpm ops:red-team
-```
+4. Push branch and open PR:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
 
-### Manual Testing Checklist
+5. Complete PR template checklist:
+   - [ ] All tests passing
+   - [ ] Migrations applied (if applicable)
+   - [ ] Documentation updated
+   - [ ] CODEOWNERS notified
+   - [ ] Staging smoke tests linked
 
-- [ ] **Authentication flow** (login, logout, session management)
-- [ ] **Core user journeys**:
-  - [ ] Submit research question
-  - [ ] View IRAC results
-  - [ ] Review HITL queue (operators)
-  - [ ] Approve/reject HITL items
-  - [ ] Upload documents
-  - [ ] Search corpus
-- [ ] **Edge cases**:
-  - [ ] Offline behavior (PWA)
-  - [ ] Slow network simulation
-  - [ ] High load (multiple concurrent requests)
-  - [ ] Error handling (invalid inputs)
-- [ ] **Security guardrails**:
-  - [ ] France judge analytics ban
-  - [ ] Confidential mode restrictions
-  - [ ] HITL escalation triggers
-  - [ ] Audit trail logging
-- [ ] **Accessibility**:
-  - [ ] Screen reader compatibility
-  - [ ] Keyboard navigation
-  - [ ] WCAG 2.1 AA compliance
-- [ ] **Browser compatibility**:
-  - [ ] Chrome (latest)
-  - [ ] Firefox (latest)
-  - [ ] Safari (latest)
-  - [ ] Edge (latest)
-  - [ ] Mobile browsers (iOS Safari, Chrome Mobile)
+### 1.2 CI/CD Validation
 
-### Performance Testing
+**Owner**: GitHub Actions  
+**Duration**: 10-15 minutes
 
-```bash
-# Run performance snapshot
-pnpm ops:perf-snapshot
+**Automated Checks**:
 
-# Verify Web Vitals (target thresholds)
-# - LCP (Largest Contentful Paint): ≤ 2.5s
-# - INP (Interaction to Next Paint): ≤ 200ms
-# - CLS (Cumulative Layout Shift): ≤ 0.1
-```
+- ✅ Install dependencies (`pnpm install --frozen-lockfile`)
+- ✅ Typecheck all workspaces (`pnpm typecheck`)
+- ✅ Lint all workspaces (`pnpm lint`)
+- ✅ Run unit tests (`pnpm test`)
+- ✅ Build all workspaces (`pnpm build`)
+- ✅ Check migrations (`ALLOW_SUPABASE_MIGRATIONS=1 pnpm check:migrations`)
+- ✅ Binary asset check (`pnpm check:binaries`)
+- ✅ CodeQL analysis (JavaScript/TypeScript)
+- ✅ Dependabot security check
+- ✅ Secret scanning
+- ✅ Container scanning (Trivy)
+- ✅ SBOM generation
 
-### Load Testing
+**Success Criteria**: All CI checks green ✅
 
-Run load tests against staging:
+### 1.3 Code Review
 
-```bash
-# Use k6 or similar tool (to be implemented)
-# k6 run load-tests/research-flow.js
-```
+**Owner**: CODEOWNERS (Platform/Frontend/Ops Squad)  
+**Duration**: 1-3 business days
+
+**Review Checklist**:
+
+- [ ] Code follows project conventions
+- [ ] Security considerations addressed
+- [ ] Performance impact assessed
+- [ ] Breaking changes documented
+- [ ] Tests adequate for changes
+- [ ] Documentation updated
+- [ ] Migration rollback strategy clear (if applicable)
+
+**Approval**: Minimum 1 approving review from CODEOWNERS
+
+### 1.4 Merge to Main
+
+**Owner**: Developer (after approval)  
+**Duration**: Immediate
+
+**Steps**:
+
+1. Ensure CI is green on latest commit
+2. Merge PR using "Squash and merge" or "Rebase and merge"
+3. Delete feature branch
+4. Monitor main branch CI for regressions
 
 ---
 
-## Deployment Procedures
+## Phase 2: Staging Deployment
 
-### Environment Variables
+### 2.1 Pre-Staging Checks
 
-Ensure all required environment variables are set in target environment:
+**Owner**: Ops Team  
+**Duration**: 5-10 minutes
 
-**API (`apps/api`)**:
-- `OPENAI_API_KEY` (no placeholders like `sk-test-`)
-- `SUPABASE_URL` (no `localhost` or `example.supabase.co`)
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `SUPABASE_DB_URL` (for migrations)
-- `PORT` (default 3333)
-- `NODE_ENV=production`
-
-**Web Console (`apps/web`)**:
-- `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (server-side)
-- `NODE_ENV=production`
-
-**PWA (`apps/pwa`)**:
-- `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NODE_ENV=production`
-
-### Database Migrations
-
-**CRITICAL**: Always run migrations before deploying new code.
+**Pre-flight Validation**:
 
 ```bash
-# 1. Backup database
-# (Use Supabase dashboard or pg_dump)
+# 1. Verify environment secrets
+pnpm env:validate
 
-# 2. Review pending migrations
-ls -la db/migrations/
+# 2. Run deployment preflight script
+node scripts/deployment-preflight.mjs
 
-# 3. Dry run (if supported)
-# pnpm db:migrate --dry-run
-
-# 4. Apply migrations
-pnpm db:migrate
-
-# 5. Verify migration success
-pnpm ops:check
+# 3. Check staging database connectivity
+SUPABASE_DB_URL=$SUPABASE_STAGING_DB_URL pnpm ops:check --org <staging-org>
 ```
 
-### Deployment Steps by Application
+**Success Criteria**: All preflight checks pass
 
-#### API Deployment (Container/VM)
+### 2.2 Database Migrations (Staging)
+
+**Owner**: Ops Team  
+**Duration**: 1-5 minutes (depends on migration complexity)
+
+**Steps**:
 
 ```bash
-# 1. Build Docker image (if containerized)
-docker build -t avocat-ai-api:$VERSION -f apps/api/Dockerfile .
+# 1. Backup staging database (Supabase auto-backup + manual snapshot)
+# Via Supabase dashboard: Settings → Database → Create snapshot
 
-# 2. Run security scan
-# docker scan avocat-ai-api:$VERSION
+# 2. Apply migrations to staging
+SUPABASE_DB_URL=$SUPABASE_STAGING_DB_URL pnpm db:migrate
+
+# 3. Verify migration success
+SUPABASE_DB_URL=$SUPABASE_STAGING_DB_URL pnpm ops:check --org <staging-org>
+
+# 4. Run RLS smoke tests
+SUPABASE_DB_URL=$SUPABASE_STAGING_DB_URL pnpm ops:rls-smoke
+```
+
+**Rollback Plan**: If migration fails, restore from snapshot
+
+**Success Criteria**: Migrations applied without errors; RLS policies functional
+
+### 2.3 Application Deployment (Staging)
+
+**Owner**: Platform Squad  
+**Duration**: 5-10 minutes
+
+**For Vercel Deployments (PWA/Web)**:
+
+```bash
+# 1. Trigger Vercel preview build (automatic on PR merge to 'work')
+# Or manual:
+vercel deploy --prebuilt --env staging
+
+# 2. Verify deployment URL
+# Vercel provides preview URL automatically
+```
+
+**For Docker Deployments (API)**:
+
+```bash
+# 1. Build container image
+docker build -t avocat-ai-api:staging -f apps/api/Dockerfile .
+
+# 2. Tag for staging registry
+docker tag avocat-ai-api:staging registry.example.com/avocat-ai-api:staging
 
 # 3. Push to registry
-# docker push registry/avocat-ai-api:$VERSION
+docker push registry.example.com/avocat-ai-api:staging
 
-# 4. Deploy to environment
-# kubectl apply -f k8s/api-deployment.yaml
-# OR
-# Deploy via hosting platform
-
-# 5. Verify health
-curl https://api.domain/healthz
-curl https://api.domain/ready
+# 4. Update staging environment
+kubectl set image deployment/api api=registry.example.com/avocat-ai-api:staging --namespace=staging
+# Or via deployment pipeline tool
 ```
 
-#### Web Console Deployment (Vercel)
+**Success Criteria**: Deployment completes without errors
+
+### 2.4 Staging Smoke Tests
+
+**Owner**: QA/Developer  
+**Duration**: 10-20 minutes
+
+**Automated Smoke Tests**:
 
 ```bash
-# 1. Ensure Vercel project configured
-vercel link
-
-# 2. Set environment variables (one-time)
-vercel env pull .env.production
-
-# 3. Build preview
-vercel build --prod
-
-# 4. Deploy
-vercel deploy --prebuilt --prod
-
-# 5. Verify deployment
-curl https://web.domain/healthz
+# Run staging smoke test suite
+STAGING_SMOKE_BASE_URL=https://staging.example.com pnpm test:staging-smoke
 ```
 
-#### PWA Deployment (Vercel)
+**Manual Verification Checklist**:
+
+- [ ] Health check responds: `curl https://staging-api.example.com/healthz`
+- [ ] Admin panel loads (if `FEAT_ADMIN_PANEL=1`)
+- [ ] Agent run executes successfully (test question)
+- [ ] HITL escalation triggers correctly
+- [ ] Document ingestion works (test manifest)
+- [ ] Metrics endpoint returns data: `/metrics/governance?orgId=<test-org>`
+- [ ] Audit events logged for sensitive actions
+- [ ] Rate limiting enforced (test with burst requests)
+- [ ] Authentication and authorization work (various roles)
+
+**Critical User Paths** (E2E Tests):
+
+1. **Agent Run**: Submit question → Retrieve authorities → Generate IRAC → Display with citations
+2. **HITL Review**: Escalation → Notification → Review → Approval → Audit log
+3. **Document Ingestion**: Upload manifest → Crawl → Summarize → Embed → Search
+4. **Admin Operations**: Login → View dashboard → Trigger evaluation → Review results
+
+**Success Criteria**: All automated tests pass; manual checks green; no critical errors in logs
+
+### 2.5 Staging Validation Period
+
+**Owner**: Product/QA Team  
+**Duration**: 24-48 hours (for major releases)
+
+**Activities**:
+
+- Internal testing by team members
+- Evaluation runs with test cases
+- Red team testing (if security changes)
+- Performance monitoring
+- Log review for errors/warnings
+
+**Success Criteria**: No critical issues; performance acceptable; logs clean
+
+---
+
+## Phase 3: Production Deployment
+
+### 3.1 Go/No-Go Decision
+
+**Owner**: Release Manager + Platform Lead  
+**Duration**: 30 minutes
+
+**Decision Criteria**:
+
+- [ ] All staging tests passed
+- [ ] No critical bugs open
+- [ ] Performance acceptable in staging
+- [ ] Rollback plan documented
+- [ ] On-call engineer available
+- [ ] Maintenance window communicated (if needed)
+- [ ] Database migration tested in staging
+- [ ] Feature flags configured appropriately
+
+**Decision**: GO / NO-GO  
+**Documented In**: Release ticket or Slack thread
+
+### 3.2 Pre-Production Checklist
+
+**Owner**: Ops Team  
+**Duration**: 10 minutes
 
 ```bash
-# 1. Build PWA
-cd apps/pwa
-pnpm build
+# 1. Verify production secrets
+APP_ENV=production pnpm env:validate
 
-# 2. Verify bundle size
-pnpm bundle:check
+# 2. Run production preflight
+APP_ENV=production node scripts/deployment-preflight.mjs
 
-# 3. Deploy via Vercel
+# 3. Verify production database access
+pnpm ops:check --org <prod-org>
+
+# 4. Verify Go/No-Go evidence
+pnpm ops:go-no-go --org <prod-org> --release <tag> --require-go
+
+# 5. Alert on-call engineer
+# Post in #on-call channel: "Production deployment starting for <release-tag>"
+```
+
+**Success Criteria**: All checks pass; on-call notified
+
+### 3.3 Database Migrations (Production)
+
+**Owner**: Ops Team + DBA  
+**Duration**: 5-30 minutes (depends on data volume)
+
+**Steps**:
+
+```bash
+# 1. Create production database snapshot
+# Via Supabase dashboard: Settings → Database → Create snapshot
+# Name: "pre-migration-<timestamp>"
+
+# 2. Announce migration (if downtime expected)
+# Post in #status: "Database migration in progress. Brief downtime expected."
+
+# 3. Apply migrations
+SUPABASE_DB_URL=$SUPABASE_PRODUCTION_DB_URL pnpm db:migrate
+
+# 4. Verify migration success
+SUPABASE_DB_URL=$SUPABASE_PRODUCTION_DB_URL pnpm ops:check --org <prod-org>
+
+# 5. Run RLS smoke tests
+SUPABASE_DB_URL=$SUPABASE_PRODUCTION_DB_URL pnpm ops:rls-smoke
+
+# 6. Verify data integrity (if applicable)
+# Run custom validation queries for critical tables
+```
+
+**Rollback Plan**:
+
+1. If migration fails immediately: Restore from snapshot
+2. If migration succeeds but application fails: See Application Rollback
+
+**Success Criteria**: Migrations applied; no data corruption; RLS policies functional
+
+### 3.4 Application Deployment (Production)
+
+**Owner**: Platform Squad  
+**Duration**: 5-15 minutes
+
+**For Vercel Deployments (PWA/Web)**:
+
+```bash
+# Option 1: Promote staging build
+vercel promote <deployment-url> --prod
+
+# Option 2: Deploy to production
 vercel deploy --prod
 
-# 4. Verify PWA manifest
-curl https://domain/manifest.json
-
-# 5. Test offline functionality
-# (Use browser DevTools > Network > Offline)
+# Verify deployment
+curl -I https://app.example.com
 ```
 
-#### Edge Functions Deployment (Supabase)
+**For Docker Deployments (API)**:
 
 ```bash
-# 1. Deploy all edge functions
-supabase functions deploy
+# 1. Build and tag production image
+docker build -t avocat-ai-api:v1.2.3 -f apps/api/Dockerfile .
+docker tag avocat-ai-api:v1.2.3 registry.example.com/avocat-ai-api:v1.2.3
+docker tag avocat-ai-api:v1.2.3 registry.example.com/avocat-ai-api:latest
 
-# Or deploy specific function
-# supabase functions deploy <function-name>
+# 2. Push to production registry
+docker push registry.example.com/avocat-ai-api:v1.2.3
+docker push registry.example.com/avocat-ai-api:latest
 
-# 2. Verify function logs
-supabase functions logs <function-name>
+# 3. Deploy with zero-downtime strategy
+# Blue-Green (TBD):
+kubectl apply -f k8s/blue-green-deployment.yaml
 
-# 3. Test function invocation
-curl -X POST https://<project>.supabase.co/functions/v1/<function-name> \
-  -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"test": true}'
+# Or Rolling Update:
+kubectl set image deployment/api api=registry.example.com/avocat-ai-api:v1.2.3 --namespace=production
+kubectl rollout status deployment/api --namespace=production
+
+# 4. Verify pods are healthy
+kubectl get pods -n production
 ```
 
-### Gradual Rollout
-
-Use feature flags or traffic splitting for gradual rollout:
-
-1. **10% traffic** - Monitor for 1 hour
-2. **25% traffic** - Monitor for 2 hours
-3. **50% traffic** - Monitor for 4 hours
-4. **100% traffic** - Full deployment
+**Feature Flag Strategy**:
 
 ```bash
-# Configure traffic split (implementation varies by platform)
-# Example for Vercel:
-# vercel alias <deployment-url> production --traffic 10
+# Enable new features gradually
+# Example: Enable new feature for 10% of users
+FEAT_NEW_FEATURE_ROLLOUT_PERCENTAGE=10
+```
+
+**Success Criteria**: Deployment completes; health checks pass; no errors in logs
+
+### 3.5 Production Smoke Tests
+
+**Owner**: On-Call Engineer + Release Manager  
+**Duration**: 15-30 minutes
+
+**Automated Checks**:
+
+```bash
+# 1. Health check
+curl https://api.example.com/healthz
+
+# 2. Foundation check
+pnpm ops:check --org <prod-org>
+
+# 3. Phase progression check
+pnpm ops:phase --org <prod-org>
+
+# 4. Sample evaluation (with production API key)
+pnpm ops:evaluate --org <prod-org> --user <service-user> --limit 5 --dry-run
+
+# 5. Metrics check
+curl https://api.example.com/metrics/governance?orgId=<prod-org>
+```
+
+**Manual Verification** (same as staging but production URLs):
+
+- [ ] API health check responds
+- [ ] Web console loads
+- [ ] PWA loads
+- [ ] Agent run executes (test question with prod data)
+- [ ] HITL flow works
+- [ ] Document search returns results
+- [ ] Metrics display in admin panel
+- [ ] Audit events logged
+- [ ] No errors in centralized logging (Sentry/Datadog)
+
+**Performance Baseline Check**:
+
+- [ ] API latency P95 < 2000ms
+- [ ] Error rate < 0.5%
+- [ ] Database connection pool healthy
+- [ ] Redis cache hit rate > 80%
+
+**Success Criteria**: All checks pass; performance within SLO; no critical errors
+
+### 3.6 Post-Deployment Monitoring
+
+**Owner**: On-Call Engineer  
+**Duration**: 2-4 hours (active monitoring)
+
+**Monitoring Checklist** (first 30 minutes):
+
+- [ ] Error rate dashboard (Sentry/Datadog)
+- [ ] API latency metrics (P50, P95, P99)
+- [ ] Database query performance
+- [ ] Redis/cache health
+- [ ] OpenAI API call success rate
+- [ ] HITL queue depth
+- [ ] Ingestion pipeline health
+- [ ] User-reported issues (support channels)
+
+**Alerting Thresholds** (should be pre-configured):
+
+- Error rate > 1% → Page on-call
+- API latency P95 > 3000ms → Warning alert
+- Database connections > 80% → Warning alert
+- HITL queue depth > 100 → Warning alert
+- OpenAI API errors > 5% → Warning alert
+
+**Success Criteria**: Metrics stable; no unexpected errors; user reports normal
+
+---
+
+## Phase 4: Rollback Procedures
+
+### 4.1 Rollback Decision Criteria
+
+**When to Rollback**:
+
+- Critical bug affecting core functionality
+- Data corruption detected
+- Security vulnerability introduced
+- Performance degradation > 50%
+- Error rate > 5%
+- Database migration causing issues
+- User-facing outage
+
+**Decision Maker**: On-Call Engineer + Platform Lead
+
+### 4.2 Application Rollback
+
+**Owner**: On-Call Engineer  
+**Duration**: 5-10 minutes
+
+**For Vercel Deployments**:
+
+```bash
+# 1. Identify previous deployment
+vercel ls
+
+# 2. Promote previous deployment to production
+vercel promote <previous-deployment-url> --prod
+
+# 3. Verify rollback
+curl -I https://app.example.com
+```
+
+**For Docker/Kubernetes Deployments**:
+
+```bash
+# Option 1: Rollback using kubectl
+kubectl rollout undo deployment/api --namespace=production
+
+# Option 2: Explicitly set previous version
+kubectl set image deployment/api api=registry.example.com/avocat-ai-api:v1.2.2 --namespace=production
+
+# 3. Verify rollback
+kubectl rollout status deployment/api --namespace=production
+kubectl get pods -n production
+```
+
+**Success Criteria**: Previous version deployed; health checks pass; errors resolved
+
+### 4.3 Database Migration Rollback
+
+**Owner**: Ops Team + DBA  
+**Duration**: 10-30 minutes (depends on data volume)
+
+**Strategy 1: Revert Migration** (if migration includes DOWN script):
+
+```bash
+# Run rollback migration
+SUPABASE_DB_URL=$SUPABASE_PRODUCTION_DB_URL pnpm db:rollback
+
+# Verify rollback success
+pnpm ops:check --org <prod-org>
+```
+
+**Strategy 2: Restore from Snapshot** (if no DOWN script or complex migration):
+
+```bash
+# 1. Via Supabase dashboard:
+#    Settings → Database → Restore from snapshot
+#    Select: "pre-migration-<timestamp>"
+
+# 2. Wait for restoration (5-20 minutes depending on size)
+
+# 3. Verify restoration
+pnpm ops:check --org <prod-org>
+
+# 4. Re-run pre-migration tests
+SUPABASE_DB_URL=$SUPABASE_PRODUCTION_DB_URL pnpm ops:rls-smoke
+```
+
+**Data Loss Consideration**: Understand RPO (Recovery Point Objective)  
+- Snapshot restoration loses data since snapshot was taken
+- Typically acceptable for emergency rollback
+- Consider manual data export before rollback if critical
+
+**Success Criteria**: Database restored to stable state; application functions correctly
+
+### 4.4 Post-Rollback Actions
+
+**Owner**: Platform Squad + Ops Team  
+**Duration**: 1-4 hours
+
+**Immediate Actions**:
+
+1. **Communicate rollback**:
+   - Post in #status channel
+   - Update status page
+   - Notify affected users (if applicable)
+
+2. **Root cause analysis**:
+   - Review logs and metrics
+   - Identify failure point
+   - Document findings in incident report
+
+3. **Fix and re-test**:
+   - Create hotfix branch if urgent
+   - Or fix in next release
+   - Test thoroughly in staging
+
+4. **Post-mortem**:
+   - Schedule post-mortem meeting (within 48 hours)
+   - Document lessons learned
+   - Update runbook with improvements
+
+**Success Criteria**: Service restored; root cause identified; prevention plan in place
+
+---
+
+## Phase 5: On-Call Handoff
+
+### 5.1 Handoff Timing
+
+**When**: After production deployment and 2-4 hours of monitoring
+
+**Duration**: 15-30 minutes
+
+### 5.2 Handoff Checklist
+
+**Deployer → On-Call Engineer**:
+
+- [ ] **Release summary**:
+  - Release version/tag
+  - Key features/changes
+  - Known issues or warnings
+  - Monitoring dashboards to watch
+
+- [ ] **Deployment status**:
+  - Deployment timestamp
+  - Smoke test results
+  - Current error rate
+  - Performance metrics (P95 latency)
+
+- [ ] **Configuration changes**:
+  - Environment variables modified
+  - Feature flags enabled/disabled
+  - Migration summary (if applicable)
+
+- [ ] **Rollback plan**:
+  - Previous stable version
+  - Rollback steps documented
+  - Database snapshot name
+
+- [ ] **Monitoring**:
+  - Key metrics to watch
+  - Alert thresholds
+  - Dashboard links
+  - Log aggregation links
+
+- [ ] **Support information**:
+  - Known issues (and workarounds)
+  - Escalation contacts
+  - Documentation links
+
+### 5.3 Handoff Documentation
+
+**Template** (post in #on-call channel):
+
+```
+🚀 Production Deployment Handoff
+
+**Release**: v1.2.3
+**Deployed**: 2025-10-29 15:30 UTC
+**Deployed by**: @engineer
+
+**Summary**:
+- Added circuit breaker for OpenAI calls
+- Fixed HITL queue performance issue
+- Updated CORS configuration
+
+**Status**: ✅ Stable
+- Error rate: 0.2%
+- API latency P95: 1200ms
+- All smoke tests passed
+
+**Known Issues**:
+- None currently
+
+**Monitoring**:
+- Dashboard: https://grafana.example.com/d/production
+- Logs: https://app.datadoghq.com/logs
+- Errors: https://sentry.io/avocat-ai
+
+**Rollback Plan**:
+- Previous version: v1.2.2
+- DB snapshot: pre-migration-20251029-1500
+- Rollback steps: See release runbook
+
+**On-Call Contact**: @on-call-engineer
 ```
 
 ---
 
-## Smoke Tests
+## Appendices
 
-Run smoke tests immediately after deployment:
+### A. Environment-Specific Configurations
 
-### API Smoke Tests
+| Environment | API URL | Database | Vercel Project | Feature Flags |
+|-------------|---------|----------|----------------|---------------|
+| Development | http://localhost:3333 | Local Supabase | N/A | All enabled |
+| Staging | https://staging-api.example.com | Staging Supabase | staging-project | All enabled |
+| Production | https://api.example.com | Production Supabase | production-project | Selective |
+
+### B. Critical Service Dependencies
+
+| Service | Status Page | Escalation |
+|---------|-------------|------------|
+| Supabase | https://status.supabase.com | Support ticket |
+| OpenAI | https://status.openai.com | Priority support |
+| Vercel | https://vercel.com/status | Support ticket |
+| Redis | Internal monitoring | Ops team |
+
+### C. Emergency Contacts
+
+| Role | Primary | Backup |
+|------|---------|--------|
+| Platform Lead | @platform-lead | @platform-backup |
+| Ops Lead | @ops-lead | @ops-backup |
+| Security Lead | @security-lead | @security-backup |
+| On-Call Engineer | PagerDuty rotation | #on-call channel |
+
+### D. Useful Commands Reference
 
 ```bash
 # Health checks
-curl https://api.domain/healthz
-# Expected: {"status": "ok"}
+curl https://api.example.com/healthz
+pnpm ops:check --org <org-id>
 
-curl https://api.domain/ready
-# Expected: {"status": "ready", "database": "connected"}
+# Metrics
+curl https://api.example.com/metrics/governance?orgId=<org-id>
+pnpm ops:slo --org <org-id> --user <user-id> --list
 
-# Authenticated endpoint test
-curl -X POST https://api.domain/runs \
-  -H "Authorization: Bearer $TEST_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "Test question",
-    "orgId": "'$TEST_ORG_ID'",
-    "userId": "'$TEST_USER_ID'"
-  }'
-# Expected: Run created successfully
+# Evaluations
+pnpm ops:evaluate --org <org-id> --user <user-id> --limit 10
+
+# Red team testing
+pnpm ops:red-team --org <org-id> --user <user-id>
+
+# Secret rotation (emergency)
+pnpm ops:rotate-secrets
+
+# Database operations
+pnpm db:migrate
+pnpm ops:foundation
+pnpm ops:provision
+
+# Logs (assuming kubectl)
+kubectl logs -f deployment/api --namespace=production --tail=100
 ```
 
-### Web Console Smoke Tests
+### E. Post-Mortem Template
 
-```bash
-# 1. Open browser to https://web.domain
-# 2. Verify login page loads
-# 3. Login with test credentials
-# 4. Navigate to /hitl
-# 5. Verify HITL queue loads
-# 6. Navigate to /admin (if admin)
-# 7. Logout
-```
+**Incident**: [Brief description]  
+**Date**: YYYY-MM-DD  
+**Severity**: Critical / High / Medium / Low  
+**Duration**: [Start time] to [End time]  
+**Impact**: [Users affected, services impacted]
 
-### PWA Smoke Tests
+**Timeline**:
+- HH:MM - Event occurred
+- HH:MM - Detection
+- HH:MM - Escalation
+- HH:MM - Mitigation started
+- HH:MM - Resolution
 
-```bash
-# 1. Open browser to https://domain
-# 2. Verify PWA loads
-# 3. Check manifest: https://domain/manifest.json
-# 4. Test research flow (submit question)
-# 5. Test offline mode (enable offline, reload)
-# 6. Verify service worker registered (DevTools > Application)
-# 7. Test install prompt (if not previously installed)
-```
+**Root Cause**: [Technical explanation]
 
-### Edge Function Smoke Tests
+**Action Items**:
+1. [Preventive measure 1] - Owner: [Team/Person] - Due: [Date]
+2. [Preventive measure 2] - Owner: [Team/Person] - Due: [Date]
 
-```bash
-# Test critical edge functions
-supabase functions invoke eval-nightly --body '{"test": true}'
-supabase functions invoke crawl-authorities --body '{"source": "scc", "test": true}'
-```
+**Lessons Learned**: [Key takeaways]
 
 ---
 
-## Rollback Procedures
+## Revision History
 
-### When to Rollback
-
-Rollback immediately if:
-
-- **Critical bugs** discovered in production
-- **Data corruption** or loss detected
-- **Performance degradation** beyond acceptable thresholds
-- **Security vulnerability** exposed
-- **High error rates** (>5% of requests failing)
-- **Unable to complete smoke tests** successfully
-
-### Rollback Steps
-
-#### API Rollback
-
-```bash
-# 1. Identify previous stable version
-docker images | grep avocat-ai-api
-
-# 2. Deploy previous version
-# kubectl rollout undo deployment/api
-# OR
-# docker tag avocat-ai-api:$PREVIOUS_VERSION avocat-ai-api:latest
-# Deploy via hosting platform
-
-# 3. Verify rollback
-curl https://api.domain/healthz
-```
-
-#### Web/PWA Rollback (Vercel)
-
-```bash
-# 1. List recent deployments
-vercel ls
-
-# 2. Promote previous deployment
-vercel alias <previous-deployment-url> production
-
-# 3. Verify rollback
-curl https://domain
-```
-
-#### Database Migration Rollback
-
-**WARNING**: Database rollbacks are risky and may cause data loss.
-
-```bash
-# 1. Stop all services accessing the database
-
-# 2. Restore from backup
-# (Use Supabase dashboard or pg_restore)
-
-# 3. Verify data integrity
-pnpm ops:check
-
-# 4. Restart services
-
-# Alternative: Reapply migration
-# See migration rollback strategy in migration file comments
-```
-
-#### Edge Function Rollback
-
-```bash
-# 1. Redeploy previous version
-git checkout <previous-tag>
-supabase functions deploy <function-name>
-
-# 2. Verify function
-supabase functions logs <function-name>
-```
-
-### Post-Rollback
-
-- [ ] **Notify stakeholders** of rollback
-- [ ] **Update status page** (if applicable)
-- [ ] **Create incident report** with root cause
-- [ ] **Schedule post-mortem** meeting
-- [ ] **Fix issues** before re-attempting deployment
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0 | 2025-10-29 | GitHub Copilot | Initial release runbook |
 
 ---
 
-## Post-Deployment
-
-### Immediate Post-Deployment (0-1 hour)
-
-- [ ] **Monitor error rates** in logs and dashboards
-- [ ] **Monitor response times** (API latency, page load times)
-- [ ] **Check health endpoints** every 5 minutes
-- [ ] **Review user reports** (support channels, feedback)
-- [ ] **Monitor resource usage** (CPU, memory, database connections)
-
-### Short-term Monitoring (1-24 hours)
-
-- [ ] **Review telemetry dashboards** (Web Vitals, accuracy metrics)
-- [ ] **Check HITL queue depth** (should not grow abnormally)
-- [ ] **Monitor OpenAI usage** (token consumption, costs)
-- [ ] **Review audit logs** for anomalies
-- [ ] **Check database performance** (slow queries, connection pool)
-
-### Long-term Monitoring (24+ hours)
-
-- [ ] **Analyze user feedback** (NPS, satisfaction scores)
-- [ ] **Review business metrics** (conversion rates, engagement)
-- [ ] **Check for technical debt** introduced
-- [ ] **Update capacity planning** if usage patterns changed
-
-### Documentation Updates
-
-- [ ] **Update CHANGELOG** with actual deployment date
-- [ ] **Archive release artifacts** (builds, SBOMs, configs)
-- [ ] **Document any manual interventions** performed
-- [ ] **Update known issues** list if new issues found
-- [ ] **Create follow-up tickets** for technical debt
-
----
-
-## Monitoring & Alerts
-
-### Critical Alerts (Page immediately)
-
-- **API down** (health check failing)
-- **Database connection lost**
-- **Error rate >5%** (5-minute window)
-- **Response time >5s** (p95, 5-minute window)
-- **Security incident** (unauthorized access attempts)
-- **Data breach detected**
-
-### Warning Alerts (Notify on-call)
-
-- **Error rate >2%** (15-minute window)
-- **Response time >2s** (p95, 15-minute window)
-- **HITL queue depth >50** items
-- **Disk usage >80%**
-- **Memory usage >85%**
-- **OpenAI rate limit approaching**
-
-### Info Alerts (Log only)
-
-- **Deployment completed**
-- **Migration applied**
-- **Scheduled task completed**
-- **Backup completed**
-
-### Monitoring Dashboards
-
-1. **System Health**: https://monitoring.domain/system (API status, DB status, uptime)
-2. **Application Metrics**: https://monitoring.domain/app (request rates, latencies, errors)
-3. **Business Metrics**: https://monitoring.domain/business (IRAC generations, HITL reviews)
-4. **Security**: https://monitoring.domain/security (auth attempts, rate limits, suspicious activity)
-
-### Key Metrics to Watch
-
-| Metric | Target | Alert Threshold | Dashboard |
-|--------|--------|-----------------|-----------|
-| API Uptime | 99.9% | <99.5% | System Health |
-| API Response Time (p95) | <500ms | >2s | Application |
-| Error Rate | <0.5% | >2% | Application |
-| HITL Queue Depth | <10 | >50 | Business |
-| Database CPU | <50% | >80% | System Health |
-| OpenAI Token Usage | Budget-dependent | 90% of quota | Application |
-| LCP (PWA) | <2.5s | >3s | Application |
-| INP (PWA) | <200ms | >300ms | Application |
-
----
-
-## On-Call Handoff
-
-### Handoff Checklist
-
-When rotating on-call:
-
-- [ ] **Review recent deployments** and changes
-- [ ] **Check current system status** (all green?)
-- [ ] **Review open incidents** and ongoing investigations
-- [ ] **Note any scheduled maintenance** or deploys
-- [ ] **Verify access** to all systems (dashboards, logs, alerts)
-- [ ] **Review escalation procedures** and contacts
-- [ ] **Check runbook updates** since last rotation
-
-### On-Call Responsibilities
-
-1. **Respond to alerts** within SLA (critical: 15 min, warning: 1 hour)
-2. **Triage incidents** and escalate if needed
-3. **Monitor deployments** and assist with rollbacks
-4. **Document incidents** in incident tracking system
-5. **Participate in post-mortems** for major incidents
-6. **Update runbooks** with lessons learned
-
-### Contact Information
-
-| Role | Contact | When to Escalate |
-|------|---------|------------------|
-| **Primary On-Call** | Slack: @oncall | First responder |
-| **Platform Squad Lead** | [Contact] | API/infrastructure issues |
-| **Frontend Squad Lead** | [Contact] | Web/PWA issues |
-| **Ops Team Lead** | [Contact] | Database/migration issues |
-| **Security Team** | security@domain | Security incidents |
-| **CTO** | [Contact] | Major outages, data loss |
-
-### Escalation Paths
-
-```
-Minor Issue (P3)
-└─> On-Call Engineer
-    └─> (If needed) Squad Lead
-
-Moderate Issue (P2)
-└─> On-Call Engineer
-    └─> Squad Lead
-        └─> (If needed) Engineering Manager
-
-Critical Issue (P1)
-└─> On-Call Engineer
-    └─> Squad Lead + Engineering Manager (parallel)
-        └─> CTO (if user-facing impact)
-
-Security Incident
-└─> On-Call Engineer
-    └─> Security Team (immediate)
-        └─> CTO (parallel)
-```
-
----
-
-## Incident Response
-
-### Incident Classification
-
-| Severity | Impact | Response Time | Examples |
-|----------|--------|---------------|----------|
-| **P0** | Complete outage | 15 minutes | API down, database offline |
-| **P1** | Major degradation | 30 minutes | High error rate, data loss |
-| **P2** | Partial degradation | 1 hour | Single feature broken, slow response |
-| **P3** | Minor issue | 4 hours | UI glitch, non-critical bug |
-
-### Incident Response Procedure
-
-1. **Acknowledge**: Confirm receipt of alert within SLA
-2. **Assess**: Determine severity and impact
-3. **Communicate**: Post in incident channel (#incidents)
-4. **Investigate**: Check logs, metrics, recent changes
-5. **Mitigate**: Apply immediate fix or rollback
-6. **Monitor**: Verify issue resolved
-7. **Document**: Create incident report
-8. **Post-Mortem**: Schedule within 48 hours (P0-P1)
-
-### Incident Communication Template
-
-```markdown
-**Incident**: [Brief description]
-**Severity**: P0/P1/P2/P3
-**Impact**: [User-facing impact]
-**Started**: [Timestamp]
-**Status**: Investigating/Mitigating/Resolved
-**Updates**:
-- [Timestamp] Initial report
-- [Timestamp] Root cause identified
-- [Timestamp] Fix applied
-- [Timestamp] Monitoring
-**Resolution**: [What fixed it]
-**Next Steps**: [Follow-up actions]
-```
-
-### Post-Mortem Template
-
-```markdown
-# Post-Mortem: [Incident Title]
-
-**Date**: [Date]
-**Severity**: P0/P1/P2
-**Duration**: [Total downtime/degradation]
-**Impact**: [Users affected, data lost, revenue impact]
-
-## Timeline
-- [Time] Incident began
-- [Time] Alert fired
-- [Time] On-call acknowledged
-- [Time] Root cause identified
-- [Time] Fix deployed
-- [Time] Incident resolved
-
-## Root Cause
-[Detailed explanation of what caused the incident]
-
-## Resolution
-[What was done to resolve the incident]
-
-## Prevention
-[Action items to prevent recurrence]
-
-## Lessons Learned
-[What we learned from this incident]
-
-## Action Items
-- [ ] [Action item 1] - Owner: [Name] - Due: [Date]
-- [ ] [Action item 2] - Owner: [Name] - Due: [Date]
-```
-
----
-
-## Appendix
-
-### Useful Commands
-
-```bash
-# Check system status
-pnpm ops:check
-
-# View API logs
-docker logs -f avocat-ai-api
-# OR
-kubectl logs -f deployment/api
-
-# View database connections
-# (via Supabase dashboard or psql)
-
-# Check OpenAI usage
-# (via OpenAI dashboard)
-
-# Force cache clear (if CDN)
-# (implementation varies)
-
-# View recent deployments
-vercel ls
-# OR
-kubectl rollout history deployment/api
-
-# Trigger manual backup
-# (via Supabase dashboard or pg_dump)
-```
-
-### Emergency Contacts
-
-Keep updated list of emergency contacts in secure location (e.g., PagerDuty, Slack workspace).
-
-### Related Documentation
-
-- [Architecture Documentation](./architecture.md)
-- [Operations Runbooks](./operations/)
-- [Deployment Guide (Vercel)](./deployment/vercel.md)
-- [Go/No-Go Checklist](./GO_NO_GO_CHECKLIST.md)
-- [Security Policy](../SECURITY.md)
-
----
-
-**Document Owner**: Platform Squad + Ops Team  
-**Review Cadence**: After each major release or quarterly  
-**Last Reviewed**: 2025-10-29  
-**Version**: 1.0
+**Questions or Feedback**: Contact Platform Squad via `.github/CODEOWNERS`
