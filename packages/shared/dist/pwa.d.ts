@@ -15,7 +15,7 @@ export declare const AgentRunSchema: z.ZodObject<{
     policyFlags: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     userLocation: z.ZodDefault<z.ZodNullable<z.ZodString>>;
 }, "strict", z.ZodTypeAny, {
-    status: "failed" | "queued" | "running" | "succeeded" | "requires_hitl";
+    status: "queued" | "failed" | "running" | "succeeded" | "requires_hitl";
     jurisdiction: string | null;
     id: string;
     agentId: string;
@@ -26,7 +26,7 @@ export declare const AgentRunSchema: z.ZodObject<{
     policyFlags: string[];
     userLocation: string | null;
 }, {
-    status: "failed" | "queued" | "running" | "succeeded" | "requires_hitl";
+    status: "queued" | "failed" | "running" | "succeeded" | "requires_hitl";
     id: string;
     agentId: string;
     threadId: string;
@@ -47,18 +47,18 @@ export declare const ToolEventSchema: z.ZodObject<{
     startedAt: z.ZodString;
     completedAt: z.ZodNullable<z.ZodOptional<z.ZodString>>;
 }, "strict", z.ZodTypeAny, {
-    status: "success" | "running" | "error";
+    status: "error" | "running" | "success";
+    detail: string;
     id: string;
     name: string;
-    detail: string;
     startedAt: string;
     planStepId?: string | null | undefined;
     completedAt?: string | null | undefined;
 }, {
-    status: "success" | "running" | "error";
+    status: "error" | "running" | "success";
+    detail: string;
     id: string;
     name: string;
-    detail: string;
     startedAt: string;
     planStepId?: string | null | undefined;
     completedAt?: string | null | undefined;
@@ -138,15 +138,15 @@ export declare const ResearchPlanStepSchema: z.ZodObject<{
 }, "strict", z.ZodTypeAny, {
     status: "done" | "active" | "pending";
     title: string;
+    summary: string;
     id: string;
     tool: string;
-    summary: string;
 }, {
     status: "done" | "active" | "pending";
     title: string;
+    summary: string;
     id: string;
     tool: string;
-    summary: string;
 }>;
 export type ResearchPlanStep = z.infer<typeof ResearchPlanStepSchema>;
 export declare const ResearchPlanSchema: z.ZodObject<{
@@ -164,15 +164,15 @@ export declare const ResearchPlanSchema: z.ZodObject<{
     }, "strict", z.ZodTypeAny, {
         status: "done" | "active" | "pending";
         title: string;
+        summary: string;
         id: string;
         tool: string;
-        summary: string;
     }, {
         status: "done" | "active" | "pending";
         title: string;
+        summary: string;
         id: string;
         tool: string;
-        summary: string;
     }>, "many">;
 }, "strict", z.ZodTypeAny, {
     jurisdiction: string;
@@ -183,10 +183,11 @@ export declare const ResearchPlanSchema: z.ZodObject<{
     steps: {
         status: "done" | "active" | "pending";
         title: string;
+        summary: string;
         id: string;
         tool: string;
-        summary: string;
     }[];
+    riskSummary: string;
 }, {
     jurisdiction: string;
     title: string;
@@ -196,10 +197,11 @@ export declare const ResearchPlanSchema: z.ZodObject<{
     steps: {
         status: "done" | "active" | "pending";
         title: string;
+        summary: string;
         id: string;
         tool: string;
-        summary: string;
     }[];
+    riskSummary: string;
 }>;
 export type ResearchPlan = z.infer<typeof ResearchPlanSchema>;
 export declare const ResearchFilterOptionSchema: z.ZodObject<{
@@ -258,15 +260,15 @@ export declare const ResearchDeskContextSchema: z.ZodObject<{
         }, "strict", z.ZodTypeAny, {
             status: "done" | "active" | "pending";
             title: string;
+            summary: string;
             id: string;
             tool: string;
-            summary: string;
         }, {
             status: "done" | "active" | "pending";
             title: string;
+            summary: string;
             id: string;
             tool: string;
-            summary: string;
         }>, "many">;
     }, "strict", z.ZodTypeAny, {
         jurisdiction: string;
@@ -277,10 +279,11 @@ export declare const ResearchDeskContextSchema: z.ZodObject<{
         steps: {
             status: "done" | "active" | "pending";
             title: string;
+            summary: string;
             id: string;
             tool: string;
-            summary: string;
         }[];
+        riskSummary: string;
     }, {
         jurisdiction: string;
         title: string;
@@ -290,10 +293,11 @@ export declare const ResearchDeskContextSchema: z.ZodObject<{
         steps: {
             status: "done" | "active" | "pending";
             title: string;
+            summary: string;
             id: string;
             tool: string;
-            summary: string;
         }[];
+        riskSummary: string;
     }>;
     filters: z.ZodObject<{
         publicationDates: z.ZodArray<z.ZodObject<{
@@ -381,10 +385,11 @@ export declare const ResearchDeskContextSchema: z.ZodObject<{
         steps: {
             status: "done" | "active" | "pending";
             title: string;
+            summary: string;
             id: string;
             tool: string;
-            summary: string;
         }[];
+        riskSummary: string;
     };
     filters: {
         publicationDates: {
@@ -418,10 +423,11 @@ export declare const ResearchDeskContextSchema: z.ZodObject<{
         steps: {
             status: "done" | "active" | "pending";
             title: string;
+            summary: string;
             id: string;
             tool: string;
-            summary: string;
         }[];
+        riskSummary: string;
     };
     filters: {
         publicationDates: {
@@ -456,16 +462,16 @@ export declare const ResearchStreamPayloadSchema: z.ZodObject<{
         detail: z.ZodString;
         planStepId: z.ZodNullable<z.ZodOptional<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
-        status: "success" | "running" | "error";
+        status: "error" | "running" | "success";
+        detail: string;
         id: string;
         name: string;
-        detail: string;
         planStepId?: string | null | undefined;
     }, {
-        status: "success" | "running" | "error";
+        status: "error" | "running" | "success";
+        detail: string;
         id: string;
         name: string;
-        detail: string;
         planStepId?: string | null | undefined;
     }>>;
     citation: z.ZodOptional<z.ZodObject<{
@@ -519,10 +525,10 @@ export declare const ResearchStreamPayloadSchema: z.ZodObject<{
     } | undefined;
     token?: string | undefined;
     tool?: {
-        status: "success" | "running" | "error";
+        status: "error" | "running" | "success";
+        detail: string;
         id: string;
         name: string;
-        detail: string;
         planStepId?: string | null | undefined;
     } | undefined;
 }, {
@@ -541,10 +547,10 @@ export declare const ResearchStreamPayloadSchema: z.ZodObject<{
     } | undefined;
     token?: string | undefined;
     tool?: {
-        status: "success" | "running" | "error";
+        status: "error" | "running" | "success";
+        detail: string;
         id: string;
         name: string;
-        detail: string;
         planStepId?: string | null | undefined;
     } | undefined;
 }>;
@@ -625,19 +631,18 @@ export declare const CitationDocumentSchema: z.ZodObject<{
         text: z.ZodString;
     }, "strip", z.ZodTypeAny, {
         heading: string;
-        anchor: string;
         text: string;
+        anchor: string;
     }, {
         heading: string;
-        anchor: string;
         text: string;
+        anchor: string;
     }>, "many">;
 }, "strict", z.ZodTypeAny, {
     type: "statute" | "regulation" | "case" | "doctrine";
     jurisdiction: string;
     title: string;
     id: string;
-    summary: string;
     entryIntoForce: string;
     eli: string;
     publicationDate: string;
@@ -657,15 +662,14 @@ export declare const CitationDocumentSchema: z.ZodObject<{
     metadata: Record<string, string>;
     content: {
         heading: string;
-        anchor: string;
         text: string;
+        anchor: string;
     }[];
 }, {
     type: "statute" | "regulation" | "case" | "doctrine";
     jurisdiction: string;
     title: string;
     id: string;
-    summary: string;
     entryIntoForce: string;
     eli: string;
     publicationDate: string;
@@ -685,8 +689,8 @@ export declare const CitationDocumentSchema: z.ZodObject<{
     metadata: Record<string, string>;
     content: {
         heading: string;
-        anchor: string;
         text: string;
+        anchor: string;
     }[];
 }>;
 export type CitationDocument = z.infer<typeof CitationDocumentSchema>;
@@ -740,19 +744,18 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
             text: z.ZodString;
         }, "strip", z.ZodTypeAny, {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }, {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }>, "many">;
     }, "strict", z.ZodTypeAny, {
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
         id: string;
-        summary: string;
         entryIntoForce: string;
         eli: string;
         publicationDate: string;
@@ -772,15 +775,14 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         metadata: Record<string, string>;
         content: {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }[];
     }, {
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
         id: string;
-        summary: string;
         entryIntoForce: string;
         eli: string;
         publicationDate: string;
@@ -800,8 +802,8 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         metadata: Record<string, string>;
         content: {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }[];
     }>, "many">;
     ohadaFeatured: z.ZodArray<z.ZodObject<{
@@ -853,19 +855,18 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
             text: z.ZodString;
         }, "strip", z.ZodTypeAny, {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }, {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }>, "many">;
     }, "strict", z.ZodTypeAny, {
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
         id: string;
-        summary: string;
         entryIntoForce: string;
         eli: string;
         publicationDate: string;
@@ -885,15 +886,14 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         metadata: Record<string, string>;
         content: {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }[];
     }, {
         type: "statute" | "regulation" | "case" | "doctrine";
         jurisdiction: string;
         title: string;
         id: string;
-        summary: string;
         entryIntoForce: string;
         eli: string;
         publicationDate: string;
@@ -913,8 +913,8 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         metadata: Record<string, string>;
         content: {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }[];
     }>, "many">;
 }, "strict", z.ZodTypeAny, {
@@ -923,7 +923,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         jurisdiction: string;
         title: string;
         id: string;
-        summary: string;
         entryIntoForce: string;
         eli: string;
         publicationDate: string;
@@ -943,8 +942,8 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         metadata: Record<string, string>;
         content: {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }[];
     }[];
     ohadaFeatured: {
@@ -952,7 +951,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         jurisdiction: string;
         title: string;
         id: string;
-        summary: string;
         entryIntoForce: string;
         eli: string;
         publicationDate: string;
@@ -972,8 +970,8 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         metadata: Record<string, string>;
         content: {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }[];
     }[];
 }, {
@@ -982,7 +980,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         jurisdiction: string;
         title: string;
         id: string;
-        summary: string;
         entryIntoForce: string;
         eli: string;
         publicationDate: string;
@@ -1002,8 +999,8 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         metadata: Record<string, string>;
         content: {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }[];
     }[];
     ohadaFeatured: {
@@ -1011,7 +1008,6 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         jurisdiction: string;
         title: string;
         id: string;
-        summary: string;
         entryIntoForce: string;
         eli: string;
         publicationDate: string;
@@ -1031,8 +1027,8 @@ export declare const CitationsBrowserDataSchema: z.ZodObject<{
         metadata: Record<string, string>;
         content: {
             heading: string;
-            anchor: string;
             text: string;
+            anchor: string;
         }[];
     }[];
 }>;
@@ -1046,14 +1042,14 @@ export declare const MatterTimelineEventSchema: z.ZodObject<{
     actor: z.ZodString;
     summary: z.ZodString;
 }, "strict", z.ZodTypeAny, {
-    id: string;
     summary: string;
+    id: string;
     label: string;
     occurredAt: string;
     actor: string;
 }, {
-    id: string;
     summary: string;
+    id: string;
     label: string;
     occurredAt: string;
     actor: string;
@@ -1148,14 +1144,14 @@ export declare const MatterSummarySchema: z.ZodObject<{
         actor: z.ZodString;
         summary: z.ZodString;
     }, "strict", z.ZodTypeAny, {
-        id: string;
         summary: string;
+        id: string;
         label: string;
         occurredAt: string;
         actor: string;
     }, {
-        id: string;
         summary: string;
+        id: string;
         label: string;
         occurredAt: string;
         actor: string;
@@ -1179,6 +1175,15 @@ export declare const MatterSummarySchema: z.ZodObject<{
         author: string;
         children?: any;
     }[];
+    riskLevel: "low" | "medium" | "high";
+    id: string;
+    name: string;
+    client: string;
+    opposing: string;
+    governingLaw: string;
+    stage: string;
+    nextHearing: string;
+    principalIssue: string;
     deadlines: {
         status: "upcoming" | "urgent" | "passed";
         jurisdiction: string;
@@ -1188,8 +1193,8 @@ export declare const MatterSummarySchema: z.ZodObject<{
         dueAt: string;
     }[];
     timeline: {
-        id: string;
         summary: string;
+        id: string;
         label: string;
         occurredAt: string;
         actor: string;
@@ -1213,6 +1218,15 @@ export declare const MatterSummarySchema: z.ZodObject<{
         author: string;
         children?: any;
     }[];
+    riskLevel: "low" | "medium" | "high";
+    id: string;
+    name: string;
+    client: string;
+    opposing: string;
+    governingLaw: string;
+    stage: string;
+    nextHearing: string;
+    principalIssue: string;
     deadlines: {
         status: "upcoming" | "urgent" | "passed";
         jurisdiction: string;
@@ -1222,8 +1236,8 @@ export declare const MatterSummarySchema: z.ZodObject<{
         dueAt: string;
     }[];
     timeline: {
-        id: string;
         summary: string;
+        id: string;
         label: string;
         occurredAt: string;
         actor: string;
@@ -1287,14 +1301,14 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             actor: z.ZodString;
             summary: z.ZodString;
         }, "strict", z.ZodTypeAny, {
-            id: string;
             summary: string;
+            id: string;
             label: string;
             occurredAt: string;
             actor: string;
         }, {
-            id: string;
             summary: string;
+            id: string;
             label: string;
             occurredAt: string;
             actor: string;
@@ -1318,6 +1332,15 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             author: string;
             children?: any;
         }[];
+        riskLevel: "low" | "medium" | "high";
+        id: string;
+        name: string;
+        client: string;
+        opposing: string;
+        governingLaw: string;
+        stage: string;
+        nextHearing: string;
+        principalIssue: string;
         deadlines: {
             status: "upcoming" | "urgent" | "passed";
             jurisdiction: string;
@@ -1327,8 +1350,8 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             dueAt: string;
         }[];
         timeline: {
-            id: string;
             summary: string;
+            id: string;
             label: string;
             occurredAt: string;
             actor: string;
@@ -1352,6 +1375,15 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             author: string;
             children?: any;
         }[];
+        riskLevel: "low" | "medium" | "high";
+        id: string;
+        name: string;
+        client: string;
+        opposing: string;
+        governingLaw: string;
+        stage: string;
+        nextHearing: string;
+        principalIssue: string;
         deadlines: {
             status: "upcoming" | "urgent" | "passed";
             jurisdiction: string;
@@ -1361,8 +1393,8 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             dueAt: string;
         }[];
         timeline: {
-            id: string;
             summary: string;
+            id: string;
             label: string;
             occurredAt: string;
             actor: string;
@@ -1388,6 +1420,15 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             author: string;
             children?: any;
         }[];
+        riskLevel: "low" | "medium" | "high";
+        id: string;
+        name: string;
+        client: string;
+        opposing: string;
+        governingLaw: string;
+        stage: string;
+        nextHearing: string;
+        principalIssue: string;
         deadlines: {
             status: "upcoming" | "urgent" | "passed";
             jurisdiction: string;
@@ -1397,8 +1438,8 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             dueAt: string;
         }[];
         timeline: {
-            id: string;
             summary: string;
+            id: string;
             label: string;
             occurredAt: string;
             actor: string;
@@ -1424,6 +1465,15 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             author: string;
             children?: any;
         }[];
+        riskLevel: "low" | "medium" | "high";
+        id: string;
+        name: string;
+        client: string;
+        opposing: string;
+        governingLaw: string;
+        stage: string;
+        nextHearing: string;
+        principalIssue: string;
         deadlines: {
             status: "upcoming" | "urgent" | "passed";
             jurisdiction: string;
@@ -1433,8 +1483,8 @@ export declare const MattersOverviewSchema: z.ZodObject<{
             dueAt: string;
         }[];
         timeline: {
-            id: string;
             summary: string;
+            id: string;
             label: string;
             occurredAt: string;
             actor: string;
@@ -1533,6 +1583,9 @@ export declare const HitlReviewItemSchema: z.ZodObject<{
         label: string;
         uri: string;
     }[];
+    summary: string;
+    riskLevel: "low" | "medium" | "high";
+    id: string;
     submittedAt: string;
     matter: string;
     agent: string;
@@ -1556,6 +1609,9 @@ export declare const HitlReviewItemSchema: z.ZodObject<{
         label: string;
         uri: string;
     }[];
+    summary: string;
+    riskLevel: "low" | "medium" | "high";
+    id: string;
     submittedAt: string;
     matter: string;
     agent: string;
@@ -1625,6 +1681,9 @@ export declare const HitlQueueDataSchema: z.ZodObject<{
             label: string;
             uri: string;
         }[];
+        summary: string;
+        riskLevel: "low" | "medium" | "high";
+        id: string;
         submittedAt: string;
         matter: string;
         agent: string;
@@ -1648,6 +1707,9 @@ export declare const HitlQueueDataSchema: z.ZodObject<{
             label: string;
             uri: string;
         }[];
+        summary: string;
+        riskLevel: "low" | "medium" | "high";
+        id: string;
         submittedAt: string;
         matter: string;
         agent: string;
@@ -1673,6 +1735,9 @@ export declare const HitlQueueDataSchema: z.ZodObject<{
             label: string;
             uri: string;
         }[];
+        summary: string;
+        riskLevel: "low" | "medium" | "high";
+        id: string;
         submittedAt: string;
         matter: string;
         agent: string;
@@ -1698,6 +1763,9 @@ export declare const HitlQueueDataSchema: z.ZodObject<{
             label: string;
             uri: string;
         }[];
+        summary: string;
+        riskLevel: "low" | "medium" | "high";
+        id: string;
         submittedAt: string;
         matter: string;
         agent: string;
@@ -1745,14 +1813,14 @@ export declare const IntegrationStatusSchema: z.ZodObject<{
     lastSync: z.ZodOptional<z.ZodString>;
     message: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    status: "error" | "connected" | "syncing" | "disconnected";
+    status: "syncing" | "error" | "connected" | "disconnected";
     id: string;
     name: string;
     provider: string;
     message?: string | undefined;
     lastSync?: string | undefined;
 }, {
-    status: "error" | "connected" | "syncing" | "disconnected";
+    status: "syncing" | "error" | "connected" | "disconnected";
     id: string;
     name: string;
     provider: string;
@@ -1790,13 +1858,13 @@ export declare const UploadDocumentEntrySchema: z.ZodObject<{
     id: string;
     createdAt: string;
     name: string;
-    status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+    status?: "queued" | "failed" | "processing" | "indexed" | "quarantined" | undefined;
     residencyZone?: string | null | undefined;
 }, {
     id: string;
     createdAt: string;
     name: string;
-    status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+    status?: "queued" | "failed" | "processing" | "indexed" | "quarantined" | undefined;
     residencyZone?: string | null | undefined;
 }>;
 export type UploadDocumentEntry = z.infer<typeof UploadDocumentEntrySchema>;
@@ -1809,7 +1877,7 @@ export declare const IngestionJobSchema: z.ZodObject<{
     progress: z.ZodNumber;
     note: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    status: "failed" | "processing" | "ready";
+    status: "failed" | "ready" | "processing";
     jurisdiction: string;
     id: string;
     submittedAt: string;
@@ -1817,7 +1885,7 @@ export declare const IngestionJobSchema: z.ZodObject<{
     progress: number;
     note?: string | undefined;
 }, {
-    status: "failed" | "processing" | "ready";
+    status: "failed" | "ready" | "processing";
     jurisdiction: string;
     id: string;
     submittedAt: string;
@@ -1868,14 +1936,14 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         lastSync: z.ZodOptional<z.ZodString>;
         message: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
-        status: "error" | "connected" | "syncing" | "disconnected";
+        status: "syncing" | "error" | "connected" | "disconnected";
         id: string;
         name: string;
         provider: string;
         message?: string | undefined;
         lastSync?: string | undefined;
     }, {
-        status: "error" | "connected" | "syncing" | "disconnected";
+        status: "syncing" | "error" | "connected" | "disconnected";
         id: string;
         name: string;
         provider: string;
@@ -1910,7 +1978,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         progress: z.ZodNumber;
         note: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
-        status: "failed" | "processing" | "ready";
+        status: "failed" | "ready" | "processing";
         jurisdiction: string;
         id: string;
         submittedAt: string;
@@ -1918,7 +1986,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         progress: number;
         note?: string | undefined;
     }, {
-        status: "failed" | "processing" | "ready";
+        status: "failed" | "ready" | "processing";
         jurisdiction: string;
         id: string;
         submittedAt: string;
@@ -1936,13 +2004,13 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         id: string;
         createdAt: string;
         name: string;
-        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        status?: "queued" | "failed" | "processing" | "indexed" | "quarantined" | undefined;
         residencyZone?: string | null | undefined;
     }, {
         id: string;
         createdAt: string;
         name: string;
-        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        status?: "queued" | "failed" | "processing" | "indexed" | "quarantined" | undefined;
         residencyZone?: string | null | undefined;
     }>, "many">;
     residency: z.ZodOptional<z.ZodObject<{
@@ -1965,7 +2033,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         lastIndexed: string;
     }[];
     integrations: {
-        status: "error" | "connected" | "syncing" | "disconnected";
+        status: "syncing" | "error" | "connected" | "disconnected";
         id: string;
         name: string;
         provider: string;
@@ -1980,7 +2048,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         sizeMb: number;
     }[];
     ingestionJobs: {
-        status: "failed" | "processing" | "ready";
+        status: "failed" | "ready" | "processing";
         jurisdiction: string;
         id: string;
         submittedAt: string;
@@ -1992,7 +2060,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         id: string;
         createdAt: string;
         name: string;
-        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        status?: "queued" | "failed" | "processing" | "indexed" | "quarantined" | undefined;
         residencyZone?: string | null | undefined;
     }[];
     residency?: {
@@ -2009,7 +2077,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         lastIndexed: string;
     }[];
     integrations: {
-        status: "error" | "connected" | "syncing" | "disconnected";
+        status: "syncing" | "error" | "connected" | "disconnected";
         id: string;
         name: string;
         provider: string;
@@ -2024,7 +2092,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         sizeMb: number;
     }[];
     ingestionJobs: {
-        status: "failed" | "processing" | "ready";
+        status: "failed" | "ready" | "processing";
         jurisdiction: string;
         id: string;
         submittedAt: string;
@@ -2036,7 +2104,7 @@ export declare const CorpusDashboardDataSchema: z.ZodObject<{
         id: string;
         createdAt: string;
         name: string;
-        status?: "failed" | "queued" | "processing" | "indexed" | "quarantined" | undefined;
+        status?: "queued" | "failed" | "processing" | "indexed" | "quarantined" | undefined;
         residencyZone?: string | null | undefined;
     }[];
     residency?: {
@@ -2052,17 +2120,17 @@ export declare const PolicyConfigurationSchema: z.ZodObject<{
     sensitive_topic_hitl: z.ZodBoolean;
     confidential_mode: z.ZodBoolean;
 }, "strict", z.ZodTypeAny, {
+    confidential_mode: boolean;
+    sensitive_topic_hitl: boolean;
     statute_first: boolean;
     ohada_preemption_priority: boolean;
     binding_language_guardrail: boolean;
-    sensitive_topic_hitl: boolean;
-    confidential_mode: boolean;
 }, {
+    confidential_mode: boolean;
+    sensitive_topic_hitl: boolean;
     statute_first: boolean;
     ohada_preemption_priority: boolean;
     binding_language_guardrail: boolean;
-    sensitive_topic_hitl: boolean;
-    confidential_mode: boolean;
 }>;
 export type PolicyConfiguration = z.infer<typeof PolicyConfigurationSchema>;
 export declare const UploadContractSchema: z.ZodObject<{
@@ -2162,13 +2230,11 @@ export declare const VoiceToolIntentSchema: z.ZodObject<{
     status: "running" | "requires_hitl" | "scheduled" | "completed";
     id: string;
     name: string;
-    detail: string;
     tool: string;
 }, {
     status: "running" | "requires_hitl" | "scheduled" | "completed";
     id: string;
     name: string;
-    detail: string;
     tool: string;
 }>;
 export type VoiceToolIntent = z.infer<typeof VoiceToolIntentSchema>;
@@ -2251,9 +2317,9 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
         href: string;
         snippet: string;
     }[];
+    summary: string;
     id: string;
     startedAt: string;
-    summary: string;
     durationMs: number;
     transcript: string;
     intents: {
@@ -2269,9 +2335,9 @@ export declare const VoiceSessionSummarySchema: z.ZodObject<{
         href: string;
         snippet: string;
     }[];
+    summary: string;
     id: string;
     startedAt: string;
-    summary: string;
     durationMs: number;
     transcript: string;
     intents: {
@@ -2294,13 +2360,11 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
         status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
-        detail: string;
         tool: string;
     }, {
         status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
-        detail: string;
         tool: string;
     }>, "many">;
     recentSessions: z.ZodArray<z.ZodObject<{
@@ -2348,9 +2412,9 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
             href: string;
             snippet: string;
         }[];
+        summary: string;
         id: string;
         startedAt: string;
-        summary: string;
         durationMs: number;
         transcript: string;
         intents: {
@@ -2366,9 +2430,9 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
             href: string;
             snippet: string;
         }[];
+        summary: string;
         id: string;
         startedAt: string;
-        summary: string;
         durationMs: number;
         transcript: string;
         intents: {
@@ -2385,7 +2449,6 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
         status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
-        detail: string;
         tool: string;
     }[];
     recentSessions: {
@@ -2395,9 +2458,9 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
             href: string;
             snippet: string;
         }[];
+        summary: string;
         id: string;
         startedAt: string;
-        summary: string;
         durationMs: number;
         transcript: string;
         intents: {
@@ -2414,7 +2477,6 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
         status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
-        detail: string;
         tool: string;
     }[];
     recentSessions: {
@@ -2424,9 +2486,9 @@ export declare const VoiceConsoleContextSchema: z.ZodObject<{
             href: string;
             snippet: string;
         }[];
+        summary: string;
         id: string;
         startedAt: string;
-        summary: string;
         durationMs: number;
         transcript: string;
         intents: {
@@ -2489,13 +2551,11 @@ export declare const VoiceRunResponseSchema: z.ZodObject<{
         status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
-        detail: string;
         tool: string;
     }, {
         status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
-        detail: string;
         tool: string;
     }>, "many">;
     readback: z.ZodArray<z.ZodString, "many">;
@@ -2515,7 +2575,6 @@ export declare const VoiceRunResponseSchema: z.ZodObject<{
         status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
-        detail: string;
         tool: string;
     }[];
     followUps: string[];
@@ -2529,12 +2588,10 @@ export declare const VoiceRunResponseSchema: z.ZodObject<{
         snippet: string;
     }[];
     id: string;
-    summary: string;
     intents: {
         status: "running" | "requires_hitl" | "scheduled" | "completed";
         id: string;
         name: string;
-        detail: string;
         tool: string;
     }[];
     followUps: string[];
