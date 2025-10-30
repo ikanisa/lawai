@@ -21,9 +21,9 @@ const DEFAULT_MODEL = 'gpt-4o-mini';
 const DEFAULT_MAX_OUTPUT_TOKENS = 16000;
 
 type Logger = {
-  error: (data: Record<string, unknown>, message: string) => void;
-  warn?: (data: Record<string, unknown>, message: string) => void;
-  info?: (data: Record<string, unknown>, message: string) => void;
+  error: (data: Record<string, unknown> | string, message?: string) => void;
+  warn?: (data: Record<string, unknown> | string, message?: string) => void;
+  info?: (data: Record<string, unknown> | string, message?: string) => void;
 };
 
 /**
