@@ -28,6 +28,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@avocat-ai/compliance": "file:../../packages/compliance",
     "@avocat-ai/shared": "file:../../packages/shared",
     "@avocat-ai/supabase": "file:../../packages/supabase",
     "date-fns": "^4.1.0",

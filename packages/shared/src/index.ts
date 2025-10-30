@@ -8,6 +8,8 @@ export * from './types/web-search.js';
 export * from './types/file-search.js';
 export * from './akoma.js';
 export * from './openai/client.js';
+export * from './openai/summarization.js';
+export * from './schemas/summarization.js';
 export * from './orchestrator.js';
 export * from './orchestrator-schemas.js';
 export * from './orchestrator-capabilities.js';
