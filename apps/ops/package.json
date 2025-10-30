@@ -30,16 +30,16 @@
   "dependencies": {
     "@avocat-ai/shared": "file:../../packages/shared",
     "@avocat-ai/supabase": "file:../../packages/supabase",
-    "date-fns": "^3.6.0",
+    "date-fns": "^4.1.0",
     "dotenv": "^16.4.5",
     "node-cron": "^4.2.1",
     "openai": "^6.2.0",
-    "ora": "^8.0.1",
+    "ora": "^9.0.0",
     "pg": "^8.11.5",
     "zod": "^3.25.42"
   },
   "devDependencies": {
-    "@types/node": "^20.12.7",
+    "@types/node": "^24.9.2",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "eslint": "^9.38.0",
