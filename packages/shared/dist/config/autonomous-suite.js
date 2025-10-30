@@ -1,3 +1,4 @@
+import { SEMANTIC_SEARCH_MODES } from './semantic-modes';
 export const AUTONOMOUS_JUSTICE_SUITE = {
     autonomous_legal_agent_suite: {
         name: 'Avocat-AI Francophone — Autonomous Justice Suite',
@@ -188,7 +189,7 @@ export const AUTONOMOUS_JUSTICE_SUITE = {
         },
     },
     search: {
-        modes: ['semantic', 'keyword', 'hybrid'],
+        modes: SEMANTIC_SEARCH_MODES,
         vector: {
             store: 'OpenAI Vector Store + Supabase pgvector mirror',
             embedding_model: 'text-embedding-3-large',
