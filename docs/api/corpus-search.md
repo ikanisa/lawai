@@ -168,6 +168,14 @@ The endpoint requires the following environment variable to be set:
 
 - `OPENAI_VECTOR_STORE_AUTHORITIES_ID`: The ID of the vector store to search
 
+### Obtaining the Vector Store ID
+
+The vector store ID can be obtained from:
+1. OpenAI Platform Dashboard: Navigate to Storage > Vector Stores
+2. When creating a vector store via the API, the ID is returned in the response
+3. Using the `pnpm ops:foundation` command, which creates and displays the vector store ID
+4. The format is typically `vs_` followed by alphanumeric characters (e.g., `vs_abc123xyz`)
+
 ## Implementation Details
 
 - Uses OpenAI's vector store search API
