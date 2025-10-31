@@ -22,6 +22,8 @@ apps/web/public/sw.js
 packages/*/tsconfig.tsbuildinfo
 packages/*/dist
 db/*/dist
+.next/
+apps/*/.next/
 
 # Generated PWA icons
 apps/web/public/icons/icon-*.png
