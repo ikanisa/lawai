@@ -12,6 +12,7 @@
     "JB/*"
   ],
   "scripts": {
+    "preinstall": "node ./scripts/check-package-manager.mjs",
     "build": "pnpm -r --if-present run build",
     "lint": "pnpm -r --if-present run lint",
     "lint:sql": "node ./scripts/lint-sql.mjs",
