@@ -31,9 +31,13 @@ Key runbooks and deployment guides:
 
 ## Local Setup (MacBook)
 
+> **⚠️ Important:** This repository **requires pnpm**. Running `npm install` or `yarn install` will fail with an error message. If you see "command not found" errors for `tsx`, `next`, or `vite`, you need to use pnpm.
+
 1. Install dependencies with **pnpm@8.15.4** (Corepack will download the pinned version declared in `package.json`):
    ```bash
-   corepack pnpm install
+   corepack enable
+   corepack prepare pnpm@8.15.4 --activate
+   pnpm install --no-frozen-lockfile
    ```
 2. Create `.env.local` from the template and populate the secrets listed in
    [Environment Variables](#environment-variables):
