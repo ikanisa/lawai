@@ -371,7 +371,7 @@ export function AdminView({ messages }: AdminViewProps) {
       setSsoLabel('');
       setSsoAcsUrl('');
       setSsoEntityId('');
-      queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.ssoError);
@@ -381,7 +381,7 @@ export function AdminView({ messages }: AdminViewProps) {
     mutationFn: (connectionId: string) => removeSsoConnection(orgId, connectionId),
     onSuccess: () => {
       toast.success(messages.admin.ssoDeleted);
-      queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.ssoError);
@@ -393,7 +393,7 @@ export function AdminView({ messages }: AdminViewProps) {
     onSuccess: (result) => {
       setLastScimToken(result);
       toast.success(messages.admin.scimCreated);
-      queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.scimError);
@@ -403,7 +403,7 @@ export function AdminView({ messages }: AdminViewProps) {
     mutationFn: (tokenId: string) => deleteScimAccessToken(orgId, tokenId),
     onSuccess: () => {
       toast.success(messages.admin.scimDeleted);
-      queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.scimError);
@@ -415,7 +415,7 @@ export function AdminView({ messages }: AdminViewProps) {
       toast.success(messages.admin.ipAdded);
       setIpCidr('');
       setIpDescription('');
-      queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.ipError);
@@ -425,7 +425,7 @@ export function AdminView({ messages }: AdminViewProps) {
     mutationFn: (entryId: string) => deleteIpAllowlistEntry(orgId, entryId),
     onSuccess: () => {
       toast.success(messages.admin.ipRemoved);
-      queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.ipError);
@@ -435,7 +435,7 @@ export function AdminView({ messages }: AdminViewProps) {
     mutationFn: (sessionId: string) => revokeDeviceSession(orgId, sessionId),
     onSuccess: () => {
       toast.success(messages.admin.devicesRevokeSuccess);
-      queryClient.invalidateQueries({ queryKey: ['admin-device-sessions', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-device-sessions', orgId, userId] });
     },
     onError: () => {
       toast.error(messages.admin.devicesRevokeError);
