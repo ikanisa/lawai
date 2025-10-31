@@ -371,7 +371,6 @@ export function AdminView({ messages }: AdminViewProps) {
       setSsoLabel('');
       setSsoAcsUrl('');
       setSsoEntityId('');
-      if (!userId) return;
       queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId, userId] });
     },
     onError: () => {
@@ -382,7 +381,6 @@ export function AdminView({ messages }: AdminViewProps) {
     mutationFn: (connectionId: string) => removeSsoConnection(orgId, connectionId),
     onSuccess: () => {
       toast.success(messages.admin.ssoDeleted);
-      if (!userId) return;
       queryClient.invalidateQueries({ queryKey: ['admin-sso', orgId, userId] });
     },
     onError: () => {
@@ -395,7 +393,6 @@ export function AdminView({ messages }: AdminViewProps) {
     onSuccess: (result) => {
       setLastScimToken(result);
       toast.success(messages.admin.scimCreated);
-      if (!userId) return;
       queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId, userId] });
     },
     onError: () => {
@@ -406,7 +403,6 @@ export function AdminView({ messages }: AdminViewProps) {
     mutationFn: (tokenId: string) => deleteScimAccessToken(orgId, tokenId),
     onSuccess: () => {
       toast.success(messages.admin.scimDeleted);
-      if (!userId) return;
       queryClient.invalidateQueries({ queryKey: ['admin-scim', orgId, userId] });
     },
     onError: () => {
@@ -419,7 +415,6 @@ export function AdminView({ messages }: AdminViewProps) {
       toast.success(messages.admin.ipAdded);
       setIpCidr('');
       setIpDescription('');
-      if (!userId) return;
       queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId, userId] });
     },
     onError: () => {
@@ -430,7 +425,6 @@ export function AdminView({ messages }: AdminViewProps) {
     mutationFn: (entryId: string) => deleteIpAllowlistEntry(orgId, entryId),
     onSuccess: () => {
       toast.success(messages.admin.ipRemoved);
-      if (!userId) return;
       queryClient.invalidateQueries({ queryKey: ['admin-ip', orgId, userId] });
     },
     onError: () => {
@@ -441,7 +435,6 @@ export function AdminView({ messages }: AdminViewProps) {
     mutationFn: (sessionId: string) => revokeDeviceSession(orgId, sessionId),
     onSuccess: () => {
       toast.success(messages.admin.devicesRevokeSuccess);
-      if (!userId) return;
       queryClient.invalidateQueries({ queryKey: ['admin-device-sessions', orgId, userId] });
     },
     onError: () => {
