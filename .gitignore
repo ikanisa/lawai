@@ -20,7 +20,10 @@ test-results/
 apps/web/public/sw.js
 *.tsbuildinfo
 packages/*/tsconfig.tsbuildinfo
+packages/*/dist
 db/*/dist
+.next/
+apps/*/.next/
 
 # Generated PWA icons
 apps/web/public/icons/icon-*.png

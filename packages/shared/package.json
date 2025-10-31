@@ -30,6 +30,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "zod": "^3.25.42",
     "openai": "6.2.0"
   },
