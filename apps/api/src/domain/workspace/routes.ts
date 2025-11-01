@@ -1,17 +1,21 @@
-import { z } from 'zod';
 import { authorizeRequestWithGuards } from '../../http/authorization.js';
 import type { AppFastifyInstance } from '../../types/fastify.js';
 import type { AppContext } from '../../types/context.js';
 import { fetchWorkspaceOverview as defaultFetchWorkspaceOverview } from './index.js';
 import type { WorkspaceFetchErrors } from './overview.js';
+import { parseWithSchema } from '../../http/validation.js';
+import { sendErrorResponse } from '../../http/errors.js';
+import { createRoleGuard } from '../../http/guards/roles.js';
+import {
+  WorkspaceHeadersSchema,
+  WorkspaceQuerySchema,
+  WorkspaceResponseSchema,
+} from '../../modules/workspace/http/schema.js';
+import type { OrgRole } from '../../access-control.js';
 
-const workspaceQuerySchema = z.object({
-  orgId: z.string().uuid('orgId must be a valid UUID'),
-});
+const WORKSPACE_ROLES: OrgRole[] = ['owner', 'admin', 'member', 'reviewer', 'viewer', 'compliance_officer', 'auditor'];
 
-const workspaceHeadersSchema = z.object({
-  'x-user-id': z.string().min(1, 'x-user-id header is required'),
-});
+const ensureWorkspaceRole = createRoleGuard(WORKSPACE_ROLES, { onDeniedMessage: 'workspace_access_denied' });
 
 type WorkspaceServices = {
   fetchWorkspaceOverview: typeof defaultFetchWorkspaceOverview;
@@ -31,73 +35,34 @@ export async function registerWorkspaceRoutes(
   const { supabase } = ctx;
 
   app.get('/workspace', async (request, reply) => {
-    const parsedQuery = workspaceQuerySchema.safeParse(request.query);
-    if (!parsedQuery.success) {
-      return reply.code(400).send({
-        error: 'invalid_query_parameters',
-        message: 'Invalid query parameters',
-        details: parsedQuery.error.flatten(),
-      });
-    }
+    try {
+      const { orgId } = parseWithSchema(WorkspaceQuerySchema, request.query, 'query');
+      const headers = parseWithSchema(WorkspaceHeadersSchema, request.headers, 'headers');
+      const userId = headers['x-user-id'];
 
-    const parsedHeaders = workspaceHeadersSchema.safeParse(request.headers);
-    if (!parsedHeaders.success) {
-      const hasUserError = parsedHeaders.error.issues.some((issue) => issue.path?.[0] === 'x-user-id');
-      if (hasUserError) {
-        return reply.code(400).send({ error: 'x-user-id header is required' });
+      if (workspaceGuard) {
+        const blocked = await workspaceGuard(request, reply, ['workspace', orgId]);
+        if (blocked) {
+          return;
+        }
       }
-      return reply.code(400).send({
-        error: 'invalid_headers',
-        message: 'Invalid headers',
-        details: parsedHeaders.error.flatten(),
-      });
-    }
 
-    const userId = parsedHeaders.data['x-user-id'];
-    const orgId = parsedQuery.data.orgId;
-
-    if (workspaceGuard) {
-      const blocked = await workspaceGuard(request, reply, ['workspace', orgId]);
-      if (blocked) {
+      const access = await authorizeRequestWithGuards('workspace:view', orgId, userId, request);
+      if (!ensureWorkspaceRole(access, reply).allowed) {
         return;
       }
-    }
 
-    try {
-      await authorizeRequestWithGuards('workspace:view', orgId, userId, request);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        'statusCode' in error &&
-        typeof (error as { statusCode?: unknown }).statusCode === 'number'
-      ) {
-        return reply.code((error as { statusCode: number }).statusCode).send({ error: error.message });
-      }
-
-      request.log.error({ err: error }, 'workspace_overview_authorization_failed');
-      return reply.code(403).send({ error: 'forbidden' });
-    }
-
-    try {
       const { data, errors } = await fetchWorkspaceOverview(supabase, orgId);
 
       logWorkspaceErrors(request, errors, orgId);
 
       const meta = buildWorkspaceMeta(errors);
       const statusCode = meta.status === 'partial' ? 206 : 200;
+      const payload = WorkspaceResponseSchema.parse({ ...data, meta });
 
-      return reply.code(statusCode).send({ ...data, meta });
+      return reply.code(statusCode).send(payload);
     } catch (error) {
-      if (isHttpError(error)) {
-        throw error;
-      }
-
-      request.log.error({ err: error }, 'workspace_overview_fetch_failed');
-      const message = error instanceof Error ? error.message : 'Unexpected error while fetching workspace overview.';
-      return reply.code(500).send({
-        error: 'workspace_fetch_failed',
-        message,
-      });
+      return sendErrorResponse(reply, error, request);
     }
   });
 }
@@ -149,11 +114,3 @@ function logWorkspaceErrors(
   }
 }
 
-function isHttpError(error: unknown): error is { statusCode: number } {
-  return Boolean(
-    error &&
-      typeof error === 'object' &&
-      'statusCode' in error &&
-      typeof (error as { statusCode?: unknown }).statusCode === 'number',
-  );
-}

@@ -2,7 +2,7 @@ import { createServiceClient } from '@avocat-ai/supabase';
 import ipaddr from 'ipaddr.js';
 import { env } from './config.js';
 
-type OrgRole =
+export type OrgRole =
   | 'owner'
   | 'admin'
   | 'member'
