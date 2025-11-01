@@ -37,5 +37,8 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Verify OpenAPI schema and SDK
+        run: pnpm schema:check
+
       - name: Test (optional)
         run: pnpm test
