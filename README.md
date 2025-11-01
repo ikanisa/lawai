@@ -29,51 +29,50 @@ Key runbooks and deployment guides:
 - [`apps/pwa`](docs/deployment/vercel.md) – Vercel deployment checklist for the public-facing PWA.
 - [`apps/web`](docs/local-hosting.md) – Operator console runbook for local/self-hosted environments.
 
-## Local Setup (MacBook)
+## Workspace quickstart
 
-> **⚠️ Important:** This repository **requires pnpm**. Running `npm install` or `yarn install` will fail with an error message. If you see "command not found" errors for `tsx`, `next`, or `vite`, you need to use pnpm.
+> **⚠️ Important:** The monorepo **must** be managed with pnpm. `npm install` and `yarn install` are blocked by `scripts/check-package-manager.mjs` to avoid dependency drift.
 
-1. Install dependencies with **pnpm@8.15.4** (Corepack will download the pinned version declared in `package.json`):
+1. Install dependencies (Corepack will hydrate the pinned pnpm release declared in `package.json`):
    ```bash
    corepack enable
    corepack prepare pnpm@8.15.4 --activate
-   pnpm install --no-frozen-lockfile
+   pnpm install
    ```
-2. Create `.env.local` from the template and populate the secrets listed in
-   [Environment Variables](#environment-variables):
+2. Copy the environment template, then populate the secrets documented in [Environment variables](#environment-variables):
    ```bash
    cp .env.example .env.local
    ```
-3. Apply database migrations against the target Supabase instance (requires a
-   valid `SUPABASE_DB_URL`):
+3. Apply database migrations and generate typed clients:
    ```bash
    pnpm db:migrate
+   pnpm --filter @apps/ops run vectorstore
    ```
-4. Provision operational fixtures (buckets, allowlists, vector store) once per
-   environment:
+4. Provision shared Supabase fixtures (buckets, allowlists, vector stores) once per environment:
    ```bash
-   pnpm --filter @apps/ops bootstrap
+   pnpm --filter @apps/ops run foundation
    ```
-5. Seed base data (jurisdictions, allowlists) as part of the initial bootstrap:
+5. Seed base data (jurisdictions, allowlists) when preparing a fresh project:
    ```bash
    pnpm seed
    ```
-6. Generate the operator console icon sprite before running a production build:
+6. Generate static assets for the operator console and shared UI kit:
    ```bash
-   pnpm --filter @avocat-ai/web icons:generate
+   pnpm --filter @avocat-ai/web run icons:generate
+   pnpm --filter @avocat-ai/ui-plan-drawer run build
    ```
-7. Start the API locally on port 3333:
-   ```bash
-   pnpm dev:api
-   ```
-8. Launch the public-facing PWA on http://localhost:3000 (set `PORT=3002` if the default port is busy):
-   ```bash
-   pnpm --filter @apps/pwa dev
-   ```
-9. Launch the operator console on http://localhost:3001:
-   ```bash
-   pnpm dev:web
-   ```
+
+### Run targets
+
+| Surface | Dev server | Tests | Build |
+| --- | --- | --- | --- |
+| **API** (`apps/api`) | `pnpm dev:api` | `pnpm --filter @apps/api run test` | `pnpm --filter @apps/api run build`
+| **Ops CLI** (`apps/ops`) | `pnpm --filter @apps/ops run dev` | `pnpm --filter @apps/ops run test` | `pnpm --filter @apps/ops run build`
+| **Operator console** (`apps/web`) | `pnpm dev:web` | `pnpm --filter @avocat-ai/web run test` | `pnpm --filter @avocat-ai/web run build`
+| **Public PWA** (`apps/pwa`) | `pnpm --filter @apps/pwa run dev` | `pnpm --filter @apps/pwa run test` | `pnpm --filter @apps/pwa run build`
+| **Edge functions** (`apps/edge`) | `deno task dev <function>` (see [`apps/edge/README.md`](apps/edge/README.md)) | `pnpm --filter @apps/edge run test` | `deno task bundle`
+
+Each app and package ships its own README with environment, linting, and deployment specifics. Start with the service table above, then drill into the corresponding README for deeper workflows (evaluations, scheduled jobs, etc.).
 
 ## Deployment checklist
 
