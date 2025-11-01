@@ -1,4 +1,8 @@
 packages:
-  - "apps/*"
+  - "apps/api"
+  - "apps/edge"
+  - "apps/ops"
+  - "apps/pwa"
+  - "apps/web"
   - "packages/*"
   - "db/*"

@@ -1,10 +1,14 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@2.3.1/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "law-ai/lawai" }],
+  "changelog": ["@changesets/changelog-github", { "repo": "avocat-ai/lawai" }],
   "commit": false,
+  "linked": [],
   "access": "restricted",
   "baseBranch": "main",
-  "fixed": [],
-  "linked": [],
-  "ignore": []
+  "updateInternalDependencies": "patch",
+  "ignore": ["@apps/pwa", "@avocat-ai/web", "@apps/api"],
+  "privatePackages": {
+    "version": true,
+    "tag": false
+  }
 }
