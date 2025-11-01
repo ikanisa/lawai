@@ -1,0 +1,116 @@
+name: Reusable CI Pipeline
+
+on:
+  workflow_call:
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+
+      - name: Prepare cache directories
+        run: |
+          mkdir -p ~/.cache/Cypress
+          mkdir -p ~/.cache/ms-playwright
+          mkdir -p apps/pwa/.next/cache
+          mkdir -p apps/web/.next/cache
+
+      - name: Restore Cypress cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: ${{ runner.os }}-cypress-${{ hashFiles('apps/pwa/package.json', 'pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-cypress-
+
+      - name: Restore Playwright cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-ms-playwright-${{ hashFiles('apps/web/package.json', 'pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-ms-playwright-
+
+      - name: Restore Next.js cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/pwa/.next/cache
+            apps/web/.next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('apps/pwa/next.config.mjs', 'apps/web/next.config.mjs', 'pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-next-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint workspace
+        run: pnpm lint
+
+      - name: Typecheck workspace
+        run: pnpm typecheck
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Build workspace
+        run: pnpm build
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run end-to-end tests
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          PORT: '3000'
+          CYPRESS_CACHE_FOLDER: ~/.cache/Cypress
+        run: |
+          set -euxo pipefail
+          pnpm --filter @apps/pwa run start -- --hostname 0.0.0.0 --port $PORT &
+          APP_PID=$!
+          trap "kill $APP_PID" EXIT
+          pnpm dlx wait-on@7.2.0 http://127.0.0.1:${PORT}
+          pnpm --filter @apps/pwa run cy:e2e -- --browser electron --headless --config video=false
+          kill $APP_PID
+          wait $APP_PID || true
+          trap - EXIT
+
+      - name: Run Lighthouse audit
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          PORT: '3000'
+        run: |
+          set -euxo pipefail
+          pnpm --filter @apps/pwa run start -- --hostname 0.0.0.0 --port $PORT &
+          APP_PID=$!
+          trap "kill $APP_PID" EXIT
+          pnpm dlx wait-on@7.2.0 http://127.0.0.1:${PORT}
+          CHROME_PATH=$(node -e "const { chromium } = require('playwright-core'); console.log(chromium.executablePath());")
+          mkdir -p artifacts/lighthouse
+          pnpm dlx @lhci/cli@0.14.0 autorun --collect.url=http://127.0.0.1:${PORT} --collect.numberOfRuns=1 --collect.chromePath="$CHROME_PATH" --upload.target=filesystem --upload.outputDir=artifacts/lighthouse --assert.preset=lighthouse:recommended
+          kill $APP_PID
+          wait $APP_PID || true
+          trap - EXIT
+
+      - name: Upload Lighthouse report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: artifacts/lighthouse
+          if-no-files-found: warn

@@ -44,12 +44,20 @@
     "env:validate": "node ./scripts/validate-env-examples.mjs",
     "seed": "pnpm --filter @db/seed run start",
     "seed:compliance-test": "node ./scripts/seed-compliance-test-data.mjs",
+    "e2e": "pnpm -r --if-present run cy:e2e -- --headless",
+    "lighthouse:ci": "pnpm dlx @lhci/cli@0.14.0 autorun --collect.url=http://127.0.0.1:3000 --collect.numberOfRuns=1 --upload.target=filesystem --upload.outputDir=./artifacts/lighthouse --assert.preset=lighthouse:recommended",
+    "build:packages": "pnpm -r --filter \"./packages/*\" run build",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm run build:packages && changeset publish",
     "check:binaries": "node ./scripts/check-binaries.mjs"
   },
   "dependencies": {
     "next-pwa": "^5.6.0"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^0.4.8",
+    "@changesets/cli": "^2.27.9",
     "sql-formatter": "^15.6.10",
     "typescript": "^5.4.5",
     "zod": "^3.25.42"
