@@ -6,7 +6,6 @@
   "scripts": {
     "predev": "node ./scripts/prepare-sw.mjs",
     "prebuild": "node ./scripts/prepare-sw.mjs",
-    "prestart": "node ./scripts/prepare-sw.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start -p ${PORT:-3002}",
