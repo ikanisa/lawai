@@ -9,6 +9,10 @@ vi.mock('../../src/config.js', () => ({
   },
 }));
 
+vi.mock('../../src/audit.js', () => ({
+  logAuditEvent: vi.fn(async () => undefined),
+}));
+
 const runMock = vi.fn();
 
 vi.mock('@openai/agents', () => ({

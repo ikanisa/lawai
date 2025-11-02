@@ -1,5 +1,7 @@
 import { vi } from 'vitest';
 
+const originalEnv = process.env.NEXT_PUBLIC_ENABLE_PWA;
+
 const {
   serviceWorkerRegistration,
   registerMock,
@@ -96,18 +98,23 @@ describe('pwa utilities', () => {
   });
 
   afterEach(() => {
-    process.env.NEXT_PUBLIC_ENABLE_PWA = originalEnv;
     vi.unstubAllGlobals();
-    delete process.env.NEXT_PUBLIC_ENABLE_PWA;
+    if (typeof originalEnv === 'string') {
+      process.env.NEXT_PUBLIC_ENABLE_PWA = originalEnv;
+    } else {
+      delete process.env.NEXT_PUBLIC_ENABLE_PWA;
+    }
   });
 
   it('registers the service worker only once when opt-in enabled', async () => {
-    const { registerPwa, setPwaPreference } = await import('../src/lib/pwa');
+    const { registerPwa, setPwaOptInPreference } = await import('../src/lib/pwa');
 
-    setPwaPreference(true);
-    registerPwa();
+    setPwaOptInPreference(true);
 
-    expect(registerMock).not.toHaveBeenCalled();
+    await registerPwa();
+    await registerPwa();
+
+    expect(registerMock).toHaveBeenCalledTimes(1);
   });
 
   it('does not register during SSR execution', async () => {
@@ -150,7 +157,14 @@ describe('pwa utilities', () => {
   });
 
   it('enables digest notifications when permission granted', async () => {
-    const { enableDigestNotifications, isDigestEnabled, PWA_OPT_IN_STORAGE_KEY } = await import('../src/lib/pwa');
+    const {
+      enableDigestNotifications,
+      isDigestEnabled,
+      PWA_OPT_IN_STORAGE_KEY,
+      setPwaOptInPreference,
+    } = await import('../src/lib/pwa');
+
+    setPwaOptInPreference(true);
 
     const enabled = await enableDigestNotifications();
 

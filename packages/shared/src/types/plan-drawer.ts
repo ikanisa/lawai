@@ -36,8 +36,10 @@ export interface PlanDrawerToolLogEntry {
   output?: string;
 }
 
+export type PlanDrawerRiskLevel = ResearchRiskLevel | (string & {});
+
 export interface PlanDrawerRisk {
-  level?: ResearchRiskLevel | string;
+  level?: PlanDrawerRiskLevel;
   summary?: string;
   label?: string;
 }

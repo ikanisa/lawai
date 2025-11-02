@@ -1,0 +1,25 @@
+{
+  "suite": "hallucination",
+  "scenarios": [
+    {
+      "id": "hallucination-001",
+      "query": "Summarize 2023 Avocat compliance controls",
+      "facts": [
+        "soc2 reviews",
+        "gdpr data residency audits"
+      ],
+      "response": "Avocat completed quarterly SOC2 reviews and GDPR data residency audits in 2023.",
+      "disallowedPhrases": ["HIPAA", "PCI"]
+    },
+    {
+      "id": "hallucination-002",
+      "query": "List certifications held by Avocat",
+      "facts": [
+        "soc2 type ii",
+        "iso 27001"
+      ],
+      "response": "Avocat maintains SOC2 Type II and ISO 27001 certifications.",
+      "disallowedPhrases": ["FedRAMP", "PCI"]
+    }
+  ]
+}

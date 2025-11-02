@@ -110,7 +110,9 @@ export function summariseTransparencyReport(
   options: { locale?: string; linkBuilder?: (record: TransparencyDigestRecord) => string } = {},
 ): string {
   const metrics = record.metrics ?? {};
-  const operations = (metrics.operations ?? {}) as TransparencyOperations;
+  const operations: TransparencyOperations = {
+    ...(metrics.operations ?? {}),
+  };
   const compliance = metrics.compliance ?? null;
   const ingestion = metrics.ingestion ?? null;
   const evaluations = metrics.evaluations ?? null;

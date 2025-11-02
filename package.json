@@ -19,12 +19,12 @@
   ],
   "scripts": {
     "preinstall": "node ./scripts/check-package-manager.mjs",
-    "build": "pnpm -r --if-present run build",
-    "lint": "pnpm -r --if-present run lint",
+    "build": "node ./scripts/run-recursive.mjs build",
+    "lint": "node ./scripts/run-recursive.mjs lint",
     "lint:sql": "node ./scripts/lint-sql.mjs",
     "lint:sql:fix": "node ./scripts/lint-sql.mjs --fix",
-    "typecheck": "pnpm -r --if-present run typecheck",
-    "test": "pnpm -r --if-present run test",
+    "typecheck": "node ./scripts/run-recursive.mjs typecheck",
+    "test": "node ./scripts/run-recursive.mjs test",
     "check:migrations": "node ./scripts/check-migrations.mjs",
     "dev:api": "pnpm --filter @apps/api run dev",
     "dev:ops": "pnpm --filter @apps/ops run dev",
@@ -58,6 +58,7 @@
   "devDependencies": {
     "sql-formatter": "^15.6.10",
     "typescript": "^5.4.5",
+    "typescript-eslint": "^8.46.0",
     "zod": "^3.25.42"
   }
 }
