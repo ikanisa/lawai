@@ -65,10 +65,19 @@ export function mapErrorToHttp(error: unknown): { status: number; body: HttpErro
 
   if (error && typeof error === 'object' && 'statusCode' in error && typeof (error as { statusCode?: unknown }).statusCode === 'number') {
     const statusCode = (error as { statusCode: number }).statusCode;
-    const message = error instanceof Error ? error.message : 'request_failed';
+    const message = error instanceof Error ? error.message : undefined;
+    const code =
+      (typeof message === 'string' && /^[a-z0-9_.-]+$/i.test(message))
+        ? message
+        : (typeof (error as { code?: unknown }).code === 'string'
+            ? ((error as { code: string }).code ?? 'request_failed')
+            : 'request_failed');
     return {
       status: statusCode,
-      body: { error: 'request_failed', message },
+      body: {
+        error: code,
+        ...(message && message !== code ? { message } : {}),
+      },
       logLevel: statusCode >= 500 ? 'error' : 'warn',
     };
   }
