@@ -2,7 +2,7 @@
 
 _Last updated: 2025-10-29_
 
-This document defines the observability strategy, logging patterns, metrics, tracing, and monitoring practices for the Avocat-AI system.
+This document defines the observability strategy, logging patterns, metrics, tracing, and monitoring practices for the Avocat-AI system. Pair it with [`env-matrix.md`](env-matrix.md) for configuration mapping, [`RUNBOOKS.md`](RUNBOOKS.md) for response procedures, and [`troubleshooting_network.md`](troubleshooting_network.md) when traffic cannot exit the environment.
 
 ## Table of Contents
 

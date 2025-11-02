@@ -1,10 +1,7 @@
-export * from './badge';
-export * from './button';
+export { Badge, Button, Input, Switch, Textarea } from '@avocat-ai/ui';
+export type { BadgeProps, ButtonProps, InputProps, SwitchProps, TextareaProps } from '@avocat-ai/ui';
 export * from './card';
-export * from './input';
 export * from './separator';
 export * from './sheet';
-export * from './switch';
-export * from './textarea';
 export * from './query-boundary';
 export * from './spinner';

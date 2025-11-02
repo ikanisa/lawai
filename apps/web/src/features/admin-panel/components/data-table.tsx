@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Button } from '../@/ui/button';
-import { Input } from '../@/ui/input';
-import { Badge } from '../@/ui/badge';
+import { Button } from '@avocat-ai/ui';
+import { Input } from '@avocat-ai/ui';
+import { Badge } from '@avocat-ai/ui';
 import { ArrowDownToLine, FileJson, Filter } from 'lucide-react';
 
 export interface AdminTableColumn<T> {

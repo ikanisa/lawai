@@ -28,8 +28,12 @@ export default defineConfig({
     exclude: ['playwright/**/*', 'tests/**/*'],
   },
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@': resolveFromRoot('./src'),
+      '@avocat-ai/auth': resolveFromRoot('../../packages/auth/src/session-provider.tsx'),
+      '@avocat-ai/ui': resolveFromRoot('../../packages/ui/src/index.ts'),
+      '@avocat-ai/utils': resolveFromRoot('../../packages/utils/src/index.ts'),
       '@avocat-ai/shared': resolveFromRoot('../../packages/shared/src/index.ts'),
     },
   },

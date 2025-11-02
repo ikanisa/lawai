@@ -13,10 +13,10 @@ import {
   TimerReset
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from '@avocat-ai/ui';
+import { Badge } from '@avocat-ai/ui';
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from '@avocat-ai/ui';
 import { useLocale } from "@/lib/i18n/provider";
 import { workspaceOverviewQueryOptions } from "@/lib/queries/workspace";
 import {

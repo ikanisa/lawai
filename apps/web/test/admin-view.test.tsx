@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Messages } from '../src/lib/i18n';
-import { SessionProvider } from '../src/components/session-provider';
+import { SessionProvider } from '@avocat-ai/auth';
 
 const {
   fetchGovernanceMetricsMock,

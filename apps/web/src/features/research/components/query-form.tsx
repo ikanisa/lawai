@@ -1,10 +1,10 @@
 import type { FormEvent } from 'react';
 
 import type { Messages } from '@/lib/i18n';
-import { Button } from '@/ui/button';
-import { Input } from '@/ui/input';
-import { Switch } from '@/ui/switch';
-import { Textarea } from '@/ui/textarea';
+import { Button } from '@avocat-ai/ui';
+import { Input } from '@avocat-ai/ui';
+import { Switch } from '@avocat-ai/ui';
+import { Textarea } from '@avocat-ai/ui';
 
 import { CameraOcrButton } from './camera-ocr-button';
 import { VoiceInputButton } from './voice-input-button';

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Mic, Square } from 'lucide-react';
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 
 interface VoiceInputButtonProps {
   onTranscript: (text: string) => void;

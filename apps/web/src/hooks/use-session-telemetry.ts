@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { sendTelemetryEvent } from '@/lib/api';
-import { useRequiredSession } from '@/components/session-provider';
+import { useRequiredSession } from '@avocat-ai/auth';
 
 export function useSessionTelemetry() {
   const { orgId, userId } = useRequiredSession();

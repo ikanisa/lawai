@@ -4,9 +4,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { IRACPayload, SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
-import { Switch } from '@/ui/switch';
-import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { Switch } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
 import { JurisdictionChip } from '@/components/jurisdiction-chip';
 import type { JurisdictionChipProps } from '@/components/jurisdiction-chip';
 import { CitationCard } from '@/components/citation-card';
@@ -24,8 +24,8 @@ import {
   type AgentRunResponse,
 } from '@/lib/api';
 import type { Messages, Locale } from '@/lib/i18n';
-import { Badge } from '@/ui/badge';
-import { Separator } from '@/ui/separator';
+import { Badge } from '@avocat-ai/ui';
+import { Separator } from '@avocat-ai/ui';
 import { cn } from '@/lib/utils';
 import { useOnlineStatus } from '@/features/platform/hooks/use-online-status';
 import { useOutbox, type OutboxItem } from '@/features/platform/hooks/use-outbox';

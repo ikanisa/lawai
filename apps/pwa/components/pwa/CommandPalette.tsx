@@ -19,7 +19,7 @@ import {
   TimerReset
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from '@avocat-ai/ui';
 import { ToastAction } from "@/components/ui/toast";
 import { toast } from "@/components/ui/use-toast";
 import { focusTrap } from "@/lib/a11y";
