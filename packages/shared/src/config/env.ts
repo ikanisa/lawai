@@ -49,15 +49,20 @@ export interface LoadServerEnvOptions {
   source?: Record<string, unknown>;
 }
 
-export function loadServerEnv<T extends z.ZodTypeAny>(
-  schema: T,
+export function loadServerEnv<TOutput, TInput>(
+  schema: z.ZodType<TOutput, z.ZodTypeDef, TInput>,
   { dotenv = process.env.NODE_ENV !== 'production', source = process.env }: LoadServerEnvOptions = {},
-): z.infer<T> {
+): TOutput {
   if (dotenv) {
     loadEnv();
   }
 
-  return schema.parse(source);
+  const parsed = schema.safeParse(source);
+  if (!parsed.success) {
+    throw parsed.error;
+  }
+
+  return parsed.data;
 }
 
 export type SharedSupabaseEnv = z.infer<typeof sharedSupabaseSchema>;

@@ -256,15 +256,17 @@ export const MatterDeadlineEntrySchema = z
 
 export type MatterDeadlineEntry = z.infer<typeof MatterDeadlineEntrySchema>;
 
-export const MatterDocumentNodeSchema: z.ZodType<{
+type MatterDocumentNodeShape = {
   id: string;
   title: string;
   kind: 'pleading' | 'evidence' | 'correspondence' | 'analysis' | 'order';
   citeCheck: 'clean' | 'issues' | 'pending';
   updatedAt: string;
   author: string;
-  children?: any;
-}> = z.lazy(() =>
+  children?: MatterDocumentNodeShape[] | undefined;
+};
+
+export const MatterDocumentNodeSchema: z.ZodType<MatterDocumentNodeShape> = z.lazy(() =>
   z
     .object({
       id: z.string(),
@@ -278,7 +280,7 @@ export const MatterDocumentNodeSchema: z.ZodType<{
     .strict(),
 );
 
-export type MatterDocumentNode = z.infer<typeof MatterDocumentNodeSchema>;
+export type MatterDocumentNode = MatterDocumentNodeShape;
 
 export const MatterSummarySchema = z
   .object({

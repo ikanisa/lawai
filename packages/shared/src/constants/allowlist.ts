@@ -41,7 +41,7 @@ function normaliseAllowlistInput(value: unknown): string | null {
     ? (() => {
         try {
           return new URL(trimmed).hostname;
-        } catch (error) {
+        } catch {
           return trimmed;
         }
       })()
@@ -117,7 +117,7 @@ export function isDomainAllowlisted(url: string): boolean {
   try {
     const { hostname } = new URL(url);
     return getJurisdictionsForDomain(hostname).length > 0;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
