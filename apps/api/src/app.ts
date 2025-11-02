@@ -1,4 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import helmet from '@fastify/helmet';
+import fastifyRateLimit from '@fastify/rate-limit';
 import { observabilityPlugin } from './plugins/observability.js';
 import { workspacePlugin } from './plugins/workspace.js';
 import { compliancePlugin } from './plugins/compliance.js';
@@ -19,7 +21,7 @@ import { registerVoiceRoutes } from './routes/voice/index.js';
 import { registerWebSearchRoutes } from './routes/web-search/index.js';
 import type { AppContext } from './types/context.js';
 import type { AppAssembly, AppFastifyInstance } from './types/fastify.js';
-import { env, rateLimitConfig } from './config.js';
+import { env, ensureEnvironment, rateLimitConfig } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
 import type { CreateAppOptions } from './types/app.js';
 import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
@@ -27,6 +29,7 @@ import { registerSecurityPolicies } from './security/policies.js';
 import { registerSecurityRoutes } from './routes/security/index.js';
 
 export async function createApp(options: CreateAppOptions = {}): Promise<AppAssembly> {
+  const environment = ensureEnvironment();
   const app: AppFastifyInstance = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
@@ -58,6 +61,42 @@ export async function createApp(options: CreateAppOptions = {}): Promise<AppAsse
   } = options;
 
   const supabase = supabaseOverride ?? serviceClient;
+  await app.register(helmet, {
+    global: true,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        connectSrc: ["'self'", 'https://api.openai.com'],
+        fontSrc: ["'self'", 'data:'],
+        frameAncestors: ["'none'"],
+        imgSrc: ["'self'", 'data:'],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  });
+  await app.register(fastifyRateLimit, {
+    global: true,
+    max: environment.GLOBAL_RATE_LIMIT_MAX,
+    timeWindow: environment.GLOBAL_RATE_LIMIT_WINDOW,
+    addHeaders: {
+      'x-ratelimit-limit': true,
+      'x-ratelimit-remaining': true,
+      'x-ratelimit-reset': true,
+      'retry-after': true,
+    },
+    allowList: [],
+    hook: 'onRequest',
+    errorResponseBuilder: () => ({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: 'Rate limit exceeded',
+      code: 'rate_limited',
+    }),
+  });
   await app.register(observabilityPlugin);
   await registerSecurityPolicies(app);
   const container = createAppContainer({

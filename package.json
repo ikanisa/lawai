@@ -50,7 +50,8 @@
     "env:validate": "node ./scripts/validate-env-examples.mjs",
     "seed": "pnpm --filter @db/seed run start",
     "seed:compliance-test": "node ./scripts/seed-compliance-test-data.mjs",
-    "check:binaries": "node ./scripts/check-binaries.mjs"
+    "check:binaries": "node ./scripts/check-binaries.mjs",
+    "schema:check": "pnpm --filter @apps/api run openapi:verify && pnpm --filter @avocat-ai/api-sdk run verify"
   },
   "dependencies": {
     "next-pwa": "^5.6.0"

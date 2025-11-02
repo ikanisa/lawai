@@ -8,7 +8,7 @@ import {
   sharedSupabaseSchema,
 } from '@avocat-ai/shared';
 
-const envSchema = z
+export const envSchema = z
   .object({
   PORT: z.coerce.number().default(3000),
   OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
@@ -53,6 +53,8 @@ const envSchema = z
   RATE_LIMIT_WORKSPACE_WINDOW_MS: z.coerce.number().default(60_000),
   RATE_LIMIT_TELEMETRY_LIMIT: z.coerce.number().default(60),
   RATE_LIMIT_TELEMETRY_WINDOW_MS: z.coerce.number().default(60_000),
+  GLOBAL_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  GLOBAL_RATE_LIMIT_WINDOW: z.string().min(1).default('1 minute'),
   })
   .superRefine((value, ctx) => {
     if (!value.WA_PROVIDER) {
@@ -126,6 +128,17 @@ function assertProductionEnv(e: Env) {
 assertProductionEnv(parsed);
 
 export const env: Env = parsed;
+
+let environmentValidated = false;
+
+export function ensureEnvironment(): Env {
+  environmentValidated = true;
+  return env;
+}
+
+export function isEnvironmentValidated(): boolean {
+  return environmentValidated;
+}
 
 export function loadAllowlistOverride(): string[] | null {
   if (!parsed.JURIS_ALLOWLIST_JSON) {
