@@ -16,6 +16,8 @@
     "@avocat-ai/observability": "file:../../packages/observability",
     "@avocat-ai/shared": "file:../../packages/shared",
     "@avocat-ai/supabase": "file:../../packages/supabase",
+    "@fastify/cookie": "^9.4.0",
+    "@fastify/helmet": "^11.2.0",
     "@openai/agents": "0.1.9",
     "date-fns": "^4.1.0",
     "diff": "5.1.0",

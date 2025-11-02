@@ -19,6 +19,9 @@ jobs:
     name: Audit Dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      pnpm_audit_failed: ${{ steps.pnpm-audit.outputs.audit_failed }}
+      npm_audit_failed: ${{ steps.npm-audit.outputs.audit_failed }}
     
     steps:
     - name: Checkout repository
@@ -38,13 +41,35 @@ jobs:
     - name: Install dependencies
       run: pnpm install --frozen-lockfile --ignore-scripts
 
+    - name: Generate npm lockfile for audit
+      run: npm install --package-lock-only --ignore-scripts
+
     # PNPM audit (checks npm registry for known vulnerabilities)
     - name: PNPM audit
       id: pnpm-audit
       run: |
         echo "Running pnpm audit..."
-        pnpm audit --prod --audit-level=moderate || echo "audit_failed=true" >> $GITHUB_OUTPUT
+        if pnpm audit --prod --audit-level=moderate; then
+          echo "audit_failed=false" >> $GITHUB_OUTPUT
+        else
+          echo "audit_failed=true" >> $GITHUB_OUTPUT
+        fi
       continue-on-error: true
+
+    - name: npm audit
+      id: npm-audit
+      run: |
+        echo "Running npm audit..."
+        if npm audit --omit=dev --audit-level=moderate; then
+          echo "audit_failed=false" >> $GITHUB_OUTPUT
+        else
+          echo "audit_failed=true" >> $GITHUB_OUTPUT
+        fi
+      continue-on-error: true
+
+    - name: Cleanup npm artifacts
+      if: always()
+      run: rm -f package-lock.json
 
     # Check for outdated dependencies
     - name: Check outdated dependencies
@@ -169,11 +194,23 @@ jobs:
       continue-on-error: true
 
     - name: Generate summary
+      env:
+        PNPM_AUDIT_FAILED: ${{ needs.audit.outputs.pnpm_audit_failed }}
+        NPM_AUDIT_FAILED: ${{ needs.audit.outputs.npm_audit_failed }}
       run: |
         echo "# Dependency Audit Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## Audit Status" >> $GITHUB_STEP_SUMMARY
-        echo "- PNPM Audit: ${{ needs.audit.result }}" >> $GITHUB_STEP_SUMMARY
+        if [ "${PNPM_AUDIT_FAILED}" = "true" ]; then
+          echo "- PNPM Audit: vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- PNPM Audit: clean" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ "${NPM_AUDIT_FAILED}" = "true" ]; then
+          echo "- npm Audit: vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- npm Audit: clean" >> $GITHUB_STEP_SUMMARY
+        fi
         echo "- OSV Scan: ${{ needs.osv-scan.result }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## Actions" >> $GITHUB_STEP_SUMMARY

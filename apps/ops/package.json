@@ -17,6 +17,7 @@
     "slo": "tsx src/slo-report.ts",
     "learning": "tsx src/learning-worker.ts",
     "regulator-digest": "tsx src/regulator-digest.ts",
+    "gdpr:retention": "tsx src/gdpr-retention.ts",
     "rotate-secrets": "tsx src/rotate-secrets.ts",
     "check": "tsx src/check.ts",
     "rls-smoke": "tsx src/rls-smoke.ts",
@@ -29,8 +30,10 @@
   },
   "dependencies": {
     "@avocat-ai/compliance": "file:../../packages/compliance",
+    "@avocat-ai/observability": "file:../../packages/observability",
     "@avocat-ai/shared": "file:../../packages/shared",
     "@avocat-ai/supabase": "file:../../packages/supabase",
+    "@opentelemetry/api": "^1.9.0",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.5",
     "node-cron": "^4.2.1",
