@@ -35,6 +35,105 @@ function resolveUserId(userId?: string | null): string {
   throw new Error('user_id_required');
 }
 
+interface StartWhatsAppOtpResponse {
+  verificationId?: string;
+  expiresAt?: string;
+}
+
+interface VerifyWhatsAppOtpResponse {
+  session_token: string;
+  wa_id?: string | null;
+}
+
+interface LinkWhatsAppOtpResponse {
+  wa_id: string;
+}
+
+function extractErrorMessage(payload: unknown, fallback: string): string {
+  if (payload && typeof payload === 'object') {
+    const withError = payload as { error?: unknown; message?: unknown };
+    if (typeof withError.error === 'string') {
+      return withError.error;
+    }
+    if (typeof withError.message === 'string') {
+      return withError.message;
+    }
+  }
+  return fallback;
+}
+
+export async function startWhatsAppOtp(input: { phone: string; orgId?: string }): Promise<StartWhatsAppOtpResponse> {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: input.phone, orgId: resolveOrgId(input.orgId) }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(errorBody, 'auth_start_failed'));
+  }
+
+  return response.json() as Promise<StartWhatsAppOtpResponse>;
+}
+
+export async function verifyWhatsAppOtp(input: {
+  phone: string;
+  otp: string;
+  orgHint?: string;
+}): Promise<VerifyWhatsAppOtpResponse> {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: input.phone, otp: input.otp, orgId: resolveOrgId(input.orgHint) }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(errorBody, 'auth_verify_failed'));
+  }
+
+  return response.json() as Promise<VerifyWhatsAppOtpResponse>;
+}
+
+export async function linkWhatsAppOtp(input: {
+  phone: string;
+  otp: string;
+  orgId: string;
+  userId: string;
+}): Promise<LinkWhatsAppOtpResponse> {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      phone: input.phone,
+      otp: input.otp,
+      orgId: resolveOrgId(input.orgId),
+      userId: resolveUserId(input.userId),
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(errorBody, 'auth_link_failed'));
+  }
+
+  return response.json() as Promise<LinkWhatsAppOtpResponse>;
+}
+
+export async function unlinkWhatsApp(input: { orgId: string; userId: string }): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/unlink`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orgId: resolveOrgId(input.orgId), userId: resolveUserId(input.userId) }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(errorBody, 'auth_unlink_failed'));
+  }
+}
+
 export type VerificationSeverity = 'info' | 'warning' | 'critical';
 
 export interface VerificationNote {

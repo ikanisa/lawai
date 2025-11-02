@@ -14,7 +14,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "icons:generate": "node ./scripts/generate-icons.mjs"
+    "test:axe": "axe http://127.0.0.1:${PORT:-3000}/en/workspace http://127.0.0.1:${PORT:-3000}/en/auth",
+    "audit:lighthouse": "lhci autorun --config=lighthouserc.json",
+    "icons:generate": "node ./scripts/generate-icons.mjs",
+    "mock:api": "node ./scripts/mock-api-server.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.7",
@@ -57,6 +60,8 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@axe-core/cli": "^4.7.0",
+    "@lhci/cli": "^0.14.0",
     "@playwright/test": "^1.51.1",
     "@testing-library/jest-dom": "6.4.5",
     "@testing-library/react": "14.2.1",

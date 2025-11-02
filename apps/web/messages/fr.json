@@ -1093,5 +1093,24 @@
     "devicesCreated": "Créée",
     "devicesAttested": "Attesté",
     "devicesPasskey": "Passkey"
+  },
+  "auth": {
+    "title": "Vérifier l’accès à l’espace de travail",
+    "description": "Authentifiez-vous avec le numéro WhatsApp de démonstration pour continuer.",
+    "phoneLabel": "Numéro WhatsApp",
+    "sendCode": "Envoyer le code",
+    "sending": "Envoi…",
+    "enterCodeTitle": "Saisissez le code à 6 chiffres reçu sur WhatsApp",
+    "otpPlaceholder": "Code à usage unique",
+    "verifyCode": "Vérifier le code",
+    "verifying": "Vérification…",
+    "back": "Recommencer",
+    "success": "Accès à l’espace de travail confirmé.",
+    "startAgain": "Authentifier un autre numéro",
+    "otpSent": "Code de vérification envoyé à {phone}.",
+    "errorRateLimit": "Trop de tentatives. Réessayez dans quelques minutes.",
+    "errorGeneric": "Une erreur est survenue. Réessayez.",
+    "invalidPhone": "Saisissez un numéro au format E.164.",
+    "invalidOtp": "Saisissez le code à 6 chiffres reçu sur WhatsApp."
   }
 }

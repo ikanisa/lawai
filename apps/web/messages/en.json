@@ -1093,5 +1093,24 @@
     "devicesCreated": "Created",
     "devicesAttested": "Attested",
     "devicesPasskey": "Passkey"
+  },
+  "auth": {
+    "title": "Verify your workspace access",
+    "description": "Authenticate with your demo workspace WhatsApp number to continue.",
+    "phoneLabel": "WhatsApp number",
+    "sendCode": "Send code",
+    "sending": "Sending…",
+    "enterCodeTitle": "Enter the 6-digit code we sent to WhatsApp",
+    "otpPlaceholder": "One-time code",
+    "verifyCode": "Verify code",
+    "verifying": "Verifying…",
+    "back": "Start over",
+    "success": "Workspace access confirmed.",
+    "startAgain": "Authenticate another number",
+    "otpSent": "Verification code sent to {phone}.",
+    "errorRateLimit": "Too many requests. Try again in a few minutes.",
+    "errorGeneric": "Something went wrong. Try again.",
+    "invalidPhone": "Enter a valid E.164 formatted phone number.",
+    "invalidOtp": "Enter the 6-digit code from WhatsApp."
   }
 }
