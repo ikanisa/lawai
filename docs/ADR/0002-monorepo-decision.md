@@ -19,6 +19,20 @@ We will converge on a single workspace tree by:
 
 These steps unblock `pnpm recursive` tooling, clarify ownership, and keep subsequent `git mv` operations deterministic for review tooling.
 
+### Workspace Configuration
+
+Before moving projects, update `pnpm-workspace.yaml` so PNPM continues to discover packages once they are nested under their new buckets. Replace the current glob set (`apps/*`, `packages/*`, `db/*`) with patterns that include the additional directory depth and new config root:
+
+```yaml
+packages:
+  - "apps/*/*"
+  - "packages/*/*"
+  - "configs/*"
+  - "supabase/*"
+```
+
+This ensures PNPM still links each application and library after the consolidation, rather than treating only the intermediate folders (which lack `package.json` files) as workspaces.【F:pnpm-workspace.yaml†L1-L4】
+
 ## Migration Plan
 
 ### Application Moves
