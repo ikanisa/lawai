@@ -249,13 +249,20 @@ export class FinanceAgentKernel {
     if (!this.options.auditLogger) {
       return;
     }
-    try {
-      void this.options.auditLogger.record(entry);
-    } catch (error) {
+    const handleError = (error: unknown) => {
       this.options.logger?.warn?.(
         { err: error instanceof Error ? error.message : error, event: entry.event },
         'audit_logger_failed',
       );
+    };
+
+    try {
+      const result = this.options.auditLogger.record(entry);
+      if (typeof (result as Promise<unknown>)?.catch === 'function') {
+        (result as Promise<unknown>).catch(handleError);
+      }
+    } catch (error) {
+      handleError(error);
     }
   }
 
