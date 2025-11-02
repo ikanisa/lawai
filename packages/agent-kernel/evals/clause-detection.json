@@ -1,0 +1,24 @@
+{
+  "suite": "clause_detection",
+  "scenarios": [
+    {
+      "id": "clause-001",
+      "document": "The supplier agrees to maintain confidentiality of all data and comply with GDPR residency requirements.",
+      "clauses": [
+        { "name": "Confidentiality", "trigger": "confidentiality" },
+        { "name": "Residency", "trigger": "residency" },
+        { "name": "Audit", "trigger": "audit" }
+      ],
+      "expected": ["Confidentiality", "Residency"]
+    },
+    {
+      "id": "clause-002",
+      "document": "Vendor shall perform annual SOC2 certification reviews and notify Avocat within 24 hours of incidents.",
+      "clauses": [
+        { "name": "SOC2", "trigger": "soc2" },
+        { "name": "Incident Notice", "trigger": "notify" }
+      ],
+      "expected": ["SOC2", "Incident Notice"]
+    }
+  ]
+}
