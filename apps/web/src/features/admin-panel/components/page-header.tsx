@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { Badge } from '../@/ui/badge';
-import { Separator } from '../@/ui/separator';
+import { Badge } from '@avocat-ai/ui';
+import { Separator } from '@avocat-ai/ui';
 
 interface AdminPageHeaderProps {
   title: string;

@@ -1,7 +1,7 @@
 import type { IRACPayload } from '@avocat-ai/shared';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
-import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Badge } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
 
 import { RiskBanner } from '@/components/risk-banner';
 import { LanguageBanner } from '@/components/language-banner';

@@ -15,7 +15,14 @@ export default defineConfig({
       SUPABASE_SERVICE_ROLE_KEY: 'service-role',
     },
     coverage: {
-      reporter: ['text'],
+      provider: 'v8',
+      reporter: ['text', 'json', 'lcov'],
+      thresholds: {
+        statements: 80,
+        branches: 80,
+        functions: 80,
+        lines: 80,
+      },
     },
     include: ['test/**/*.test.ts'],
     setupFiles: ['test/setup-env.ts'],
@@ -25,6 +32,7 @@ export default defineConfig({
       '@avocat-ai/shared': resolveFromRoot('../../packages/shared/src/index.ts'),
       '@avocat-ai/supabase': resolveFromRoot('../../packages/supabase/src/index.ts'),
       '@avocat-ai/observability': resolveFromRoot('../../packages/observability/src/index.ts'),
+      '@avocat-ai/agent-kernel': resolveFromRoot('../../packages/agent-kernel/src/index.ts'),
     },
   },
 });

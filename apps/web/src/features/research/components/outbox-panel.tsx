@@ -1,8 +1,8 @@
 import { formatDistanceToNow } from 'date-fns';
 import { enUS, fr as frLocale } from 'date-fns/locale';
 import { OutboxItem } from '@/features/platform/hooks/use-outbox';
-import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { Button } from '@avocat-ai/ui';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
 
 interface OutboxPanelProps {
   items: OutboxItem[];

@@ -1,7 +1,7 @@
 'use client';
 
 import { BadgeCheck } from 'lucide-react';
-import { Badge } from '@/ui/badge';
+import { Badge } from '@avocat-ai/ui';
 import { cn } from '@/lib/utils';
 
 type BadgeVariant = 'default' | 'success' | 'warning' | 'outline';

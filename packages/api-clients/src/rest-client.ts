@@ -5,6 +5,7 @@ import {
   ProcessNavigatorFlow,
   WorkspaceDesk,
 } from '@avocat-ai/shared';
+import type { TelemetryEventName, TelemetryEventPayload } from '@avocat-ai/types';
 
 export interface RestClientOptions {
   baseUrl: string;
@@ -553,9 +554,9 @@ export async function requestHitlReview(
   }
 }
 
-export async function sendTelemetryEvent(
-  eventName: string,
-  payload?: Record<string, unknown>,
+export async function sendTelemetryEvent<TEvent extends TelemetryEventName>(
+  eventName: TEvent,
+  payload?: TelemetryEventPayload<TEvent>,
   orgId: string = DEMO_ORG_ID,
   userId: string = DEMO_USER_ID,
 ): Promise<void> {

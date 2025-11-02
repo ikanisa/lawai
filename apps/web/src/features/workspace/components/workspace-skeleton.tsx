@@ -1,5 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
-import { Separator } from '@/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Separator } from '@avocat-ai/ui';
 
 export function WorkspaceSkeleton() {
   return (

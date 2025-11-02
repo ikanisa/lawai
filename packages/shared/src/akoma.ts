@@ -166,8 +166,10 @@ function mergeAbbreviationSegments(segments: string[]): string[] {
   const trailingAbbreviation = /(\bAff\.|\bArt\.|\bN°|\bNo\.?|\bNº)$/i;
 
   for (const segment of segments) {
-    if (merged.length > 0 && trailingAbbreviation.test(merged[merged.length - 1])) {
-      merged[merged.length - 1] = `${merged[merged.length - 1]} ${segment}`.trim();
+    const lastIndex = merged.length - 1;
+    const lastSegment = lastIndex >= 0 ? merged[lastIndex] : null;
+    if (lastSegment && trailingAbbreviation.test(lastSegment)) {
+      merged[lastIndex] = `${lastSegment} ${segment}`.trim();
       continue;
     }
 

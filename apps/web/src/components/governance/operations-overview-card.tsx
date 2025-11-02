@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
 import type { Messages } from '@/lib/i18n';
 import type { OperationsOverviewResponse } from '@/lib/api';
 

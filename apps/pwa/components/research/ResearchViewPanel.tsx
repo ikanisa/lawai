@@ -15,10 +15,10 @@ import {
 } from "lucide-react";
 
 import { ToolChip } from "@/components/agent/ToolChip";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from '@avocat-ai/ui';
 import type { ResearchFilterOption, ResearchPlan, WebSearchMode } from "@/lib/data/research";
 import type { JurisdictionCode } from "@/lib/state/ui-store";
 import { jurisdictionOptions } from "@/lib/state/ui-store";

@@ -30,6 +30,10 @@ vi.mock('@openai/agents', async () => {
   };
 });
 
+vi.mock('../../src/audit.js', () => ({
+  logAuditEvent: vi.fn(async () => undefined),
+}));
+
 vi.mock('../../src/openai.ts', () => ({
   getOpenAI: vi.fn(() => ({})),
   logOpenAIDebug: vi.fn(async () => undefined),

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
-import { Button } from "@/components/ui/button";
+import { Button } from '@avocat-ai/ui';
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "avocat-ai-install-dismissed-at";

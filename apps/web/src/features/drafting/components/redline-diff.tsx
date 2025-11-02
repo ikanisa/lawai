@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { diffWords } from 'diff';
-import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
-import { Separator } from '@/ui/separator';
+import { Badge } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Separator } from '@avocat-ai/ui';
 import type { Messages } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 

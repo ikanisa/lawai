@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import type { Locale } from '@/lib/i18n';
 import { clientEnv } from '@/env.client';
-import { Spinner } from '@/ui/spinner';
+import { Spinner } from '@avocat-ai/ui';
 
 const AUTH_ROUTE_SEGMENT = '/auth';
 
