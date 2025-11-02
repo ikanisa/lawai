@@ -77,7 +77,7 @@ type OpenAIErrorPayload = {
   };
 };
 
-const FileCreateResponseSchema = z.object({ id: z.string() }).strict();
+const FileCreateResponseSchema = z.object({ id: z.string() });
 const VectorStoreResponseSchema = z.unknown();
 const DebuggingRequestResponseSchema = z.unknown();
 
