@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CalendarCheck2, FileText, Scale } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from '@avocat-ai/ui';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Input } from '@avocat-ai/ui';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";

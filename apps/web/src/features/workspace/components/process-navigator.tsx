@@ -3,9 +3,9 @@
 import { useMemo } from 'react';
 import type { ProcessNavigatorFlow } from '@avocat-ai/shared';
 import type { Locale, Messages } from '@/lib/i18n';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
-import { Badge } from '@/ui/badge';
-import { Separator } from '@/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Badge } from '@avocat-ai/ui';
+import { Separator } from '@avocat-ai/ui';
 
 interface ProcessNavigatorProps {
   flows?: ProcessNavigatorFlow[];

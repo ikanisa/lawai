@@ -3,12 +3,12 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
-import { Input } from '@/ui/input';
-import { Button } from '@/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Input } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
 import type { Messages } from '@/lib/i18n';
 import { startWhatsAppOtp, linkWhatsAppOtp, unlinkWhatsApp } from '@/lib/api';
-import { useRequiredSession } from '../session-provider';
+import { useRequiredSession } from '@avocat-ai/auth';
 
 interface SecurityPanelProps {
   messages: Messages;

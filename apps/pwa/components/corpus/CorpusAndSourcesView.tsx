@@ -4,11 +4,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DatabaseZap, HardDriveDownload, ListChecks, RefreshCcw, Shield, UploadCloud } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
+import { Switch } from '@avocat-ai/ui';
 import { corpusDashboardQueryOptions } from "@/lib/queries/corpus";
 import {
   type AllowlistSource,

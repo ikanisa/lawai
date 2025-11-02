@@ -5,9 +5,9 @@ import type { FormEvent, ReactNode } from 'react';
 import { SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
-import { Input } from '@/ui/input';
+import { Button } from '@avocat-ai/ui';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Input } from '@avocat-ai/ui';
 import { OperationsOverviewCard } from '@/components/governance/operations-overview-card';
 import {
   fetchRetrievalMetrics,
@@ -37,7 +37,7 @@ import {
 } from '@/lib/api';
 import type { Messages } from '@/lib/i18n';
 import { clientEnv } from '@/env.client';
-import { useSession } from '@/components/session-provider';
+import { useSession } from '@avocat-ai/auth';
 import { useGovernanceMetrics } from '../hooks/use-governance-metrics';
 import { AdminTelemetryDashboard } from './telemetry-dashboard';
 import { AdminAuditLogPanel } from './audit-log-panel';

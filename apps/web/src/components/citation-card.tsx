@@ -1,5 +1,5 @@
-import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
+import { Badge } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
 
 export interface CitationCardProps {
   title: string;

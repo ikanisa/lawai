@@ -11,6 +11,7 @@ import { TelemetryDashboardProvider } from "@/lib/telemetry-dashboard";
 import { OutboxProvider } from "@/lib/offline/outbox";
 import { UIStateProvider, useUIState, type ThemePreference } from "@/lib/state/ui-store";
 import { ServiceWorkerBridge } from "@/lib/pwa/service-worker-bridge";
+import { UiThemeProvider } from '@avocat-ai/ui';
 import { Toaster } from "@/components/ui/toaster";
 
 const queryClientOptions: QueryClientConfig = {
@@ -32,32 +33,34 @@ export function Providers({ children }: { children: ReactNode }) {
   const themeValue = useMemo(() => ({ dark: "dark", light: "light", contrast: "contrast" }), []);
 
   return (
-    <NextThemeProvider
-      attribute="data-theme"
-      defaultTheme="dark"
-      enableSystem
-      disableTransitionOnChange
-      value={themeValue}
-    >
-      <AccessibilityProvider>
-        <TelemetryProvider>
-          <TelemetryDashboardProvider>
-            <OutboxProvider>
-              <I18nProvider>
-                <UIStateProvider>
-                  <QueryClientProvider client={queryClient}>
-                    <ThemeBridge />
-                    <ServiceWorkerBridge />
-                    {children}
-                    <Toaster />
-                  </QueryClientProvider>
-                </UIStateProvider>
-              </I18nProvider>
-            </OutboxProvider>
-          </TelemetryDashboardProvider>
-        </TelemetryProvider>
-      </AccessibilityProvider>
-    </NextThemeProvider>
+    <UiThemeProvider theme="pwa">
+      <NextThemeProvider
+        attribute="data-theme"
+        defaultTheme="dark"
+        enableSystem
+        disableTransitionOnChange
+        value={themeValue}
+      >
+        <AccessibilityProvider>
+          <TelemetryProvider>
+            <TelemetryDashboardProvider>
+              <OutboxProvider>
+                <I18nProvider>
+                  <UIStateProvider>
+                    <QueryClientProvider client={queryClient}>
+                      <ThemeBridge />
+                      <ServiceWorkerBridge />
+                      {children}
+                      <Toaster />
+                    </QueryClientProvider>
+                  </UIStateProvider>
+                </I18nProvider>
+              </OutboxProvider>
+            </TelemetryDashboardProvider>
+          </TelemetryProvider>
+        </AccessibilityProvider>
+      </NextThemeProvider>
+    </UiThemeProvider>
   );
 }
 

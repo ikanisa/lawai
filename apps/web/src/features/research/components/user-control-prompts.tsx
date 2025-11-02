@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 
 type ControlKey = 'plan' | 'hitl' | 'sources' | 'export';
 

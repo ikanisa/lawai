@@ -3,8 +3,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, FileJson } from 'lucide-react';
-import { Button } from '../@/ui/button';
-import { Input } from '../@/ui/input';
+import { Button } from '@avocat-ai/ui';
+import { Input } from '@avocat-ai/ui';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';

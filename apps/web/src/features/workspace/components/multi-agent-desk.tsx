@@ -2,9 +2,9 @@
 
 import { Fragment } from 'react';
 import { ArrowRight, Play, Sparkles, Zap, ShieldCheck } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
-import { Button } from '@/ui/button';
-import { Badge } from '@/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
+import { Badge } from '@avocat-ai/ui';
 import type { Messages } from '@/lib/i18n';
 import type {
   WorkspaceDesk,

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Check, MessageSquareWarning, XCircle } from 'lucide-react';
-import { Button } from '../@/ui/button';
+import { Button } from '@avocat-ai/ui';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';

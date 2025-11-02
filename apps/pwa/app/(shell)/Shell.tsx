@@ -24,7 +24,7 @@ import { CommandPalette } from "@/components/pwa/CommandPalette";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { OutboxStatusChip } from "@/components/pwa/OutboxStatusChip";
 import { JurisdictionChip } from "@/components/agent/JurisdictionChip";
-import { Button } from "@/components/ui/button";
+import { Button } from '@avocat-ai/ui';
 import {
   DropdownMenu,
   DropdownMenuContent,
