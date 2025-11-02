@@ -1,42 +1,100 @@
-# System overview
+# System Overview
 
-## Workspace summary
-| Area | Description | Key technologies |
-| --- | --- | --- |
-| `apps/api` | Fastify-based API providing legal agent orchestration, Redis caching, and Supabase integration. | TypeScript, Fastify, Pino, OpenAI SDK, Redis, Zod |
-| `apps/web` | Primary Next.js web front-end serving legal workflows and agent UI. | Next.js 14.2, React 18.3, TanStack Query 5, TailwindCSS, Radix UI |
-| `apps/pwa` | Experimental Next.js PWA used for rapid prototyping of Staff tooling. | Next.js 16 beta, React 19 RC, TanStack Query, TailwindCSS, Radix UI, Vitest, Cypress |
-| `apps/edge` | Workers runtime utilities (durable object / edge worker scripts). | TypeScript, Cloudflare Workers API (needs deeper inspection) |
-| `apps/ops` | Operational command suite for provisioning, compliance, and evaluation tasks. | TypeScript, pnpm scripts, Supabase CLI |
-| `packages/*` | Shared packages consumed across apps (`api-clients`, `compliance`, `config`, `observability`, `shared`, `supabase`, `ui-plan-drawer`). | TypeScript, local build scripts |
-| `db/*` | Database migrations, seeds, and SQL linting scripts. | Supabase CLI, SQL, TypeScript |
-| `infra/`, `ops/`, `docs/` | Infrastructure manifests, operational playbooks, and extensive documentation. | Terraform/Helm manifests, markdown |
+This overview captures how the Avocat-AI monorepo will be structured after the consolidation outlined in ADR 0002 and documents who owns each shared configuration surface.【F:docs/ADR/0002-monorepo-decision.md†L13-L58】 It emphasises the boundary between platform services, product experiences, and the new repository-wide `configs/` hierarchy.
 
-## Tooling snapshot
-- **Node & package manager:** Node.js `>=20 <21`; pnpm `8.15.4` enforced via `preinstall` check script.
-- **TypeScript:** Root TypeScript `5.4.5`; duplicated per workspace with matching versions (confirm consolidation in step 03).
-- **Linting & formatting:** eslint invoked per workspace; SQL linting via `scripts/lint-sql.mjs`; no centralised `configs/` directory yet.
-- **Testing frameworks:** Vitest for API, web, and PWA packages; Playwright and Cypress present for E2E; Happy DOM/JSdom used for component tests.
-- **CI/CD scripts:** Provided through root `pnpm` scripts and `apps/ops` commands; GitHub Actions workflows to be inventoried in step 02.
-- **Observability libraries:** `packages/observability` exposes telemetry helpers consumed by API.
+## Workspace Domains
 
-## Automation status
-- Running `pnpm lint --filter @apps/api` exits with `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL` because the recursive workspace lint forwards `--filter` flags into each eslint invocation. Selective linting requires a script adjustment.
-- Type checking, unit tests, and build scripts exist per workspace but have not yet been executed as part of this baseline capture (documented for follow-up in steps 03–04).
-- Database migration scripts (`pnpm db:push`, `pnpm db:migrate`) depend on Supabase CLI; ensure availability before automation hardening.
+```mermaid
+flowchart LR
+  subgraph Platform Services
+    API[apps/platform/api]
+    Edge[apps/platform/edge-functions]
+    Ops[apps/platform/ops-cli]
+  end
+  subgraph Product Experiences
+    PWA[apps/experience/public-pwa]
+    Console[apps/experience/operator-console]
+  end
+  subgraph Shared Libraries
+    SDK[packages/platform/api-clients]
+    Observability[packages/platform/observability]
+    Supabase[packages/platform/supabase]
+    DomainShared[packages/domain/shared]
+    Compliance[packages/domain/compliance]
+    UI[packages/ui/plan-drawer]
+  end
 
-## Gaps against target architecture
-1. **Frontend split:** No dedicated Staff/Admin PWA applications yet; `apps/web` currently serves all personas.
-2. **Version divergence:** Next.js/React versions differ across `apps/web` and `apps/pwa`, complicating shared UI extraction and strict typing.
-3. **Shared configuration:** Absence of centralised `configs/` directory for ESLint, TSConfig, Jest/Vitest, and Cypress.
-4. **CI observability:** No aggregated reporting for lint/type/test/build coverage or accessibility budgets.
-5. **Agent kernel extraction:** Agent orchestration remains embedded in `apps/api`; a dedicated `packages/agent-kernel` module is not present.
-6. **Documentation gaps:** Missing ADR catalogue and up-to-date system overview prior to this addition.
+  API --> SDK
+  API --> Supabase
+  Edge --> Supabase
+  Ops --> Supabase
+  Ops --> Observability
+  PWA --> DomainShared
+  PWA --> UI
+  Console --> DomainShared
+  Console --> UI
+  SDK --> PWA
+  SDK --> Console
+  Observability --> API
+  Observability --> Edge
+```
 
-## Next actions (programme alignment)
-1. Draft architecture mapping and directory move plan (Step 02) building on this baseline.
-2. Create shared tooling configs and enforce strict TypeScript + ESLint (Steps 03–04).
-3. Harmonise React/Next versions and carve out Staff/Admin PWAs (Step 07) with shared packages (Step 08).
-4. Extract agent kernel into `packages/agent-kernel` with audit and policy gates (Step 06).
-5. Expand CI/CD to meet security, observability, and quality gates, including Docker images and Lighthouse CI (Steps 09–11).
-6. Finalise documentation, runbooks, and release tagging after quality gates pass (Steps 12–13).
+Platform Engineering owns the services inside `apps/platform/*`, Experience Engineering owns everything in `apps/experience/*`, and the Design Systems guild curates `packages/ui/*`. Domain logic is co-owned by Platform and Product leads to keep legal rules reusable across runtimes.【F:docs/ADR/0002-monorepo-decision.md†L26-L44】
+
+## Shared Config Ownership
+
+The repository consolidates linting, type checking, and testing presets into `configs/` so every workspace inherits the same rules without fragile relative paths. Previously, services imported ESLint factories through deep relative requires (for example `apps/api/.eslintrc.cjs` reaches into `packages/config/eslint/node.cjs`).【F:apps/api/.eslintrc.cjs†L1-L3】 Moving the presets to `configs/` removes the need for chained `../../` lookups and clarifies who owns each layer.
+
+```mermaid
+graph TD
+  subgraph Configs
+    ESLint[configs/eslint/node.cjs]
+    TSNode[configs/typescript/node.json]
+    TSNext[configs/typescript/next.json]
+    Vitest[configs/testing/vitest.config.ts]
+    Cypress[configs/testing/cypress.config.ts]
+  end
+  ESLint --> API_Eslint[apps/platform/api/.eslintrc]
+  ESLint --> PWA_Eslint[apps/experience/public-pwa/.eslintrc]
+  ESLint --> Console_Eslint[apps/experience/operator-console/.eslintrc]
+  TSNode --> API_TS[apps/platform/api/tsconfig.json]
+  TSNext --> PWA_TS[apps/experience/public-pwa/tsconfig.json]
+  TSNext --> Console_TS[apps/experience/operator-console/tsconfig.json]
+  Vitest --> Edge_Vitest[apps/platform/edge-functions/vitest.config.ts]
+  Vitest --> API_Vitest[apps/platform/api/vitest.config.ts]
+  Cypress --> PWA_Cypress[apps/experience/public-pwa/cypress.config.ts]
+```
+
+### ESLint
+
+- **Location:** `configs/eslint/`
+- **Owners:** Platform Engineering lints Node/edge runtimes; Experience Engineering lints Next.js surfaces.
+- **Scope:** Provide base configs for Node services and Next.js apps. Services extend the presets directly instead of relative imports.【F:docs/ADR/0002-monorepo-decision.md†L36-L44】
+
+### TypeScript
+
+- **Location:** `configs/typescript/`
+- **Owners:** Platform Engineering maintains `node.json` (built from the current `tsconfig.node.json`), while Experience Engineering curates `next.json` for React apps.【F:tsconfig.node.json†L1-L7】【F:apps/api/tsconfig.json†L1-L8】
+- **Scope:** Publish strict compiler options that reference `tsconfig.base.json` and fan out to runtime-specific extends.【F:tsconfig.base.json†L1-L10】
+
+### Vitest
+
+- **Location:** `configs/testing/vitest.config.ts`
+- **Owners:** Platform Engineering creates the Node preset consumed by API and edge tests, eliminating bespoke configs like `apps/platform/edge-functions/vitest.config.ts` once migrated.【F:apps/edge/vitest.config.ts†L1-L8】
+- **Scope:** Standardise test include globs, environments, and coverage thresholds per runtime.
+
+### Cypress
+
+- **Location:** `configs/testing/cypress.config.ts`
+- **Owners:** Experience Engineering, with QA support, manages browser E2E defaults currently hard-coded in `apps/experience/public-pwa`.
+- **Scope:** Align base URL, spec patterns, and plugin hooks across every Next.js surface.【F:apps/pwa/cypress.config.ts†L1-L9】
+
+## Version Alignment Guardrails
+
+The workspace consumes multiple frontend frameworks today; ADR 0002 mandates locking Next.js, React, TanStack Query, and Tailwind CSS to a shared matrix before executing large-scale moves.【F:docs/ADR/0002-monorepo-decision.md†L60-L77】 Centralising presets inside `configs/` lets Renovate pin peer dependencies and lint rules so upgrades happen atomically across apps.
+
+To enforce compliance, add a CI check that reads each workspace package manifest and ensures the declared versions match the agreed matrix (Next.js 14.2.5, React 18.3.1, TanStack Query ^5.51.9, Tailwind CSS 3.4.4). Divergent versions—such as the experimental Next 16/React 19 combo currently declared by the PWA—must fail the gate until updated.【F:apps/web/package.json†L41-L44】【F:apps/pwa/package.json†L39-L44】
+
+## Deployment Impact
+
+Aligning ownership and versions simplifies Vercel deploys: a single preview build can lint, test, and bundle both experiences using the shared configs, while Supabase migrations consolidate under `supabase/migrations/core` for consistent drift detection.【F:docs/ADR/0002-monorepo-decision.md†L46-L58】 The ops CLI keeps responsibility for migrations and seed routines, now surfaced alongside the API inside `apps/platform/*`, ensuring we can promote changes to production with a single `pnpm` pipeline.
