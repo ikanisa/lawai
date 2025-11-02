@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { CreditCard, ReceiptText } from 'lucide-react';
-import { Button } from '../@/ui/button';
+import { Button } from '@avocat-ai/ui';
 import { AdminPageHeader } from '../components/page-header';
 import { AdminDataTable } from '../components/data-table';
 import { useAdminPanelContext } from '../context';

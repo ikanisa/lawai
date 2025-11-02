@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Badge } from '@/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
-import { Input } from '@/ui/input';
-import { Button } from '@/ui/button';
+import { Badge } from '@avocat-ai/ui';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Input } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
 import type { Locale, Messages } from '@/lib/i18n';
 import { fetchCitations, fetchCorpus, fetchSnapshotDiff } from '@/lib/api';
-import { useRequiredSession } from '@/components/session-provider';
+import { useRequiredSession } from '@avocat-ai/auth';
 
 interface CitationsBrowserProps {
   messages: Messages;

@@ -1,4 +1,4 @@
-import type { SessionValue } from '@/components/session-provider';
+import type { SessionValue } from '@avocat-ai/auth';
 import { getSupabaseSession } from './supabase/session';
 
 export type ClientSession = SessionValue;

@@ -4,6 +4,7 @@ import {
   IRACPayload,
   WorkspaceDesk,
 } from '@avocat-ai/shared';
+import type { TelemetryEventName, TelemetryEventPayload } from '@avocat-ai/types';
 
 import { clientEnv } from '../env.client';
 
@@ -496,9 +497,9 @@ export async function requestHitlReview(
   }
 }
 
-export async function sendTelemetryEvent(
-  eventName: string,
-  payload?: Record<string, unknown>,
+export async function sendTelemetryEvent<TEvent extends TelemetryEventName>(
+  eventName: TEvent,
+  payload?: TelemetryEventPayload<TEvent>,
   orgId?: string,
   userId?: string,
 ): Promise<void> {

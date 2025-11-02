@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
 import type { Messages } from '@/lib/i18n';
 import {
   getGovernancePublications,
@@ -10,7 +10,7 @@ import {
   type GovernancePublicationsResponse,
   type OperationsOverviewResponse,
 } from '@/lib/api';
-import { useRequiredSession } from '@/components/session-provider';
+import { useRequiredSession } from '@avocat-ai/auth';
 import { OperationsOverviewCard } from '@/components/governance/operations-overview-card';
 
 interface TrustCenterViewProps {

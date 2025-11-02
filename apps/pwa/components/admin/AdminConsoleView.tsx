@@ -4,11 +4,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, CreditCard, FileText, Settings2, ShieldCheck, Users } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
+import { Switch } from '@avocat-ai/ui';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { adminConsoleQueryOptions } from "@/lib/queries/admin";
 import { type AdminConsoleData, type PolicyToggle } from "@/lib/data/admin";

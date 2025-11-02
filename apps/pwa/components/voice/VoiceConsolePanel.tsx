@@ -11,8 +11,8 @@ import {
 } from "lucide-react";
 import type { VoiceRunResponse, VoiceToolIntent, VoiceRunRequest } from "@avocat-ai/shared";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { OutboxStatusChip } from "@/components/pwa/OutboxStatusChip";

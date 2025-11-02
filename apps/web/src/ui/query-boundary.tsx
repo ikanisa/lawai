@@ -4,7 +4,7 @@ import { Suspense, type ReactNode } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useQueryErrorResetBoundary } from '@tanstack/react-query';
 
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 
 interface QueryBoundaryProps {
   children: ReactNode;

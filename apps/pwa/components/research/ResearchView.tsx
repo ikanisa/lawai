@@ -19,10 +19,10 @@ import { PlanDrawer } from "@/components/agent/PlanDrawer";
 import type { PlanDrawerToolLogEntry } from "@avocat-ai/shared";
 import { ToolChip } from "@/components/agent/ToolChip";
 import { EvidencePane } from "@/components/evidence/EvidencePane";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from '@avocat-ai/ui';
 import { MessageBubble, type ChatMessage } from "./MessageBubble";
 import {
   type ResearchCitation,

@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 
 import type { GovernanceMetricsResponse } from '@/lib/api';
 import type { Messages } from '@/lib/i18n';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
 
 import {
   decimalFormatter,

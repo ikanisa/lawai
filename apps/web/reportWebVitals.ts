@@ -1,7 +1,7 @@
 import type { NextWebVitalsMetric } from 'next/app';
 import { clientEnv } from './src/env.client';
 import { DEMO_ORG_ID, DEMO_USER_ID } from './src/lib/api';
-import { getCachedSession, waitForSession, type SessionValue } from './src/components/session-provider';
+import { getCachedSession, waitForSession, type SessionValue } from '@avocat-ai/auth';
 
 const API_BASE = clientEnv.NEXT_PUBLIC_API_BASE_URL;
 

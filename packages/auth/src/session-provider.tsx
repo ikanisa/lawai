@@ -27,7 +27,7 @@ interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-interface SessionProviderProps {
+export interface SessionProviderProps {
   children: ReactNode;
   initialSession?: SessionValue | null;
   loader?: () => Promise<SessionValue | null>;
@@ -128,6 +128,17 @@ export function waitForSession(): Promise<SessionValue | null> {
   return pendingPromise;
 }
 
+export function __setSessionStateForTests(session: SessionValue | null, status: SessionStatus): void {
+  notify(session, status);
+}
+
+export function __resetSessionStateForTests(): void {
+  cachedSession = null;
+  cachedStatus = 'loading';
+  waiters = [];
+  pendingPromise = null;
+}
+
 export class UnauthenticatedError extends Error {
   constructor(message = 'User session required') {
     super(message);
@@ -189,9 +200,9 @@ export function SessionProvider({ children, initialSession, loader }: SessionPro
     }
   }, [refresh, session, status]);
 
-useEffect(() => {
-  notify(session, status);
-}, [session, status]);
+  useEffect(() => {
+    notify(session, status);
+  }, [session, status]);
 
   const value = useMemo<SessionContextValue>(
     () => ({

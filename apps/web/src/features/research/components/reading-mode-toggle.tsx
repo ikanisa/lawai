@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 import { cn } from '@/lib/utils';
 
 export type ReadingMode = 'research' | 'brief' | 'evidence';

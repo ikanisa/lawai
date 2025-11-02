@@ -1,7 +1,7 @@
 'use client';
 
 import { ShieldAlert } from 'lucide-react';
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 import { useConfidentialMode } from '@/state/confidential-mode';
 
 interface ConfidentialModeBannerProps {

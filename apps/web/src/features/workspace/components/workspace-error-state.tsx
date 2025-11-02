@@ -1,4 +1,4 @@
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 
 interface WorkspaceErrorStateProps {
   onRetry?: () => void;
