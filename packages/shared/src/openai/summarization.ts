@@ -58,7 +58,7 @@ export function parseLegalDocumentSummaryPayload(payload: string): LegalDocument
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
-  } catch (error) {
+  } catch {
     throw new Error('Synthèse JSON invalide');
   }
 
@@ -68,7 +68,7 @@ export function parseLegalDocumentSummaryPayload(payload: string): LegalDocument
       summary: result.summary.trim(),
       highlights: result.highlights.filter((highlight) => highlight.heading.length > 0 && highlight.detail.length > 0),
     };
-  } catch (error) {
+  } catch {
     throw new Error('Synthèse JSON invalide');
   }
 }

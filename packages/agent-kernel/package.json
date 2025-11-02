@@ -1,0 +1,39 @@
+{
+  "name": "@avocat-ai/agent-kernel",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "evals"],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./evals": {
+      "import": "./dist/evals/index.js",
+      "types": "./dist/evals/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run evals",
+    "evals": "node --loader ts-node/esm src/evals/run.ts"
+  },
+  "dependencies": {
+    "@openai/agents": "0.1.9",
+    "@supabase/supabase-js": "^2.47.2",
+    "@avocat-ai/shared": "file:../shared",
+    "zod": "^3.25.42"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
+    "@types/node": "^20.12.7",
+    "eslint": "^9.38.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^8.46.2"
+  }
+}

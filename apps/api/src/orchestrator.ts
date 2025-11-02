@@ -1,579 +1,245 @@
-import {
-  Agent,
-  OpenAIProvider,
-  run as runAgent,
-  setDefaultModelProvider,
-  setDefaultOpenAIKey,
-  setOpenAIAPI,
-} from '@openai/agents';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  ConnectorStatus,
-  ConnectorType,
+  FinanceAgentKernel,
+  enqueueDirectorCommand as enqueueDirectorCommandKernel,
+  getCommandEnvelope as getCommandEnvelopeKernel,
+  listCommandsForSession as listCommandsForSessionKernel,
+  listOrgConnectors as listOrgConnectorsKernel,
+  listPendingJobs as listPendingJobsKernel,
+  registerConnector as registerConnectorKernel,
+  updateCommandStatus as updateCommandStatusKernel,
+  updateJobStatus as updateJobStatusKernel,
+  updateSessionState as updateSessionStateKernel,
+  type AgentKernelOptions,
+  type KernelLogger,
+  type SafetyFilter,
+  type PolicyGate,
+} from '@avocat-ai/agent-kernel';
+import type {
   DirectorCommandInput,
   FinanceDirectorPlan,
-  FinanceDirectorPlanSchema,
-  FinanceSafetyReview,
-  FinanceSafetyReviewSchema,
   OrchestratorCommandEnvelope,
   OrchestratorCommandRecord,
   OrchestratorCommandResponse,
   OrchestratorJobRecord,
-  OrchestratorSessionRecord,
   OrgConnectorRecord,
   SafetyAssessmentResult,
 } from '@avocat-ai/shared';
+import { logAuditEvent } from './audit.js';
 import { env } from './config.js';
-import { validateDirectorPlanBudget } from './services/orchestration/director-plan-budget.js';
-import { getOpenAI, logOpenAIDebug } from './openai.js';
+import { logOpenAIDebug } from './openai.js';
 
-export interface OrchestratorLogger {
-  error: (data: Record<string, unknown>, message: string) => void;
-  warn?: (data: Record<string, unknown>, message: string) => void;
-  info?: (data: Record<string, unknown>, message: string) => void;
-}
+export type OrchestratorLogger = KernelLogger;
 
 export interface RegisterConnectorInput {
   orgId: string;
-  connectorType: ConnectorType;
+  connectorType: OrgConnectorRecord['connectorType'];
   name: string;
   config?: Record<string, unknown>;
-  status?: ConnectorStatus;
+  status?: OrgConnectorRecord['status'];
   metadata?: Record<string, unknown>;
   createdBy?: string;
 }
 
-export interface UpdateSessionStateInput {
-  sessionId: string;
-  directorState?: FinanceDirectorPlan | null;
-  safetyState?: FinanceSafetyReview | null;
-  metadata?: Record<string, unknown>;
-  currentObjective?: string | null;
-  status?: OrchestratorSessionRecord['status'];
-  lastDirectorRunId?: string | null;
-  lastSafetyRunId?: string | null;
-}
+const kernelLogger: KernelLogger = {
+  error: (data, message) => {
+    console.error(`[agent-kernel] ${message}`, data);
+  },
+  warn: (data, message) => {
+    console.warn(`[agent-kernel] ${message}`, data);
+  },
+  info: (data, message) => {
+    console.info(`[agent-kernel] ${message}`, data);
+  },
+};
 
-const DIRECTOR_INSTRUCTIONS = `Tu es "Le Directeur", l'orchestrateur MCP des agents financiers (taxe, audit, AP, CFO, risque, conformité).
+let activeLogger: KernelLogger = kernelLogger;
 
-Ta mission:
-1. Analyser l'objectif métier et le contexte conversationnel (session ChatKit + Supabase).
-2. Planifier des étapes explicites avec agents délégués, budgets outils, critères de succès et garde-fous HITL.
-3. S'appuyer sur l'état persistant (Supabase) pour mémoriser décisions, blockers et métadonnées.
-4. Déléguer aux agents de domaine via des commandes structurées, en respectant les politiques résidence/confidentialité.
-5. Synchroniser les connecteurs (ERP, fiscalité, compta) avant de déclencher une action qui en dépend.
-6. Toujours informer la Safety Agent si la tâche implique un risque élevé, une divulgation réglementaire ou un écart de politique.
-
-Contraintes:
-- Pas de chaîne de pensée: retourne uniquement plans structurés, commandes ou résumés homologables.
-- Si l'objectif te semble ambigu, créer une commande "clarify" pour l'utilisateur humain.
-- Pour chaque commande, indique le worker cible (domain|director|safety), priorité, détection HITL, dépendances.
-- Ne jamais ignorer les signaux de politique Supabase (ban analytique juge, confidentialité, résidence).
-`;
-
-const SAFETY_INSTRUCTIONS = `Tu es "Safety", garante de la conformité et des politiques de sécurité:
-- Vérifie chaque commande/directive reçue du Directeur.
-- Signale les anomalies (confidentialité, résidence, guardrails, obligations réglementaires) et propose des mitigations.
-- Peut basculer une commande en HITL ou refuser l'exécution.
-- Maintient un journal Supabase des contrôles effectués.
-`;
-
-let providerConfigured = false;
-let directorAgentInstance: Agent | null = null;
-let safetyAgentInstance: Agent | null = null;
-
-async function drainAgentStream(response: unknown, logger?: OrchestratorLogger): Promise<void> {
-  if (!response || typeof response !== 'object') {
-    return;
+function bindLogger(logger?: OrchestratorLogger): () => void {
+  if (!logger) {
+    activeLogger = kernelLogger;
+    return () => {};
   }
-
-  const candidate =
-    (response as Record<string, unknown>).stream ??
-    (response as Record<string, unknown>).eventStream ??
-    (response as Record<string, unknown>).events ??
-    null;
-
-  if (!candidate || typeof candidate !== 'object' || typeof (candidate as any)[Symbol.asyncIterator] !== 'function') {
-    return;
-  }
-
-  const iterable = candidate as AsyncIterable<unknown>;
-
-  try {
-    for await (const _event of iterable) {
-      // Consume the iterator to avoid leaking open handles from streaming responses
-    }
-  } catch (error) {
-    logger?.warn?.(
-      { err: error instanceof Error ? error.message : error },
-      'director_plan_stream_drain_failed',
-    );
-  }
-}
-
-function ensureOpenAIProvider(): void {
-  if (providerConfigured) {
-    return;
-  }
-  setDefaultOpenAIKey(env.OPENAI_API_KEY);
-  setOpenAIAPI('responses');
-  setDefaultModelProvider(
-    new OpenAIProvider({
-      apiKey: env.OPENAI_API_KEY,
-      useResponses: true,
-    }),
-  );
-  providerConfigured = true;
-}
-
-function createDirectorAgent(): Agent {
-  ensureOpenAIProvider();
-  return new Agent({
-    name: 'finance-director',
-    instructions: DIRECTOR_INSTRUCTIONS,
-    model: env.AGENT_MODEL,
-    outputType: FinanceDirectorPlanSchema,
-  });
-}
-
-function createSafetyAgent(): Agent {
-  ensureOpenAIProvider();
-  return new Agent({
-    name: 'finance-safety',
-    instructions: SAFETY_INSTRUCTIONS,
-    model: env.AGENT_MODEL,
-    outputType: FinanceSafetyReviewSchema,
-  });
-}
-
-export function getDirectorAgent(): Agent {
-  if (!directorAgentInstance) {
-    directorAgentInstance = createDirectorAgent();
-  }
-  return directorAgentInstance;
-}
-
-export function getSafetyAgent(): Agent {
-  if (!safetyAgentInstance) {
-    safetyAgentInstance = createSafetyAgent();
-  }
-  return safetyAgentInstance;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return {};
-}
-
-function optionalString(value: unknown): string | null {
-  if (typeof value === 'string' && value.length > 0) {
-    return value;
-  }
-  return null;
-}
-
-function requireString(value: unknown, fallback = ''): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (value === null || value === undefined) {
-    return fallback;
-  }
-  return String(value);
-}
-
-function requireNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return fallback;
-}
-
-function parseDirectorState(value: unknown): FinanceDirectorPlan | null {
-  if (!value || (typeof value === 'object' && Object.keys(value as Record<string, unknown>).length === 0)) {
-    return null;
-  }
-  const parsed = FinanceDirectorPlanSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
-function parseSafetyState(value: unknown): FinanceSafetyReview | null {
-  if (!value || (typeof value === 'object' && Object.keys(value as Record<string, unknown>).length === 0)) {
-    return null;
-  }
-  const parsed = FinanceSafetyReviewSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
-function mapSession(row: Record<string, unknown>): OrchestratorSessionRecord {
-  const directorState = parseDirectorState(row.director_state);
-  const safetyState = parseSafetyState(row.safety_state);
-  return {
-    id: requireString(row.id),
-    orgId: requireString(row.org_id),
-    chatSessionId: optionalString(row.chat_session_id),
-    status: (row.status as OrchestratorSessionRecord['status']) ?? 'active',
-    directorState,
-    safetyState,
-    metadata: asRecord(row.metadata),
-    currentObjective: optionalString(row.current_objective),
-    lastDirectorRunId: optionalString(row.last_director_run_id),
-    lastSafetyRunId: optionalString(row.last_safety_run_id),
-    createdAt: requireString(row.created_at),
-    updatedAt: requireString(row.updated_at),
-    closedAt: optionalString(row.closed_at),
+  const previous = {
+    error: kernelLogger.error,
+    warn: kernelLogger.warn,
+    info: kernelLogger.info,
+    active: activeLogger,
+  };
+  kernelLogger.error = logger.error;
+  kernelLogger.warn = logger.warn;
+  kernelLogger.info = logger.info;
+  activeLogger = logger;
+  return () => {
+    kernelLogger.error = previous.error;
+    kernelLogger.warn = previous.warn;
+    kernelLogger.info = previous.info;
+    activeLogger = previous.active;
   };
 }
 
-function mapCommand(row: Record<string, unknown>): OrchestratorCommandRecord {
-  return {
-    id: requireString(row.id),
-    orgId: requireString(row.org_id),
-    sessionId: requireString(row.session_id),
-    commandType: requireString(row.command_type),
-    payload: asRecord(row.payload),
-    status: (row.status as OrchestratorCommandRecord['status']) ?? 'queued',
-    priority: requireNumber(row.priority, 100),
-    scheduledFor: requireString(row.scheduled_for),
-    startedAt: optionalString(row.started_at),
-    completedAt: optionalString(row.completed_at),
-    failedAt: optionalString(row.failed_at),
-    result: row.result && typeof row.result === 'object' ? (row.result as Record<string, unknown>) : null,
-    lastError: optionalString(row.last_error),
-    metadata: asRecord(row.metadata ?? {}),
-    createdAt: requireString(row.created_at),
-    updatedAt: requireString(row.updated_at),
-  };
-}
-
-function mapJob(row: Record<string, unknown>): OrchestratorJobRecord {
-  return {
-    id: requireString(row.id),
-    orgId: requireString(row.org_id),
-    commandId: requireString(row.command_id),
-    worker: (row.worker as OrchestratorJobRecord['worker']) ?? 'director',
-    domainAgent: optionalString(row.domain_agent),
-    status: (row.status as OrchestratorJobRecord['status']) ?? 'pending',
-    attempts: requireNumber(row.attempts, 0),
-    scheduledAt: requireString(row.scheduled_at),
-    startedAt: optionalString(row.started_at),
-    completedAt: optionalString(row.completed_at),
-    failedAt: optionalString(row.failed_at),
-    lastError: optionalString(row.last_error),
-    metadata: asRecord(row.metadata ?? {}),
-    createdAt: requireString(row.created_at),
-    updatedAt: requireString(row.updated_at),
-  };
-}
-
-function mapConnector(row: Record<string, unknown>): OrgConnectorRecord {
-  return {
-    id: requireString(row.id),
-    orgId: requireString(row.org_id),
-    connectorType: (row.connector_type as ConnectorType) ?? 'erp',
-    name: requireString(row.name),
-    status: (row.status as ConnectorStatus) ?? 'inactive',
-    config: asRecord(row.config),
-    metadata: asRecord(row.metadata),
-    lastSyncedAt: optionalString(row.last_synced_at),
-    lastError: optionalString(row.last_error),
-    createdAt: requireString(row.created_at),
-    updatedAt: requireString(row.updated_at),
-  };
-}
-
-async function fetchCommandEnvelope(
-  supabase: SupabaseClient,
-  commandId: string,
-): Promise<OrchestratorCommandEnvelope> {
-  const commandQuery = await supabase
-    .from('orchestrator_commands')
-    .select(
-      'id, org_id, session_id, command_type, payload, status, priority, scheduled_for, started_at, completed_at, failed_at, result, last_error, metadata, created_at, updated_at',
-    )
-    .eq('id', commandId)
-    .maybeSingle();
-
-  if (commandQuery.error || !commandQuery.data) {
-    throw new Error(commandQuery.error?.message ?? 'command_not_found');
+const highRiskPreFilter: SafetyFilter = ({ envelope }) => {
+  const risk = (envelope.command.metadata ?? {}).riskLevel ?? (envelope.command.payload ?? {}).riskLevel;
+  if (risk === 'critical') {
+    return {
+      action: 'needs_hitl',
+      reasons: ['Critical risk command requires HITL review'],
+    };
   }
+  return undefined;
+};
 
-  const command = mapCommand(commandQuery.data as Record<string, unknown>);
-
-  const sessionQuery = await supabase
-    .from('orchestrator_sessions')
-    .select(
-      'id, org_id, chat_session_id, status, director_state, safety_state, metadata, current_objective, last_director_run_id, last_safety_run_id, created_at, updated_at, closed_at',
-    )
-    .eq('id', command.sessionId)
-    .maybeSingle();
-
-  if (sessionQuery.error || !sessionQuery.data) {
-    throw new Error(sessionQuery.error?.message ?? 'orchestrator_session_not_found');
+const embargoPreFilter: SafetyFilter = ({ envelope }) => {
+  const jurisdiction = (envelope.command.metadata ?? {}).jurisdiction;
+  if (typeof jurisdiction === 'string' && /embargo/i.test(jurisdiction)) {
+    return {
+      action: 'block',
+      reasons: ['Command references embargoed jurisdiction'],
+    };
   }
+  return undefined;
+};
 
-  const session = mapSession(sessionQuery.data as Record<string, unknown>);
-
-  const jobQuery = await supabase
-    .from('orchestrator_jobs')
-    .select('id, org_id, command_id, worker, domain_agent, status, attempts, scheduled_at, started_at, completed_at, failed_at, last_error, metadata, created_at, updated_at')
-    .eq('command_id', commandId)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (jobQuery.error || !jobQuery.data) {
-    throw new Error(jobQuery.error?.message ?? 'orchestrator_job_not_found');
+const hitlOverridePostFilter: SafetyFilter = ({ envelope, result }) => {
+  if (result?.status === 'approved' && (envelope.command.metadata ?? {}).forceHitl === true) {
+    return {
+      action: 'needs_hitl',
+      reasons: ['Command flagged for HITL override'],
+    };
   }
+  return undefined;
+};
 
-  const job = mapJob(jobQuery.data as Record<string, unknown>);
-
-  return { command, session, job };
-}
-
-export async function getCommandEnvelope(
-  supabase: SupabaseClient,
-  commandId: string,
-): Promise<OrchestratorCommandEnvelope> {
-  return fetchCommandEnvelope(supabase, commandId);
-}
-
-export async function enqueueDirectorCommand(
-  supabase: SupabaseClient,
-  input: DirectorCommandInput,
-  logger?: OrchestratorLogger,
-): Promise<OrchestratorCommandResponse> {
-  const rpcResult = await supabase.rpc('enqueue_orchestrator_command', {
-    p_org_id: input.orgId,
-    p_session_id: input.sessionId,
-    p_command_type: input.commandType,
-    p_payload: input.payload ?? {},
-    p_created_by: input.issuedBy,
-    p_priority: input.priority ?? 100,
-    p_scheduled_for: input.scheduledFor ?? null,
-    p_worker: input.worker ?? 'director',
-  });
-
-  if (rpcResult.error || !rpcResult.data) {
-    logger?.error?.({ err: rpcResult.error, input }, 'enqueue_orchestrator_command_failed');
-    throw new Error(rpcResult.error?.message ?? 'enqueue_orchestrator_command_failed');
+const suspendedSessionPolicyGate: PolicyGate = ({ session }) => {
+  if (session.status === 'suspended') {
+    return {
+      action: 'block',
+      reason: 'session_suspended',
+    };
   }
+  return undefined;
+};
 
-  const envelope = await fetchCommandEnvelope(supabase, rpcResult.data as string);
+const policyVersionGate: PolicyGate = ({ session }) => {
+  const sessionPolicy = session.metadata?.policyVersion;
+  const currentPolicy = env.POLICY_VERSION;
+  if (sessionPolicy && currentPolicy && sessionPolicy !== currentPolicy) {
+    return {
+      action: 'block',
+      reason: 'policy_version_mismatch',
+      metadata: { sessionPolicy, currentPolicy },
+    };
+  }
+  return undefined;
+};
 
-  return {
-    commandId: envelope.command.id,
-    jobId: envelope.job.id,
-    sessionId: envelope.session.id,
-    status: envelope.command.status,
-    scheduledFor: envelope.command.scheduledFor,
-  };
-}
+const auditLogger: AgentKernelOptions['auditLogger'] = {
+  async record(entry) {
+    await logAuditEvent({
+      orgId: entry.orgId,
+      actorId: null,
+      kind: `orchestrator.${entry.event}`,
+      object: entry.sessionId,
+      metadata: {
+        actor: entry.actor,
+        outcome: entry.outcome,
+        detail: entry.detail,
+        ...entry.metadata,
+      },
+    });
+  },
+};
+
+const kernel = new FinanceAgentKernel({
+  model: env.AGENT_MODEL,
+  openAIKey: env.OPENAI_API_KEY,
+  llmTimeoutMs: env.AGENT_LLM_TIMEOUT_MS,
+  logger: kernelLogger,
+  auditLogger,
+  preSafetyFilters: [highRiskPreFilter, embargoPreFilter],
+  postSafetyFilters: [hitlOverridePostFilter],
+  policyGates: [suspendedSessionPolicyGate, policyVersionGate],
+  onLLMError: (operation, error) => logOpenAIDebug(operation, error, activeLogger),
+});
 
 export async function runDirectorPlanning(
-  supabase: SupabaseClient,
-  session: OrchestratorSessionRecord,
+  _supabase: SupabaseClient,
+  session: OrchestratorCommandEnvelope['session'],
   objective: string,
   context: Record<string, unknown>,
   logger?: OrchestratorLogger,
 ): Promise<FinanceDirectorPlan> {
-  const agent = getDirectorAgent();
-  const openai = getOpenAI();
+  const restore = bindLogger(logger);
   try {
-    const input = `${DIRECTOR_INSTRUCTIONS}\n\n${JSON.stringify({ session, objective, context })}`;
-    const response = await runAgent(agent, input, {
-      model: env.AGENT_MODEL,
-      metadata: {
-        orgId: session.orgId,
-        sessionId: session.id,
-        objective,
-        kind: 'director_plan',
-      },
-    } as any);
-
-    let plan = (response as { finalOutput?: FinanceDirectorPlan }).finalOutput;
-    await drainAgentStream(response, logger);
-    if (!plan) {
-      plan = (response as { finalOutput?: FinanceDirectorPlan }).finalOutput;
-    }
-    if (!plan) {
-      throw new Error('director_plan_missing_output');
-    }
-    validateDirectorPlanBudget(plan, logger);
-    return plan;
-  } catch (error) {
-    await logOpenAIDebug('director_plan', error, logger);
-    logger?.error?.(
-      {
-        err: error instanceof Error ? error.message : error,
-        sessionId: session.id,
-        objective,
-      },
-      'director_plan_failed',
-    );
-    throw error instanceof Error ? error : new Error('director_plan_failed');
+    return await kernel.runDirectorPlanning({ session, objective, context });
   } finally {
-    void openai;
+    restore();
   }
 }
 
 export async function runSafetyAssessment(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   envelope: OrchestratorCommandEnvelope,
   logger?: OrchestratorLogger,
 ): Promise<SafetyAssessmentResult> {
-  const agent = getSafetyAgent();
-  const openai = getOpenAI();
+  const restore = bindLogger(logger);
   try {
-    const input = `${SAFETY_INSTRUCTIONS}\n\n${JSON.stringify({ session: envelope.session, command: envelope.command, job: envelope.job })}`;
-    const response = await runAgent(agent, input, {
-      model: env.AGENT_MODEL,
-      metadata: {
-        orgId: envelope.session.orgId,
-        sessionId: envelope.session.id,
-        commandId: envelope.command.id,
-        kind: 'safety_review',
-      },
-    } as any);
-
-    const review = (response as { finalOutput?: FinanceSafetyReview }).finalOutput;
-    if (!review) {
-      return {
-        status: 'needs_hitl',
-        reasons: ['Safety review missing output, escalate to human'],
-      };
-    }
-
-    const decision = review.decision;
-    const refusalReasons = review.refusal ? [review.refusal.reason] : [];
-    const reasons = [...decision.reasons, ...refusalReasons];
-    const mitigations = decision.mitigations;
-
-    if (review.refusal || decision.status === 'rejected') {
-      return { status: 'rejected', reasons, mitigations };
-    }
-    if (decision.status === 'needs_hitl' || decision.hitlRequired) {
-      return { status: 'needs_hitl', reasons, mitigations };
-    }
-    return {
-      status: 'approved',
-      reasons,
-      mitigations,
-    };
-  } catch (error) {
-    await logOpenAIDebug('safety_review', error, logger);
-    logger?.error?.(
-      {
-        err: error instanceof Error ? error.message : error,
-        commandId: envelope.command.id,
-      },
-      'safety_review_failed',
-    );
-    return {
-      status: 'needs_hitl',
-      reasons: ['Safety agent failure, escalate to human'],
-    };
+    const { result } = await kernel.runSafetyAssessment({ envelope });
+    return result;
   } finally {
-    void openai;
+    restore();
   }
 }
 
-export async function listPendingJobs(
+export function getCommandEnvelope(
+  supabase: SupabaseClient,
+  commandId: string,
+): Promise<OrchestratorCommandEnvelope> {
+  return getCommandEnvelopeKernel(supabase, commandId);
+}
+
+export function enqueueDirectorCommand(
+  supabase: SupabaseClient,
+  input: DirectorCommandInput,
+  logger?: OrchestratorLogger,
+): Promise<OrchestratorCommandResponse> {
+  return enqueueDirectorCommandKernel(supabase, input, logger);
+}
+
+export function listPendingJobs(
   supabase: SupabaseClient,
   orgId: string,
   worker: OrchestratorJobRecord['worker'],
   limit = 10,
 ): Promise<OrchestratorCommandEnvelope[]> {
-  const jobQuery = await supabase
-    .from('orchestrator_jobs')
-    .select('id, org_id, command_id, worker, domain_agent, status, attempts, scheduled_at, started_at, completed_at, failed_at, last_error, metadata, created_at, updated_at')
-    .eq('org_id', orgId)
-    .eq('worker', worker)
-    .eq('status', 'pending')
-    .order('scheduled_at', { ascending: true })
-    .limit(limit);
-
-  if (jobQuery.error) {
-    throw new Error(jobQuery.error.message);
-  }
-
-  const envelopes: OrchestratorCommandEnvelope[] = [];
-  for (const row of jobQuery.data ?? []) {
-    const job = mapJob(row as Record<string, unknown>);
-    const envelope = await fetchCommandEnvelope(supabase, job.commandId);
-    envelopes.push(envelope);
-  }
-  return envelopes;
+  return listPendingJobsKernel(supabase, orgId, worker, limit);
 }
 
-export async function listCommandsForSession(
+export function listCommandsForSession(
   supabase: SupabaseClient,
   sessionId: string,
   limit = 50,
 ): Promise<OrchestratorCommandRecord[]> {
-  const query = await supabase
-    .from('orchestrator_commands')
-    .select(
-      'id, org_id, session_id, command_type, payload, status, priority, scheduled_for, started_at, completed_at, failed_at, result, last_error, metadata, created_at, updated_at',
-    )
-    .eq('session_id', sessionId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
-
-  if (query.error) {
-    throw new Error(query.error.message);
-  }
-
-  return (query.data ?? []).map((row) => mapCommand(row as Record<string, unknown>));
+  return listCommandsForSessionKernel(supabase, sessionId, limit);
 }
 
-export async function listOrgConnectors(
+export function listOrgConnectors(
   supabase: SupabaseClient,
   orgId: string,
 ): Promise<OrgConnectorRecord[]> {
-  const query = await supabase
-    .from('org_connectors')
-    .select('id, org_id, connector_type, name, status, config, metadata, last_synced_at, last_error, created_at, updated_at')
-    .eq('org_id', orgId)
-    .order('name', { ascending: true });
-
-  if (query.error) {
-    throw new Error(query.error.message);
-  }
-
-  return (query.data ?? []).map((row) => mapConnector(row as Record<string, unknown>));
+  return listOrgConnectorsKernel(supabase, orgId);
 }
 
-export async function updateCommandStatus(
+export function updateCommandStatus(
   supabase: SupabaseClient,
   commandId: string,
   status: OrchestratorCommandRecord['status'],
   patch: Record<string, unknown>,
 ): Promise<void> {
-  const updatePayload: Record<string, unknown> = {
-    status,
-    ...patch,
-  };
-
-  const { error } = await supabase
-    .from('orchestrator_commands')
-    .update(updatePayload)
-    .eq('id', commandId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  return updateCommandStatusKernel(supabase, commandId, status, patch);
 }
 
-export async function updateJobStatus(
+export function updateJobStatus(
   supabase: SupabaseClient,
   jobId: string,
   status: OrchestratorJobRecord['status'],
@@ -586,87 +252,19 @@ export async function updateJobStatus(
     metadata: Record<string, unknown>;
   }>,
 ): Promise<void> {
-  const payload: Record<string, unknown> = {
-    status,
-    ...patch,
-  };
-
-  const { error } = await supabase
-    .from('orchestrator_jobs')
-    .update(payload)
-    .eq('id', jobId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  return updateJobStatusKernel(supabase, jobId, status, patch);
 }
 
-export async function registerConnector(
+export function registerConnector(
   supabase: SupabaseClient,
   input: RegisterConnectorInput,
 ): Promise<string> {
-  const rpcResult = await supabase.rpc('register_org_connector', {
-    p_org_id: input.orgId,
-    p_connector_type: input.connectorType,
-    p_name: input.name,
-    p_config: input.config ?? {},
-    p_status: input.status ?? 'pending',
-    p_metadata: input.metadata ?? {},
-    p_created_by: input.createdBy ?? null,
-  });
-
-  if (rpcResult.error || !rpcResult.data) {
-    throw new Error(rpcResult.error?.message ?? 'register_connector_failed');
-  }
-
-  return rpcResult.data as string;
+  return registerConnectorKernel(supabase, input);
 }
 
-export async function updateSessionState(
+export function updateSessionState(
   supabase: SupabaseClient,
-  input: UpdateSessionStateInput,
+  input: Parameters<typeof updateSessionStateKernel>[1],
 ): Promise<void> {
-  const patch: Record<string, unknown> = {};
-  if (input.directorState !== undefined) {
-    if (input.directorState === null) {
-      patch.director_state = {};
-    } else {
-      patch.director_state = FinanceDirectorPlanSchema.parse(input.directorState);
-    }
-  }
-  if (input.safetyState !== undefined) {
-    if (input.safetyState === null) {
-      patch.safety_state = {};
-    } else {
-      patch.safety_state = FinanceSafetyReviewSchema.parse(input.safetyState);
-    }
-  }
-  if (input.metadata) {
-    patch.metadata = input.metadata;
-  }
-  if (input.currentObjective !== undefined) {
-    patch.current_objective = input.currentObjective;
-  }
-  if (input.status) {
-    patch.status = input.status;
-  }
-  if (input.lastDirectorRunId !== undefined) {
-    patch.last_director_run_id = input.lastDirectorRunId;
-  }
-  if (input.lastSafetyRunId !== undefined) {
-    patch.last_safety_run_id = input.lastSafetyRunId;
-  }
-
-  if (Object.keys(patch).length === 0) {
-    return;
-  }
-
-  const { error } = await supabase
-    .from('orchestrator_sessions')
-    .update(patch)
-    .eq('id', input.sessionId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  return updateSessionStateKernel(supabase, input);
 }
