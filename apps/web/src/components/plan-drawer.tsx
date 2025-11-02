@@ -13,7 +13,7 @@ import type {
   PlanDrawerToolLogEntry
 } from '@avocat-ai/shared';
 
-import { Sheet } from '@/ui/sheet';
+import { Sheet } from '@avocat-ai/ui';
 
 interface PlanDrawerProps {
   open: boolean;

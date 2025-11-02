@@ -3,14 +3,14 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
-import { Input } from '@/ui/input';
-import { Textarea } from '@/ui/textarea';
-import { Badge } from '@/ui/badge';
+import { Button } from '@avocat-ai/ui';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Input } from '@avocat-ai/ui';
+import { Textarea } from '@avocat-ai/ui';
+import { Badge } from '@avocat-ai/ui';
 import type { Locale, Messages } from '@/lib/i18n';
 import { fetchDraftingTemplates } from '@/lib/api';
-import { useRequiredSession } from '@/components/session-provider';
+import { useRequiredSession } from '@avocat-ai/auth';
 import { RedlineDiff, type RedlineEntry } from './redline-diff';
 
 interface DraftingViewProps {

@@ -52,7 +52,7 @@ We provide security updates for the following versions:
 - **Encryption in transit**: TLS 1.2+ for all external communications
 - **Secrets management**: Environment variables for secrets, placeholder validation in production
 - **PII handling**: Audit logging for sensitive operations, residency zone enforcement
-- **Data retention**: Configurable retention policies per organization
+- **Data retention**: Configurable retention policies per organization with automated enforcement via `apps/ops/src/gdpr-retention.ts` scheduled in `apps/ops/src/lib/scheduler.ts`
 - **Audit trail**: Comprehensive audit event logging in `audit_events` table
 
 ### API Security
@@ -61,7 +61,8 @@ We provide security updates for the following versions:
 - **Input validation**: Zod schema validation for all API inputs
 - **CORS policies**: Restricted CORS configuration (see `apps/api/src/app.ts`)
 - **Request authentication**: X-Org-Id and X-User-Id headers with authorization guards
-- **Content Security Policy**: Configured for Next.js applications
+- **Content Security Policy & HSTS**: Uniform headers enforced in the API (`apps/api/src/security/policies.ts`) and front-end deployments (`apps/web/next.config.mjs`, `apps/pwa/next.config.mjs`)
+- **CSRF mitigation**: Double-submit cookie and token enforcement for browser-originated requests with a dedicated token endpoint (`apps/api/src/routes/security/index.ts`, `apps/web/src/lib/security.ts`, `apps/pwa/lib/security.ts`)
 
 ### Database Security
 
@@ -74,8 +75,8 @@ We provide security updates for the following versions:
 ### Infrastructure Security
 
 - **Container hardening**: (In progress) Non-root user, minimal base images
-- **Dependency scanning**: (To be configured) Dependabot and CodeQL
-- **Secret scanning**: (To be configured) GitHub secret scanning
+- **Dependency scanning**: Automated pnpm/npm audit workflow (`.github/workflows/dependency-audit.yml`)
+- **Secret scanning**: TruffleHog plus Gitleaks coverage in CI (`.github/workflows/secret-scan.yml`)
 - **SBOM generation**: Software Bill of Materials for transparency
 - **Network security**: Edge functions with service secret authentication
 
@@ -116,12 +117,18 @@ See `docs/governance/` for detailed compliance documentation.
 
 The following security tools are integrated or recommended:
 
-- **CodeQL**: Static analysis for code vulnerabilities (to be configured)
-- **Dependabot**: Automated dependency vulnerability scanning (to be configured)
-- **GitHub Secret Scanning**: Prevent secret leaks in commits (to be configured)
+- **CodeQL**: Static analysis for code vulnerabilities (`.github/workflows/codeql-analysis.yml`)
+- **Dependency audits**: Combined pnpm/npm audit pipeline (`.github/workflows/dependency-audit.yml`)
+- **Secret scanning**: TruffleHog plus Gitleaks coverage in CI (`.github/workflows/secret-scan.yml`)
 - **Supabase RLS**: Row-level security for multi-tenant isolation (configured)
 - **Red Team Testing**: Automated adversarial testing via `pnpm ops:red-team`
 - **Evaluation Framework**: Continuous testing of safety guardrails
+
+### Threat Modeling & Residual Risks
+
+- **Browser CSP allowances**: The enforced CSP still permits `'unsafe-inline'` (scripts/styles) and `'unsafe-eval'` during development to support Next.js hydration and tooling (`apps/web/next.config.mjs`, `apps/pwa/next.config.mjs`). Mitigation: continue migrating components toward nonce-based script injection and monitor for inline script regressions.
+- **CSRF token exposure to XSS**: The double-submit approach intentionally leaves the CSRF token readable by client-side code to satisfy SPA fetch requirements (`apps/api/src/security/policies.ts`). Residual risk is limited to scenarios where an attacker already achieved XSS; ongoing hardening should focus on reducing XSS sources.
+- **Retention policy coverage**: Automated deletions currently target chat transcripts, agent runs, audit, and consent events (`apps/ops/src/gdpr-retention.ts`). Additional datasets (e.g., external storage artefacts) remain in scope for future phases and must be catalogued in follow-up threat reviews.
 
 ## Contact
 

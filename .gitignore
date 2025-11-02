@@ -6,6 +6,7 @@ node_modules
 .env.development
 .supabase
 coverage
+.lighthouse
 .idea
 .vscode
 *.log

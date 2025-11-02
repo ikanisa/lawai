@@ -12,9 +12,9 @@ import {
   TableProperties
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Badge } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
+import { Input } from '@avocat-ai/ui';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";

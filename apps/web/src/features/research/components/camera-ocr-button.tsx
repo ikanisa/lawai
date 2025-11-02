@@ -2,7 +2,7 @@
 
 import { ChangeEvent, useRef, useState } from 'react';
 import { Scan, Loader2 } from 'lucide-react';
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 import { toast } from 'sonner';
 
 interface CameraOcrButtonProps {

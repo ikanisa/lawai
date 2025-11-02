@@ -14,6 +14,7 @@
     "export:agent": "tsx scripts/export-agent-definition.ts"
   },
   "dependencies": {
+    "@avocat-ai/agent-kernel": "file:../../packages/agent-kernel",
     "@avocat-ai/observability": "file:../../packages/observability",
     "@avocat-ai/shared": "file:../../packages/shared",
     "@avocat-ai/supabase": "file:../../packages/supabase",

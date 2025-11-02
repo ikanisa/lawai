@@ -20,13 +20,13 @@ import {
 import { ChatkitClient, type ChatkitConnection, type ChatkitTransport } from '@/lib/chatkit-client';
 import { cn } from '@/lib/utils';
 import type { Locale, Messages } from '@/lib/i18n';
-import { Badge } from '@/ui/badge';
-import { Button } from '@/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/card';
-import { Separator } from '@/ui/separator';
+import { Badge } from '@avocat-ai/ui';
+import { Button } from '@avocat-ai/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Separator } from '@avocat-ai/ui';
 
 import { chatkitKeys, chatkitQueries } from '../api/queries';
-import { useRequiredSession } from '@/components/session-provider';
+import { useRequiredSession } from '@avocat-ai/auth';
 import { useSessionTelemetry } from '@/hooks/use-session-telemetry';
 
 interface ChatkitSessionPanelProps {

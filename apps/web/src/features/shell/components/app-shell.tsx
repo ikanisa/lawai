@@ -23,7 +23,7 @@ import {
   Inbox,
   WifiOff,
 } from 'lucide-react';
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 import { cn } from '@/lib/utils';
 import type { Messages, Locale } from '@/lib/i18n';
 import { CommandPalette, type CommandPaletteAction } from './command-palette';

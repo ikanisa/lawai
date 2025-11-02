@@ -10,7 +10,7 @@ import {
   type ComplianceAcknowledgements,
 } from '../lib/api';
 import type { Messages } from '../lib/i18n';
-import { useSession } from './session-provider';
+import { useSession } from '@avocat-ai/auth';
 
 interface ComplianceBannerProps {
   messages: Messages['app']['compliance'];

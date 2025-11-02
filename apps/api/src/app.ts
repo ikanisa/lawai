@@ -25,6 +25,8 @@ import { env, ensureEnvironment, rateLimitConfig } from './config.js';
 import { supabase as serviceClient } from './supabase-client.js';
 import type { CreateAppOptions } from './types/app.js';
 import { registerWorkspaceRoutes } from './domain/workspace/routes.js';
+import { registerSecurityPolicies } from './security/policies.js';
+import { registerSecurityRoutes } from './routes/security/index.js';
 
 export async function createApp(options: CreateAppOptions = {}): Promise<AppAssembly> {
   const environment = ensureEnvironment();
@@ -96,6 +98,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<AppAsse
     }),
   });
   await app.register(observabilityPlugin);
+  await registerSecurityPolicies(app);
   const container = createAppContainer({
     supabase,
     ...(overrides ?? {}),
@@ -151,6 +154,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<AppAsse
   }
 
   await app.register(async (instance: FastifyInstance) => {
+    await registerSecurityRoutes(instance);
     await registerAgentsRoutes(instance, context);
     await registerResearchRoutes(instance, context);
     await registerCitationsRoutes(instance, context);

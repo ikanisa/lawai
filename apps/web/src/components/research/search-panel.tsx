@@ -1,8 +1,8 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { Input } from '@/ui/input';
-import { Switch } from '@/ui/switch';
+import { Input } from '@avocat-ai/ui';
+import { Switch } from '@avocat-ai/ui';
 import { cn } from '@/lib/utils';
 import { useResearchSearch, type ResearchSearchResult } from './use-research-search';
 

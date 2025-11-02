@@ -14,6 +14,16 @@ const clientCache = new Map<string, OpenAI>();
 
 type HeaderSource = OpenAIClientConfig['defaultHeaders'];
 
+type DebuggingRequestsApi = {
+  retrieve(requestId: string): Promise<unknown>;
+};
+
+type OpenAIMaybeWithDebugging = OpenAI & {
+  debugging?: {
+    requests?: DebuggingRequestsApi;
+  };
+};
+
 function normalizeHeaders(source?: HeaderSource): Record<string, string> {
   if (!source) {
     return {};
@@ -28,10 +38,26 @@ function normalizeHeaders(source?: HeaderSource): Record<string, string> {
   }
 
   if (Array.isArray(source)) {
-    return source.reduce<Record<string, string>>((acc, [key, value]) => {
-      acc[key] = Array.isArray(value) ? value.join(',') : value;
-      return acc;
-    }, {});
+    const entries: Record<string, string> = {};
+    for (const entry of source) {
+      if (!Array.isArray(entry) || entry.length < 2) {
+        continue;
+      }
+
+      const rawKeyCandidate: unknown = entry[0];
+      if (typeof rawKeyCandidate !== 'string') {
+        continue;
+      }
+
+      const rawValueCandidate: unknown = entry[1];
+      if (Array.isArray(rawValueCandidate)) {
+        const values = rawValueCandidate.filter((item): item is string => typeof item === 'string');
+        entries[rawKeyCandidate] = values.join(',');
+      } else if (typeof rawValueCandidate === 'string') {
+        entries[rawKeyCandidate] = rawValueCandidate;
+      }
+    }
+    return entries;
   }
 
   return Object.entries(source).reduce<Record<string, string>>((acc, [key, value]) => {
@@ -57,7 +83,9 @@ function buildCacheKey(config: OpenAIClientConfig): string {
   } = config;
 
   const normalizedHeaders = normalizeHeaders(defaultHeaders);
-  const headerEntries = Object.entries(normalizedHeaders).sort();
+  const headerEntries = Object.keys(normalizedHeaders)
+    .sort()
+    .map((key) => [key, normalizedHeaders[key]] as const);
   const headerFingerprint = headerEntries.map(([key, value]) => `${key}:${value}`).join('|');
 
   return [
@@ -164,7 +192,7 @@ export async function fetchOpenAIDebugDetails(
   }
 
   try {
-    const debuggingApi = (client as any).debugging?.requests;
+    const debuggingApi = getDebuggingRequests(client);
     if (!debuggingApi) {
       return { requestId, debugError: 'debugging_api_unavailable' };
     }
@@ -173,4 +201,12 @@ export async function fetchOpenAIDebugDetails(
   } catch (debugError) {
     return { requestId, debugError };
   }
+}
+
+function getDebuggingRequests(client: OpenAI): DebuggingRequestsApi | null {
+  const candidate = (client as OpenAIMaybeWithDebugging).debugging?.requests;
+  if (candidate && typeof candidate.retrieve === 'function') {
+    return candidate;
+  }
+  return null;
 }

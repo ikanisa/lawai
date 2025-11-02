@@ -136,5 +136,17 @@ export function buildOpsScheduler(
     command: 'npm run red-team --workspace @apps/ops -- --ci',
   });
 
+  scheduler.register({
+    id: 'gdpr-retention-nightly',
+    group: 'compliance',
+    description: 'Purge les données conformément aux politiques de rétention.',
+    trigger: {
+      kind: 'cron',
+      expression: env.GDPR_RETENTION_CRON ?? '30 1 * * *',
+      timezone: env.GDPR_RETENTION_TZ ?? 'UTC',
+    },
+    command: 'npm run gdpr:retention --workspace @apps/ops',
+  });
+
   return scheduler;
 }

@@ -3,14 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Button } from '@/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card';
-import { Badge } from '@/ui/badge';
-import { Separator } from '@/ui/separator';
-import { Input } from '@/ui/input';
+import { Button } from '@avocat-ai/ui';
+import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
+import { Badge } from '@avocat-ai/ui';
+import { Separator } from '@avocat-ai/ui';
+import { Input } from '@avocat-ai/ui';
 import type { Locale, Messages } from '@/lib/i18n';
 import { fetchMatters, fetchMatterDetail } from '@/lib/api';
-import { useRequiredSession } from '@/components/session-provider';
+import { useRequiredSession } from '@avocat-ai/auth';
 
 interface MattersViewProps {
   messages: Messages;

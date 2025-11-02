@@ -1,85 +1,61 @@
 'use client';
 
 import { Workbox } from 'workbox-window';
+
 import { clientEnv } from '../env.client';
 
 const DIGEST_KEY = 'avocat-ai-digest-enabled';
 export const PWA_OPT_IN_STORAGE_KEY = 'avocat-ai.install.optIn';
 
+type NotificationLike = {
+  requestPermission: () => Promise<NotificationPermission>;
+  permission?: NotificationPermission;
+};
+
 let registrationPromise: Promise<ServiceWorkerRegistration> | null = null;
-let preferenceCache: boolean | null = null;
+let cachedConsent: boolean | null = null;
 
-export function isPwaGloballyEnabled(): boolean {
-  return pwaGloballyEnabled;
+function isBrowserEnvironment(): boolean {
+  return typeof window !== 'undefined';
 }
 
-export function isPwaSupported(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return 'serviceWorker' in navigator;
+function getNavigator(): Navigator | null {
+  const globalNavigator = (globalThis as typeof globalThis & { navigator?: Navigator }).navigator;
+  if (globalNavigator) {
+    return globalNavigator;
+  }
+
+  if (!isBrowserEnvironment()) {
+    return null;
+  }
+
+  return window.navigator ?? null;
 }
 
-function readPreferenceFromStorage(): boolean {
-  if (!pwaGloballyEnabled) {
-    preferenceCache = false;
-    return false;
+function getNotification(): NotificationLike | null {
+  if (!isBrowserEnvironment()) {
+    return null;
   }
 
-  if (preferenceCache !== null) {
-    return preferenceCache;
+  const windowNotification = (window as typeof window & { Notification?: NotificationLike }).Notification;
+  if (windowNotification) {
+    return windowNotification;
   }
 
-  if (typeof window === 'undefined') {
-    preferenceCache = pwaGloballyEnabled;
-    return preferenceCache;
-  }
-
-  try {
-    const stored = window.localStorage.getItem(PWA_PREFERENCE_STORAGE_KEY);
-    if (stored === 'disabled') {
-      preferenceCache = false;
-      return false;
-    }
-    if (stored === 'enabled') {
-      preferenceCache = true;
-      return true;
-    }
-  } catch (error) {
-    console.warn('pwa_preference_read_failed', error);
-  }
-
-  preferenceCache = pwaGloballyEnabled;
-  return preferenceCache;
+  const globalNotification = (globalThis as typeof globalThis & { Notification?: NotificationLike }).Notification;
+  return globalNotification ?? null;
 }
 
-export function getPwaPreference(): boolean {
-  return readPreferenceFromStorage();
-}
-
-export function setPwaPreference(enabled: boolean) {
-  preferenceCache = enabled && pwaGloballyEnabled;
-
-  if (typeof window === 'undefined') {
-    return;
+function getNotificationPermission(): NotificationPermission | 'unsupported' {
+  const notification = getNotification();
+  if (!notification) {
+    return 'unsupported';
   }
-
-  try {
-    if (!pwaGloballyEnabled) {
-      window.localStorage.removeItem(PWA_PREFERENCE_STORAGE_KEY);
-      return;
-    }
-    window.localStorage.setItem(PWA_PREFERENCE_STORAGE_KEY, preferenceCache ? 'enabled' : 'disabled');
-  } catch (error) {
-    console.warn('pwa_preference_write_failed', error);
-  }
+  return notification.permission ?? 'default';
 }
 
-export function isPwaEnvEnabled(): boolean {
-  const flag = process.env.NEXT_PUBLIC_ENABLE_PWA;
-  return flag === undefined || flag === 'true';
-}
-
-export function getPwaPreference(): boolean {
-  if (typeof window === 'undefined') {
+function readOptInPreference(): boolean {
+  if (!isBrowserEnvironment()) {
     return false;
   }
 
@@ -91,84 +67,125 @@ export function getPwaPreference(): boolean {
   }
 }
 
-export function setPwaPreference(enabled: boolean): void {
-  if (typeof window === 'undefined') {
+function writeOptInPreference(value: boolean): void {
+  if (!isBrowserEnvironment()) {
     return;
   }
 
   try {
-    window.localStorage.setItem(PWA_OPT_IN_STORAGE_KEY, enabled ? 'true' : 'false');
+    window.localStorage.setItem(PWA_OPT_IN_STORAGE_KEY, value ? 'true' : 'false');
   } catch (error) {
     console.warn('pwa_preference_write_failed', error);
   }
 }
 
+function getFeatureFlagValue(): boolean {
+  const override = process.env.NEXT_PUBLIC_ENABLE_PWA;
+  if (override === undefined) {
+    return clientEnv.NEXT_PUBLIC_ENABLE_PWA;
+  }
+  return override !== 'false';
+}
+
+function ensureFeatureEnabled(): boolean {
+  const enabled = getFeatureFlagValue();
+  if (!enabled) {
+    registrationPromise = null;
+  }
+  return enabled;
+}
+
+export function isPwaFeatureEnabled(): boolean {
+  return ensureFeatureEnabled();
+}
+
+export function isPwaEnvEnabled(): boolean {
+  return ensureFeatureEnabled();
+}
+
 export function isPwaSupported(): boolean {
-  if (typeof window === 'undefined') {
+  const navigatorInstance = getNavigator();
+  return Boolean(navigatorInstance && 'serviceWorker' in navigatorInstance);
+}
+
+export function getPwaOptInPreference(): boolean {
+  if (cachedConsent === null) {
+    cachedConsent = readOptInPreference();
+  }
+  return cachedConsent;
+}
+
+export const getPwaPreference = getPwaOptInPreference;
+
+export function setPwaOptInPreference(enabled: boolean): void {
+  cachedConsent = enabled;
+  writeOptInPreference(enabled);
+}
+
+export function setPwaPreference(enabled: boolean): void {
+  setPwaOptInPreference(enabled);
+}
+
+export function grantPwaConsent(): void {
+  setPwaOptInPreference(true);
+}
+
+export function revokePwaConsent(): void {
+  setPwaOptInPreference(false);
+}
+
+export function hasPwaConsent(): boolean {
+  return getPwaOptInPreference();
+}
+
+export function canRegisterPwaWithoutStoredConsent(): boolean {
+  if (!isBrowserEnvironment()) {
     return false;
   }
 
-  const nav = window.navigator;
-  return Boolean(nav && 'serviceWorker' in nav);
-}
-
-export function registerPwa() {
-  if (!isPwaEnvEnabled()) {
-    console.info('pwa_registration_skipped', { reason: 'env_disabled' });
-    return;
-  }
-
-  if (typeof window === 'undefined') {
-    console.info('pwa_registration_skipped', { reason: 'ssr' });
-    return;
+  if (!getFeatureFlagValue()) {
+    return false;
   }
 
   if (!isPwaSupported()) {
-    console.warn('pwa_unsupported_browser');
-    return;
+    return false;
   }
 
-  if (!getPwaPreference()) {
-    console.info('pwa_registration_skipped', { reason: 'user_opt_out' });
-    return;
+  if (hasPwaConsent()) {
+    return true;
   }
 
-  if (!isPwaSupported()) {
-    if (typeof window !== 'undefined') {
-      console.warn('pwa_unsupported_browser');
-    }
-    return;
+  const permission = getNotificationPermission();
+  if (permission === 'unsupported') {
+    return true;
   }
 
-  if (!getPwaPreference()) {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(PWA_OPT_IN_STORAGE_KEY, enabled ? 'true' : 'false');
-  } catch (error) {
-    console.warn('pwa_opt_in_write_failed', error);
-  }
+  return permission === 'granted';
 }
 
 export function registerPwa(): Promise<ServiceWorkerRegistration> | null {
-  if (!isPwaFeatureEnabled()) {
+  if (!ensureFeatureEnabled()) {
     console.info('pwa_registration_skipped', { reason: 'environment_disabled' });
     return null;
   }
 
-  if (!getPwaOptInPreference()) {
-    console.info('pwa_registration_deferred', { reason: 'preference_opt_out' });
-    return null;
-  }
-
   if (!isBrowserEnvironment()) {
+    console.info('pwa_registration_skipped', { reason: 'server_environment' });
     return null;
   }
 
-  if (!('serviceWorker' in navigator)) {
-    console.info('pwa_registration_skipped', { reason: 'unsupported_browser' });
+  if (!isPwaSupported()) {
+    console.warn('pwa_registration_unsupported_browser', { reason: 'service_worker_unavailable' });
     return null;
+  }
+
+  if (!hasPwaConsent()) {
+    if (canRegisterPwaWithoutStoredConsent()) {
+      grantPwaConsent();
+    } else {
+      console.info('pwa_registration_deferred', { reason: 'consent_required' });
+      return null;
+    }
   }
 
   if (!registrationPromise) {
@@ -189,51 +206,81 @@ export function registerPwa(): Promise<ServiceWorkerRegistration> | null {
 }
 
 export function isDigestEnabled(): boolean {
-  if (!pwaGloballyEnabled || typeof window === 'undefined') {
+  if (!getFeatureFlagValue()) {
     return false;
   }
-  return window.localStorage.getItem(DIGEST_KEY) === 'true';
+
+  if (!isBrowserEnvironment()) {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(DIGEST_KEY) === 'true';
+  } catch (error) {
+    console.warn('digest_preference_read_failed', error);
+    return false;
+  }
 }
 
 export async function enableDigestNotifications(): Promise<boolean> {
-  if (!pwaGloballyEnabled) {
+  if (!ensureFeatureEnabled()) {
     return false;
   }
 
-  if (typeof window === 'undefined' || !('Notification' in window)) {
+  if (!hasPwaConsent()) {
+    console.info('digest_notification_skipped', { reason: 'pwa_consent_required' });
     return false;
   }
 
-  if (!isPwaSupported()) {
+  if (!isBrowserEnvironment()) {
+    return false;
+  }
+
+  const notification = getNotification();
+  if (!notification) {
     console.warn('pwa_digest_unsupported');
     return false;
   }
 
-  setPwaPreference(true);
+  let permission: NotificationPermission;
+  try {
+    permission = await notification.requestPermission();
+  } catch (error) {
+    console.warn('digest_notification_permission_failed', error);
+    return false;
+  }
 
-  const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
     return false;
   }
 
-  setPwaPreference(true);
+  grantPwaConsent();
 
-  if (!registrationPromise) {
-    const result = registerPwa();
-    if (!result) {
-      console.warn('digest_notification_failed', 'pwa_registration_unavailable');
-      return false;
-    }
+  const navigatorInstance = getNavigator();
+  if (!navigatorInstance?.serviceWorker) {
+    console.warn('digest_notification_failed', 'service_worker_unavailable');
+    return false;
+  }
+
+  const activeRegistration = registerPwa();
+  if (!activeRegistration) {
+    console.warn('digest_notification_failed', 'pwa_registration_unavailable');
+    return false;
   }
 
   try {
-    const registration = await (registrationPromise ?? navigator.serviceWorker.ready);
+    const registration = await activeRegistration;
     await registration.showNotification('Avocat-AI Francophone', {
       body: 'Les alertes de veille juridique seront envoyées ici.',
       tag: 'avocat-ai-digest-preview',
       renotify: false,
     });
-    window.localStorage.setItem(DIGEST_KEY, 'true');
+    writeOptInPreference(true);
+    try {
+      window.localStorage.setItem(DIGEST_KEY, 'true');
+    } catch (error) {
+      console.warn('digest_preference_write_failed', error);
+    }
     return true;
   } catch (error) {
     console.error('digest_notification_failed', error);

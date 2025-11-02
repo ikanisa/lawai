@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 import {
   DEMO_ORG_ID,
   acknowledgeCompliance,

@@ -4,15 +4,21 @@ import {
   IRACPayload,
   WorkspaceDesk,
 } from '@avocat-ai/shared';
+import type { TelemetryEventName, TelemetryEventPayload } from '@avocat-ai/types';
 
 import { clientEnv } from '../env.client';
-
-export const API_BASE = clientEnv.NEXT_PUBLIC_API_BASE_URL;
+import { API_BASE } from './constants';
+import { withCsrf } from './security';
 
 export const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 const ALLOW_DEMO_FALLBACK = process.env.NODE_ENV !== 'production';
+
+async function secureFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const prepared = await withCsrf({ credentials: 'include', ...init });
+  return fetch(input, prepared);
+}
 
 function resolveOrgId(orgId?: string | null): string {
   if (orgId && orgId.trim()) {
@@ -32,6 +38,105 @@ function resolveUserId(userId?: string | null): string {
     return DEMO_USER_ID;
   }
   throw new Error('user_id_required');
+}
+
+interface StartWhatsAppOtpResponse {
+  verificationId?: string;
+  expiresAt?: string;
+}
+
+interface VerifyWhatsAppOtpResponse {
+  session_token: string;
+  wa_id?: string | null;
+}
+
+interface LinkWhatsAppOtpResponse {
+  wa_id: string;
+}
+
+function extractErrorMessage(payload: unknown, fallback: string): string {
+  if (payload && typeof payload === 'object') {
+    const withError = payload as { error?: unknown; message?: unknown };
+    if (typeof withError.error === 'string') {
+      return withError.error;
+    }
+    if (typeof withError.message === 'string') {
+      return withError.message;
+    }
+  }
+  return fallback;
+}
+
+export async function startWhatsAppOtp(input: { phone: string; orgId?: string }): Promise<StartWhatsAppOtpResponse> {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: input.phone, orgId: resolveOrgId(input.orgId) }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(errorBody, 'auth_start_failed'));
+  }
+
+  return response.json() as Promise<StartWhatsAppOtpResponse>;
+}
+
+export async function verifyWhatsAppOtp(input: {
+  phone: string;
+  otp: string;
+  orgHint?: string;
+}): Promise<VerifyWhatsAppOtpResponse> {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: input.phone, otp: input.otp, orgId: resolveOrgId(input.orgHint) }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(errorBody, 'auth_verify_failed'));
+  }
+
+  return response.json() as Promise<VerifyWhatsAppOtpResponse>;
+}
+
+export async function linkWhatsAppOtp(input: {
+  phone: string;
+  otp: string;
+  orgId: string;
+  userId: string;
+}): Promise<LinkWhatsAppOtpResponse> {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      phone: input.phone,
+      otp: input.otp,
+      orgId: resolveOrgId(input.orgId),
+      userId: resolveUserId(input.userId),
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(errorBody, 'auth_link_failed'));
+  }
+
+  return response.json() as Promise<LinkWhatsAppOtpResponse>;
+}
+
+export async function unlinkWhatsApp(input: { orgId: string; userId: string }): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/unlink`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orgId: resolveOrgId(input.orgId), userId: resolveUserId(input.userId) }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(errorBody, 'auth_unlink_failed'));
+  }
 }
 
 export type VerificationSeverity = 'info' | 'warning' | 'critical';
@@ -452,7 +557,7 @@ export async function submitResearchQuestion(input: {
   userId: string;
   confidentialMode?: boolean;
 }): Promise<AgentRunResponse> {
-  const response = await fetch(`${API_BASE}/runs`, {
+  const response = await secureFetch(`${API_BASE}/runs`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -478,7 +583,7 @@ export async function requestHitlReview(
   runId: string,
   input: { reason: string; manual?: boolean; orgId?: string; userId?: string },
 ): Promise<void> {
-  const response = await fetch(`${API_BASE}/runs/${encodeURIComponent(runId)}/hitl`, {
+  const response = await secureFetch(`${API_BASE}/runs/${encodeURIComponent(runId)}/hitl`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -496,14 +601,14 @@ export async function requestHitlReview(
   }
 }
 
-export async function sendTelemetryEvent(
-  eventName: string,
-  payload?: Record<string, unknown>,
+export async function sendTelemetryEvent<TEvent extends TelemetryEventName>(
+  eventName: TEvent,
+  payload?: TelemetryEventPayload<TEvent>,
   orgId?: string,
   userId?: string,
 ): Promise<void> {
   try {
-    await fetch(`${API_BASE}/telemetry`, {
+    await secureFetch(`${API_BASE}/telemetry`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -519,7 +624,7 @@ export async function sendTelemetryEvent(
 }
 
 export async function fetchCitations(orgId: string) {
-  const response = await fetch(`${API_BASE}/citations?orgId=${encodeURIComponent(orgId)}`);
+  const response = await secureFetch(`${API_BASE}/citations?orgId=${encodeURIComponent(orgId)}`);
   if (!response.ok) {
     throw new Error('Unable to fetch citations');
   }
@@ -527,7 +632,7 @@ export async function fetchCitations(orgId: string) {
 }
 
 export async function fetchHitlQueue(orgId: string) {
-  const response = await fetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`);
+  const response = await secureFetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`);
   if (!response.ok) {
     throw new Error('Unable to fetch HITL queue');
   }
@@ -535,7 +640,7 @@ export async function fetchHitlQueue(orgId: string) {
 }
 
 export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsResponse> {
-  const response = await fetch(`${API_BASE}/hitl/metrics?orgId=${encodeURIComponent(orgId)}`, {
+  const response = await secureFetch(`${API_BASE}/hitl/metrics?orgId=${encodeURIComponent(orgId)}`, {
     headers: { 'x-user-id': resolveUserId() },
   });
   if (!response.ok) {
@@ -545,7 +650,7 @@ export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsRespon
 }
 
 export async function fetchHitlDetail(orgId: string, id: string): Promise<HitlDetailResponse> {
-  const response = await fetch(`${API_BASE}/hitl/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`, {
+  const response = await secureFetch(`${API_BASE}/hitl/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`, {
     headers: { 'x-user-id': resolveUserId() },
   });
   if (!response.ok) {
@@ -555,7 +660,7 @@ export async function fetchHitlDetail(orgId: string, id: string): Promise<HitlDe
 }
 
 export async function submitHitlAction(id: string, action: 'approve' | 'request_changes' | 'reject', comment?: string) {
-  const response = await fetch(`${API_BASE}/hitl/${id}`, {
+  const response = await secureFetch(`${API_BASE}/hitl/${id}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, comment }),
@@ -567,7 +672,7 @@ export async function submitHitlAction(id: string, action: 'approve' | 'request_
 }
 
 export async function fetchMatters(orgId: string) {
-  const response = await fetch(`${API_BASE}/matters?orgId=${encodeURIComponent(orgId)}`);
+  const response = await secureFetch(`${API_BASE}/matters?orgId=${encodeURIComponent(orgId)}`);
   if (!response.ok) {
     throw new Error('Unable to fetch matters');
   }
@@ -575,7 +680,7 @@ export async function fetchMatters(orgId: string) {
 }
 
 export async function fetchMatterDetail(orgId: string, id: string) {
-  const response = await fetch(
+  const response = await secureFetch(
     `${API_BASE}/matters/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`,
   );
   if (!response.ok) {
@@ -599,7 +704,7 @@ export async function fetchHitlAuditTrail(
     url.searchParams.set('runId', options.runId);
   }
 
-  const response = await fetch(url.toString(), {
+  const response = await secureFetch(url.toString(), {
     headers: { 'x-user-id': resolveUserId() },
   });
   if (!response.ok) {
@@ -609,7 +714,7 @@ export async function fetchHitlAuditTrail(
 }
 
 export async function fetchCorpus(orgId: string) {
-  const response = await fetch(`${API_BASE}/corpus?orgId=${encodeURIComponent(orgId)}`, {
+  const response = await secureFetch(`${API_BASE}/corpus?orgId=${encodeURIComponent(orgId)}`, {
     headers: { 'x-user-id': resolveUserId() },
   });
   if (!response.ok) {
@@ -623,7 +728,7 @@ export async function resummarizeDocument(
   documentId: string,
   overrides?: { summariserModel?: string; embeddingModel?: string; maxSummaryChars?: number },
 ) {
-  const response = await fetch(`${API_BASE}/corpus/${encodeURIComponent(documentId)}/resummarize`, {
+  const response = await secureFetch(`${API_BASE}/corpus/${encodeURIComponent(documentId)}/resummarize`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -708,7 +813,7 @@ export interface GovernanceMetricsResponse {
 }
 
 export async function fetchGovernanceMetrics(orgId: string, options?: { userId?: string }): Promise<GovernanceMetricsResponse> {
-  const response = await fetch(`${API_BASE}/metrics/governance?orgId=${encodeURIComponent(orgId)}`, {
+  const response = await secureFetch(`${API_BASE}/metrics/governance?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
       'x-user-id': resolveUserId(options?.userId),
     },
@@ -720,7 +825,7 @@ export async function fetchGovernanceMetrics(orgId: string, options?: { userId?:
 }
 
 export async function fetchRetrievalMetrics(orgId: string, options?: { userId?: string }): Promise<RetrievalMetricsResponse> {
-  const response = await fetch(`${API_BASE}/metrics/retrieval?orgId=${encodeURIComponent(orgId)}`, {
+  const response = await secureFetch(`${API_BASE}/metrics/retrieval?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
       'x-user-id': resolveUserId(options?.userId),
     },
@@ -757,7 +862,7 @@ export interface EvaluationMetricsResponse {
 }
 
 export async function fetchEvaluationMetrics(orgId: string, options?: { userId?: string }): Promise<EvaluationMetricsResponse> {
-  const response = await fetch(`${API_BASE}/metrics/evaluations?orgId=${encodeURIComponent(orgId)}`, {
+  const response = await secureFetch(`${API_BASE}/metrics/evaluations?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
       'x-user-id': resolveUserId(options?.userId),
     },
@@ -772,7 +877,7 @@ export async function fetchEvaluationMetrics(orgId: string, options?: { userId?:
 
 export async function fetchSloMetrics(orgId: string, limit = 6, options?: { userId?: string }): Promise<SloMetricsResponse> {
   const params = new URLSearchParams({ orgId, limit: String(limit) });
-  const response = await fetch(`${API_BASE}/metrics/slo?${params.toString()}`, {
+  const response = await secureFetch(`${API_BASE}/metrics/slo?${params.toString()}`, {
     headers: {
       'x-user-id': resolveUserId(options?.userId),
     },
@@ -787,7 +892,7 @@ export async function fetchSloMetrics(orgId: string, limit = 6, options?: { user
 
 export async function fetchSnapshotDiff(orgId: string, snapshotId: string, compareTo: string) {
   const params = new URLSearchParams({ orgId, snapshotId, compareTo });
-  const response = await fetch(`${API_BASE}/corpus/diff?${params.toString()}`);
+  const response = await secureFetch(`${API_BASE}/corpus/diff?${params.toString()}`);
   if (!response.ok) {
     throw new Error('Unable to compute diff');
   }
@@ -795,7 +900,7 @@ export async function fetchSnapshotDiff(orgId: string, snapshotId: string, compa
 }
 
 export async function toggleAllowlistDomain(host: string, active: boolean, jurisdiction?: string) {
-  const response = await fetch(`${API_BASE}/corpus/allowlist/${encodeURIComponent(host)}`, {
+  const response = await secureFetch(`${API_BASE}/corpus/allowlist/${encodeURIComponent(host)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ active, jurisdiction }),
@@ -819,7 +924,7 @@ export interface SsoConnectionResponse {
 }
 
 export async function fetchSsoConnections(orgId: string, options?: { userId?: string }): Promise<SsoConnectionResponse> {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
+  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/sso`, {
     headers: { 'x-user-id': resolveUserId(options?.userId) },
   });
   if (!response.ok) {
@@ -839,7 +944,7 @@ export async function saveSsoConnection(
     defaultRole?: string;
   },
 ) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
+  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/sso`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
     body: JSON.stringify({ ...input, metadata: {}, groupMappings: {} }),
@@ -851,7 +956,7 @@ export async function saveSsoConnection(
 }
 
 export async function removeSsoConnection(orgId: string, connectionId: string) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso/${connectionId}`, {
+  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/sso/${connectionId}`, {
     method: 'DELETE',
     headers: { 'x-user-id': resolveUserId() },
   });
@@ -867,7 +972,7 @@ export interface ScimTokenResponse {
 }
 
 export async function fetchScimTokens(orgId: string, options?: { userId?: string }) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
+  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
     headers: { 'x-user-id': resolveUserId(options?.userId) },
   });
   if (!response.ok) {
@@ -877,7 +982,7 @@ export async function fetchScimTokens(orgId: string, options?: { userId?: string
 }
 
 export async function createScimAccessToken(orgId: string, name: string, expiresAt?: string | null) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
+  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
     body: JSON.stringify({ name, expiresAt }),
@@ -889,7 +994,7 @@ export async function createScimAccessToken(orgId: string, name: string, expires
 }
 
 export async function deleteScimAccessToken(orgId: string, tokenId: string) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens/${tokenId}`, {
+  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/scim-tokens/${tokenId}`, {
     method: 'DELETE',
     headers: { 'x-user-id': resolveUserId() },
   });
@@ -906,7 +1011,7 @@ export async function fetchComplianceStatus(
   if (options?.limit) {
     params.set('limit', String(options.limit));
   }
-  const response = await fetch(`${API_BASE}/compliance/status?${params.toString()}`, {
+  const response = await secureFetch(`${API_BASE}/compliance/status?${params.toString()}`, {
     headers: {
       'x-user-id': resolveUserId(options?.userId),
       'x-org-id': orgId,
@@ -933,7 +1038,7 @@ export async function acknowledgeCompliance(
   if (input.councilOfEurope) {
     payload.councilOfEurope = input.councilOfEurope;
   }
-  const response = await fetch(`${API_BASE}/compliance/acknowledgements`, {
+  const response = await secureFetch(`${API_BASE}/compliance/acknowledgements`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -949,7 +1054,7 @@ export async function acknowledgeCompliance(
 }
 
 export async function fetchComplianceDashboard(orgId: string, options?: { userId?: string }) {
-  const response = await fetch(`${API_BASE}/compliance/dashboard`, {
+  const response = await secureFetch(`${API_BASE}/compliance/dashboard`, {
     headers: {
       'x-user-id': resolveUserId(options?.userId),
       'x-org-id': orgId,
@@ -962,7 +1067,7 @@ export async function fetchComplianceDashboard(orgId: string, options?: { userId
 }
 
 export async function fetchAuditEvents(orgId: string, limit = 50, options?: { userId?: string }) {
-  const response = await fetch(
+  const response = await secureFetch(
     `${API_BASE}/admin/org/${orgId}/audit-events?limit=${encodeURIComponent(String(limit))}`,
     { headers: { 'x-user-id': resolveUserId(options?.userId) } },
   );
@@ -981,7 +1086,7 @@ export async function fetchDeviceSessions(
   if (options?.limit) params.set('limit', String(options.limit));
   if (options?.userId) params.set('userId', options.userId);
 
-  const response = await fetch(`${API_BASE}/security/devices?${params.toString()}`, {
+  const response = await secureFetch(`${API_BASE}/security/devices?${params.toString()}`, {
     headers: { 'x-user-id': resolveUserId(options?.userId) },
   });
   if (!response.ok) {
@@ -1016,7 +1121,7 @@ export async function fetchDeviceSessions(
 }
 
 export async function revokeDeviceSession(orgId: string, sessionId: string, reason?: string) {
-  const response = await fetch(`${API_BASE}/security/devices/revoke`, {
+  const response = await secureFetch(`${API_BASE}/security/devices/revoke`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1033,7 +1138,7 @@ export async function revokeDeviceSession(orgId: string, sessionId: string, reas
 }
 
 export async function fetchIpAllowlist(orgId: string, options?: { userId?: string }) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist`, {
+  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist`, {
     headers: { 'x-user-id': resolveUserId(options?.userId) },
   });
   if (!response.ok) {
@@ -1050,7 +1155,7 @@ export async function upsertIpAllowlistEntry(
     ? `${API_BASE}/admin/org/${orgId}/ip-allowlist/${input.id}`
     : `${API_BASE}/admin/org/${orgId}/ip-allowlist`;
   const method = input.id ? 'PATCH' : 'POST';
-  const response = await fetch(url, {
+  const response = await secureFetch(url, {
     method,
     headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
     body: JSON.stringify({ cidr: input.cidr, description: input.description ?? null }),
@@ -1062,7 +1167,7 @@ export async function upsertIpAllowlistEntry(
 }
 
 export async function deleteIpAllowlistEntry(orgId: string, entryId: string) {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist/${entryId}`, {
+  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist/${entryId}`, {
     method: 'DELETE',
     headers: { 'x-user-id': resolveUserId() },
   });
@@ -1079,7 +1184,7 @@ export async function fetchDraftingTemplates(orgId: string, params?: { jurisdict
   if (params?.matterType) {
     search.set('matterType', params.matterType);
   }
-  const response = await fetch(`${API_BASE}/drafting/templates?${search.toString()}`);
+  const response = await secureFetch(`${API_BASE}/drafting/templates?${search.toString()}`);
   if (!response.ok) {
     throw new Error('Unable to fetch templates');
   }
@@ -1117,7 +1222,7 @@ export interface WorkspaceOverviewResponse {
 }
 
 export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOverviewResponse> {
-  const response = await fetch(`${API_BASE}/workspace?orgId=${encodeURIComponent(orgId)}`);
+  const response = await secureFetch(`${API_BASE}/workspace?orgId=${encodeURIComponent(orgId)}`);
   if (!response.ok) {
     throw new Error('Unable to fetch workspace overview');
   }
@@ -1125,7 +1230,7 @@ export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOv
 }
 
 export async function getOperationsOverview(orgId: string, options?: { userId?: string }): Promise<OperationsOverviewResponse> {
-  const response = await fetch(`${API_BASE}/admin/org/${orgId}/operations/overview`, {
+  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/operations/overview`, {
     headers: { 'x-user-id': resolveUserId(options?.userId) },
   });
   if (!response.ok) {
@@ -1172,7 +1277,7 @@ export async function getGovernancePublications(params?: {
 
   const query = search.toString();
   const url = query ? `${API_BASE}/governance/publications?${query}` : `${API_BASE}/governance/publications`;
-  const response = await fetch(url, { headers });
+  const response = await secureFetch(url, { headers });
   if (!response.ok) {
     throw new Error('Unable to fetch governance publications');
   }

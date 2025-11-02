@@ -13,6 +13,7 @@ export const envSchema = z
   PORT: z.coerce.number().default(3000),
   OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
   AGENT_MODEL: z.string().min(1, 'AGENT_MODEL is required'),
+  AGENT_LLM_TIMEOUT_MS: z.coerce.number().optional(),
   EMBEDDING_MODEL: z.string().min(1, 'EMBEDDING_MODEL is required'),
   SUMMARISER_MODEL: z.string().optional(),
   MAX_SUMMARY_CHARS: z.coerce.number().optional(),

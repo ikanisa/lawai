@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Info } from 'lucide-react';
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 
 export interface BilingualToggleLanguage {
   code: string;

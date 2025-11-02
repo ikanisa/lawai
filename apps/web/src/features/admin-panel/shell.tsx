@@ -24,9 +24,9 @@ import {
   Users,
   Workflow,
 } from 'lucide-react';
-import { Button } from '@/ui/button';
-import { Input } from '@/ui/input';
-import { Badge } from '@/ui/badge';
+import { Button } from '@avocat-ai/ui';
+import { Input } from '@avocat-ai/ui';
+import { Badge } from '@avocat-ai/ui';
 import { useAdminPanelContext } from './context';
 import { useAdminMessages } from './messages-context';
 

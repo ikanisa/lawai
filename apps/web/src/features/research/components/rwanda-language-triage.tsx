@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Info } from 'lucide-react';
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 
 export interface RwandaLanguageMessages {
   label: string;

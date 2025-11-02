@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Download, BellRing, History } from 'lucide-react';
-import { Button } from '@/ui/button';
+import { Button } from '@avocat-ai/ui';
 import type { Locale, Messages } from '@/lib/i18n';
 import { usePwaInstall } from '@/features/platform/hooks/use-pwa-install';
 import { useDigest } from '@/features/platform/hooks/use-digest';
