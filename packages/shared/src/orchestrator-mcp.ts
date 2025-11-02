@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import type { FinanceDomainAgentKey } from './orchestrator-capabilities.js';
 import type { OrchestratorCommandEnvelope } from './orchestrator.js';
 
 export const financeCommandIntentSchema = z.enum([

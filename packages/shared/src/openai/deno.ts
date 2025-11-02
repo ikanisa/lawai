@@ -1,4 +1,4 @@
-// deno-lint-ignore-file no-explicit-any
+import { z } from 'zod';
 export interface OpenAIDenoClientConfig {
   apiKey: string;
   baseUrl?: string;
@@ -71,13 +71,45 @@ export interface OpenAIDenoClient {
   };
 }
 
-async function handleResponse(response: Response, context: string): Promise<any> {
-  const json = await response.json().catch(() => ({}));
+type OpenAIErrorPayload = {
+  error?: {
+    message?: unknown;
+  };
+};
+
+const FileCreateResponseSchema = z.object({ id: z.string() }).strict();
+const VectorStoreResponseSchema = z.unknown();
+const DebuggingRequestResponseSchema = z.unknown();
+
+async function parseJsonResponse<T>(
+  response: Response,
+  context: string,
+  schema: z.ZodType<T>,
+): Promise<T> {
+  const fallbackMessage = `${context}_failed`;
+  const payload: unknown = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    const message = json?.error?.message ?? `${context}_failed`;
+    const message = getErrorMessage(payload, fallbackMessage);
     throw new Error(message);
   }
-  return json;
+
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) {
+    throw new Error(`${context}_invalid_response`);
+  }
+
+  return parsed.data;
+}
+
+function getErrorMessage(payload: unknown, fallback: string): string {
+  if (typeof payload === 'object' && payload !== null) {
+    const error = (payload as OpenAIErrorPayload).error;
+    if (error && typeof error.message === 'string') {
+      return error.message;
+    }
+  }
+  return fallback;
 }
 
 export function createOpenAIDenoClient(config: OpenAIDenoClientConfig): OpenAIDenoClient {
@@ -100,8 +132,7 @@ export function createOpenAIDenoClient(config: OpenAIDenoClientConfig): OpenAIDe
           body: form,
         });
 
-        const json = await handleResponse(response, 'file_upload');
-        return json as { id: string };
+        return parseJsonResponse(response, 'file_upload', FileCreateResponseSchema);
       },
     },
     beta: {
@@ -114,7 +145,7 @@ export function createOpenAIDenoClient(config: OpenAIDenoClientConfig): OpenAIDe
               body: JSON.stringify(body),
             });
 
-            await handleResponse(response, 'vector_store_attach');
+            await parseJsonResponse(response, 'vector_store_attach', VectorStoreResponseSchema);
           },
         },
       },
@@ -126,7 +157,7 @@ export function createOpenAIDenoClient(config: OpenAIDenoClientConfig): OpenAIDe
             method: 'GET',
             headers: buildHeaders(config),
           });
-          return handleResponse(response, 'debugging_request');
+          return parseJsonResponse(response, 'debugging_request', DebuggingRequestResponseSchema);
         },
       },
     },
