@@ -73,6 +73,10 @@ export class SupabaseScheduler<Client extends SupabaseLike = SupabaseLike> {
     await this.enqueueTask({ type: 'evaluation_run', orgId, payload: { benchmark, ...payload }, priority: 6 });
   }
 
+  async scheduleGdprRetention(orgId: string, payload: Record<string, unknown> = {}): Promise<void> {
+    await this.enqueueTask({ type: 'gdpr_retention', orgId, payload, priority: 5 });
+  }
+
   async startIngestionRun(adapterId: string, orgId: string): Promise<{ id: string } | null> {
     const insertBuilder = this.client
       .from('ingestion_runs')

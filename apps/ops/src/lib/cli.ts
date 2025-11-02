@@ -4,7 +4,7 @@ import { OFFICIAL_DOMAIN_ALLOWLIST, SupabaseScheduler } from '@avocat-ai/shared'
 import { requireEnv } from './env.js';
 import { createSupabaseService, type SupabaseClientFactory } from './supabase.js';
 
-export type ScheduleKind = 'ingestion' | 'red-team' | 'evaluation';
+export type ScheduleKind = 'ingestion' | 'red-team' | 'evaluation' | 'gdpr';
 
 export interface CliOptions {
   command: 'status' | 'schedule';
@@ -13,6 +13,7 @@ export interface CliOptions {
   adapter?: string;
   scenario?: string;
   benchmark?: string;
+  scope?: string;
   retries: number;
   retryDelay: number;
 }
@@ -114,6 +115,10 @@ export function parseArgs(argv: string[]): CliOptions {
         options.benchmark = argv[index + 1] ?? options.benchmark;
         index += 1;
         break;
+      case '--scope':
+        options.scope = argv[index + 1] ?? options.scope;
+        index += 1;
+        break;
       case '--retries': {
         const parsed = Number.parseInt(argv[index + 1] ?? '', 10);
         if (Number.isFinite(parsed) && parsed >= 0) {
@@ -190,7 +195,7 @@ async function fetchJurisdictions(
 
 function validateScheduleOptions(options: CliOptions): void {
   if (!options.kind) {
-    throw new Error('Veuillez préciser le type de tâche via --schedule <ingestion|red-team|evaluation>.');
+    throw new Error('Veuillez préciser le type de tâche via --schedule <ingestion|red-team|evaluation|gdpr>.');
   }
   if (!options.orgId) {
     throw new Error('Veuillez préciser l\'organisation cible via --org <uuid>.');
@@ -225,6 +230,12 @@ async function scheduleTask(
       await scheduler.scheduleEvaluation(options.orgId as string, options.benchmark as string);
       spinner.succeed(`Évaluation planifiée pour ${options.orgId}`);
       return `Benchmark ${options.benchmark} en file.`;
+    case 'gdpr':
+      await scheduler.scheduleGdprRetention(options.orgId as string, options.scope ? { scope: options.scope } : {});
+      spinner.succeed(`Nettoyage RGPD planifié pour ${options.orgId}`);
+      return options.scope
+        ? `Contexte ${options.scope} en file.`
+        : 'Politique complète en file.';
     default:
       throw new Error(`Type de tâche inconnu: ${options.kind}`);
   }
