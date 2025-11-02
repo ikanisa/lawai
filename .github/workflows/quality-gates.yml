@@ -1,0 +1,79 @@
+name: Accessibility and Performance Gates
+
+on:
+  pull_request:
+    branches: [ "main", "master", "work" ]
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  quality:
+    name: Accessibility and Lighthouse budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build production bundle
+        run: pnpm --filter @avocat-ai/web run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:4010
+
+      - name: Start mock API
+        run: |
+          pnpm --filter @avocat-ai/web run mock:api > mock-api.log 2>&1 &
+          echo $! > mock-api.pid
+        env:
+          MOCK_API_PORT: 4010
+
+      - name: Start web application
+        run: |
+          pnpm --filter @avocat-ai/web run start > next.log 2>&1 &
+          echo $! > next.pid
+        env:
+          PORT: 3000
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:4010
+
+      - name: Wait for services
+        run: pnpm dlx wait-on http://127.0.0.1:3000
+
+      - name: Run axe accessibility audit
+        run: pnpm --filter @avocat-ai/web run test:axe
+        env:
+          PORT: 3000
+
+      - name: Run Lighthouse CI
+        run: pnpm --filter @avocat-ai/web run audit:lighthouse
+
+      - name: Upload quality artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-audits
+          path: |
+            mock-api.log
+            next.log
+            apps/web/.lighthouse
+
+      - name: Stop services
+        if: always()
+        run: |
+          if [ -f mock-api.pid ]; then kill $(cat mock-api.pid) || true; fi
+          if [ -f next.pid ]; then kill $(cat next.pid) || true; fi

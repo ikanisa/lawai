@@ -15,7 +15,14 @@ export default defineConfig({
       SUPABASE_SERVICE_ROLE_KEY: 'service-role',
     },
     coverage: {
-      reporter: ['text'],
+      provider: 'v8',
+      reporter: ['text', 'json', 'lcov'],
+      thresholds: {
+        statements: 80,
+        branches: 80,
+        functions: 80,
+        lines: 80,
+      },
     },
     include: ['test/**/*.test.ts'],
     setupFiles: ['test/setup-env.ts'],
