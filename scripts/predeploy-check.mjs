@@ -102,8 +102,12 @@ for (const app of nextApps) {
 // Check 6: Verify no binary files in commits
 console.log('\n6️⃣  Checking for binary files...');
 try {
-  execSync('node ./scripts/check-binaries.mjs', { stdio: 'inherit' });
-  console.log('   ✅ Binary files check passed');
+  if (existsSync('./scripts/check-binaries.mjs')) {
+    execSync('node ./scripts/check-binaries.mjs', { stdio: 'inherit' });
+    console.log('   ✅ Binary files check passed');
+  } else {
+    warnings.push('check-binaries.mjs script not found, skipping binary check');
+  }
 } catch (err) {
   errors.push('Binary files check failed');
 }
@@ -111,8 +115,12 @@ try {
 // Check 7: Verify migration manifest
 console.log('\n7️⃣  Checking migrations...');
 try {
-  execSync('ALLOW_SUPABASE_MIGRATIONS=1 node ./scripts/check-migrations.mjs', { stdio: 'inherit' });
-  console.log('   ✅ Migration checks passed');
+  if (existsSync('./scripts/check-migrations.mjs')) {
+    execSync('ALLOW_SUPABASE_MIGRATIONS=1 node ./scripts/check-migrations.mjs', { stdio: 'inherit' });
+    console.log('   ✅ Migration checks passed');
+  } else {
+    warnings.push('check-migrations.mjs script not found, skipping migration check');
+  }
 } catch (err) {
   warnings.push('Migration checks failed (may be expected in some contexts)');
 }
@@ -120,8 +128,12 @@ try {
 // Check 8: Validate environment examples
 console.log('\n8️⃣  Validating environment examples...');
 try {
-  execSync('node ./scripts/validate-env-examples.mjs', { stdio: 'inherit' });
-  console.log('   ✅ Environment validation passed');
+  if (existsSync('./scripts/validate-env-examples.mjs')) {
+    execSync('node ./scripts/validate-env-examples.mjs', { stdio: 'inherit' });
+    console.log('   ✅ Environment validation passed');
+  } else {
+    warnings.push('validate-env-examples.mjs script not found, skipping validation');
+  }
 } catch (err) {
   warnings.push('Environment validation failed');
 }

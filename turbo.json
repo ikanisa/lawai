@@ -3,13 +3,7 @@
   "pipeline": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "dist/**", "build/**"],
-      "env": [
-        "NEXT_PUBLIC_API_BASE_URL",
-        "NEXT_PUBLIC_SUPABASE_URL",
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-        "NODE_ENV"
-      ]
+      "outputs": [".next/**", "dist/**", "build/**"]
     },
     "lint": {
       "dependsOn": ["^lint"],
@@ -21,8 +15,7 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
-      "env": ["NODE_ENV"]
+      "outputs": ["coverage/**"]
     },
     "dev": {
       "cache": false,

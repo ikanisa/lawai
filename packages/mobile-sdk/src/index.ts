@@ -146,7 +146,7 @@ export class AvocatAIMobileSDK {
   /**
    * Subscribe to auth state changes
    */
-  onAuthStateChange(callback: (event: string, session: any) => void) {
+  onAuthStateChange(callback: (event: string, session: { access_token: string; user: any } | null) => void) {
     return this.supabase.auth.onAuthStateChange(callback);
   }
 }
