@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main, production]
 
+# Explicit permissions for GITHUB_TOKEN
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+
 # Cancel in-progress runs for the same PR/branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -15,6 +21,8 @@ jobs:
   predeploy-checks:
     name: Pre-deployment Checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,6 +55,8 @@ jobs:
     name: Build Admin Panel
     runs-on: ubuntu-latest
     needs: predeploy-checks
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -82,6 +92,8 @@ jobs:
     name: Build Client PWA
     runs-on: ubuntu-latest
     needs: predeploy-checks
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -118,6 +130,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-web
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production')
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -147,6 +163,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-pwa
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production')
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -176,6 +196,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [deploy-web, deploy-pwa]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production')
+    permissions:
+      contents: read
     steps:
       - name: Wait for Deployment
         run: sleep 30
