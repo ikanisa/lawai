@@ -51,7 +51,13 @@
     "seed": "pnpm --filter @db/seed run start",
     "seed:compliance-test": "node ./scripts/seed-compliance-test-data.mjs",
     "check:binaries": "node ./scripts/check-binaries.mjs",
-    "schema:check": "pnpm --filter @apps/api run openapi:verify && pnpm --filter @avocat-ai/api-sdk run verify"
+    "schema:check": "pnpm --filter @apps/api run openapi:verify && pnpm --filter @avocat-ai/api-sdk run verify",
+    "predeploy:check": "node ./scripts/predeploy-check.mjs",
+    "cleanup:providers": "bash ./scripts/cleanup-providers.sh",
+    "scan:providers": "tsx ./scripts/scan-provider-code.ts",
+    "verify:cleanup": "tsx ./scripts/verify-cleanup.ts",
+    "build:web": "pnpm --filter @avocat-ai/web build",
+    "build:pwa": "pnpm --filter @avocat-ai/pwa build"
   },
   "dependencies": {
     "next-pwa": "^5.6.0"

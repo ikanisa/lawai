@@ -1,0 +1,67 @@
+# Netlify Configuration for Client PWA (apps/pwa)
+# This Next.js app is the public-facing PWA for clients
+
+[build]
+  # Base directory for the build (relative to repo root)
+  base = "apps/pwa"
+  
+  # Build command: install dependencies and build
+  # We use pnpm workspaces with --filter flag to build dependencies
+  command = "cd ../.. && pnpm install --no-frozen-lockfile --filter @avocat-ai/pwa... && pnpm --filter @avocat-ai/pwa build"
+  
+  # Output directory for Next.js
+  publish = ".next"
+  
+  # Functions directory (for Netlify serverless functions if needed)
+  functions = "netlify/functions"
+
+[build.environment]
+  # Node.js and pnpm versions
+  NODE_VERSION = "20"
+  PNPM_VERSION = "8.15.4"
+  ENABLE_COREPACK = "true"
+  
+  # Next.js specific settings
+  NEXT_TELEMETRY_DISABLED = "1"
+  
+  # Build optimization
+  NODE_OPTIONS = "--max-old-space-size=4096"
+
+# Security headers (these override the default headers from next.config.mjs for Netlify)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+
+# Redirects and rewrites
+[[redirects]]
+  from = "/healthz"
+  to = "/api/healthz"
+  status = 200
+
+# Cache static assets
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/public/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# PWA specific: Service worker caching
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/workbox-*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
