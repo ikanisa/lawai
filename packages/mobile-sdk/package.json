@@ -1,0 +1,43 @@
+{
+  "name": "@avocat-ai/mobile-sdk",
+  "version": "1.0.0",
+  "description": "Mobile SDK for React Native and Expo apps",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "avocat-ai",
+    "mobile",
+    "react-native",
+    "expo",
+    "sdk"
+  ],
+  "author": "Avocat-AI",
+  "license": "PROPRIETARY",
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": "^1.19.0",
+    "react-native": ">=0.70.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.75.1",
+    "@avocat-ai/shared": "workspace:*",
+    "@avocat-ai/supabase": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "restricted"
+  }
+}
