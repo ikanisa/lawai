@@ -2,6 +2,10 @@ name: QA Sign-off
 
 on:
   pull_request:
+    branches:
+      - work
+      - main
+      - production
     types: [opened, ready_for_review, synchronize, labeled, unlabeled, reopened]
 
 jobs:
