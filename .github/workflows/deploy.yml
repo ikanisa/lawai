@@ -16,7 +16,7 @@ jobs:
           cache: 'pnpm'
       - uses: pnpm/action-setup@v4
         with:
-          version: 8.15.4
+          # pnpm version will be read from packageManager field in package.json
           run_install: false
       - name: pnpm version
         run: pnpm -v
@@ -43,7 +43,7 @@ jobs:
           cache: 'pnpm'
       - uses: pnpm/action-setup@v4
         with:
-          version: 8.15.4
+          # pnpm version will be read from packageManager field in package.json
           run_install: true
       - name: pnpm version
         run: pnpm -v
@@ -78,7 +78,7 @@ jobs:
           cache: 'pnpm'
       - uses: pnpm/action-setup@v4
         with:
-          version: 8.15.4
+          # pnpm version will be read from packageManager field in package.json
           run_install: true
       - name: pnpm version
         run: pnpm -v
@@ -111,7 +111,7 @@ jobs:
           cache: 'pnpm'
       - uses: pnpm/action-setup@v4
         with:
-          version: 8.15.4
+          # pnpm version will be read from packageManager field in package.json
           run_install: true
       - name: pnpm version
         run: pnpm -v

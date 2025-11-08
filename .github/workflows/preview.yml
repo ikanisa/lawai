@@ -20,7 +20,7 @@ jobs:
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
         with:
-          version: 8.15.4
+          # pnpm version will be read from packageManager field in package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
