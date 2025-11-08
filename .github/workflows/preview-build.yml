@@ -8,12 +8,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.4
+          run_install: false
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --no-frozen-lockfile
       - name: Build web app
-        run: npm run build --workspace @avocat-ai/web
+        run: pnpm --filter @avocat-ai/web build
       - name: Build API
-        run: npm run build --workspace @apps/api
+        run: pnpm --filter @apps/api build

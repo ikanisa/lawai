@@ -17,7 +17,7 @@ jobs:
           version: 8.15.4
           run_install: false
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
       - name: Derive Supabase preview branch
         run: |
           BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
