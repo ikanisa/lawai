@@ -24,7 +24,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8.15.4
+          # pnpm version will be read from packageManager field in package.json
           run_install: true
 
       - name: Verify staging smoke test base URL
