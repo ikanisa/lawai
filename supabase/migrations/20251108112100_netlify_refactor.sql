@@ -24,11 +24,6 @@ ALTER TABLE public.cache ENABLE ROW LEVEL SECURITY;
 -- Policy: Service role can manage all cache entries
 CREATE POLICY "Service role can manage cache" ON public.cache FOR ALL USING (auth.jwt () ->> 'role' = 'service_role');
 
--- Policy: Allow anon access for reads (if needed for public caching)
-CREATE POLICY "Anon can read cache" ON public.cache FOR
-SELECT
-  USING (TRUE);
-
 -- Function to clean up expired cache entries
 CREATE OR REPLACE FUNCTION public.cleanup_expired_cache () RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
