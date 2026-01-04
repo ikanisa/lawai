@@ -4,7 +4,9 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src --ext .ts",
@@ -12,7 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@avocat-ai/shared": "^0.1.0",
+    "@avocat-ai/shared": "workspace:*",
     "zod": "^3.25.42"
   },
   "devDependencies": {
