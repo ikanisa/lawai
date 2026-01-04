@@ -13,3 +13,4 @@ export {
 } from './session-provider.js';
 export type { SessionProviderProps, SessionStatus, SessionValue } from './session-provider.js';
 export * from './use-permission.js';
+export * from './role-guard.js';

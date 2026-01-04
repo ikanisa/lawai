@@ -1,2 +1,2 @@
-ALTER TABLE public.hitl_queue
-ADD COLUMN IF NOT EXISTS reviewer_comment text;
+alter table public.hitl_queue
+  add column if not exists reviewer_comment text;

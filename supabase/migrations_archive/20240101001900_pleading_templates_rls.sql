@@ -1,22 +1,15 @@
-ALTER TABLE public.pleading_templates enable ROW level security;
+alter table public.pleading_templates enable row level security;
 
-DROP POLICY if EXISTS "templates readable" ON public.pleading_templates;
-
-CREATE POLICY "templates readable" ON public.pleading_templates FOR
-SELECT
-  USING (
-    org_id IS NULL
-    OR public.is_org_member (org_id)
+drop policy if exists "templates readable" on public.pleading_templates;
+create policy "templates readable" on public.pleading_templates
+  for select using (
+    org_id is null or public.is_org_member(org_id)
   );
 
-DROP POLICY if EXISTS "templates manageable" ON public.pleading_templates;
-
-CREATE POLICY "templates manageable" ON public.pleading_templates FOR ALL USING (
-  org_id IS NULL
-  OR public.is_org_member (org_id)
-)
-WITH
-  CHECK (
-    org_id IS NULL
-    OR public.is_org_member (org_id)
+drop policy if exists "templates manageable" on public.pleading_templates;
+create policy "templates manageable" on public.pleading_templates
+  for all using (
+    org_id is null or public.is_org_member(org_id)
+  ) with check (
+    org_id is null or public.is_org_member(org_id)
   );

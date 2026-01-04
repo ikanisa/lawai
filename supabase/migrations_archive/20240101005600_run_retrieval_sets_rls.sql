@@ -1,24 +1,20 @@
 -- Enforce RLS for run_retrieval_sets
-ALTER TABLE public.run_retrieval_sets enable ROW level security;
+alter table public.run_retrieval_sets enable row level security;
 
-DROP POLICY if EXISTS "retrieval_sets_by_org" ON public.run_retrieval_sets;
+drop policy if exists "retrieval_sets_by_org" on public.run_retrieval_sets;
+create policy "retrieval_sets_by_org" on public.run_retrieval_sets
+for all
+using (public.is_org_member(org_id))
+with check (public.is_org_member(org_id));
 
-CREATE POLICY "retrieval_sets_by_org" ON public.run_retrieval_sets FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
-
-DROP POLICY if EXISTS "retrieval_sets_by_run" ON public.run_retrieval_sets;
-
-CREATE POLICY "retrieval_sets_by_run" ON public.run_retrieval_sets FOR
-SELECT
-  USING (
-    EXISTS (
-      SELECT
-        1
-      FROM
-        public.agent_runs r
-      WHERE
-        r.id = run_id
-        AND public.is_org_member (r.org_id)
-    )
-  );
+drop policy if exists "retrieval_sets_by_run" on public.run_retrieval_sets;
+create policy "retrieval_sets_by_run" on public.run_retrieval_sets
+for select
+using (
+  exists (
+    select 1
+    from public.agent_runs r
+    where r.id = run_id
+      and public.is_org_member(r.org_id)
+  )
+);

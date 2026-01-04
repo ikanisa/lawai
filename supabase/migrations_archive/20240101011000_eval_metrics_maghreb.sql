@@ -1,3 +1,3 @@
-ALTER TABLE public.eval_results
-ADD COLUMN IF NOT EXISTS maghreb_banner boolean,
-ADD COLUMN IF NOT EXISTS jurisdiction text;
+alter table public.eval_results
+  add column if not exists maghreb_banner boolean,
+  add column if not exists jurisdiction text;

@@ -78,6 +78,7 @@ import {
   collectAllowedResidencyZones,
   determineResidencyZone,
   extractResidencyFromPath,
+  ResidencyError,
   type OrgAccessContext,
 } from './residency-helpers.js';
 
@@ -5300,7 +5301,7 @@ app.get<{
       }
 
       return {
-        matches: (data ?? []).map((entry: any) => ({
+        matches: (data as any[] ?? []).map((entry: any) => ({
           id: entry.chunk_id,
           documentId: entry.document_id,
           jurisdiction: entry.jurisdiction_code,

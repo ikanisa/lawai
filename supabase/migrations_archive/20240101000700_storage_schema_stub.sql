@@ -1,4 +1,5 @@
-DO $$
+do
+$$
 begin
   create schema if not exists storage;
 

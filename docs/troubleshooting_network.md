@@ -34,20 +34,15 @@ issue".
   listed in `packages/shared/src/constants/allowlist.ts` as well as the OpenAI
   and Supabase APIs.
 - **Double-check secrets** – Confirm that `.env` contains valid keys and that
-  they are exported before running any scripts. The helper `pnpm env:validate`
+  they are exported before running any scripts. The helper `pnpm check:env`
   prints a concise report.
 - **Retry once connectivity is restored** – When CI fails with a network error
   re-run the pipeline after verifying that the runner (or GitHub-hosted agent)
   allows outbound traffic.
-- **Check observability dashboards** – The Grafana **Network › Egress** panel
-  shows whether traffic is being blocked at the perimeter. **OpenAI Request
-  Health** highlights throttling unrelated to local configuration.
 
 ## When to escalate
 
 If connectivity is confirmed but operations still fail, gather the error logs,
 run `pnpm ops:check --verbose`, and attach the output when opening an issue.
 That command dumps the current environment variables (with secrets masked) and
-reports which hosts were unreachable. Include screenshots of the relevant
-Grafana panels to help correlate environment-level blocking with application
-symptoms.
+reports which hosts were unreachable.

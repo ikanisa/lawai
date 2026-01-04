@@ -1,215 +1,187 @@
 -- Extend organizations metadata
-ALTER TABLE public.organizations
-ADD COLUMN IF NOT EXISTS plan text DEFAULT 'standard',
-ADD COLUMN IF NOT EXISTS compliance_profile jsonb DEFAULT '{}'::jsonb,
-ADD COLUMN IF NOT EXISTS residency_zone text DEFAULT 'eu';
+alter table public.organizations
+  add column if not exists plan text default 'standard',
+  add column if not exists compliance_profile jsonb default '{}'::jsonb,
+  add column if not exists residency_zone text default 'eu';
 
 -- Extend profiles with contact and professional metadata
-ALTER TABLE public.profiles
-ADD COLUMN IF NOT EXISTS email text,
-ADD COLUMN IF NOT EXISTS phone_e164 text,
-ADD COLUMN IF NOT EXISTS professional_type text,
-ADD COLUMN IF NOT EXISTS bar_number text,
-ADD COLUMN IF NOT EXISTS verified boolean DEFAULT FALSE;
+alter table public.profiles
+  add column if not exists email text,
+  add column if not exists phone_e164 text,
+  add column if not exists professional_type text,
+  add column if not exists bar_number text,
+  add column if not exists verified boolean default false;
 
-CREATE INDEX if NOT EXISTS idx_profiles_email ON public.profiles (lower(email));
-
-CREATE INDEX if NOT EXISTS idx_profiles_phone ON public.profiles (phone_e164);
+create index if not exists idx_profiles_email on public.profiles(lower(email));
+create index if not exists idx_profiles_phone on public.profiles(phone_e164);
 
 -- Update org member roles to support RBAC matrix
-ALTER TABLE public.org_members
-DROP CONSTRAINT if EXISTS org_members_role_check;
+alter table public.org_members
+  drop constraint if exists org_members_role_check;
 
-ALTER TABLE public.org_members
-ADD CONSTRAINT org_members_role_check CHECK (
-  role IN (
-    'owner',
-    'admin',
-    'reviewer',
-    'member',
-    'viewer',
-    'compliance_officer',
-    'auditor'
-  )
-);
+alter table public.org_members
+  add constraint org_members_role_check
+    check (role in ('owner','admin','reviewer','member','viewer','compliance_officer','auditor'));
 
 -- Org policies table
-CREATE TABLE IF NOT EXISTS public.org_policies (
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
-  key text NOT NULL,
-  value jsonb NOT NULL,
+create table if not exists public.org_policies (
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  key text not null,
+  value jsonb not null,
   updated_by uuid,
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (org_id, key)
+  updated_at timestamptz not null default now(),
+  primary key (org_id, key)
 );
 
-ALTER TABLE public.org_policies enable ROW level security;
+alter table public.org_policies enable row level security;
 
-DROP POLICY if EXISTS "org_policies_r" ON public.org_policies;
+drop policy if exists "org_policies_r" on public.org_policies;
+drop policy if exists "org_policies_rw" on public.org_policies;
 
-DROP POLICY if EXISTS "org_policies_rw" ON public.org_policies;
-
-CREATE POLICY "org_policies_access" ON public.org_policies FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
+create policy "org_policies_access" on public.org_policies
+  for all
+  using (public.is_org_member(org_id))
+  with check (public.is_org_member(org_id));
 
 -- Jurisdiction entitlements
-CREATE TABLE IF NOT EXISTS public.jurisdiction_entitlements (
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
-  juris_code text NOT NULL,
-  can_read boolean NOT NULL DEFAULT TRUE,
-  can_write boolean NOT NULL DEFAULT FALSE,
-  PRIMARY KEY (org_id, juris_code)
+create table if not exists public.jurisdiction_entitlements (
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  juris_code text not null,
+  can_read boolean not null default true,
+  can_write boolean not null default false,
+  primary key (org_id, juris_code)
 );
 
-ALTER TABLE public.jurisdiction_entitlements enable ROW level security;
+alter table public.jurisdiction_entitlements enable row level security;
 
-DROP POLICY if EXISTS "juris_entitlements_rw" ON public.jurisdiction_entitlements;
+drop policy if exists "juris_entitlements_rw" on public.jurisdiction_entitlements;
 
-CREATE POLICY "juris_entitlements_access" ON public.jurisdiction_entitlements FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
+create policy "juris_entitlements_access" on public.jurisdiction_entitlements
+  for all
+  using (public.is_org_member(org_id))
+  with check (public.is_org_member(org_id));
 
 -- Invitations table
-CREATE TABLE IF NOT EXISTS public.invitations (
-  token uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+create table if not exists public.invitations (
+  token uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
   email text,
-  role text NOT NULL CHECK (
-    role IN (
-      'owner',
-      'admin',
-      'reviewer',
-      'member',
-      'viewer',
-      'compliance_officer',
-      'auditor'
-    )
-  ),
-  expires_at timestamptz NOT NULL,
+  role text not null check (role in ('owner','admin','reviewer','member','viewer','compliance_officer','auditor')),
+  expires_at timestamptz not null,
   accepted_by uuid,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz not null default now()
 );
 
-ALTER TABLE public.invitations enable ROW level security;
+alter table public.invitations enable row level security;
 
-DROP POLICY if EXISTS "invitations_access" ON public.invitations;
+drop policy if exists "invitations_access" on public.invitations;
 
-CREATE POLICY "invitations_access" ON public.invitations FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
+create policy "invitations_access" on public.invitations
+  for all
+  using (public.is_org_member(org_id))
+  with check (public.is_org_member(org_id));
 
-CREATE INDEX if NOT EXISTS idx_invitations_email ON public.invitations (lower(email));
+create index if not exists idx_invitations_email on public.invitations(lower(email));
 
 -- Consent events table
-CREATE TABLE IF NOT EXISTS public.consent_events (
-  user_id uuid NOT NULL,
-  org_id uuid REFERENCES public.organizations (id) ON DELETE CASCADE,
-  type text NOT NULL,
-  version text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+create table if not exists public.consent_events (
+  user_id uuid not null,
+  org_id uuid references public.organizations(id) on delete cascade,
+  type text not null,
+  version text not null,
+  created_at timestamptz not null default now()
 );
 
-ALTER TABLE public.consent_events enable ROW level security;
+alter table public.consent_events enable row level security;
 
-DROP POLICY if EXISTS "consent_events_access" ON public.consent_events;
+drop policy if exists "consent_events_access" on public.consent_events;
 
-CREATE POLICY "consent_events_access" ON public.consent_events FOR ALL USING (
-  auth.uid () = user_id
-  OR (
-    org_id IS NOT NULL
-    AND public.is_org_member (org_id)
+create policy "consent_events_access" on public.consent_events
+  for all
+  using (
+    auth.uid() = user_id
+    or (org_id is not null and public.is_org_member(org_id))
   )
-)
-WITH
-  CHECK (
-    auth.uid () = user_id
-    OR (
-      org_id IS NOT NULL
-      AND public.is_org_member (org_id)
-    )
+  with check (
+    auth.uid() = user_id
+    or (org_id is not null and public.is_org_member(org_id))
   );
 
-CREATE INDEX if NOT EXISTS idx_consent_user ON public.consent_events (user_id);
-
-CREATE INDEX if NOT EXISTS idx_consent_org ON public.consent_events (org_id);
+create index if not exists idx_consent_user on public.consent_events(user_id);
+create index if not exists idx_consent_org on public.consent_events(org_id);
 
 -- Audit events table (append-only)
-CREATE TABLE IF NOT EXISTS public.audit_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+create table if not exists public.audit_events (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
   actor_user_id uuid,
-  kind text NOT NULL,
+  kind text not null,
   object text,
   before_state jsonb,
   after_state jsonb,
   metadata jsonb,
-  ts timestamptz NOT NULL DEFAULT now()
+  ts timestamptz not null default now()
 );
 
-ALTER TABLE public.audit_events enable ROW level security;
+alter table public.audit_events enable row level security;
 
-DROP POLICY if EXISTS "audit_events_access" ON public.audit_events;
+drop policy if exists "audit_events_access" on public.audit_events;
 
-CREATE POLICY "audit_events_access" ON public.audit_events FOR
-SELECT
-  USING (public.is_org_member (org_id));
+create policy "audit_events_access" on public.audit_events
+  for select
+  using (public.is_org_member(org_id));
 
 -- WhatsApp identities
-CREATE TABLE IF NOT EXISTS public.wa_identities (
-  wa_id text PRIMARY KEY,
-  phone_e164 text NOT NULL,
-  user_id uuid REFERENCES auth.users (id),
-  created_at timestamptz NOT NULL DEFAULT now()
+create table if not exists public.wa_identities (
+  wa_id text primary key,
+  phone_e164 text not null,
+  user_id uuid references auth.users(id),
+  created_at timestamptz not null default now()
 );
 
-CREATE INDEX if NOT EXISTS idx_wa_phone ON public.wa_identities (phone_e164);
+create index if not exists idx_wa_phone on public.wa_identities(phone_e164);
+create index if not exists idx_wa_user on public.wa_identities(user_id);
 
-CREATE INDEX if NOT EXISTS idx_wa_user ON public.wa_identities (user_id);
+alter table public.wa_identities enable row level security;
 
-ALTER TABLE public.wa_identities enable ROW level security;
+drop policy if exists "wa_identities_access" on public.wa_identities;
 
-DROP POLICY if EXISTS "wa_identities_access" ON public.wa_identities;
-
-CREATE POLICY "wa_identities_access" ON public.wa_identities FOR ALL USING (
-  user_id IS NULL
-  OR auth.uid () = user_id
-  OR EXISTS (
-    SELECT
-      1
-    FROM
-      public.org_members om
-    WHERE
-      om.user_id = wa_identities.user_id
-      AND public.is_org_member (om.org_id)
+create policy "wa_identities_access" on public.wa_identities
+  for all
+  using (
+    user_id is null
+    or auth.uid() = user_id
+    or exists (
+      select 1
+      from public.org_members om
+      where om.user_id = wa_identities.user_id
+        and public.is_org_member(om.org_id)
+    )
   )
-)
-WITH
-  CHECK (
-    user_id IS NULL
-    OR auth.uid () = user_id
+  with check (
+    user_id is null
+    or auth.uid() = user_id
   );
 
 -- WhatsApp OTP storage (service role access only)
-CREATE TABLE IF NOT EXISTS public.wa_otp (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone_e164 text NOT NULL,
-  otp_hash text NOT NULL,
-  expires_at timestamptz NOT NULL,
-  attempts int NOT NULL DEFAULT 0,
-  created_at timestamptz NOT NULL DEFAULT now()
+create table if not exists public.wa_otp (
+  id uuid primary key default gen_random_uuid(),
+  phone_e164 text not null,
+  otp_hash text not null,
+  expires_at timestamptz not null,
+  attempts int not null default 0,
+  created_at timestamptz not null default now()
 );
 
-CREATE INDEX if NOT EXISTS idx_wa_otp_phone ON public.wa_otp (phone_e164);
+create index if not exists idx_wa_otp_phone on public.wa_otp(phone_e164);
+create index if not exists idx_wa_otp_expiry on public.wa_otp(expires_at);
 
-CREATE INDEX if NOT EXISTS idx_wa_otp_expiry ON public.wa_otp (expires_at);
+alter table public.wa_otp enable row level security;
 
-ALTER TABLE public.wa_otp enable ROW level security;
+drop policy if exists "wa_otp_service_read" on public.wa_otp;
+drop policy if exists "wa_otp_service_write" on public.wa_otp;
 
-DROP POLICY if EXISTS "wa_otp_service_read" ON public.wa_otp;
-
-DROP POLICY if EXISTS "wa_otp_service_write" ON public.wa_otp;
-
-CREATE POLICY "wa_otp_service" ON public.wa_otp FOR ALL USING (auth.role () = 'service_role')
-WITH
-  CHECK (auth.role () = 'service_role');
+create policy "wa_otp_service" on public.wa_otp
+  for all
+  using (auth.role() = 'service_role')
+  with check (auth.role() = 'service_role');

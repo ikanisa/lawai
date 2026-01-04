@@ -1,15 +1,16 @@
-CREATE TABLE IF NOT EXISTS public.regulator_dispatches (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
-  report_type text NOT NULL,
-  period_start date NOT NULL,
-  period_end date NOT NULL,
+create table if not exists public.regulator_dispatches (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  report_type text not null,
+  period_start date not null,
+  period_end date not null,
   payload_url text,
-  status text NOT NULL DEFAULT 'draft',
+  status text not null default 'draft',
   metadata jsonb,
-  created_by uuid NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by uuid not null,
+  created_at timestamptz not null default now(),
   dispatched_at timestamptz
 );
 
-CREATE INDEX if NOT EXISTS regulator_dispatches_org_period_idx ON public.regulator_dispatches (org_id, period_start, period_end);
+create index if not exists regulator_dispatches_org_period_idx
+  on public.regulator_dispatches (org_id, period_start, period_end);

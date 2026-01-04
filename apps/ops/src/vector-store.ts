@@ -94,7 +94,7 @@ async function uploadDocument(doc: PendingDocument, apiKey: string) {
   }
 
   try {
-    await openai.beta.vectorStores.files.create(vectorStoreId, { file_id: uploadedFile.id });
+    await (openai.beta as any).vectorStores.files.create(vectorStoreId, { file_id: uploadedFile.id });
   } catch (error) {
     if (isOpenAIDebugEnabled()) {
       const info = await fetchOpenAIDebugDetails(openai, error);

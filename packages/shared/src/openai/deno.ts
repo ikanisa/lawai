@@ -55,7 +55,7 @@ export interface OpenAIDenoClient {
       data: Uint8Array | ArrayBuffer | Blob;
       filename: string;
       mimeType?: string;
-    }): Promise<{ id: string }>; 
+    }): Promise<{ id: string }>;
   };
   beta: {
     vectorStores: {
@@ -123,7 +123,8 @@ export function createOpenAIDenoClient(config: OpenAIDenoClientConfig): OpenAIDe
         const blob =
           params.data instanceof Blob
             ? params.data
-            : new Blob([params.data], { type: params.mimeType ?? 'application/octet-stream' });
+            : // @ts-expect-error - ArrayBuffer/Uint8Array type mismatch with BlobPart
+            new Blob([params.data], { type: params.mimeType ?? 'application/octet-stream' });
         form.append('file', new File([blob], params.filename, { type: params.mimeType ?? blob.type }));
 
         const response = await fetch(`${baseUrl}/files`, {

@@ -1,7 +1,11 @@
 -- Sync auth.users metadata into public.profiles automatically.
-CREATE OR REPLACE FUNCTION public.sync_profile_from_auth () returns trigger language plpgsql security definer
-SET
-  search_path = public AS $$
+
+create or replace function public.sync_profile_from_auth()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
 begin
   insert into public.profiles (id, full_name, preferred_language, role, organisation, timezone, metadata)
   values (
@@ -26,8 +30,7 @@ begin
 end;
 $$;
 
-CREATE TRIGGER sync_profile_on_auth_user
-AFTER insert
-OR
-UPDATE ON auth.users FOR each ROW
-EXECUTE procedure public.sync_profile_from_auth ();
+create trigger sync_profile_on_auth_user
+  after insert or update on auth.users
+  for each row
+  execute procedure public.sync_profile_from_auth();

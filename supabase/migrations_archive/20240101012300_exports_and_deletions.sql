@@ -1,45 +1,44 @@
 -- Export jobs and deletion requests with RLS
-CREATE TABLE IF NOT EXISTS public.export_jobs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
-  requested_by uuid NOT NULL,
-  format text NOT NULL CHECK (format IN ('csv', 'json')) DEFAULT 'csv',
-  status text NOT NULL CHECK (status IN ('pending', 'completed', 'failed')) DEFAULT 'pending',
+
+create table if not exists public.export_jobs (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  requested_by uuid not null,
+  format text not null check (format in ('csv','json')) default 'csv',
+  status text not null check (status in ('pending','completed','failed')) default 'pending',
   file_path text,
   error text,
-  created_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz not null default now(),
   completed_at timestamptz
 );
 
-CREATE INDEX if NOT EXISTS export_jobs_org_idx ON public.export_jobs (org_id, created_at DESC);
+create index if not exists export_jobs_org_idx on public.export_jobs(org_id, created_at desc);
 
-CREATE TABLE IF NOT EXISTS public.deletion_requests (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
-  requested_by uuid NOT NULL,
-  target text NOT NULL CHECK (target IN ('document', 'source', 'org')),
+create table if not exists public.deletion_requests (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  requested_by uuid not null,
+  target text not null check (target in ('document','source','org')),
   target_id uuid,
   reason text,
-  status text NOT NULL CHECK (status IN ('pending', 'completed', 'failed')) DEFAULT 'pending',
-  created_at timestamptz NOT NULL DEFAULT now(),
+  status text not null check (status in ('pending','completed','failed')) default 'pending',
+  created_at timestamptz not null default now(),
   processed_at timestamptz,
   error text
 );
 
-CREATE INDEX if NOT EXISTS deletion_requests_org_idx ON public.deletion_requests (org_id, created_at DESC);
+create index if not exists deletion_requests_org_idx on public.deletion_requests(org_id, created_at desc);
 
-ALTER TABLE public.export_jobs enable ROW level security;
+alter table public.export_jobs enable row level security;
+alter table public.deletion_requests enable row level security;
 
-ALTER TABLE public.deletion_requests enable ROW level security;
+drop policy if exists export_jobs_by_org on public.export_jobs;
+create policy export_jobs_by_org on public.export_jobs
+  for all using (public.is_org_member(org_id))
+  with check (public.is_org_member(org_id));
 
-DROP POLICY if EXISTS export_jobs_by_org ON public.export_jobs;
+drop policy if exists deletion_requests_by_org on public.deletion_requests;
+create policy deletion_requests_by_org on public.deletion_requests
+  for all using (public.is_org_member(org_id))
+  with check (public.is_org_member(org_id));
 
-CREATE POLICY export_jobs_by_org ON public.export_jobs FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
-
-DROP POLICY if EXISTS deletion_requests_by_org ON public.deletion_requests;
-
-CREATE POLICY deletion_requests_by_org ON public.deletion_requests FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));

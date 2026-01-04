@@ -110,11 +110,13 @@ export async function performWebSearch(
   const {
     query,
     model = DEFAULT_MODEL,
-    allowedDomains,
+    allowedDomains: allowedDomainsProp,
     userLocation,
     externalWebAccess = true,
     maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
   } = request;
+
+  let allowedDomains = allowedDomainsProp;
 
   if (!query || query.trim().length === 0) {
     throw new Error(WEB_SEARCH_ERROR_CODES.INVALID_REQUEST);
@@ -159,7 +161,7 @@ export async function performWebSearch(
     );
 
     // Make the API request
-    const response = await openai.responses.create({
+    const response = await (openai as any).responses.create({
       model,
       tools: [webSearchTool],
       tool_choice: { type: 'tool', function: { name: 'web_search' } },

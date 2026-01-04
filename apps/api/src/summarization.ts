@@ -38,9 +38,9 @@ async function logOpenAIDebugSummary(
   }
   if (logger?.error) {
     logger.error({
-      openaiRequestId: info.requestId,
-      debug: 'details' in info ? info.details : undefined,
-      debugError: 'debugError' in info ? info.debugError : undefined,
+      openaiRequestId: (info as any).requestId,
+      debug: 'details' in (info as any) ? (info as any).details : undefined,
+      debugError: 'debugError' in (info as any) ? (info as any).debugError : undefined,
     }, `${operation}_openai_debug`);
   } else {
     console.error(`[openai-debug] ${operation}`, info);
@@ -207,7 +207,7 @@ async function generateStructuredSummary(
 
   let response: ParsedResponse<LegalDocumentSummary>;
   try {
-    response = await openai.responses.parse({
+    response = await (openai as any).responses.parse({
       model,
       input: [
         {
@@ -276,7 +276,7 @@ async function generateEmbeddings(
     const slice = texts.slice(index, index + batchSize);
     let response;
     try {
-      response = await openai.embeddings.create({
+      response = await (openai as any).embeddings.create({
         model,
         input: slice,
         ...(dimensions ? { dimensions } : {}),

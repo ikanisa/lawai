@@ -1,6 +1,6 @@
 -- Google Drive watch state per organization
-CREATE TABLE IF NOT EXISTS public.gdrive_state (
-  org_id uuid PRIMARY KEY REFERENCES public.organizations (id) ON DELETE CASCADE,
+create table if not exists public.gdrive_state (
+  org_id uuid primary key references public.organizations(id) on delete cascade,
   drive_id text,
   folder_id text,
   channel_id text,
@@ -8,28 +8,28 @@ CREATE TABLE IF NOT EXISTS public.gdrive_state (
   expiration timestamptz,
   start_page_token text,
   last_page_token text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
-ALTER TABLE public.gdrive_state enable ROW level security;
+alter table public.gdrive_state enable row level security;
 
-DROP POLICY if EXISTS "gdrive state by org" ON public.gdrive_state;
-
-CREATE POLICY "gdrive state by org" ON public.gdrive_state FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
+drop policy if exists "gdrive state by org" on public.gdrive_state;
+create policy "gdrive state by org" on public.gdrive_state
+  for all using (public.is_org_member(org_id))
+  with check (public.is_org_member(org_id));
 
 -- Trigger to update updated_at
-CREATE OR REPLACE FUNCTION public.tg_set_timestamp () returns trigger AS $$
+create or replace function public.tg_set_timestamp()
+returns trigger as $$
 begin
   new.updated_at = now();
   return new;
 end;
 $$ language plpgsql;
 
-DROP TRIGGER if EXISTS set_timestamp_gdrive_state ON public.gdrive_state;
+drop trigger if exists set_timestamp_gdrive_state on public.gdrive_state;
+create trigger set_timestamp_gdrive_state
+before update on public.gdrive_state
+for each row execute function public.tg_set_timestamp();
 
-CREATE TRIGGER set_timestamp_gdrive_state before
-UPDATE ON public.gdrive_state FOR each ROW
-EXECUTE function public.tg_set_timestamp ();

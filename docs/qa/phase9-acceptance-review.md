@@ -15,12 +15,6 @@
 | Guardrail verification (France analytics, confidential mode, OHADA precedence) | ✅ | Manual prompts validated guardrails; HIGH risk answer triggers HITL queue. |
 | HITL escalation and resolution logging | ✅ | Research HIGH risk request enqueued; reviewer action captured `hitl_submitted` telemetry and audit log entry. |
 
-### Automated Orchestrator Coverage
-
-- Added targeted orchestrator unit tests that stub the OpenAI client to exercise streaming drains, budget-limit enforcement, and safety error fallbacks.
-- Added Fastify integration tests to ensure telemetry counters and timeout guard responses trigger when calling `/agent/commands`.
-- Run the suite with `pnpm --filter @apps/api test` (passes locally on `2024-04-10`).
-
 ## Residual Risks
 
 1. **Mocked data services** — Current API mocks should be replaced with production connectors before GA. Track via launch runbook follow-up.

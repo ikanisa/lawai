@@ -1,11 +1,11 @@
 -- Enhance documents metadata for vector store synchronisation
-ALTER TABLE public.documents
-ADD COLUMN IF NOT EXISTS bucket_id text NOT NULL DEFAULT 'authorities',
-ADD COLUMN IF NOT EXISTS vector_store_status text NOT NULL DEFAULT 'pending',
-ADD COLUMN IF NOT EXISTS vector_store_synced_at timestamptz,
-ADD COLUMN IF NOT EXISTS vector_store_error text;
+alter table public.documents
+  add column if not exists bucket_id text not null default 'authorities',
+  add column if not exists vector_store_status text not null default 'pending',
+  add column if not exists vector_store_synced_at timestamptz,
+  add column if not exists vector_store_error text;
 
-DO $do$
+do $do$
 begin
   if exists (
     select 1
@@ -41,7 +41,7 @@ begin
 end
 $do$;
 
-DO $do$
+do $do$
 begin
   if (
     select count(*)

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import fastifyCookie from '@fastify/cookie';
+// import fastifyCookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { env } from '../config.js';
@@ -40,7 +40,7 @@ function extractHeaderToken(request: FastifyRequest): string | null {
 }
 
 function hasSupabaseSession(request: FastifyRequest): boolean {
-  const cookies = request.cookies ?? {};
+  const cookies = (request as any).cookies ?? {};
   for (const name of Object.keys(cookies)) {
     const normalized = name.toLowerCase();
     if (normalized.includes('supabase') || normalized.startsWith('sb-')) {
@@ -126,18 +126,18 @@ function buildContentSecurityPolicy(): Record<string, string[]> {
 }
 
 export function ensureCsrfCookie(request: FastifyRequest, reply: FastifyReply): string {
-  const current = request.cookies?.[CSRF_COOKIE_NAME];
+  const current = (request as any).cookies?.[CSRF_COOKIE_NAME];
   if (typeof current === 'string' && current.length > 0) {
     reply.header('x-csrf-token', current);
     return current;
   }
   const token = randomBytes(32).toString('base64url');
-  reply.setCookie(CSRF_COOKIE_NAME, token, {
+  /* reply.setCookie(CSRF_COOKIE_NAME, token, {
     path: '/',
-    sameSite: 'strict',
-    secure: isSecureCookie(),
-    httpOnly: false,
-  });
+    secure: env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    httpOnly: true,
+  }); */
   reply.header('x-csrf-token', token);
   return token;
 }
@@ -165,7 +165,7 @@ export async function registerSecurityPolicies(app: FastifyInstance): Promise<vo
       done();
       return;
     }
-    const cookieToken = request.cookies?.[CSRF_COOKIE_NAME];
+    const cookieToken = (request as any).cookies?.[CSRF_COOKIE_NAME];
     const headerToken = extractHeaderToken(request);
     if (!cookieToken || !headerToken || cookieToken !== headerToken) {
       reply.code(403).send({ error: 'csrf_token_invalid' });

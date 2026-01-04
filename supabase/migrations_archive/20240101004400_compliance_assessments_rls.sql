@@ -1,7 +1,7 @@
-ALTER TABLE public.compliance_assessments enable ROW level security;
+alter table public.compliance_assessments enable row level security;
 
-DROP POLICY if EXISTS "compliance assessments by org" ON public.compliance_assessments;
-
-CREATE POLICY "compliance assessments by org" ON public.compliance_assessments FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
+drop policy if exists "compliance assessments by org" on public.compliance_assessments;
+create policy "compliance assessments by org" on public.compliance_assessments
+for all
+using (public.is_org_member(org_id))
+with check (public.is_org_member(org_id));

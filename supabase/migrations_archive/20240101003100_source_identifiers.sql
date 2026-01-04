@@ -1,10 +1,10 @@
 -- Add ELI/ECLI identifiers and Akoma Ntoso payloads
-ALTER TABLE public.sources
-ADD COLUMN IF NOT EXISTS eli text,
-ADD COLUMN IF NOT EXISTS ecli text,
-ADD COLUMN IF NOT EXISTS akoma_ntoso jsonb;
+alter table public.sources
+  add column if not exists eli text,
+  add column if not exists ecli text,
+  add column if not exists akoma_ntoso jsonb;
 
-ALTER TABLE public.documents
-ADD COLUMN IF NOT EXISTS residency_zone text;
+alter table public.documents
+  add column if not exists residency_zone text;
 
-CREATE INDEX if NOT EXISTS documents_residency_idx ON public.documents (residency_zone);
+create index if not exists documents_residency_idx on public.documents(residency_zone);

@@ -29,7 +29,7 @@ type Logger = {
  */
 function extractFileSearchCalls(output: unknown[]): FileSearchCallItem[] {
   const calls: FileSearchCallItem[] = [];
-  
+
   for (const item of output) {
     if (
       item &&
@@ -40,7 +40,7 @@ function extractFileSearchCalls(output: unknown[]): FileSearchCallItem[] {
       calls.push(item as FileSearchCallItem);
     }
   }
-  
+
   return calls;
 }
 
@@ -49,7 +49,7 @@ function extractFileSearchCalls(output: unknown[]): FileSearchCallItem[] {
  */
 function extractMessages(output: unknown[]): FileSearchMessageItem[] {
   const messages: FileSearchMessageItem[] = [];
-  
+
   for (const item of output) {
     if (
       item &&
@@ -60,7 +60,7 @@ function extractMessages(output: unknown[]): FileSearchMessageItem[] {
       messages.push(item as FileSearchMessageItem);
     }
   }
-  
+
   return messages;
 }
 
@@ -69,7 +69,7 @@ function extractMessages(output: unknown[]): FileSearchMessageItem[] {
  */
 function extractFileCitations(message: FileSearchMessageItem): FileCitation[] {
   const citations: FileCitation[] = [];
-  
+
   for (const content of message.content) {
     if (content.annotations) {
       for (const annotation of content.annotations) {
@@ -79,7 +79,7 @@ function extractFileCitations(message: FileSearchMessageItem): FileCitation[] {
       }
     }
   }
-  
+
   return citations;
 }
 
@@ -146,7 +146,7 @@ export async function performFileSearch(
     }
 
     // Make the API request
-    const response = await openai.responses.create({
+    const response = await (openai as any).responses.create({
       model,
       tools: [fileSearchTool],
       tool_choice: { type: 'tool', function: { name: 'file_search' } },
@@ -173,7 +173,7 @@ export async function performFileSearch(
     // Extract text from assistant message
     let text = '';
     const allCitations: FileCitation[] = [];
-    
+
     for (const message of messages) {
       if (message.role === 'assistant') {
         for (const content of message.content) {
@@ -217,8 +217,8 @@ export async function performFileSearch(
       error instanceof Error && error.message.includes('quota')
         ? FILE_SEARCH_ERROR_CODES.QUOTA_EXCEEDED
         : error instanceof Error && error.message.includes('vector_store')
-        ? FILE_SEARCH_ERROR_CODES.VECTOR_STORE_ERROR
-        : FILE_SEARCH_ERROR_CODES.API_ERROR;
+          ? FILE_SEARCH_ERROR_CODES.VECTOR_STORE_ERROR
+          : FILE_SEARCH_ERROR_CODES.API_ERROR;
 
     logger?.error?.(
       {
@@ -245,7 +245,7 @@ export function validateVectorStoreIds(ids: string[]): {
 
   for (const id of ids) {
     const trimmed = id.trim();
-    
+
     // Vector store IDs should start with 'vs_' and have alphanumeric characters
     if (/^vs_[a-zA-Z0-9]+$/.test(trimmed)) {
       valid.push(trimmed);

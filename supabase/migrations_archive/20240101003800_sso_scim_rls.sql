@@ -1,23 +1,15 @@
-ALTER TABLE public.sso_connections enable ROW level security;
+alter table public.sso_connections enable row level security;
+alter table public.scim_tokens enable row level security;
+alter table public.ip_allowlist_entries enable row level security;
 
-ALTER TABLE public.scim_tokens enable ROW level security;
+drop policy if exists sso_connections_manage on public.sso_connections;
+create policy sso_connections_manage on public.sso_connections
+  for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
 
-ALTER TABLE public.ip_allowlist_entries enable ROW level security;
+drop policy if exists scim_tokens_manage on public.scim_tokens;
+create policy scim_tokens_manage on public.scim_tokens
+  for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
 
-DROP POLICY if EXISTS sso_connections_manage ON public.sso_connections;
-
-CREATE POLICY sso_connections_manage ON public.sso_connections FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
-
-DROP POLICY if EXISTS scim_tokens_manage ON public.scim_tokens;
-
-CREATE POLICY scim_tokens_manage ON public.scim_tokens FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
-
-DROP POLICY if EXISTS ip_allowlist_manage ON public.ip_allowlist_entries;
-
-CREATE POLICY ip_allowlist_manage ON public.ip_allowlist_entries FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
+drop policy if exists ip_allowlist_manage on public.ip_allowlist_entries;
+create policy ip_allowlist_manage on public.ip_allowlist_entries
+  for all using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));

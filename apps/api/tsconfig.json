@@ -3,10 +3,11 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "exactOptionalPropertyTypes": false,
     "strict": false,
-    "strictNullChecks": false,
     "noImplicitAny": false,
+    "strictNullChecks": false,
+    "noImplicitReturns": false,
+    "exactOptionalPropertyTypes": false,
     "skipLibCheck": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false

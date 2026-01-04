@@ -23,6 +23,7 @@ export const legalDocumentSummarySchema = z
 export type LegalDocumentSummary = z.infer<typeof legalDocumentSummarySchema>;
 export type LegalDocumentHighlight = z.infer<typeof highlightSchema>;
 
+// @ts-expect-error - Type instantiation too deep with zodResponseFormat generic inference
 export const legalDocumentSummaryResponseFormat = zodResponseFormat(
   legalDocumentSummarySchema,
   'LegalDocumentSummary',

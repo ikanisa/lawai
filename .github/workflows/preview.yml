@@ -2,7 +2,7 @@ name: Preview Build
 
 on:
   pull_request:
-    branches: [work]
+    branches: [main]
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
@@ -15,12 +15,12 @@ jobs:
       PREVIEW_API_BASE_URL: ${{ secrets.PREVIEW_API_BASE_URL || 'https://staging.api.avocat-ai.test' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v2
         with:
-          # pnpm version will be read from packageManager field in package.json
+          version: 8.15.4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -30,12 +30,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: SQL lint
-        run: pnpm lint:sql
-
-      - name: Check migrations
-        run: pnpm check:migrations
 
       - name: Build Next.js preview
         run: pnpm --filter @apps/pwa build

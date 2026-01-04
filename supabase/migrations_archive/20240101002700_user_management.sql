@@ -1,93 +1,74 @@
 -- Extend roles and add enterprise user-management tables
-ALTER TABLE public.org_members
-DROP CONSTRAINT if EXISTS org_members_role_check;
+alter table public.org_members
+  drop constraint if exists org_members_role_check;
 
-ALTER TABLE public.org_members
-ADD CONSTRAINT org_members_role_check CHECK (
-  role IN (
-    'owner',
-    'admin',
-    'member',
-    'reviewer',
-    'viewer',
-    'compliance_officer',
-    'auditor'
-  )
+alter table public.org_members
+  add constraint org_members_role_check
+  check (role in ('owner','admin','member','reviewer','viewer','compliance_officer','auditor'));
+
+alter table public.profiles
+  add column if not exists professional_type text,
+  add column if not exists bar_number text,
+  add column if not exists court_id text,
+  add column if not exists verified boolean not null default false;
+
+create table if not exists public.org_policies (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  key text not null,
+  value jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (org_id, key)
 );
 
-ALTER TABLE public.profiles
-ADD COLUMN IF NOT EXISTS professional_type text,
-ADD COLUMN IF NOT EXISTS bar_number text,
-ADD COLUMN IF NOT EXISTS court_id text,
-ADD COLUMN IF NOT EXISTS verified boolean NOT NULL DEFAULT FALSE;
-
-CREATE TABLE IF NOT EXISTS public.org_policies (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
-  key text NOT NULL,
-  value jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (org_id, key)
+create table if not exists public.jurisdiction_entitlements (
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  juris_code text not null,
+  can_read boolean not null default false,
+  can_write boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (org_id, juris_code)
 );
 
-CREATE TABLE IF NOT EXISTS public.jurisdiction_entitlements (
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
-  juris_code text NOT NULL,
-  can_read boolean NOT NULL DEFAULT FALSE,
-  can_write boolean NOT NULL DEFAULT FALSE,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (org_id, juris_code)
-);
-
-CREATE TABLE IF NOT EXISTS public.audit_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
+create table if not exists public.audit_events (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
   actor_user_id uuid,
-  kind text NOT NULL,
-  object text NOT NULL,
+  kind text not null,
+  object text not null,
   before_state jsonb,
   after_state jsonb,
   metadata jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz not null default now()
 );
 
-CREATE TABLE IF NOT EXISTS public.consent_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
-  user_id uuid NOT NULL,
-  consent_type text NOT NULL,
-  version text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+create table if not exists public.consent_events (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  user_id uuid not null,
+  consent_type text not null,
+  version text not null,
+  created_at timestamptz not null default now()
 );
 
-CREATE TABLE IF NOT EXISTS public.invitations (
-  token uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
-  email text NOT NULL,
-  role text NOT NULL CHECK (
-    role IN (
-      'owner',
-      'admin',
-      'member',
-      'reviewer',
-      'viewer',
-      'compliance_officer',
-      'auditor'
-    )
-  ),
-  expires_at timestamptz NOT NULL,
+create table if not exists public.invitations (
+  token uuid primary key default gen_random_uuid(),
+  org_id uuid not null references public.organizations(id) on delete cascade,
+  email text not null,
+  role text not null check (role in ('owner','admin','member','reviewer','viewer','compliance_officer','auditor')),
+  expires_at timestamptz not null,
   accepted_by uuid,
   accepted_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz not null default now()
 );
 
-CREATE TABLE IF NOT EXISTS public.billing_accounts (
-  org_id uuid PRIMARY KEY REFERENCES public.organizations (id) ON DELETE CASCADE,
-  plan text NOT NULL,
-  seats int NOT NULL DEFAULT 0,
-  metering jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+create table if not exists public.billing_accounts (
+  org_id uuid primary key references public.organizations(id) on delete cascade,
+  plan text not null,
+  seats int not null default 0,
+  metering jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );

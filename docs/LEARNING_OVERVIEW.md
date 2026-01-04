@@ -36,9 +36,3 @@ The learning loop monitors production signals, diagnoses regressions, proposes a
 - **Proposed changes** (P1) – review queue for synonyms, hints, canonicalizer, denylist modifications.
 - **Policy versions** (P1) – history, diff, rollback button.
 
-## Related Guides
-
-- [Semantic search quickstart](./LEARNING_SEMANTIC_SEARCH.md#quickstart) – triage ingestion and retrieval issues in minutes.
-- [Tuning embedding coverage](./LEARNING_SEMANTIC_SEARCH.md#tune-embedding-coverage) – refresh corpora and validate updated citations.
-- [Ranking diagnostics](./LEARNING_SEMANTIC_SEARCH.md#ranking-diagnostics) – compare similarity distributions and clickthrough health.
-

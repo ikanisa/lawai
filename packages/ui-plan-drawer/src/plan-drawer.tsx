@@ -10,7 +10,7 @@ import type {
 } from '@avocat-ai/shared';
 import type { ReactNode } from 'react';
 
-import { riskBadgeVariant, toolStatusBadgeVariant } from './styles.js';
+import { riskBadgeVariant, toolStatusBadgeVariant } from './styles';
 
 const DEFAULT_LABELS = {
   planHeading: "Plan agent",

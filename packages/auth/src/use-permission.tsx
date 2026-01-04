@@ -18,9 +18,11 @@ export function usePermission(permission?: Permission): UsePermissionResult {
     const { session, status } = useSession();
 
     const role: UserRole | null = useMemo(() => {
-        if (!session) return null;
-        // Default to viewer role - in production this should come from session metadata
-        return 'viewer';
+        if (!session?.user) return null;
+        // Check user_metadata first, then app_metadata, default to viewer if undefined but user exists
+        return (session.user.user_metadata?.role as UserRole) ||
+            (session.user.app_metadata?.role as UserRole) ||
+            'viewer';
     }, [session]);
 
     const can = useCallback(
@@ -54,9 +56,10 @@ export function useRole() {
     const { session, status } = useSession();
 
     const role: UserRole | null = useMemo(() => {
-        if (!session) return null;
-        // Default to viewer role - in production this should come from session metadata
-        return 'viewer';
+        if (!session?.user) return null;
+        return (session.user.user_metadata?.role as UserRole) ||
+            (session.user.app_metadata?.role as UserRole) ||
+            'viewer';
     }, [session]);
 
     return {

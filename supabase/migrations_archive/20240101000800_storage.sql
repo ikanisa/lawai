@@ -1,13 +1,16 @@
 -- Configure Supabase storage buckets and RLS policies for authorities ingestion
-INSERT INTO
-  storage.buckets (id, name, public)
-VALUES
-  ('authorities', 'authorities', FALSE),
-  ('uploads', 'uploads', FALSE),
-  ('snapshots', 'snapshots', FALSE)
-ON CONFLICT (id) DO NOTHING;
+insert into storage.buckets (id, name, public)
+values
+  ('authorities', 'authorities', false),
+  ('uploads', 'uploads', false),
+  ('snapshots', 'snapshots', false)
+on conflict (id) do nothing;
 
-CREATE OR REPLACE FUNCTION public.storage_object_org (path text) returns uuid language plpgsql immutable AS $$
+create or replace function public.storage_object_org(path text)
+returns uuid
+language plpgsql
+immutable
+as $$
 declare
   first_segment text;
   result uuid;
@@ -31,7 +34,7 @@ begin
 end;
 $$;
 
-DO $do$
+do $do$
 declare
   owns_table boolean;
 begin

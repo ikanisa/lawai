@@ -70,7 +70,7 @@ supabase:
     agent_learning_jobs: {pk: id, cols: [type, payload:jsonb, status, timestamps]}
     agent_synonyms: {pk: id, cols: [jurisdiction, term, expansions:text[]]}
     agent_policy_versions: {pk: id, cols: [name, activated_at, notes]}
-    tool_telemetry: {pk: id, cols: [run_id, tool_name, latency_ms:int, success:boolean, error_code?, metadata:jsonb?]}
+    tool_telemetry: {pk: id, cols: [run_id, tool_name, latency_ms:int, success:boolean, error_code?]}
 
     # Case reliability scoring
     case_scores:

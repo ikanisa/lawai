@@ -1,88 +1,80 @@
 -- Enforce residency prefixes in storage policies
-CREATE OR REPLACE FUNCTION public.storage_object_is_valid (path text) returns boolean language sql stable AS $$
+create or replace function public.storage_object_is_valid(path text)
+returns boolean
+language sql
+stable
+as $$
   select
     public.storage_object_org(path) is not null
     and public.storage_residency_allowed(public.storage_object_residency(path));
 $$;
 
-DROP POLICY if EXISTS "Org members read authorities" ON storage.objects;
+drop policy if exists "Org members read authorities" on storage.objects;
+drop policy if exists "Org members upload authorities" on storage.objects;
+drop policy if exists "Org members manage authorities" on storage.objects;
+drop policy if exists "Org members delete authorities" on storage.objects;
+drop policy if exists "Org members read uploads" on storage.objects;
+drop policy if exists "Org members write uploads" on storage.objects;
+drop policy if exists "Org members manage snapshots" on storage.objects;
 
-DROP POLICY if EXISTS "Org members upload authorities" ON storage.objects;
-
-DROP POLICY if EXISTS "Org members manage authorities" ON storage.objects;
-
-DROP POLICY if EXISTS "Org members delete authorities" ON storage.objects;
-
-DROP POLICY if EXISTS "Org members read uploads" ON storage.objects;
-
-DROP POLICY if EXISTS "Org members write uploads" ON storage.objects;
-
-DROP POLICY if EXISTS "Org members manage snapshots" ON storage.objects;
-
-CREATE POLICY "Org members read authorities" ON storage.objects FOR
-SELECT
-  USING (
+create policy "Org members read authorities" on storage.objects
+  for select using (
     bucket_id = 'authorities'
-    AND public.storage_object_is_valid (name)
-    AND public.is_org_member (public.storage_object_org (name))
+    and public.storage_object_is_valid(name)
+    and public.is_org_member(public.storage_object_org(name))
   );
 
-CREATE POLICY "Org members upload authorities" ON storage.objects FOR insert
-WITH
-  CHECK (
+create policy "Org members upload authorities" on storage.objects
+  for insert with check (
     bucket_id = 'authorities'
-    AND public.storage_object_is_valid (name)
-    AND public.is_org_member (public.storage_object_org (name))
+    and public.storage_object_is_valid(name)
+    and public.is_org_member(public.storage_object_org(name))
   );
 
-CREATE POLICY "Org members manage authorities" ON storage.objects
-FOR UPDATE
-  USING (
+create policy "Org members manage authorities" on storage.objects
+  for update using (
     bucket_id = 'authorities'
-    AND public.storage_object_is_valid (name)
-    AND public.is_org_member (public.storage_object_org (name))
+    and public.storage_object_is_valid(name)
+    and public.is_org_member(public.storage_object_org(name))
   )
-WITH
-  CHECK (
+  with check (
     bucket_id = 'authorities'
-    AND public.storage_object_is_valid (name)
-    AND public.is_org_member (public.storage_object_org (name))
+    and public.storage_object_is_valid(name)
+    and public.is_org_member(public.storage_object_org(name))
   );
 
-CREATE POLICY "Org members delete authorities" ON storage.objects FOR delete USING (
-  bucket_id = 'authorities'
-  AND public.storage_object_is_valid (name)
-  AND public.is_org_member (public.storage_object_org (name))
-);
+create policy "Org members delete authorities" on storage.objects
+  for delete using (
+    bucket_id = 'authorities'
+    and public.storage_object_is_valid(name)
+    and public.is_org_member(public.storage_object_org(name))
+  );
 
-CREATE POLICY "Org members read uploads" ON storage.objects FOR
-SELECT
-  USING (
+create policy "Org members read uploads" on storage.objects
+  for select using (
     bucket_id = 'uploads'
-    AND public.storage_object_is_valid (name)
-    AND public.is_org_member (public.storage_object_org (name))
+    and public.storage_object_is_valid(name)
+    and public.is_org_member(public.storage_object_org(name))
   );
 
-CREATE POLICY "Org members write uploads" ON storage.objects FOR ALL USING (
-  bucket_id = 'uploads'
-  AND public.storage_object_is_valid (name)
-  AND public.is_org_member (public.storage_object_org (name))
-)
-WITH
-  CHECK (
+create policy "Org members write uploads" on storage.objects
+  for all using (
     bucket_id = 'uploads'
-    AND public.storage_object_is_valid (name)
-    AND public.is_org_member (public.storage_object_org (name))
+    and public.storage_object_is_valid(name)
+    and public.is_org_member(public.storage_object_org(name))
+  ) with check (
+    bucket_id = 'uploads'
+    and public.storage_object_is_valid(name)
+    and public.is_org_member(public.storage_object_org(name))
   );
 
-CREATE POLICY "Org members manage snapshots" ON storage.objects FOR ALL USING (
-  bucket_id = 'snapshots'
-  AND public.storage_object_is_valid (name)
-  AND public.is_org_member (public.storage_object_org (name))
-)
-WITH
-  CHECK (
+create policy "Org members manage snapshots" on storage.objects
+  for all using (
     bucket_id = 'snapshots'
-    AND public.storage_object_is_valid (name)
-    AND public.is_org_member (public.storage_object_org (name))
+    and public.storage_object_is_valid(name)
+    and public.is_org_member(public.storage_object_org(name))
+  ) with check (
+    bucket_id = 'snapshots'
+    and public.storage_object_is_valid(name)
+    and public.is_org_member(public.storage_object_org(name))
   );

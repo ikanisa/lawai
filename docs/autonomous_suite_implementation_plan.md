@@ -36,7 +36,6 @@ Each phase delivers production-ready increments with integration tests, document
 3. **Concierge Orchestrator**
    - Intent detection, jurisdiction routing, plan generation, tool budgeting, HITL triggers.
    - Deterministic plan output for transparency (no chain-of-thought exposure; plan drawer ready).
-   - Supabase backed `orchestrator_sessions`/`commands`/`jobs` + safety gating APIs now live (`/agent/commands`, `/agent/jobs/*`, `/agent/connectors`).
 4. **Research & OHADA Agents**
    - Statute-first retrieval, case scoring, OHADA pre-emption banners, Maghreb language flags.
    - Tool adapters: `file_search`, `web_search`, `lookupCodeArticle`, `ohadaUniformAct`, `validateCitation`, `deadlineCalculator`.
@@ -51,7 +50,6 @@ Each phase delivers production-ready increments with integration tests, document
 - Passing integration tests for agent runs in FR/OHADA contexts.
 - Access denied for unauthorised roles/tools; HITL triggered per policy.
 - Plan drawer surfaces agent plan in UI stub (placeholder JSON served).
-- Finance capability manifest exposé via `/agent/capabilities` avec couverture des connecteurs (Tax/AP/Audit/CFO/Risque/Réglementaire) pour alimenter Director et Safety.
 
 ### Phase 2 – Data & Ingestion Layer
 **Objectives**: Build secure corpus ingestion, treatment graphs, and learning telemetry.

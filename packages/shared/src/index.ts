@@ -20,3 +20,4 @@ export * from './transparency/digest.js';
 export * from './scheduling/scheduler.js';
 export * from './config/env.js';
 export * from './semantic-search.js';
+export * from './roles.js';

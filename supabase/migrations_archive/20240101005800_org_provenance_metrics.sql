@@ -1,139 +1,80 @@
 -- Provide provenance and link-health aggregates per organisation
-CREATE OR REPLACE VIEW public.org_provenance_metrics AS
-WITH
-  source_counts AS (
-    SELECT
+create or replace view public.org_provenance_metrics as
+with source_counts as (
+  select
+    s.org_id,
+    count(*) as total_sources,
+    count(*) filter (where coalesce(s.binding_lang, '') <> '') as with_binding,
+    count(*) filter (where coalesce(s.language_note, '') <> '') as with_language_note,
+    count(*) filter (where coalesce(s.eli, '') <> '') as with_eli,
+    count(*) filter (where coalesce(s.ecli, '') <> '') as with_ecli,
+    count(*) filter (where coalesce(s.residency_zone, '') <> '') as with_residency,
+    count(*) filter (
+      where s.link_last_status = 'ok'
+        and s.link_last_checked_at >= now() - interval '30 days'
+    ) as link_ok_recent,
+    count(*) filter (
+      where s.link_last_status = 'ok'
+        and (s.link_last_checked_at is null or s.link_last_checked_at < now() - interval '30 days')
+    ) as link_stale,
+    count(*) filter (where s.link_last_status = 'failed') as link_failed
+  from public.sources s
+  group by s.org_id
+), binding_breakdown as (
+  select
+    org_id,
+    jsonb_object_agg(binding_lang, binding_count order by binding_lang) as binding_breakdown
+  from (
+    select
       s.org_id,
-      count(*) AS total_sources,
-      count(*) FILTER (
-        WHERE
-          coalesce(s.binding_lang, '') <> ''
-      ) AS with_binding,
-      count(*) FILTER (
-        WHERE
-          coalesce(s.language_note, '') <> ''
-      ) AS with_language_note,
-      count(*) FILTER (
-        WHERE
-          coalesce(s.eli, '') <> ''
-      ) AS with_eli,
-      count(*) FILTER (
-        WHERE
-          coalesce(s.ecli, '') <> ''
-      ) AS with_ecli,
-      count(*) FILTER (
-        WHERE
-          coalesce(s.residency_zone, '') <> ''
-      ) AS with_residency,
-      count(*) FILTER (
-        WHERE
-          s.link_last_status = 'ok'
-          AND s.link_last_checked_at >= now() - interval '30 days'
-      ) AS link_ok_recent,
-      count(*) FILTER (
-        WHERE
-          s.link_last_status = 'ok'
-          AND (
-            s.link_last_checked_at IS NULL
-            OR s.link_last_checked_at < now() - interval '30 days'
-          )
-      ) AS link_stale,
-      count(*) FILTER (
-        WHERE
-          s.link_last_status = 'failed'
-      ) AS link_failed
-    FROM
-      public.sources s
-    GROUP BY
-      s.org_id
-  ),
-  binding_breakdown AS (
-    SELECT
-      org_id,
-      jsonb_object_agg(
-        binding_lang,
-        binding_count
-        ORDER BY
-          binding_lang
-      ) AS binding_breakdown
-    FROM
-      (
-        SELECT
-          s.org_id,
-          s.binding_lang,
-          count(*) AS binding_count
-        FROM
-          public.sources s
-        WHERE
-          coalesce(s.binding_lang, '') <> ''
-        GROUP BY
-          s.org_id,
-          s.binding_lang
-      ) binding
-    GROUP BY
-      org_id
-  ),
-  residency_breakdown AS (
-    SELECT
-      org_id,
-      jsonb_object_agg(
-        residency_zone,
-        residency_count
-        ORDER BY
-          residency_zone
-      ) AS residency_breakdown
-    FROM
-      (
-        SELECT
-          s.org_id,
-          s.residency_zone,
-          count(*) AS residency_count
-        FROM
-          public.sources s
-        WHERE
-          coalesce(s.residency_zone, '') <> ''
-        GROUP BY
-          s.org_id,
-          s.residency_zone
-      ) residency
-    GROUP BY
-      org_id
-  ),
-  chunk_summary AS (
-    SELECT
-      dc.org_id,
-      count(*) AS total_chunks,
-      count(*) FILTER (
-        WHERE
-          coalesce(dc.article_or_section, '') <> ''
-      ) AS chunks_with_markers
-    FROM
-      public.document_chunks dc
-    GROUP BY
-      dc.org_id
-  )
-SELECT
-  o.id AS org_id,
-  coalesce(sc.total_sources, 0) AS total_sources,
-  coalesce(sc.with_binding, 0) AS sources_with_binding,
-  coalesce(sc.with_language_note, 0) AS sources_with_language_note,
-  coalesce(sc.with_eli, 0) AS sources_with_eli,
-  coalesce(sc.with_ecli, 0) AS sources_with_ecli,
-  coalesce(sc.with_residency, 0) AS sources_with_residency,
-  coalesce(sc.link_ok_recent, 0) AS sources_link_ok_recent,
-  coalesce(sc.link_stale, 0) AS sources_link_stale,
-  coalesce(sc.link_failed, 0) AS sources_link_failed,
-  coalesce(bb.binding_breakdown, '{}'::jsonb) AS binding_breakdown,
-  coalesce(rb.residency_breakdown, '{}'::jsonb) AS residency_breakdown,
-  coalesce(cs.total_chunks, 0) AS chunk_total,
-  coalesce(cs.chunks_with_markers, 0) AS chunks_with_markers
-FROM
-  public.organizations o
-  LEFT JOIN source_counts sc ON sc.org_id = o.id
-  LEFT JOIN binding_breakdown bb ON bb.org_id = o.id
-  LEFT JOIN residency_breakdown rb ON rb.org_id = o.id
-  LEFT JOIN chunk_summary cs ON cs.org_id = o.id;
+      s.binding_lang,
+      count(*) as binding_count
+    from public.sources s
+    where coalesce(s.binding_lang, '') <> ''
+    group by s.org_id, s.binding_lang
+  ) binding
+  group by org_id
+), residency_breakdown as (
+  select
+    org_id,
+    jsonb_object_agg(residency_zone, residency_count order by residency_zone) as residency_breakdown
+  from (
+    select
+      s.org_id,
+      s.residency_zone,
+      count(*) as residency_count
+    from public.sources s
+    where coalesce(s.residency_zone, '') <> ''
+    group by s.org_id, s.residency_zone
+  ) residency
+  group by org_id
+), chunk_summary as (
+  select
+    dc.org_id,
+    count(*) as total_chunks,
+    count(*) filter (where coalesce(dc.article_or_section, '') <> '') as chunks_with_markers
+  from public.document_chunks dc
+  group by dc.org_id
+)
+select
+  o.id as org_id,
+  coalesce(sc.total_sources, 0) as total_sources,
+  coalesce(sc.with_binding, 0) as sources_with_binding,
+  coalesce(sc.with_language_note, 0) as sources_with_language_note,
+  coalesce(sc.with_eli, 0) as sources_with_eli,
+  coalesce(sc.with_ecli, 0) as sources_with_ecli,
+  coalesce(sc.with_residency, 0) as sources_with_residency,
+  coalesce(sc.link_ok_recent, 0) as sources_link_ok_recent,
+  coalesce(sc.link_stale, 0) as sources_link_stale,
+  coalesce(sc.link_failed, 0) as sources_link_failed,
+  coalesce(bb.binding_breakdown, '{}'::jsonb) as binding_breakdown,
+  coalesce(rb.residency_breakdown, '{}'::jsonb) as residency_breakdown,
+  coalesce(cs.total_chunks, 0) as chunk_total,
+  coalesce(cs.chunks_with_markers, 0) as chunks_with_markers
+from public.organizations o
+left join source_counts sc on sc.org_id = o.id
+left join binding_breakdown bb on bb.org_id = o.id
+left join residency_breakdown rb on rb.org_id = o.id
+left join chunk_summary cs on cs.org_id = o.id;
 
-ALTER VIEW public.org_provenance_metrics
-SET
-  (security_invoker = TRUE);
+alter view public.org_provenance_metrics set (security_invoker = true);

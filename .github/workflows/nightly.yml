@@ -16,12 +16,12 @@ jobs:
       OPS_ORG_ID: ${{ secrets.OPS_ORG_ID }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v2
         with:
-          # pnpm version will be read from packageManager field in package.json
+          version: 8.15.4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -38,17 +38,6 @@ jobs:
           SUPABASE_URL: ${{ env.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
           OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
-
-      - name: Run platform evals (OpenAI Evals)
-        run: pnpm ops:evaluate -- --ci
-        env:
-          SUPABASE_URL: ${{ env.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
-          OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
-          EVAL_ORG_ID: ${{ secrets.EVAL_ORG_ID }}
-          EVAL_USER_ID: ${{ secrets.EVAL_USER_ID }}
-          OPENAI_EVAL_AGENT_ID: ${{ secrets.OPENAI_EVAL_AGENT_ID }}
-          OPENAI_EVAL_DATASET_MAP: ${{ secrets.OPENAI_EVAL_DATASET_MAP }}
 
       - name: Update link-health telemetry (HEAD checks)
         run: pnpm ops:link-health

@@ -1,4 +1,4 @@
 -- Add supplementary metadata for authoritative source tracking
-ALTER TABLE public.sources
-ADD COLUMN IF NOT EXISTS language_note text,
-ADD COLUMN IF NOT EXISTS version_label text;
+alter table public.sources
+  add column if not exists language_note text,
+  add column if not exists version_label text;

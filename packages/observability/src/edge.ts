@@ -83,9 +83,9 @@ function ensurePatchedServe(tracerName: string) {
           },
         }) ??
         ({
-          end() {},
-          recordException() {},
-          setStatus() {},
+          end() { },
+          recordException() { },
+          setStatus() { },
         } as unknown as Span);
       const start = performance.now();
       const ctx = trace.setSpan(context.active(), span);
@@ -179,8 +179,8 @@ export async function initEdgeTelemetry(config: EdgeTelemetryConfig): Promise<Te
   tracerProvider = new BasicTracerProvider({ resource });
   const traceEndpoint = resolveEndpoint(config, 'trace');
   const traceExporter = traceEndpoint
-    ? new OTLPTraceExporter({ url: traceEndpoint, headers })
-    : new OTLPTraceExporter({ headers });
+    ? new OTLPTraceExporter({ url: traceEndpoint, ...(headers && { headers }) })
+    : new OTLPTraceExporter({ ...(headers && { headers }) });
   spanProcessor = new BatchSpanProcessor(traceExporter, { scheduledDelayMillis: 5_000, exportTimeoutMillis: 10_000 });
   tracerProvider.addSpanProcessor(spanProcessor);
   tracerProvider.register();
@@ -188,8 +188,8 @@ export async function initEdgeTelemetry(config: EdgeTelemetryConfig): Promise<Te
   meterProvider = new MeterProvider({ resource });
   const metricEndpoint = resolveEndpoint(config, 'metric');
   const metricsExporter = metricEndpoint
-    ? new OTLPMetricExporter({ url: metricEndpoint, headers })
-    : new OTLPMetricExporter({ headers });
+    ? new OTLPMetricExporter({ url: metricEndpoint, ...(headers && { headers }) })
+    : new OTLPMetricExporter({ ...(headers && { headers }) });
   const metricReader = new PeriodicExportingMetricReader({ exporter: metricsExporter, exportIntervalMillis: 20_000 });
   meterProvider.addMetricReader(metricReader);
 
@@ -231,9 +231,9 @@ export async function withEdgeSpan<T>(
   const span =
     tracer?.startSpan?.(name, { attributes }) ??
     ({
-      end() {},
-      recordException() {},
-      setStatus() {},
+      end() { },
+      recordException() { },
+      setStatus() { },
     } as unknown as Span);
   const ctx = trace.setSpan(context.active(), span);
   let handlerResult: T | Promise<T> | undefined;

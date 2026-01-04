@@ -1,19 +1,12 @@
-ALTER TABLE public.ingestion_runs enable ROW level security;
+alter table public.ingestion_runs enable row level security;
 
-DROP POLICY if EXISTS "ingestion runs by org" ON public.ingestion_runs;
+drop policy if exists "ingestion runs by org" on public.ingestion_runs;
+create policy "ingestion runs by org" on public.ingestion_runs
+  for all
+  using (org_id is null or public.is_org_member(org_id))
+  with check (org_id is null or public.is_org_member(org_id));
 
-CREATE POLICY "ingestion runs by org" ON public.ingestion_runs FOR ALL USING (
-  org_id IS NULL
-  OR public.is_org_member (org_id)
-)
-WITH
-  CHECK (
-    org_id IS NULL
-    OR public.is_org_member (org_id)
-  );
-
-DROP POLICY if EXISTS "authority domains readable" ON public.authority_domains;
-
-CREATE POLICY "authority domains readable" ON public.authority_domains FOR
-SELECT
-  USING (TRUE);
+drop policy if exists "authority domains readable" on public.authority_domains;
+create policy "authority domains readable" on public.authority_domains
+  for select
+  using (true);

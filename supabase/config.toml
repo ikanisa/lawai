@@ -1,16 +1,36 @@
-# Cron schedules are now documented in scripts/cron.md for manual operators.
-
 [functions."crawl-authorities"]
 verify_jwt = false
+
+[[functions."crawl-authorities".schedules]]
+cron = "0 */6 * * *"
 
 [functions."process-learning"]
 verify_jwt = false
 
+[[functions."process-learning".schedules]]
+cron = "0 * * * *"
+args = "{\"mode\":\"hourly\"}"
+
+[[functions."process-learning".schedules]]
+cron = "30 2 * * *"
+args = "{\"mode\":\"nightly\"}"
+
 [functions."drive-watcher"]
 verify_jwt = false
+
+[[functions."drive-watcher".schedules]]
+cron = "*/15 * * * *"
 
 [functions."regulator-digest"]
 verify_jwt = false
 
+[[functions."regulator-digest".schedules]]
+cron = "0 6 * * *"
+args = "{\"days\":7}"
+
 [functions."transparency-digest"]
 verify_jwt = false
+
+[[functions."transparency-digest".schedules]]
+cron = "30 6 * * 1"
+args = "{\"days\":30}"

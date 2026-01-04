@@ -1,26 +1,23 @@
 -- Residency zones to enforce storage partitioning
-CREATE TABLE IF NOT EXISTS public.residency_zones (code text PRIMARY KEY, description text NOT NULL);
+create table if not exists public.residency_zones (
+  code text primary key,
+  description text not null
+);
 
-INSERT INTO
-  public.residency_zones (code, description)
-VALUES
+insert into public.residency_zones (code, description) values
   ('eu', 'Union européenne / EEE'),
-  (
-    'ohada',
-    'OHADA - Afrique de l''Ouest et Centrale'
-  ),
+  ('ohada', 'OHADA - Afrique de l''Ouest et Centrale'),
   ('ch', 'Suisse (cantons francophones)'),
   ('ca', 'Canada / Québec'),
   ('rw', 'Rwanda (gazette et justice)'),
-  (
-    'maghreb',
-    'Maghreb francophone (Maroc, Tunisie, Algérie)'
-  )
-ON CONFLICT (code) DO UPDATE
-SET
-  description = excluded.description;
+  ('maghreb', 'Maghreb francophone (Maroc, Tunisie, Algérie)')
+on conflict (code) do update set description = excluded.description;
 
-CREATE OR REPLACE FUNCTION public.storage_object_residency (path text) returns text language plpgsql immutable AS $$
+create or replace function public.storage_object_residency(path text)
+returns text
+language plpgsql
+immutable
+as $$
 declare
   second_segment text;
 begin
@@ -37,7 +34,11 @@ begin
 end;
 $$;
 
-CREATE OR REPLACE FUNCTION public.storage_residency_allowed (code text) returns boolean language sql stable AS $$
+create or replace function public.storage_residency_allowed(code text)
+returns boolean
+language sql
+stable
+as $$
   select exists (
     select 1 from public.residency_zones rz where rz.code = lower($1)
   );

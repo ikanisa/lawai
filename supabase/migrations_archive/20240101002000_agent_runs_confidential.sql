@@ -1,4 +1,5 @@
-ALTER TABLE public.agent_runs
-ADD COLUMN IF NOT EXISTS confidential_mode boolean NOT NULL DEFAULT FALSE;
+alter table public.agent_runs
+  add column if not exists confidential_mode boolean not null default false;
 
-CREATE INDEX if NOT EXISTS agent_runs_confidential_idx ON public.agent_runs (confidential_mode);
+create index if not exists agent_runs_confidential_idx
+  on public.agent_runs(confidential_mode);

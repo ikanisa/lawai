@@ -1,9 +1,8 @@
-ALTER TABLE public.slo_snapshots enable ROW level security;
+alter table public.slo_snapshots enable row level security;
 
-CREATE POLICY "slo snapshots view" ON public.slo_snapshots FOR
-SELECT
-  USING (public.is_org_member (org_id));
+create policy "slo snapshots view" on public.slo_snapshots
+  for select using (public.is_org_member(org_id));
 
-CREATE POLICY "slo snapshots manage" ON public.slo_snapshots FOR ALL USING (public.is_org_member (org_id))
-WITH
-  CHECK (public.is_org_member (org_id));
+create policy "slo snapshots manage" on public.slo_snapshots
+  for all using (public.is_org_member(org_id))
+  with check (public.is_org_member(org_id));

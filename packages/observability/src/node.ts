@@ -61,15 +61,15 @@ export async function initNodeTelemetry(config: NodeTelemetryConfig): Promise<Te
   const traceExporter = (() => {
     const endpoint = resolveEndpoint(config, 'trace');
     return endpoint
-      ? new OTLPTraceExporter({ url: endpoint, headers: config.headers })
-      : new OTLPTraceExporter({ headers: config.headers });
+      ? new OTLPTraceExporter({ url: endpoint, ...(config.headers && { headers: config.headers }) })
+      : new OTLPTraceExporter({ ...(config.headers && { headers: config.headers }) });
   })();
 
   const metricExporter = (() => {
     const endpoint = resolveEndpoint(config, 'metric');
     return endpoint
-      ? new OTLPMetricExporter({ url: endpoint, headers: config.headers })
-      : new OTLPMetricExporter({ headers: config.headers });
+      ? new OTLPMetricExporter({ url: endpoint, ...(config.headers && { headers: config.headers }) })
+      : new OTLPMetricExporter({ ...(config.headers && { headers: config.headers }) });
   })();
 
   const resource = buildResource(config);
@@ -84,6 +84,7 @@ export async function initNodeTelemetry(config: NodeTelemetryConfig): Promise<Te
 
   sdk = new NodeSDK({
     traceExporter,
+    // @ts-expect-error - Mismatch between @opentelemetry/sdk-metrics versions
     metricReader: metricReader as MetricReader,
     resource,
     instrumentations,

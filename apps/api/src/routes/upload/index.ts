@@ -6,6 +6,43 @@ import { UploadResponseSchema } from '@avocat-ai/shared';
 import { makeStoragePath } from '../../storage.js';
 import type { AppContext } from '../../types/context.js';
 import { registerUploadWorker } from './worker.js';
+import { determineResidencyZone } from '../../residency-helpers.js';
+
+class UploadRequestError extends Error {
+  public statusCode: number;
+  constructor(message: string, statusCode = 400) {
+    super(message);
+    this.name = 'UploadRequestError';
+    this.statusCode = statusCode;
+  }
+}
+
+function mapJobStatusToUploadState(status: string): 'pending' | 'completed' | 'failed' {
+  switch (status) {
+    case 'completed': return 'completed';
+    case 'failed': return 'failed';
+    default: return 'pending';
+  }
+}
+
+function normaliseGuardrailTags(tags: string[]): string[] {
+  return tags.map(t => t.trim()).filter(Boolean);
+}
+
+function parseByteSize(value?: number | string): number | null {
+  if (value === undefined || value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+// Mock Allowlist logic until real module located
+async function evaluateAllowlistDomain(ctx: AppContext, orgId: string, domain?: string, jurisdiction?: string): Promise<{ quarantineReason?: string }> {
+  return {};
+}
+
+async function resolveResidencyZone(ctx: AppContext, orgId: string, requestedZone?: string) {
+  return determineResidencyZone(orgId, { orgId, allowedZones: [] }, requestedZone ?? null) ?? 'eu';
+}
 
 const allowedSourceTypes = ['statute', 'case', 'doctrine', 'internal'] as const;
 
@@ -28,7 +65,7 @@ const uploadRequestSchema = z
   })
   .strict();
 
-export async function registerUploadRoutes(app: AppFastifyInstance, _ctx: AppContext) {
+export async function registerUploadRoutes(app: AppFastifyInstance, ctx: AppContext) {
   app.post('/upload', async (request, reply) => {
     const orgHeader = request.headers['x-org-id'];
     if (typeof orgHeader !== 'string' || !orgHeader.trim()) {
@@ -197,9 +234,9 @@ export async function registerUploadRoutes(app: AppFastifyInstance, _ctx: AppCon
       },
       quarantine: quarantineReason
         ? {
-            reason: quarantineReason,
-            status: 'pending',
-          }
+          reason: quarantineReason,
+          status: 'pending',
+        }
         : undefined,
     });
 
