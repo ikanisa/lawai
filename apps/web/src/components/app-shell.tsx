@@ -39,6 +39,7 @@ import { PwaInstallPrompt } from './pwa-install-prompt';
 import { PwaPreferenceToggle } from './pwa-preference-toggle';
 import { usePwaPreference } from '@/hooks/use-pwa-preference';
 import { useSessionTelemetry } from '@/hooks/use-session-telemetry';
+import { clientEnv } from '@/env.client';
 
 interface AppShellProps {
   children: ReactNode;
@@ -77,7 +78,8 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   const { pendingCount: outboxCount, hasItems: hasOutbox, stalenessMs } = useOutbox();
   const online = useOnlineStatus();
   const statusBarMessages = messages.app.statusBar;
-  const { enabled: pwaOptIn, ready: pwaPreferenceReady, setEnabled: setPwaOptIn } = usePwaPreference();
+  const { enabled: pwaOptIn, loading: pwaPreferenceLoading, setEnabled: setPwaOptIn } = usePwaPreference();
+  const pwaPreferenceReady = !pwaPreferenceLoading;
   const sendUserTelemetry = useSessionTelemetry();
 
   useEffect(() => {
@@ -227,19 +229,18 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   };
 
   const installMessages = messages.app.install;
-  const optInMessages = installMessages?.optIn;
   const handlePwaToggle = useCallback(() => {
     const next = !pwaOptIn;
     setPwaOptIn(next);
     const feedback = next
-      ? optInMessages?.on ?? optInMessages?.label
-      : optInMessages?.off ?? optInMessages?.label;
+      ? installMessages?.optInEnabled
+      : installMessages?.optInDisabled;
     if (feedback) {
       toast.info(feedback);
     }
     sendUserTelemetry('pwa_opt_in_toggled', { enabled: next });
-  }, [optInMessages, pwaOptIn, sendUserTelemetry, setPwaOptIn]);
-  const canTogglePwa = clientEnv.NEXT_PUBLIC_ENABLE_PWA && Boolean(optInMessages);
+  }, [installMessages, pwaOptIn, sendUserTelemetry, setPwaOptIn]);
+  const canTogglePwa = clientEnv.NEXT_PUBLIC_ENABLE_PWA && Boolean(installMessages?.optInToggle);
   const outboxAgeLabel = useMemo(() => {
     if (!statusBarMessages || !hasOutbox) {
       return null;
@@ -349,11 +350,11 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
               onClick={handlePwaToggle}
               label={
                 pwaOptIn
-                  ? optInMessages?.on ?? optInMessages?.label
-                  : optInMessages?.off ?? optInMessages?.label
+                  ? installMessages?.optInEnabled ?? installMessages?.optInToggle
+                  : installMessages?.optInDisabled ?? installMessages?.optInToggle
               }
               className="hidden bg-slate-900/60 text-[11px] sm:inline-flex"
-              title={optInMessages?.description}
+              title={installMessages?.optInDescription}
             />
           ) : null}
           {statusBarMessages && !online ? (

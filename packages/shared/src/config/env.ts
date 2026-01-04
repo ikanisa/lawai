@@ -1,4 +1,3 @@
-import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
 
 export const nodeEnvironmentSchema = z
@@ -49,14 +48,13 @@ export interface LoadServerEnvOptions {
   source?: Record<string, unknown>;
 }
 
+// Note: dotenv functionality removed for edge runtime compatibility
+// Environment variables should be set by the platform (Cloudflare, Vercel, etc.)
+// For local development, use a .env.local file with Next.js built-in support
 export function loadServerEnv<TOutput, TInput>(
   schema: z.ZodType<TOutput, z.ZodTypeDef, TInput>,
-  { dotenv = process.env.NODE_ENV !== 'production', source = process.env }: LoadServerEnvOptions = {},
+  { source = process.env }: LoadServerEnvOptions = {},
 ): TOutput {
-  if (dotenv) {
-    loadEnv();
-  }
-
   const parsed = schema.safeParse(source);
   if (!parsed.success) {
     throw parsed.error;
@@ -64,6 +62,9 @@ export function loadServerEnv<TOutput, TInput>(
 
   return parsed.data;
 }
+
+// Alias for backwards compatibility
+export const loadServerEnvSync = loadServerEnv;
 
 export type SharedSupabaseEnv = z.infer<typeof sharedSupabaseSchema>;
 export type SharedOpenAiEnv = z.infer<typeof sharedOpenAiSchema>;

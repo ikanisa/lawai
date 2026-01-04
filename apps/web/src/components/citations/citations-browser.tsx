@@ -63,10 +63,10 @@ export function CitationsBrowser({ messages, locale }: CitationsBrowserProps) {
 
   useEffect(() => {
     if (!baseSnapshot && snapshots.length > 0) {
-      setBaseSnapshot(snapshots[0].id);
+      setBaseSnapshot(snapshots[0]!.id);
     }
     if (!compareSnapshot && snapshots.length > 1) {
-      setCompareSnapshot(snapshots[1].id);
+      setCompareSnapshot(snapshots[1]!.id);
     }
   }, [snapshots, baseSnapshot, compareSnapshot]);
 

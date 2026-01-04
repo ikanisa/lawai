@@ -1,5 +1,8 @@
 import { requireAdminContext, respond, respondError } from '../../../../src/server/admin/auth';
 
+
+export const runtime = 'edge';
+
 export async function GET(request: Request) {
   try {
     const context = await requireAdminContext(request);

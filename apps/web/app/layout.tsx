@@ -30,7 +30,8 @@ export default function RootLayout({
 }) {
   const requestedLocale = params?.locale;
   const locale = requestedLocale && isLocale(requestedLocale) ? requestedLocale : DEFAULT_LOCALE;
-  const direction = locale === 'ar' || locale === 'he' ? 'rtl' : 'ltr';
+  // Only 'fr' and 'en' are supported, both are LTR
+  const direction = 'ltr' as const;
 
   return (
     <html lang={locale} dir={direction} className={`${inter.variable} ${plex.variable}`} suppressHydrationWarning>

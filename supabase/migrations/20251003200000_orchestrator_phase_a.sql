@@ -1,3 +1,9 @@
+-- Create chat_sessions table stub if it doesn't exist
+CREATE TABLE IF NOT EXISTS public.chat_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS public.orchestrator_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,

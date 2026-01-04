@@ -96,7 +96,7 @@ export function CitationsBrowserView() {
 
   const activeDocument = useMemo<CitationDocument | null>(() => {
     if (!filteredResults.length) return null;
-    const fallback = filteredResults[0];
+    const fallback = filteredResults[0]!;
     return filteredResults.find((doc) => doc.id === activeId) ?? fallback;
   }, [filteredResults, activeId]);
 

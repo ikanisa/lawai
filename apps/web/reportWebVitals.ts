@@ -1,6 +1,6 @@
 import type { NextWebVitalsMetric } from 'next/app';
 import { DEMO_ORG_ID, DEMO_USER_ID } from './src/lib/api';
-import { getCachedSession, waitForSession, type SessionValue } from './src/components/session-provider';
+import { getCachedSession, waitForSession, type SessionValue } from '@avocat-ai/auth';
 import { API_BASE } from './src/lib/constants';
 import { ensureCsrfToken, withCsrf } from './src/lib/security';
 

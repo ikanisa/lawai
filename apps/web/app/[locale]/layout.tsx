@@ -6,6 +6,10 @@ import { AppProviders } from '@/features/platform/providers/app-providers';
 import { AuthGuard } from '@/features/auth/components/auth-guard';
 import { getMessages, isLocale, locales, type Locale } from '@/lib/i18n';
 
+// Force dynamic rendering for all pages - required for auth and Cloudflare Pages
+export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
+
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
