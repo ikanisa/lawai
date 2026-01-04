@@ -2,17 +2,16 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { DatabaseZap, HardDriveDownload, ListChecks, RefreshCcw, Shield, UploadCloud } from "lucide-react";
+import { CloudUpload, DatabaseZap, HardDriveDownload, ListChecks, RefreshCcw, Shield } from "lucide-react";
 
-import { Badge } from '@avocat-ai/ui';
-import { Button } from '@avocat-ai/ui';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from '@avocat-ai/ui';
+import { Switch } from "@/components/ui/switch";
 import { corpusDashboardQueryOptions } from "@/lib/queries/corpus";
 import {
   type AllowlistSource,
-  type CorpusDashboardData,
   type CorpusDashboardResponse,
   type IntegrationStatus,
   type IngestionJob,
@@ -145,19 +144,14 @@ export function CorpusAndSourcesView() {
       sourceId: source.id,
       enabled
     });
-    setLocalData((prev: CorpusDashboardResponse | null) => {
-      const baseData = (prev ?? data) as CorpusDashboardResponse | undefined;
-      if (!baseData) {
-        return prev;
-      }
-
-      const updatedAllowlist = (baseData as CorpusDashboardData).allowlist.map((item: AllowlistSource) =>
-        item.id === source.id ? { ...item, enabled, lastIndexed: new Date().toISOString() } : item
-      );
-
+    setLocalData((prev) => {
+      const base = (prev ?? data) as CorpusDashboardResponse | undefined;
+      if (!base) return prev;
       return {
-        ...baseData,
-        allowlist: updatedAllowlist
+        ...base,
+        allowlist: base.allowlist.map((item) =>
+          item.id === source.id ? { ...item, enabled, lastIndexed: new Date().toISOString() } : item
+        )
       };
     });
   };
@@ -204,7 +198,7 @@ export function CorpusAndSourcesView() {
               <Shield className="h-4 w-4" />
             </header>
             <div className="mt-4 space-y-3">
-              {dashboard.allowlist.map((source: AllowlistSource) => (
+              {dashboard.allowlist.map((source) => (
                 <AllowlistRow key={source.id} source={source} onToggle={(enabled) => toggleSource(source, enabled)} />
               ))}
             </div>
@@ -215,7 +209,7 @@ export function CorpusAndSourcesView() {
               <DatabaseZap className="h-4 w-4" /> Intégrations
             </header>
             <div className="mt-4 space-y-3">
-              {dashboard.integrations.map((integration: IntegrationStatus) => (
+              {dashboard.integrations.map((integration) => (
                 <IntegrationCard key={integration.id} integration={integration} />
               ))}
             </div>
@@ -258,11 +252,11 @@ export function CorpusAndSourcesView() {
               <HardDriveDownload className="h-4 w-4" /> Snapshots
             </div>
             <Button size="sm" variant="outline" className="gap-2">
-              <UploadCloud className="h-4 w-4" /> Nouveau snapshot
+              <CloudUpload className="h-4 w-4" /> Nouveau snapshot
             </Button>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-              {dashboard.snapshots.map((snapshot: SnapshotEntry) => (
+            {dashboard.snapshots.map((snapshot) => (
               <SnapshotCard key={snapshot.id} snapshot={snapshot} />
             ))}
           </div>
@@ -272,7 +266,7 @@ export function CorpusAndSourcesView() {
           </div>
           <ScrollArea className="h-[320px] pr-3">
             <div className="space-y-3">
-              {dashboard.ingestionJobs.map((job: IngestionJob) => (
+              {dashboard.ingestionJobs.map((job) => (
                 <IngestionRow key={job.id} job={job} />
               ))}
             </div>

@@ -4,10 +4,8 @@ import {
   fetchOpenAIDebugDetails,
   getOpenAIClient,
   isOpenAIDebugEnabled,
-  legalDocumentSummaryTextFormat,
+  parseLegalDocumentSummaryPayload,
 } from '@avocat-ai/shared';
-import type { LegalDocumentSummary } from '@avocat-ai/shared';
-import type { ParsedResponse } from 'openai/resources/responses/responses';
 import { env } from './config.js';
 
 const textDecoder = new TextDecoder('utf-8', { fatal: false });
@@ -38,60 +36,13 @@ async function logOpenAIDebugSummary(
   }
   if (logger?.error) {
     logger.error({
-      openaiRequestId: (info as any).requestId,
-      debug: 'details' in (info as any) ? (info as any).details : undefined,
-      debugError: 'debugError' in (info as any) ? (info as any).debugError : undefined,
+      openaiRequestId: info.requestId,
+      debug: 'details' in info ? info.details : undefined,
+      debugError: 'debugError' in info ? info.debugError : undefined,
     }, `${operation}_openai_debug`);
   } else {
     console.error(`[openai-debug] ${operation}`, info);
   }
-}
-
-type OpenAIResponsesResult = {
-  output_text?: unknown;
-  output?: Array<{ content?: Array<{ text?: unknown }> }>;
-  output_json?: unknown;
-};
-
-function extractStructuredOutputText(result: OpenAIResponsesResult | null | undefined): string {
-  const direct = typeof result?.output_text === 'string' ? result.output_text.trim() : '';
-  if (direct) {
-    return direct;
-  }
-
-  if (Array.isArray(result?.output)) {
-    for (const item of result.output) {
-      if (!item || typeof item !== 'object') {
-        continue;
-      }
-      const content = Array.isArray(item.content) ? item.content : [];
-      for (const part of content) {
-        if (part && typeof part === 'object' && typeof part.text === 'string') {
-          const text = part.text.trim();
-          if (text) {
-            return text;
-          }
-        }
-      }
-    }
-  }
-
-  const jsonPayload = result?.output_json;
-  if (typeof jsonPayload === 'string' && jsonPayload.trim()) {
-    return jsonPayload.trim();
-  }
-  if (jsonPayload && typeof jsonPayload === 'object') {
-    try {
-      const stringified = JSON.stringify(jsonPayload);
-      if (stringified.trim()) {
-        return stringified.trim();
-      }
-    } catch {
-      // ignore serialization errors
-    }
-  }
-
-  return '';
 }
 
 function stripHtml(html: string): string {
@@ -179,20 +130,6 @@ export function chunkText(content: string, chunkSize = 1200, overlap = 200): Tex
   return chunks;
 }
 
-function findRefusalMessage(response: ParsedResponse<unknown>): string | null {
-  for (const item of response.output ?? []) {
-    if (item.type !== 'message') {
-      continue;
-    }
-    for (const content of item.content ?? []) {
-      if (content.type === 'refusal' && typeof content.refusal === 'string') {
-        return content.refusal;
-      }
-    }
-  }
-  return null;
-}
-
 async function generateStructuredSummary(
   text: string,
   metadata: { title: string; jurisdiction: string; publisher: string | null },
@@ -205,16 +142,16 @@ async function generateStructuredSummary(
 
   const openai = getOpenAIClient({ apiKey: openaiApiKey, ...SUMMARISATION_CLIENT_TAGS });
 
-  let response: ParsedResponse<LegalDocumentSummary>;
+  let json;
   try {
-    response = await (openai as any).responses.parse({
+    json = await openai.responses.create({
       model,
       input: [
         {
           role: 'system',
           content: [
             {
-              type: 'input_text',
+              type: 'text',
               text:
                 "Tu es un assistant juridique senior. Résume les documents officiels en français, en rappelant les points clefs, la portée juridique et les dates importantes.",
             },
@@ -224,13 +161,13 @@ async function generateStructuredSummary(
           role: 'user',
           content: [
             {
-              type: 'input_text',
+              type: 'text',
               text: `Titre: ${metadata.title}\nJuridiction: ${metadata.jurisdiction}\nÉditeur: ${metadata.publisher ?? 'Inconnu'}\n\nTexte:\n${truncated}`,
             },
           ],
         },
       ],
-      text: { format: legalDocumentSummaryTextFormat },
+      response_format: { type: 'json_schema', json_schema: LEGAL_DOCUMENT_SUMMARY_JSON_SCHEMA },
       max_output_tokens: 800,
     });
   } catch (error) {
@@ -239,26 +176,13 @@ async function generateStructuredSummary(
     throw new Error(message);
   }
 
-  const parsed = response.output_parsed;
-
-  if (!parsed) {
-    const refusal = findRefusalMessage(response);
-    if (refusal) {
-      throw new Error(refusal);
-    }
-    throw new Error('Synthèse JSON invalide');
+  const outputText = (json?.output_text ?? '').trim();
+  if (!outputText) {
+    throw new Error('Réponse vide du modèle de synthèse');
   }
 
-  const summary = parsed.summary.trim();
-  const highlights = parsed.highlights
-    .map((entry) => ({ heading: entry.heading.trim(), detail: entry.detail.trim() }))
-    .filter((entry) => entry.heading.length > 0 && entry.detail.length > 0);
-
-  if (!summary) {
-    throw new Error('Synthèse JSON invalide');
-  }
-
-  return { summary, highlights };
+  const parsed = parseLegalDocumentSummaryPayload(outputText);
+  return { summary: parsed.summary, highlights: parsed.highlights };
 }
 
 async function generateEmbeddings(
@@ -276,7 +200,7 @@ async function generateEmbeddings(
     const slice = texts.slice(index, index + batchSize);
     let response;
     try {
-      response = await (openai as any).embeddings.create({
+      response = await openai.embeddings.create({
         model,
         input: slice,
         ...(dimensions ? { dimensions } : {}),
@@ -361,12 +285,12 @@ export async function summariseDocumentFromPayload(params: {
     const inputs = chunks.map((chunk) => chunk.content);
     const embeddings = inputs.length
       ? await generateEmbeddings(
-        inputs,
-        openaiApiKey,
-        embeddingModel ?? env.EMBEDDING_MODEL,
-        env.EMBEDDING_DIMENSION,
-        logger,
-      )
+          inputs,
+          openaiApiKey,
+          embeddingModel ?? env.EMBEDDING_MODEL,
+          env.EMBEDDING_DIMENSION,
+          logger,
+        )
       : [];
 
     return {

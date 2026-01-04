@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
-import { RwandaLanguageTriage, type RwandaLanguageMessages } from '@/features/research/components/rwanda-language-triage';
+import { RwandaLanguageTriage, type RwandaLanguageMessages } from '../src/components/research/rwanda-language-triage';
 
 const messages: RwandaLanguageMessages = {
   label: 'Versions officielles du Rwanda',

@@ -119,7 +119,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
 
   const enqueue = useCallback<OutboxContextValue["enqueue"]>(
     (item) => {
-      const entry: OutboxItem<typeof item.payload> = {
+      const entry: OutboxItem = {
         id: createId(),
         queuedAt: new Date().toISOString(),
         status: item.status ?? "queued",

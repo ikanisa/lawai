@@ -1,46 +1,27 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Info } from 'lucide-react';
-import { Button } from '@avocat-ai/ui';
-
-export interface BilingualToggleLanguage {
-  code: string;
-  label: string;
-}
+import { Button } from './ui/button';
 
 export interface BilingualToggleMessages {
   label: string;
+  fr: string;
+  en: string;
   note: string;
-  languages: BilingualToggleLanguage[];
 }
 
 interface BilingualToggleProps {
   messages: BilingualToggleMessages;
-  onSelect?: (language: string) => void;
+  onSelect?: (language: 'fr' | 'en') => void;
 }
 
 export function BilingualToggle({ messages, onSelect }: BilingualToggleProps) {
-  const availableLanguages = useMemo(() => messages.languages ?? [], [messages.languages]);
-  const [language, setLanguage] = useState(() => availableLanguages[0]?.code ?? '');
+  const [language, setLanguage] = useState<'fr' | 'en'>('fr');
 
-  useEffect(() => {
-    if (availableLanguages.length === 0) {
-      setLanguage('');
-      return;
-    }
-    if (!availableLanguages.some((item) => item.code === language)) {
-      setLanguage(availableLanguages[0]?.code ?? '');
-    }
-  }, [availableLanguages, language]);
-
-  function handleSelect(next: string) {
+  function handleSelect(next: 'fr' | 'en') {
     setLanguage(next);
     onSelect?.(next);
-  }
-
-  if (availableLanguages.length === 0) {
-    return null;
   }
 
   return (
@@ -48,17 +29,22 @@ export function BilingualToggle({ messages, onSelect }: BilingualToggleProps) {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm font-semibold text-slate-100">{messages.label}</p>
         <div className="flex gap-2">
-          {availableLanguages.map((item) => (
-            <Button
-              key={item.code}
-              type="button"
-              size="sm"
-              variant={language === item.code ? 'default' : 'outline'}
-              onClick={() => handleSelect(item.code)}
-            >
-              {item.label}
-            </Button>
-          ))}
+          <Button
+            type="button"
+            size="sm"
+            variant={language === 'fr' ? 'default' : 'outline'}
+            onClick={() => handleSelect('fr')}
+          >
+            {messages.fr}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={language === 'en' ? 'default' : 'outline'}
+            onClick={() => handleSelect('en')}
+          >
+            {messages.en}
+          </Button>
         </div>
       </header>
       <div className="flex items-start gap-2 text-xs text-slate-300">

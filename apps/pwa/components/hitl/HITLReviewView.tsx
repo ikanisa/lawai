@@ -4,15 +4,15 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Filter, Languages, Scale } from "lucide-react";
 
-import { Badge } from '@avocat-ai/ui';
-import { Button } from '@avocat-ai/ui';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from '@avocat-ai/ui';
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from '@avocat-ai/ui';
+import { Textarea } from "@/components/ui/textarea";
 import { hitlQueueQueryOptions } from "@/lib/queries/hitl";
 import { type HitlReviewItem, type HitlOutcome } from "@/lib/data/hitl";
 import { useTelemetry } from "@/lib/telemetry";
@@ -33,10 +33,10 @@ export function HITLReviewView() {
   const [action, setAction] = useState<HitlOutcome | null>(null);
   const [comment, setComment] = useState("");
 
-  const queue = useMemo<HitlReviewItem[]>(() => data?.queue ?? [], [data]);
+  const queue = data?.queue ?? [];
 
-  const filteredQueue = useMemo<HitlReviewItem[]>(() => {
-    return queue.filter((item: HitlReviewItem) => {
+  const filteredQueue = useMemo(() => {
+    return queue.filter((item) => {
       const matchesRisk = riskFilter === "all" || item.riskLevel === riskFilter;
       const matchesType = typeFilter === "all" || item.litigationType === typeFilter;
       const matchesTranslation = !translationOnly || item.requiresTranslationCheck;
@@ -148,7 +148,7 @@ export function HITLReviewView() {
 
           <ScrollArea className="mt-4 h-[520px] pr-2">
             <div className="space-y-2">
-              {filteredQueue.map((item: HitlReviewItem) => (
+              {filteredQueue.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setSelectedId(item.id)}
@@ -207,7 +207,7 @@ export function HITLReviewView() {
                     <div>
                       <p className="text-xs uppercase tracking-wide text-white/50">Rules</p>
                       <ul className="mt-1 list-disc space-y-1 pl-5">
-                        {activeReview.irac.rules.map((rule: string) => (
+                        {activeReview.irac.rules.map((rule) => (
                           <li key={rule}>{rule}</li>
                         ))}
                       </ul>
@@ -228,7 +228,7 @@ export function HITLReviewView() {
                     <CheckCircle2 className="h-4 w-4" /> Évidence & citations
                   </header>
                   <ul className="mt-3 space-y-2 text-sm text-white/80">
-                    {activeReview.evidence.map((item: HitlReviewItem["evidence"][number]) => (
+                    {activeReview.evidence.map((item) => (
                       <li key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                         <p className="font-medium text-white">{item.label}</p>
                         <p className="text-xs text-white/60">{item.type.toUpperCase()} · {item.uri}</p>

@@ -25,10 +25,6 @@ export async function logAuditEvent({
   after,
   metadata,
 }: AuditPayload): Promise<void> {
-  const mergedMetadata = {
-    ...(metadata ?? {}),
-    ...(env as { POLICY_VERSION?: string }).POLICY_VERSION ? { policy_version: (env as any).POLICY_VERSION } : {},
-  };
   const { error } = await supabase.from('audit_events').insert({
     org_id: orgId,
     actor_user_id: actorId ?? null,
@@ -36,7 +32,7 @@ export async function logAuditEvent({
     object,
     before_state: before ?? null,
     after_state: after ?? null,
-    metadata: mergedMetadata,
+    metadata: metadata ?? null,
   });
 
   if (error) {

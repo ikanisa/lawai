@@ -1,5 +1,5 @@
-import { TrustCenterView } from '@/features/trust/components/trust-center-view';
-import { getMessages, type Locale } from '@/lib/i18n';
+import { TrustCenterView } from '../../../src/components/trust/trust-center-view';
+import { getMessages, type Locale } from '../../../src/lib/i18n';
 
 interface PageProps {
   params: { locale: Locale };

@@ -6,7 +6,7 @@ import { cleanup } from "@testing-library/react";
 declare global {
   // eslint-disable-next-line no-unused-vars
   interface Window {
-    matchMedia: (query: string) => MediaQueryList;
+    matchMedia?: (query: string) => MediaQueryList;
   }
 }
 

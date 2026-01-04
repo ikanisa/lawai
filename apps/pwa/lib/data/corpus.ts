@@ -17,9 +17,9 @@ export type {
   PolicyConfiguration
 } from "@avocat-ai/shared";
 
-export type CorpusDashboardResponse = CorpusDashboardData & {
+export interface CorpusDashboardResponse extends CorpusDashboardData {
   policies: PolicyConfiguration;
-};
+}
 
 export async function getCorpusDashboardData(): Promise<CorpusDashboardResponse> {
   return apiFetch<CorpusDashboardResponse>({ path: "/api/corpus" });

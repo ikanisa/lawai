@@ -1,13 +1,12 @@
 import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { IRACPayload } from '@avocat-ai/shared';
-import { Button } from '@avocat-ai/ui';
-import { Badge } from '@avocat-ai/ui';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
 
 interface RiskBannerProps {
   risk: IRACPayload['risk'];
   onHitl?: () => void;
   hitlLabel: string;
-  hitlDisabled?: boolean;
 }
 
 const riskPalette: Record<IRACPayload['risk']['level'], { bg: string; text: string; icon: React.ComponentType<any> }> = {
@@ -16,7 +15,7 @@ const riskPalette: Record<IRACPayload['risk']['level'], { bg: string; text: stri
   HIGH: { bg: 'bg-legal-red/20 border-legal-red/50 text-legal-red', text: 'Risque élevé', icon: ShieldAlert },
 };
 
-export function RiskBanner({ risk, onHitl, hitlLabel, hitlDisabled = false }: RiskBannerProps) {
+export function RiskBanner({ risk, onHitl, hitlLabel }: RiskBannerProps) {
   const palette = riskPalette[risk.level];
   const Icon = palette.icon;
 
@@ -34,13 +33,8 @@ export function RiskBanner({ risk, onHitl, hitlLabel, hitlDisabled = false }: Ri
           <p className="text-sm font-semibold uppercase tracking-wide">{palette.text}</p>
           <p className="text-sm text-slate-200/80">{risk.why}</p>
         </div>
-        {onHitl && (
-          <Button
-            variant={risk.hitl_required ? 'default' : 'outline'}
-            onClick={onHitl}
-            className="text-xs uppercase"
-            disabled={hitlDisabled}
-          >
+        {risk.hitl_required && onHitl && (
+          <Button variant="outline" onClick={onHitl} className="text-xs uppercase">
             {hitlLabel}
           </Button>
         )}

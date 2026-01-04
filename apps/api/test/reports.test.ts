@@ -9,7 +9,7 @@ import {
   summariseSlo,
   buildTransparencyReport,
   mapLearningReports,
-} from '../src/reports.ts';
+} from '../src/reports.js';
 
 describe('reports helpers', () => {
   it('summarises CEPEJ metrics with violations', () => {

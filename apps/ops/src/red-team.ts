@@ -4,7 +4,6 @@ import { createSupabaseService } from './lib/supabase.js';
 import { requireEnv } from './lib/env.js';
 import { assessScenario, summariseAssessment } from './lib/red-team.js';
 import { DEFAULT_RED_TEAM_SCENARIOS } from './red-team/scenarios.js';
-import { createRestClient, type RestApiClient } from '@avocat-ai/api-clients';
 import type { RedTeamScenario } from './lib/red-team.js';
 import type { IRACPayload } from '@avocat-ai/shared';
 
@@ -68,16 +67,25 @@ function selectScenarios(keys: string[] | undefined): RedTeamScenario[] {
 async function executeScenario(
   scenario: RedTeamScenario,
   options: CliOptions,
-  api: RestApiClient,
 ): Promise<{ payload: IRACPayload; assessmentSummary: string; passed: boolean; observed: string; notes: string[] }>
 {
-  const result = await api.submitResearchQuestion({
-    question: scenario.prompt,
-    orgId: options.orgId,
-    userId: options.userId,
+  const response = await fetch(`${options.apiBaseUrl}/runs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      question: scenario.prompt,
+      orgId: options.orgId,
+      userId: options.userId,
+    }),
   });
 
-  const payload = result.data;
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Echec appel /runs (${response.status}): ${body}`);
+  }
+
+  const json = (await response.json()) as { data: IRACPayload };
+  const payload = json.data;
   const assessment = assessScenario(payload, scenario);
   return {
     payload,
@@ -143,13 +151,12 @@ async function run(): Promise<void> {
   }
 
   const env = options.dryRun ? null : requireEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
-  const api = createRestClient({ baseUrl: options.apiBaseUrl });
 
   const results: Array<{ key: string; status: string; severity: string }> = [];
   try {
     for (const scenario of scenarios) {
       spinner.text = `Scénario ${scenario.key}...`;
-      const { assessmentSummary, payload, passed, observed, notes } = await executeScenario(scenario, options, api);
+      const { assessmentSummary, payload, passed, observed, notes } = await executeScenario(scenario, options);
       results.push({ key: scenario.key, status: passed ? 'PASS' : 'FAIL', severity: scenario.severity });
       spinner.info(assessmentSummary);
 

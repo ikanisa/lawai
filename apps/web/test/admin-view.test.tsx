@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Messages } from '../src/lib/i18n';
-import { SessionProvider } from '@avocat-ai/auth';
 
 const {
   fetchGovernanceMetricsMock,
@@ -43,17 +42,6 @@ vi.mock('sonner', () => ({
   },
 }));
 
-vi.mock('@/env.client', () => ({
-  clientEnv: {
-    NEXT_PUBLIC_DASHBOARD_RUNS_HIGH: 1000,
-    NEXT_PUBLIC_DASHBOARD_RUNS_MEDIUM: 500,
-    NEXT_PUBLIC_EVAL_PASS_GOOD: 0.9,
-    NEXT_PUBLIC_EVAL_PASS_OK: 0.75,
-    NEXT_PUBLIC_TOOL_FAILURE_WARN: 0.05,
-    NEXT_PUBLIC_TOOL_FAILURE_CRIT: 0.1,
-  },
-}));
-
 type ApiModule = typeof import('../src/lib/api');
 
 vi.mock('../src/lib/api', async () => {
@@ -72,7 +60,7 @@ vi.mock('../src/lib/api', async () => {
   } satisfies ApiModule;
 });
 
-const { AdminView } = await import('../src/features/admin/components/admin-view');
+const { AdminView } = await import('../src/components/admin/admin-view');
 
 describe('AdminView provenance dashboard', () => {
   beforeEach(() => {
@@ -251,22 +239,12 @@ describe('AdminView provenance dashboard', () => {
     });
 
     render(
-      <SessionProvider initialSession={{ orgId: 'org-test', userId: 'user-test' }}>
-        <QueryClientProvider client={queryClient}>
-          <AdminView messages={messagesFr as Messages} />
-        </QueryClientProvider>
-      </SessionProvider>,
+      <QueryClientProvider client={queryClient}>
+        <AdminView messages={messagesFr as Messages} />
+      </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(fetchGovernanceMetricsMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' }));
-    expect(fetchRetrievalMetricsMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
-    expect(fetchEvaluationMetricsMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
-    expect(fetchSloMetricsMock).toHaveBeenCalledWith('org-test', 6, { userId: 'user-test' });
-    expect(fetchOperationsOverviewMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
-    expect(fetchSsoConnectionsMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
-    expect(fetchScimTokensMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
-    expect(fetchAuditEventsMock).toHaveBeenCalledWith('org-test', 25, { userId: 'user-test' });
-    expect(fetchIpAllowlistMock).toHaveBeenCalledWith('org-test', { userId: 'user-test' });
+    await waitFor(() => expect(fetchGovernanceMetricsMock).toHaveBeenCalled());
 
     expect(await screen.findByText(messagesFr.admin.provenanceJurisdictionTitle)).toBeInTheDocument();
     expect(await screen.findByText('France')).toBeInTheDocument();

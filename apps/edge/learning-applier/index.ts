@@ -1,30 +1,17 @@
 /// <reference lib="deno.unstable" />
 
-import { createEdgeClient, rowAs, rowsAs } from '../lib/supabase.ts';
-import { serveEdgeFunction } from '../lib/serve.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
 
 const BATCH_SIZE = 25;
 
-type LearningJobRow = {
-  id: string;
-  org_id: string | null;
-  job_type: string;
-  payload: Record<string, unknown> | null;
-};
-
-type PolicyVersionRow = {
-  id: string;
-  version_number: number | null;
-};
-
-serveEdgeFunction(async () => {
+Deno.serve(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceKey) {
     return new Response('missing_supabase_env', { status: 500 });
   }
 
-  const supabase = createEdgeClient(supabaseUrl, serviceKey, {
+  const supabase = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -39,18 +26,15 @@ serveEdgeFunction(async () => {
     return new Response(jobs.error.message, { status: 500 });
   }
 
-  const rows = rowsAs<LearningJobRow>(jobs.data);
+  const rows = jobs.data ?? [];
   if (rows.length === 0) {
     return new Response(JSON.stringify({ created_versions: 0 }), { headers: { 'Content-Type': 'application/json' } });
   }
 
   const grouped = new Map<string, Array<{ id: string; job_type: string; payload: Record<string, unknown> }>>();
   for (const job of rows) {
-    if (!job.org_id) {
-      continue;
-    }
     const list = grouped.get(job.org_id) ?? [];
-    list.push({ id: job.id, job_type: job.job_type, payload: job.payload ?? {} });
+    list.push({ id: job.id, job_type: job.job_type, payload: job.payload as Record<string, unknown> });
     grouped.set(job.org_id, list);
   }
 
@@ -62,15 +46,14 @@ serveEdgeFunction(async () => {
       .from('agent_policy_versions')
       .insert({ org_id: orgId, status: 'draft', change_set: changeSet })
       .select('id, version_number')
-      .maybeSingle<PolicyVersionRow>();
+      .maybeSingle();
 
-    const versionRow = rowAs<PolicyVersionRow>(insert.data);
-    if (insert.error || !versionRow) {
+    if (insert.error || !insert.data) {
       console.error('policy_version_insert_failed', insert.error?.message);
       continue;
     }
 
-    const versionId = versionRow.id;
+    const versionId = insert.data.id as string;
     const jobIds = jobsForOrg.map((job) => job.id);
     const update = await supabase
       .from('agent_learning_jobs')
@@ -88,3 +71,4 @@ serveEdgeFunction(async () => {
     headers: { 'Content-Type': 'application/json' },
   });
 });
+

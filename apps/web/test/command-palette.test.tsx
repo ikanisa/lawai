@@ -2,8 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import messagesEn from '../messages/en.json';
-import type { Messages } from '@/lib/i18n';
-import { CommandPalette } from '@/features/shell';
+import type { Messages } from '../src/lib/i18n';
+import { CommandPalette } from '../src/components/command-palette';
 import { useCommandPalette } from '../src/state/command-palette';
 
 const pushMock = vi.fn();

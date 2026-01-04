@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
-import { Badge } from '@avocat-ai/ui';
-import type { Messages } from '../@/lib/i18n';
-import type { GovernanceMetricsResponse } from '../@/lib/api';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Badge } from '../ui/badge';
+import type { Messages } from '../../lib/i18n';
+import type { GovernanceMetricsResponse } from '../../lib/api';
 import { SUPPORTED_JURISDICTIONS } from '@avocat-ai/shared';
 
 interface JurisdictionCoverageCardProps {

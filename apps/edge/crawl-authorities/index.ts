@@ -1,17 +1,14 @@
 /// <reference lib="deno.unstable" />
 
-import { OFFICIAL_DOMAIN_ALLOWLIST } from '../lib/allowlist.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
+import { OFFICIAL_DOMAIN_ALLOWLIST } from '../../packages/shared/src/constants/allowlist.ts';
 import {
   buildAkomaBodyFromText,
   extractCaseTreatmentHints,
   extractPlainTextFromBuffer,
   type AkomaBody,
   type CaseTreatmentHint,
-} from '../lib/akoma.ts';
-import { createOpenAIDenoClient, type OpenAIDenoClient } from '../lib/openai.ts';
-import { EdgeSupabaseClient, createEdgeClient, rowAs } from '../lib/supabase.ts';
-import { serveEdgeFunction } from '../lib/serve.ts';
-import { SupabaseScheduler } from '../../../packages/shared/src/scheduling/scheduler.ts';
+} from '../../packages/shared/src/akoma.ts';
 
 type SourceType = 'statute' | 'case' | 'gazette' | 'regulation';
 
@@ -46,7 +43,6 @@ type Adapter = {
 type IngestionRunRecord = {
   id: string;
   adapterId: string;
-  orgId: string;
 };
 
 interface CrawlRequestBody {
@@ -63,36 +59,6 @@ interface IngestionSummary {
   skipped: number;
   failures: number;
 }
-
-type SourceRecord = {
-  id: string;
-  capture_sha256: string | null;
-  http_etag: string | null;
-  last_modified: string | null;
-};
-
-type SourceLinkHealthRecord = {
-  id: string;
-};
-
-type AuthorityDomainRecord = {
-  id: string;
-  host: string;
-  jurisdiction_code: string;
-  failure_count: number | null;
-  last_ingested_at?: string | null;
-  last_failed_at?: string | null;
-};
-
-type LearningMetricRecord = {
-  value: number | null;
-  computed_at: string;
-};
-
-type CaseSourceRecord = {
-  id: string;
-  court_rank: string | null;
-};
 
 const textEncoder = new TextEncoder();
 
@@ -155,46 +121,16 @@ function deriveEli(url: string): string | null {
   return null;
 }
 
-const ECLI_URL_REGEX = /ECLI:([A-Z0-9:_.-]+)/i;
-const ECLI_TEXT_REGEX = /ECLI:[A-Z]{2}:[A-Z0-9]+:[A-Z0-9_.:-]+/i;
-
 function deriveEcli(url: string): string | null {
-  const urlMatch = url.match(ECLI_URL_REGEX);
-  if (urlMatch && urlMatch[1]) {
-    return `ECLI:${urlMatch[1].toUpperCase()}`;
+  if (/ECLI:/i.test(url)) {
+    const match = url.match(/ECLI:([A-Z0-9:\-]+)/i);
+    return match ? `ECLI:${match[1]}` : null;
   }
-
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.toUpperCase();
-    const path = parsed.pathname;
-    if (host.includes('COURDECASSATION.BE') && path.includes('/ID/')) {
-      const token = path.split('/ID/')[1];
-      return token ? `ECLI:BE:CSC:${token.toUpperCase()}` : null;
-    }
-    if (host.includes('COURDECASSATION.FR') && path.includes('/DECISION/')) {
-      const segments = path.split('/').filter(Boolean);
-      const slug = segments.pop();
-      if (slug) {
-        return `ECLI:FR:CCASS:${slug.replace(/[^A-Z0-9]/gi, '').toUpperCase()}`;
-      }
-    }
-    if (host.includes('CANLII.CA')) {
-      const canonical = path.replace(/\//g, '').toUpperCase();
-      return canonical ? `ECLI:CA:${canonical}` : null;
-    }
-  } catch (_error) {
-    return null;
+  if (/courdecassation\.be\/id\//i.test(url)) {
+    const id = url.split('/id/')[1];
+    return id ? `ECLI:BE:CSC:${id.toUpperCase()}` : null;
   }
   return null;
-}
-
-function extractEcliFromText(text: string | null | undefined): string | null {
-  if (!text) {
-    return null;
-  }
-  const match = text.match(ECLI_TEXT_REGEX);
-  return match ? match[0].toUpperCase() : null;
 }
 
 function buildAkomaNtoso(
@@ -273,7 +209,7 @@ function isHostAllowlisted(host: string | null): boolean {
 }
 
 async function resolveCaseReference(
-  supabase: EdgeSupabaseClient,
+  supabase: ReturnType<typeof createClient>,
   orgId: string,
   jurisdiction: string,
   hint: CaseTreatmentHint,
@@ -285,11 +221,10 @@ async function resolveCaseReference(
       .eq('org_id', orgId)
       .eq('source_type', 'case')
       .eq('ecli', hint.ecli)
-      .maybeSingle<CaseSourceRecord>();
+      .maybeSingle();
 
-    const lookupRow = rowAs<CaseSourceRecord>(lookup.data);
-    if (!lookup.error && lookupRow) {
-      return { sourceId: lookupRow.id, courtRank: lookupRow.court_rank ?? null };
+    if (!lookup.error && lookup.data) {
+      return { sourceId: lookup.data.id as string, courtRank: (lookup.data.court_rank as string | null) ?? null };
     }
   }
 
@@ -306,11 +241,10 @@ async function resolveCaseReference(
     .eq('jurisdiction_code', jurisdiction)
     .ilike('title', `%${cleaned}%`)
     .limit(1)
-    .maybeSingle<CaseSourceRecord>();
+    .maybeSingle();
 
-  const titleRow = rowAs<CaseSourceRecord>(titleQuery.data);
-  if (!titleQuery.error && titleRow) {
-    return { sourceId: titleRow.id, courtRank: titleRow.court_rank ?? null };
+  if (!titleQuery.error && titleQuery.data) {
+    return { sourceId: titleQuery.data.id as string, courtRank: (titleQuery.data.court_rank as string | null) ?? null };
   }
 
   const versionLabelQuery = await supabase
@@ -320,18 +254,20 @@ async function resolveCaseReference(
     .eq('source_type', 'case')
     .ilike('version_label', `%${cleaned}%`)
     .limit(1)
-    .maybeSingle<CaseSourceRecord>();
+    .maybeSingle();
 
-  const versionRow = rowAs<CaseSourceRecord>(versionLabelQuery.data);
-  if (!versionLabelQuery.error && versionRow) {
-    return { sourceId: versionRow.id, courtRank: versionRow.court_rank ?? null };
+  if (!versionLabelQuery.error && versionLabelQuery.data) {
+    return {
+      sourceId: versionLabelQuery.data.id as string,
+      courtRank: (versionLabelQuery.data.court_rank as string | null) ?? null,
+    };
   }
 
   return null;
 }
 
 async function ingestCaseTreatments(
-  supabase: EdgeSupabaseClient,
+  supabase: ReturnType<typeof createClient>,
   orgId: string,
   doc: NormalizedDocument,
   sourceId: string,
@@ -366,7 +302,7 @@ async function ingestCaseTreatments(
       .eq('org_id', orgId)
       .eq('source_id', target.sourceId)
       .eq('citing_source_id', sourceId)
-      .maybeSingle<{ id: string }>();
+      .maybeSingle();
 
     if (existing.error && existing.error.code !== 'PGRST116') {
       console.warn('case_treatment_select_failed', existing.error.message);
@@ -380,12 +316,11 @@ async function ingestCaseTreatments(
       decided_at: decidedAt ?? null,
     };
 
-    const existingRow = rowAs<{ id: string }>(existing.data);
-    if (existingRow) {
+    if (existing.data) {
       const update = await supabase
         .from('case_treatments')
         .update(payload)
-        .eq('id', existingRow.id);
+        .eq('id', existing.data.id as string);
 
       if (update.error) {
         console.warn('case_treatment_update_failed', update.error.message);
@@ -407,7 +342,7 @@ async function ingestCaseTreatments(
 }
 
 async function recordQuarantine(
-  supabase: EdgeSupabaseClient,
+  supabase: ReturnType<typeof createClient>,
   orgId: string,
   adapterId: string,
   doc: NormalizedDocument,
@@ -525,18 +460,16 @@ async function fetchRssDocuments(
     }
     const xml = await response.text();
     const items = Array.from(xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)).slice(0, limit);
-    const documents: NormalizedDocument[] = [];
-    for (const match of items) {
-      const block = match[1] ?? '';
-      const title = extractXmlValue(block, 'title');
-      const link = extractXmlValue(block, 'link');
-      const pubDate = extractXmlValue(block, 'pubDate');
-      const mapped = mapper({ title, link, pubDate });
-      if (mapped) {
-        documents.push(mapped);
-      }
-    }
-    return documents;
+    const mapped = items
+      .map((match) => match[1] ?? '')
+      .map((block) => {
+        const title = extractXmlValue(block, 'title');
+        const link = extractXmlValue(block, 'link');
+        const pubDate = extractXmlValue(block, 'pubDate');
+        return mapper({ title, link, pubDate });
+      })
+      .filter((value): value is NormalizedDocument => value !== null);
+    return mapped;
   } catch (error) {
     console.warn(`Unable to parse RSS feed ${url}:`, error);
   }
@@ -551,7 +484,7 @@ async function fetchFirstAvailableRss(
   for (const url of urls) {
     const docs = await fetchRssDocuments(url, mapper, limit);
     if (docs.length > 0) {
-      return docs as NormalizedDocument[];
+      return docs;
     }
   }
   return [];
@@ -576,7 +509,7 @@ function extractXmlValue(block: string, tag: string): string | null {
   if (!match) {
     return null;
   }
-  return match[1] ? decodeHtmlEntities(match[1]) : null;
+  return decodeHtmlEntities(match[1]);
 }
 
 function dedupeDocuments(documents: NormalizedDocument[]): NormalizedDocument[] {
@@ -602,31 +535,31 @@ async function fetchLegifranceRssDocuments(limit = 8): Promise<NormalizedDocumen
     }
     const xml = await response.text();
     const items = Array.from(xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)).slice(0, limit);
-    const documents: NormalizedDocument[] = [];
-    for (const match of items) {
-      const block = match[1] ?? '';
-      const title = extractXmlValue(block, 'title');
-      const link = extractXmlValue(block, 'link');
-      const date = extractXmlValue(block, 'pubDate');
-      if (!title || !link) {
-        continue;
-      }
-      documents.push({
-        title,
-        jurisdiction: 'FR',
-        sourceType: 'gazette',
-        publisher: 'Légifrance',
-        canonicalUrl: link,
-        downloadUrl: link,
-        bindingLanguage: 'fr',
-        consolidated: false,
-        effectiveDate: date ? new Date(date).toISOString().slice(0, 10) : undefined,
-        versionLabel: 'Journal officiel (RSS)',
-        mimeType: 'text/html',
-        residency: 'eu',
-      });
-    }
-    return documents;
+    return items
+      .map((match) => match[1] ?? '')
+      .map((block) => {
+        const title = extractXmlValue(block, 'title');
+        const link = extractXmlValue(block, 'link');
+        const date = extractXmlValue(block, 'pubDate');
+        if (!title || !link) {
+          return null;
+        }
+        return {
+          title,
+          jurisdiction: 'FR',
+          sourceType: 'gazette' as const,
+          publisher: 'Légifrance',
+          canonicalUrl: link,
+          downloadUrl: link,
+          bindingLanguage: 'fr',
+          consolidated: false,
+          effectiveDate: date ? new Date(date).toISOString().slice(0, 10) : undefined,
+          versionLabel: 'Journal officiel (RSS)',
+          mimeType: 'text/html',
+          residency: 'eu',
+        } satisfies NormalizedDocument;
+      })
+      .filter((value): value is NormalizedDocument => Boolean(value));
   } catch (error) {
     console.warn('Legifrance RSS unavailable', error);
     return [];
@@ -975,31 +908,31 @@ async function fetchGazettesAfricaDocuments(
     }
     const json = (await response.json()) as { results?: Array<Record<string, unknown>> };
     const results = json.results ?? [];
-    const documents: NormalizedDocument[] = [];
-    for (const entry of results) {
-      const title = typeof entry.title === 'string' ? entry.title : null;
-      const pdfUrl = typeof entry.file_url === 'string' ? entry.file_url : null;
-      const webUrl = typeof entry.source_url === 'string' ? entry.source_url : pdfUrl;
-      const pubDate = typeof entry.publication_date === 'string' ? entry.publication_date : null;
-      if (!title || !webUrl || !pdfUrl) {
-        continue;
-      }
-      documents.push({
-        title,
-        jurisdiction,
-        sourceType: 'gazette',
-        publisher: 'Gazettes.Africa',
-        canonicalUrl: webUrl,
-        downloadUrl: pdfUrl,
-        bindingLanguage,
-        languageNote,
-        consolidated: false,
-        effectiveDate: pubDate ?? undefined,
-        versionLabel: 'Gazettes Africa',
-        mimeType: 'application/pdf',
-      });
-    }
-    return documents;
+    return results
+      .map((entry) => {
+        const title = typeof entry.title === 'string' ? entry.title : null;
+        const pdfUrl = typeof entry.file_url === 'string' ? entry.file_url : null;
+        const webUrl = typeof entry.source_url === 'string' ? entry.source_url : pdfUrl;
+        const pubDate = typeof entry.publication_date === 'string' ? entry.publication_date : null;
+        if (!title || !webUrl || !pdfUrl) {
+          return null;
+        }
+        return {
+          title,
+          jurisdiction,
+          sourceType: 'gazette',
+          publisher: 'Gazettes.Africa',
+          canonicalUrl: webUrl,
+          downloadUrl: pdfUrl,
+          bindingLanguage,
+          languageNote,
+          consolidated: false,
+          effectiveDate: pubDate ?? undefined,
+          versionLabel: 'Gazettes Africa',
+          mimeType: 'application/pdf',
+        } satisfies NormalizedDocument;
+      })
+      .filter((value): value is NormalizedDocument => value !== null);
   } catch (error) {
     console.warn(`Unable to load Gazettes.Africa dataset for ${jurisdiction}:`, error);
   }
@@ -1017,75 +950,75 @@ async function fetchOhadaUniformActsRemote(): Promise<NormalizedDocument[]> {
       return [];
     }
 
-    const documents: NormalizedDocument[] = [];
-    for (const entry of json as Array<Record<string, unknown>>) {
-      const title =
-        typeof entry?.title === 'object' && entry.title && 'rendered' in entry.title
+    return (json as Array<Record<string, unknown>>)
+      .map((entry) => {
+        const title = typeof entry?.title === 'object' && entry.title && 'rendered' in entry.title
           ? String((entry.title as { rendered?: unknown }).rendered ?? '')
           : typeof entry?.title === 'string'
             ? String(entry.title)
             : '';
-      const link = typeof entry?.link === 'string' ? (entry.link as string) : '';
-      if (!title || !link) {
-        continue;
-      }
-      documents.push({
-        title: decodeHtmlEntities(title),
-        jurisdiction: 'OHADA',
-        sourceType: 'statute',
-        publisher: 'OHADA',
-        canonicalUrl: link,
-        downloadUrl: link,
-        bindingLanguage: 'fr',
-        consolidated: true,
-        mimeType: 'text/html',
-      });
-    }
-    return documents;
+        const link = typeof entry?.link === 'string' ? (entry.link as string) : '';
+        if (!title || !link) {
+          return null;
+        }
+        return {
+          title: decodeHtmlEntities(title),
+          jurisdiction: 'OHADA',
+          sourceType: 'statute' as const,
+          publisher: 'OHADA',
+          canonicalUrl: link,
+          downloadUrl: link,
+          bindingLanguage: 'fr',
+          consolidated: true,
+          mimeType: 'text/html',
+        } satisfies NormalizedDocument;
+      })
+      .filter((value): value is NormalizedDocument => Boolean(value));
   } catch (error) {
     console.warn('OHADA remote dataset unavailable', error);
     return [];
   }
 }
 
-let defaultOpenAIClient: OpenAIDenoClient | null = null;
-
-function getDefaultOpenAIClient(): OpenAIDenoClient | null {
-  if (defaultOpenAIClient) {
-    return defaultOpenAIClient;
-  }
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-  if (!apiKey || apiKey.trim().length === 0) {
-    console.warn('OPENAI_API_KEY not set – vector store sync requires an explicit key override.');
-    return null;
-  }
-
-  defaultOpenAIClient = createOpenAIDenoClient({
-    apiKey,
-    requestTags: Deno.env.get('OPENAI_REQUEST_TAGS_EDGE') ?? 'service=edge,component=crawl-authorities',
-    organization: Deno.env.get('OPENAI_ORGANIZATION') ?? undefined,
-    project: Deno.env.get('OPENAI_PROJECT') ?? undefined,
-  });
-  return defaultOpenAIClient;
-}
-
 async function uploadToVectorStore(
   vectorStoreId: string,
+  apiKey: string,
   buffer: Uint8Array,
   mimeType: string,
   filename: string,
-  client: OpenAIDenoClient,
 ): Promise<string> {
-  const uploadedFile = await client.files.create({
-    purpose: 'assistants',
-    data: buffer,
-    filename,
-    mimeType,
+  const fileUpload = new FormData();
+  fileUpload.append('purpose', 'assistants');
+  fileUpload.append('file', new Blob([buffer], { type: mimeType }), filename);
+
+  const fileResponse = await fetch('https://api.openai.com/v1/files', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: fileUpload,
   });
 
-  await client.beta.vectorStores.files.create(vectorStoreId, { file_id: uploadedFile.id });
+  const fileJson = await fileResponse.json();
+  if (!fileResponse.ok) {
+    throw new Error(fileJson.error?.message ?? 'Unable to upload file to OpenAI');
+  }
 
-  return uploadedFile.id as string;
+  const attachResponse = await fetch(`https://api.openai.com/v1/vector_stores/${vectorStoreId}/files`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ file_id: fileJson.id }),
+  });
+
+  const attachJson = await attachResponse.json();
+  if (!attachResponse.ok) {
+    throw new Error(attachJson.error?.message ?? 'Unable to attach file to vector store');
+  }
+
+  return fileJson.id as string;
 }
 
 async function loadRwandaDocuments(): Promise<NormalizedDocument[]> {
@@ -1409,8 +1342,8 @@ function buildAdapters(): Adapter[] {
     {
       id: 'eu-eur-lex-core',
       description: 'EUR-Lex overlays for EU member jurisdictions',
-      fetchDocuments() {
-        return Promise.resolve(euRegulations);
+      async fetchDocuments() {
+        return euRegulations;
       },
     },
     {
@@ -1443,8 +1376,8 @@ function buildAdapters(): Adapter[] {
     {
       id: 'mc-legimonaco-core',
       description: 'Monaco civil code extracts',
-      fetchDocuments() {
-        return Promise.resolve(monacoCore);
+      async fetchDocuments() {
+        return monacoCore;
       },
     },
     {
@@ -1503,29 +1436,11 @@ function buildAdapters(): Adapter[] {
 async function ingestDocuments(
   adapter: Adapter,
   docs: NormalizedDocument[],
-  supabase: EdgeSupabaseClient,
+  supabase: ReturnType<typeof createClient>,
   orgId: string,
   openaiApiKey?: string,
   vectorStoreId?: string,
 ): Promise<IngestionSummary> {
-  let activeOpenAIClient: OpenAIDenoClient | null = null;
-  if (vectorStoreId) {
-    if (openaiApiKey && openaiApiKey.trim().length > 0) {
-      activeOpenAIClient = createOpenAIDenoClient({
-        apiKey: openaiApiKey,
-        requestTags: `${Deno.env.get('OPENAI_REQUEST_TAGS_EDGE') ?? 'service=edge,component=crawl-authorities'},override=true`,
-        organization: Deno.env.get('OPENAI_ORGANIZATION') ?? undefined,
-        project: Deno.env.get('OPENAI_PROJECT') ?? undefined,
-      });
-    } else {
-      activeOpenAIClient = getDefaultOpenAIClient();
-    }
-
-    if (!activeOpenAIClient) {
-      throw new Error('OpenAI client unavailable: provide OPENAI_API_KEY or pass openaiApiKey in the payload.');
-    }
-  }
-
   let inserted = 0;
   let skipped = 0;
   let failures = 0;
@@ -1559,8 +1474,7 @@ async function ingestDocuments(
       const residency = (doc.residency ?? resolveResidencyZone(doc.jurisdiction)).toLowerCase();
       const storagePath = `${orgId}/${residency}/${slugify(doc.title)}.${extensionForMime(doc.mimeType)}`;
       const eli = doc.eli ?? deriveEli(doc.canonicalUrl);
-      const ecli =
-        doc.ecli ?? deriveEcli(doc.canonicalUrl) ?? extractEcliFromText(plainText ?? doc.title);
+      const ecli = doc.ecli ?? deriveEcli(doc.canonicalUrl);
       const akomaPayload = doc.akomaNtoso
         ? (() => {
             const existing = doc.akomaNtoso as Record<string, unknown>;
@@ -1576,21 +1490,19 @@ async function ingestDocuments(
         .select('id, capture_sha256, http_etag, last_modified')
         .eq('org_id', orgId)
         .eq('source_url', doc.canonicalUrl)
-        .maybeSingle<SourceRecord>();
+        .maybeSingle();
 
       if (existingSource.error) {
         throw new Error(existingSource.error.message);
       }
 
-      const existingSourceData = rowAs<SourceRecord>(existingSource.data);
-
-      if (existingSourceData) {
-        const sameHash = existingSourceData.capture_sha256 === checksum;
-        const sameEtag = etag && existingSourceData.http_etag && existingSourceData.http_etag === etag;
+      if (existingSource.data) {
+        const sameHash = existingSource.data.capture_sha256 === checksum;
+        const sameEtag = etag && existingSource.data.http_etag && existingSource.data.http_etag === etag;
         if (sameHash || sameEtag) {
           try {
-            const nextEtag = etag ?? existingSourceData.http_etag ?? null;
-            const nextLastModified = lastModifiedIso ?? existingSourceData.last_modified ?? null;
+            const nextEtag = etag ?? existingSource.data.http_etag ?? null;
+            const nextLastModified = lastModifiedIso ?? existingSource.data.last_modified ?? null;
             await supabase
               .from('sources')
               .update({
@@ -1601,7 +1513,7 @@ async function ingestDocuments(
                 http_etag: nextEtag,
                 last_modified: nextLastModified,
               })
-              .eq('id', existingSourceData.id);
+              .eq('id', existingSource.data.id);
           } catch (updateError) {
             console.warn('Unable to update existing source health status', updateError);
           }
@@ -1671,9 +1583,7 @@ async function ingestDocuments(
         .select('id')
         .single();
 
-      const sourceRow = rowAs<SourceLinkHealthRecord>(sourceInsert.data);
-
-      if (sourceInsert.error || !sourceRow) {
+      if (sourceInsert.error || !sourceInsert.data) {
         throw new Error(sourceInsert.error?.message ?? 'Unable to persist source');
       }
 
@@ -1682,16 +1592,10 @@ async function ingestDocuments(
       let vectorStoreError: string | null = null;
       let syncedAt: string | null = null;
 
-      if (activeOpenAIClient && vectorStoreId) {
+      if (openaiApiKey && vectorStoreId) {
         try {
           const filename = `${slugify(doc.title)}.${extensionForMime(doc.mimeType)}`;
-          openaiFileId = await uploadToVectorStore(
-            vectorStoreId,
-            payload,
-            doc.mimeType ?? 'application/octet-stream',
-            filename,
-            activeOpenAIClient,
-          );
+          openaiFileId = await uploadToVectorStore(vectorStoreId, openaiApiKey, payload, doc.mimeType, filename);
           vectorStoreStatus = 'uploaded';
           syncedAt = new Date().toISOString();
         } catch (error) {
@@ -1738,7 +1642,7 @@ async function ingestDocuments(
 
       if (plainText) {
         try {
-          await ingestCaseTreatments(supabase, orgId, doc, sourceRow.id, plainText);
+          await ingestCaseTreatments(supabase, orgId, doc, sourceInsert.data.id as string, plainText);
         } catch (error) {
           console.warn('case_treatment_enrichment_failed', error);
         }
@@ -1756,17 +1660,16 @@ async function ingestDocuments(
             .select('id, failure_count')
             .eq('host', host)
             .eq('jurisdiction_code', doc.jurisdiction)
-            .maybeSingle<AuthorityDomainRecord>();
+            .maybeSingle();
 
-          const domainRecord = rowAs<AuthorityDomainRecord>(domainLookup.data);
-          if (!domainLookup.error && domainRecord) {
+          if (!domainLookup.error && domainLookup.data) {
             await supabase
               .from('authority_domains')
               .update({
                 last_failed_at: new Date().toISOString(),
-                failure_count: (domainRecord.failure_count ?? 0) + 1,
+                failure_count: (domainLookup.data.failure_count ?? 0) + 1,
               })
-              .eq('id', domainRecord.id);
+              .eq('id', domainLookup.data.id);
           }
         }
 
@@ -1775,10 +1678,9 @@ async function ingestDocuments(
           .select('id')
           .eq('org_id', orgId)
           .eq('source_url', doc.canonicalUrl)
-          .maybeSingle<SourceLinkHealthRecord>();
+          .maybeSingle();
 
-        const failureSourceRow = rowAs<SourceLinkHealthRecord>(failureSource.data);
-        if (!failureSource.error && failureSourceRow) {
+        if (!failureSource.error && failureSource.data) {
           await supabase
             .from('sources')
             .update({
@@ -1786,7 +1688,7 @@ async function ingestDocuments(
               link_last_status: 'failed',
               link_last_error: failureMessage,
             })
-            .eq('id', failureSourceRow.id);
+            .eq('id', failureSource.data.id);
         }
       } catch (updateError) {
         console.warn('Unable to record link failure telemetry', updateError);
@@ -1809,20 +1711,26 @@ async function ingestDocuments(
 }
 
 async function createIngestionRun(
-  supabase: EdgeSupabaseClient,
+  supabase: ReturnType<typeof createClient>,
   adapterId: string,
   orgId: string,
 ): Promise<IngestionRunRecord | null> {
-  const scheduler = new SupabaseScheduler(supabase);
-  const record = await scheduler.startIngestionRun(adapterId, orgId);
-  if (!record) {
+  const { data, error } = await supabase
+    .from('ingestion_runs')
+    .insert({ adapter_id: adapterId, org_id: orgId, status: 'running', started_at: new Date().toISOString() })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.warn(`Unable to record ingestion start for ${adapterId}:`, error);
     return null;
   }
-  return { id: record.id, adapterId, orgId };
+
+  return { id: data.id as string, adapterId };
 }
 
 async function finalizeIngestionRun(
-  supabase: EdgeSupabaseClient,
+  supabase: ReturnType<typeof createClient>,
   record: IngestionRunRecord | null,
   summary: IngestionSummary,
   status: 'completed' | 'failed',
@@ -1832,19 +1740,24 @@ async function finalizeIngestionRun(
     return;
   }
 
-  const scheduler = new SupabaseScheduler(supabase);
-  await scheduler.completeIngestionRun(record, {
-    adapterId: summary.adapterId,
-    orgId: record.orgId,
-    status,
-    insertedCount: summary.inserted,
-    skippedCount: summary.skipped,
-    failedCount: summary.failures,
-    errorMessage: error ?? null,
-  });
+  const update = await supabase
+    .from('ingestion_runs')
+    .update({
+      status,
+      inserted_count: summary.inserted,
+      skipped_count: summary.skipped,
+      failed_count: summary.failures,
+      finished_at: new Date().toISOString(),
+      error_message: error ?? null,
+    })
+    .eq('id', record.id);
+
+  if (update.error) {
+    console.warn(`Unable to finalize ingestion run ${record.id}:`, update.error);
+  }
 }
 
-serveEdgeFunction(async (req) => {
+Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
@@ -1856,7 +1769,7 @@ serveEdgeFunction(async (req) => {
     return new Response(JSON.stringify({ error: 'Missing Supabase credentials or orgId' }), { status: 400 });
   }
 
-  const supabase = createEdgeClient(supabaseUrl, supabaseServiceRole);
+  const supabase = createClient(supabaseUrl, supabaseServiceRole);
   const adapters = buildAdapters();
   const summaries: IngestionSummary[] = [];
 

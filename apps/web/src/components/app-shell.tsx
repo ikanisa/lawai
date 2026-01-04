@@ -18,36 +18,26 @@ import {
   Menu,
   Globe2,
   X,
+  Download,
   Shield,
   ShieldOff,
-  Inbox,
-  WifiOff,
 } from 'lucide-react';
 import { Button } from './ui/button';
-import { Switch } from './ui/switch';
 import { cn } from '../lib/utils';
 import type { Messages, Locale } from '../lib/i18n';
 import { CommandPalette, type CommandPaletteAction } from './command-palette';
+import { sendTelemetryEvent } from '../lib/api';
+import { usePwaInstall } from '../hooks/use-pwa-install';
 import { toast } from 'sonner';
 import { ConfidentialModeBanner } from './confidential-mode-banner';
-import { ComplianceBanner } from './compliance-banner';
-import { useConfidentialMode } from '@/state/confidential-mode';
+import { useConfidentialMode } from '../state/confidential-mode';
 import { useShallow } from 'zustand/react/shallow';
-import { useOutbox } from '@/hooks/use-outbox';
-import { useOnlineStatus } from '@/hooks/use-online-status';
-import { PwaInstallPrompt } from './pwa-install-prompt';
-import { PwaPreferenceToggle } from './pwa-preference-toggle';
-import { usePwaPreference } from '@/hooks/use-pwa-preference';
-import { useSessionTelemetry } from '@/hooks/use-session-telemetry';
-import { clientEnv } from '@/env.client';
 
 interface AppShellProps {
   children: ReactNode;
   messages: Messages;
   locale: Locale;
 }
-
-type StatusBarMessages = NonNullable<Messages['app']['statusBar']>;
 
 const NAVIGATION = [
   { key: 'workspace', href: '/workspace', icon: LayoutGrid },
@@ -69,18 +59,13 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   const [commandOpen, setCommandOpen] = useState(false);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggered = useRef(false);
+  const { shouldPrompt, promptInstall, dismissPrompt, isAvailable } = usePwaInstall();
   const { enabled: confidentialMode, setEnabled: setConfidentialMode } = useConfidentialMode(
     useShallow((state) => ({ enabled: state.enabled, setEnabled: state.setEnabled })),
   );
   const confidentialMessages = messages.app.confidential;
   const statusMessages = confidentialMessages?.status;
   const confidentialActions = confidentialMessages?.actions;
-  const { pendingCount: outboxCount, hasItems: hasOutbox, stalenessMs } = useOutbox();
-  const online = useOnlineStatus();
-  const statusBarMessages = messages.app.statusBar;
-  const { enabled: pwaOptIn, loading: pwaPreferenceLoading, setEnabled: setPwaOptIn } = usePwaPreference();
-  const pwaPreferenceReady = !pwaPreferenceLoading;
-  const sendUserTelemetry = useSessionTelemetry();
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -98,8 +83,8 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
     if (toastMessage) {
       toast.info(toastMessage);
     }
-    sendUserTelemetry('confidential_mode_toggled', { enabled: next });
-  }, [confidentialMode, sendUserTelemetry, setConfidentialMode, statusMessages]);
+    void sendTelemetryEvent('confidential_mode_toggled', { enabled: next });
+  }, [confidentialMode, setConfidentialMode, statusMessages]);
 
   const confidentialToggleLabel = confidentialMode
     ? confidentialActions?.disable?.label ?? confidentialMessages?.cta ?? 'Disable confidential mode'
@@ -201,7 +186,7 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
 
   const handleCommandButton = () => {
     setCommandOpen(true);
-    sendUserTelemetry('command_palette_button');
+    void sendTelemetryEvent('command_palette_button');
   };
 
   const handleFabPointerDown = (event: ReactPointerEvent<HTMLAnchorElement>) => {
@@ -229,24 +214,22 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
   };
 
   const installMessages = messages.app.install;
-  const handlePwaToggle = useCallback(() => {
-    const next = !pwaOptIn;
-    setPwaOptIn(next);
-    const feedback = next
-      ? installMessages?.optInEnabled
-      : installMessages?.optInDisabled;
-    if (feedback) {
-      toast.info(feedback);
+
+  const handleInstallNow = async () => {
+    const outcome = await promptInstall();
+    if (outcome === 'accepted') {
+      toast.success(installMessages.success);
+    } else if (outcome === 'dismissed') {
+      toast.info(installMessages.snoozed);
+    } else {
+      toast.error(installMessages.unavailable);
     }
-    sendUserTelemetry('pwa_opt_in_toggled', { enabled: next });
-  }, [installMessages, pwaOptIn, sendUserTelemetry, setPwaOptIn]);
-  const canTogglePwa = clientEnv.NEXT_PUBLIC_ENABLE_PWA && Boolean(installMessages?.optInToggle);
-  const outboxAgeLabel = useMemo(() => {
-    if (!statusBarMessages || !hasOutbox) {
-      return null;
-    }
-    return formatOutboxAge(stalenessMs, locale, statusBarMessages);
-  }, [statusBarMessages, hasOutbox, stalenessMs, locale]);
+  };
+
+  const handleInstallLater = () => {
+    dismissPrompt();
+    toast.info(installMessages.snoozed);
+  };
 
   return (
     <div className="relative flex min-h-screen bg-slate-950 text-slate-100">
@@ -340,54 +323,13 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
               <Command className="h-5 w-5" aria-hidden />
             </Button>
             <p className="hidden text-xs text-slate-400 md:block">{messages.app.commandPlaceholder}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {canTogglePwa ? (
-            <Switch
-              type="button"
-              checked={pwaOptIn}
-              disabled={!pwaPreferenceReady}
-              onClick={handlePwaToggle}
-              label={
-                pwaOptIn
-                  ? installMessages?.optInEnabled ?? installMessages?.optInToggle
-                  : installMessages?.optInDisabled ?? installMessages?.optInToggle
-              }
-              className="hidden bg-slate-900/60 text-[11px] sm:inline-flex"
-              title={installMessages?.optInDescription}
-            />
-          ) : null}
-          {statusBarMessages && !online ? (
-            <span className="hidden items-center gap-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-200 sm:inline-flex">
-              <WifiOff className="h-4 w-4" aria-hidden />
-              {statusBarMessages.offline}
-            </span>
-          ) : null}
-          <PwaPreferenceToggle
-            className="hidden xl:inline-flex"
-            messages={installMessages?.preference}
-          />
-          {statusBarMessages && hasOutbox ? (
-            <Link
-              href={localizedHref('/research#outbox-panel')}
-              className="focus-ring hidden items-center gap-2 rounded-full border border-teal-400/40 bg-teal-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-teal-100 shadow-sm transition hover:bg-teal-500/20 sm:flex"
-              aria-label={`${statusBarMessages.outbox} (${outboxCount})`}
-            >
-              <Inbox className="h-4 w-4" aria-hidden />
-              <span>{statusBarMessages.outbox}</span>
-              <span className="rounded-full bg-teal-400/20 px-2 py-0.5 text-[11px] font-semibold text-teal-50">
-                {outboxCount}
-              </span>
-              {outboxAgeLabel ? (
-                <span className="text-[10px] font-normal text-teal-100/80">{outboxAgeLabel}</span>
-              ) : null}
-            </Link>
-          ) : null}
-          <Button
-            variant={confidentialMode ? 'outline' : 'ghost'}
-            size="icon"
-            onClick={handleConfidentialToggle}
-            aria-pressed={confidentialMode}
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant={confidentialMode ? 'outline' : 'ghost'}
+              size="icon"
+              onClick={handleConfidentialToggle}
+              aria-pressed={confidentialMode}
               aria-label={confidentialToggleLabel}
               title={confidentialToggleLabel}
               className={cn(confidentialMode ? 'text-amber-200 hover:text-amber-100' : undefined)}
@@ -412,7 +354,6 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
           </div>
         </header>
         <main id="main" className="flex-1 px-6 pb-24 pt-10">
-          {messages.app.compliance ? <ComplianceBanner messages={messages.app.compliance} /> : null}
           {children}
         </main>
       </div>
@@ -472,32 +413,34 @@ export function AppShell({ children, messages, locale }: AppShellProps) {
           cta={confidentialMessages.cta}
         />
       ) : null}
-      <PwaInstallPrompt messages={installMessages} locale={locale} />
+      {shouldPrompt ? (
+        <div
+          className="fixed bottom-28 right-6 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-200"
+          aria-live="polite"
+        >
+          <div className="glass-card border border-slate-800/60 p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl bg-grad-1/30 p-2">
+                <Download className="h-5 w-5 text-teal-200" aria-hidden />
+              </div>
+              <div className="flex-1 space-y-3 text-sm text-slate-200">
+                <div>
+                  <p className="text-sm font-semibold text-white">{installMessages.title}</p>
+                  <p className="mt-1 text-slate-300">{installMessages.body}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={handleInstallNow} disabled={!isAvailable}>
+                    {installMessages.cta}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={handleInstallLater}>
+                    {installMessages.dismiss}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
-}
-
-function formatOutboxAge(stalenessMs: number, locale: Locale, copy: StatusBarMessages): string {
-  if (stalenessMs <= 0) {
-    return copy.staleNow;
-  }
-
-  const minutes = Math.floor(stalenessMs / 60_000);
-  const formatter = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
-
-  if (minutes < 1) {
-    return copy.staleNow;
-  }
-
-  if (minutes < 60) {
-    return copy.staleMinutes.replace('{count}', formatter.format(minutes));
-  }
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return copy.staleHours.replace('{count}', formatter.format(hours));
-  }
-
-  const days = Math.floor(hours / 24);
-  return copy.staleDays.replace('{count}', formatter.format(days));
 }

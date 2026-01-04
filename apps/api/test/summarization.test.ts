@@ -2,22 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const encoder = new TextEncoder();
 
-const openAIResponsesParseMock = vi.fn();
-const openAIEmbeddingsCreateMock = vi.fn();
-type SharedModule = typeof import('@avocat-ai/shared');
-
 describe('summariseDocumentFromPayload', () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.resetModules();
-    openAIResponsesParseMock.mockReset();
-    openAIEmbeddingsCreateMock.mockReset();
-    const shared: SharedModule = await import('@avocat-ai/shared');
-    vi.spyOn(shared, 'getOpenAIClient').mockReturnValue({
-      responses: { parse: openAIResponsesParseMock },
-      embeddings: { create: openAIEmbeddingsCreateMock },
-    } as unknown as ReturnType<SharedModule['getOpenAIClient']>);
-    vi.spyOn(shared, 'fetchOpenAIDebugDetails').mockResolvedValue(null);
-    vi.spyOn(shared, 'isOpenAIDebugEnabled').mockReturnValue(false);
     process.env.OPENAI_API_KEY = 'test-key';
     process.env.AGENT_MODEL = 'gpt-test';
     process.env.EMBEDDING_MODEL = 'text-embedding-test';
@@ -27,8 +14,6 @@ describe('summariseDocumentFromPayload', () => {
     process.env.AGENT_STUB_MODE = 'never';
     process.env.SUMMARISER_MODEL = 'gpt-summary';
     process.env.MAX_SUMMARY_CHARS = '8000';
-    openAIResponsesParseMock.mockResolvedValue({ output: [], output_parsed: null });
-    openAIEmbeddingsCreateMock.mockResolvedValue({ data: [] });
   });
 
   afterEach(() => {
@@ -38,7 +23,7 @@ describe('summariseDocumentFromPayload', () => {
   });
 
   it('skips when the extracted text is too short', async () => {
-    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
+    const { summariseDocumentFromPayload } = await import('../src/summarization.js');
 
     const payload = encoder.encode('Bref');
     const result = await summariseDocumentFromPayload({
@@ -55,41 +40,22 @@ describe('summariseDocumentFromPayload', () => {
 
   it('returns ready when OpenAI summary and embeddings succeed', async () => {
     const text = 'Article 12 — Les dispositions relatives aux sûretés sont applicables. '.repeat(5);
-    const structured = JSON.stringify({
-      summary: 'Synthèse',
-      highlights: [
-        { heading: 'Objet', detail: 'Dispositions applicables.' },
-        { heading: 'Dates', detail: 'Entrée en vigueur immédiate.' },
-      ],
-    });
     const responsesReply = {
       output: [
         {
-          type: 'message',
-          role: 'assistant',
           content: [
             {
-              type: 'output_text',
-              text: 'Résumé structuré',
-              annotations: [],
-              parsed: {
+              text: JSON.stringify({
                 summary: 'Synthèse',
                 highlights: [
                   { heading: 'Objet', detail: 'Dispositions applicables.' },
                   { heading: 'Dates', detail: 'Entrée en vigueur immédiate.' },
                 ],
-              },
+              }),
             },
           ],
         },
       ],
-      output_parsed: {
-        summary: 'Synthèse',
-        highlights: [
-          { heading: 'Objet', detail: 'Dispositions applicables.' },
-          { heading: 'Dates', detail: 'Entrée en vigueur immédiate.' },
-        ],
-      },
     };
 
     const embeddingsReply = {
@@ -98,10 +64,24 @@ describe('summariseDocumentFromPayload', () => {
       ],
     };
 
-    openAIResponsesParseMock.mockResolvedValue(responsesReply);
-    openAIEmbeddingsCreateMock.mockResolvedValue(embeddingsReply);
+    const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/responses')) {
+        return new Response(JSON.stringify(responsesReply), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('/embeddings')) {
+        return new Response(JSON.stringify(embeddingsReply), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
 
-    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
+    const { summariseDocumentFromPayload } = await import('../src/summarization.js');
 
     const result = await summariseDocumentFromPayload({
       payload: encoder.encode(text),
@@ -113,8 +93,7 @@ describe('summariseDocumentFromPayload', () => {
       maxSummaryChars: 4000,
     });
 
-    expect(openAIResponsesParseMock).toHaveBeenCalledTimes(1);
-    expect(openAIEmbeddingsCreateMock).toHaveBeenCalledTimes(Math.ceil(result.chunks.length / 16));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result.status).toBe('ready');
     expect(result.summary).toBe('Synthèse');
     expect(result.highlights).toHaveLength(2);
@@ -123,50 +102,15 @@ describe('summariseDocumentFromPayload', () => {
     expect(result.embeddings).toHaveLength(result.chunks.length);
   });
 
-  it('falls back to response.output when output_text is missing', async () => {
-    const text = 'Article 1 — Les dispositions relatives aux contrats sont détaillées. '.repeat(5);
-    const structured = JSON.stringify({
-      summary: 'Résumé alternatif',
-      highlights: [
-        { heading: 'Objet', detail: 'Détails des contrats.' },
-      ],
-    });
-
-    openAIResponsesCreateMock.mockResolvedValue({
-      output: [
-        {
-          content: [
-            {
-              text: structured,
-            },
-          ],
-        },
-      ],
-      output_text: '',
-    });
-
-    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
-
-    const result = await summariseDocumentFromPayload({
-      payload: encoder.encode(text),
-      mimeType: 'text/plain',
-      metadata: { title: 'Contrat', jurisdiction: 'FR', publisher: 'Légifrance' },
-      openaiApiKey: 'test-key',
-      summariserModel: 'gpt-summary',
-      embeddingModel: 'text-embedding-test',
-      maxSummaryChars: 4000,
-    });
-
-    expect(result.status).toBe('ready');
-    expect(result.summary).toBe('Résumé alternatif');
-    expect(result.highlights).toHaveLength(1);
-  });
-
   it('returns failed when the summary call errors', async () => {
-    const quotaError = new Error('quota exceeded');
-    openAIResponsesParseMock.mockRejectedValue(quotaError);
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: 'quota exceeded' } }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
 
-    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
+    const { summariseDocumentFromPayload } = await import('../src/summarization.js');
 
     const result = await summariseDocumentFromPayload({
       payload: encoder.encode('Article 1 — Long texte '.repeat(20)),
@@ -178,50 +122,5 @@ describe('summariseDocumentFromPayload', () => {
     expect(result.status).toBe('failed');
     expect(result.error).toBe('quota exceeded');
     expect(result.embeddings).toHaveLength(0);
-  });
-
-  it('returns failed when the model refuses to provide a summary', async () => {
-    const refusalResponse = {
-      output: [
-        {
-          type: 'message',
-          role: 'assistant',
-          content: [{ type: 'refusal', refusal: 'Refus de synthèse' }],
-        },
-      ],
-      output_parsed: null,
-    };
-
-    openAIResponsesParseMock.mockResolvedValue(refusalResponse);
-
-    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
-
-    const result = await summariseDocumentFromPayload({
-      payload: encoder.encode('Article 1 — Texte suffisamment long '.repeat(40)),
-      mimeType: 'text/plain',
-      metadata: { title: 'Note', jurisdiction: 'FR', publisher: 'Légifrance' },
-      openaiApiKey: 'test-key',
-    });
-
-    expect(result.status).toBe('failed');
-    expect(result.error).toBe('Refus de synthèse');
-    expect(openAIEmbeddingsCreateMock).not.toHaveBeenCalled();
-  });
-
-  it('returns failed when the parsed payload is missing', async () => {
-    openAIResponsesParseMock.mockResolvedValue({ output: [], output_parsed: null });
-
-    const { summariseDocumentFromPayload } = await import('../src/summarization.ts');
-
-    const result = await summariseDocumentFromPayload({
-      payload: encoder.encode('Article 1 — Texte suffisamment long '.repeat(40)),
-      mimeType: 'text/plain',
-      metadata: { title: 'Note', jurisdiction: 'FR', publisher: 'Légifrance' },
-      openaiApiKey: 'test-key',
-    });
-
-    expect(result.status).toBe('failed');
-    expect(result.error).toBe('Synthèse JSON invalide');
-    expect(openAIEmbeddingsCreateMock).not.toHaveBeenCalled();
   });
 });

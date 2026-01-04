@@ -1,17 +1,10 @@
 {
-  "extends": "../../tsconfig.node.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "strict": false,
-    "exactOptionalPropertyTypes": false,
-    "noImplicitAny": false,
-    "strictNullChecks": false,
-    "skipLibCheck": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false
+    "declaration": true,
+    "declarationMap": true
   },
-  "include": [
-    "src/**/*"
-  ]
+  "include": ["src/**/*"]
 }

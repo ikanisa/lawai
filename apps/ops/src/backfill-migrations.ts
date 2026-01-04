@@ -39,7 +39,8 @@ async function listMigrationFiles(): Promise<string[]> {
 function buildInsertSql(files: string[]): string {
   const valueLines = files
     .map((file) => `  ('${file.replace(/'/g, "''")}', now())`)
-    .join(',\n  ');
+    .join(',
+');
 
   return [
     'insert into supabase_migrations.schema_migrations (version, inserted_at) values',

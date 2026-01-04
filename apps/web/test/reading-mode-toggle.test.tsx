@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ReadingModeToggle } from '@/features/research/components/reading-mode-toggle';
+import { ReadingModeToggle } from '../src/components/research/reading-mode-toggle';
 
 const labels = {
   label: 'Modes de lecture',

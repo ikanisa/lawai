@@ -1,7 +1,6 @@
 /// <reference lib="deno.unstable" />
 
-import { createEdgeClient, EdgeSupabaseClient, rowsAs } from '../lib/supabase.ts';
-import { serveEdgeFunction } from '../lib/serve.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
 
 type Env = {
   supabaseUrl?: string;
@@ -28,9 +27,7 @@ type PublicationResult = {
   error?: string;
 };
 
-type OrganizationRow = { id: string | null };
-
-async function listOrganisationIds(client: EdgeSupabaseClient, orgId?: string): Promise<string[]> {
+async function listOrganisationIds(client: ReturnType<typeof createClient>, orgId?: string): Promise<string[]> {
   if (orgId) {
     return [orgId];
   }
@@ -39,10 +36,7 @@ async function listOrganisationIds(client: EdgeSupabaseClient, orgId?: string): 
     console.warn('Impossible de lister les organisations:', error.message);
     return [];
   }
-  const rows = rowsAs<OrganizationRow>(data);
-  return rows
-    .map((row) => row.id)
-    .filter((value): value is string => typeof value === 'string' && value.length > 0);
+  return (data ?? []).map((row) => row.id as string);
 }
 
 function normaliseStatus(value: unknown): string {
@@ -97,7 +91,7 @@ function resolveNumber(input: unknown, fallback: number): number {
   return fallback;
 }
 
-serveEdgeFunction(async (req) => {
+Deno.serve(async (req) => {
   const payload: Env = {};
   if (req.method === 'POST') {
     const body = await req.json().catch(() => ({}));
@@ -125,7 +119,7 @@ serveEdgeFunction(async (req) => {
     return new Response(JSON.stringify({ error: 'Missing Supabase credentials' }), { status: 400 });
   }
 
-  const supabase = createEdgeClient(supabaseUrl, supabaseServiceRole);
+  const supabase = createClient(supabaseUrl, supabaseServiceRole);
   const targetDays = resolveNumber(payload.days ?? Deno.env.get('REGULATOR_DIGEST_DAYS'), 7);
   const reference = new Date();
   const periodStart = new Date(reference.getTime() - targetDays * 24 * 60 * 60 * 1000);
@@ -155,7 +149,7 @@ serveEdgeFunction(async (req) => {
         throw new Error(error.message);
       }
 
-      const dispatches = rowsAs<DispatchRecord>(data);
+      const dispatches = (data ?? []) as DispatchRecord[];
       const { markdown, summary } = buildDigest(reference, dispatches);
       const slug = `regulator-digest-${orgId}-${endIso}`;
       const docUrl = `https://docs.avocat-ai.example/regulator-digests/${orgId}/${endIso}`;

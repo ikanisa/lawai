@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import ora from 'ora';
-import { createRestClient, type RestApiClient } from '@avocat-ai/api-clients';
 import { requireEnv } from './lib/env.js';
 
 interface CliOptions {
@@ -80,24 +79,51 @@ function parseArgs(): CliOptions {
   return options;
 }
 
-async function listSnapshots(options: CliOptions, api: RestApiClient): Promise<unknown> {
-  return api.listSloSnapshots({
-    orgId: options.orgId,
-    userId: options.userId,
-    format: options.exportCsv ? 'csv' : 'json',
+async function listSnapshots(options: CliOptions): Promise<unknown> {
+  const basePath = options.exportCsv ? '/metrics/slo/export' : '/metrics/slo';
+  const params = new URLSearchParams({ orgId: options.orgId });
+  if (options.exportCsv) {
+    params.set('format', 'csv');
+  }
+  const response = await fetch(`${options.apiBaseUrl}${basePath}?${params.toString()}`, {
+    headers: {
+      'x-user-id': options.userId,
+    },
   });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Impossible de récupérer les SLO (${response.status}): ${body}`);
+  }
+
+  return options.exportCsv ? response.text() : response.json();
 }
 
-async function createSnapshot(options: CliOptions, api: RestApiClient): Promise<unknown> {
-  return api.createSloSnapshot({
+async function createSnapshot(options: CliOptions): Promise<unknown> {
+  const payload = {
     orgId: options.orgId,
-    userId: options.userId,
     apiUptimePercent: options.apiUptime,
     hitlResponseP95Seconds: options.hitlP95,
     retrievalLatencyP95Seconds: options.retrievalP95,
     citationPrecisionP95: options.citationP95,
-    notes: options.notes ?? null,
+    notes: options.notes,
+  };
+
+  const response = await fetch(`${options.apiBaseUrl}/metrics/slo`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': options.userId,
+    },
+    body: JSON.stringify(payload),
   });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Echec enregistrement SLO (${response.status}): ${body}`);
+  }
+
+  return response.json();
 }
 
 async function run(): Promise<void> {
@@ -112,8 +138,7 @@ async function run(): Promise<void> {
 
   const spinner = ora(options.listOnly ? 'Récupération des SLO...' : 'Enregistrement du snapshot SLO...').start();
   try {
-    const api = createRestClient({ baseUrl: options.apiBaseUrl });
-    const result = options.listOnly ? await listSnapshots(options, api) : await createSnapshot(options, api);
+    const result = options.listOnly ? await listSnapshots(options) : await createSnapshot(options);
     spinner.succeed(options.listOnly ? 'SLO récupérés' : 'Snapshot SLO enregistré');
     if (typeof result === 'string') {
       console.log(result);

@@ -1,5 +1,5 @@
-import { SecurityPanel } from '@/components/profile/security-panel';
-import { getMessages, type Locale } from '@/lib/i18n';
+import { SecurityPanel } from '../../../../src/components/profile/security-panel';
+import { getMessages, type Locale } from '../../../../src/lib/i18n';
 
 interface PageProps {
   params: { locale: Locale };

@@ -15,8 +15,8 @@ import {
   XCircle
 } from "lucide-react";
 
-import { Badge } from '@avocat-ai/ui';
-import { Button } from '@avocat-ai/ui';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -131,13 +131,7 @@ function ClauseCard({
   );
 }
 
-function BenchmarksTable({
-  benchmarks,
-  formatDateTime
-}: {
-  benchmarks: ClauseBenchmark[];
-  formatDateTime: (value: Date) => string;
-}) {
+function BenchmarksTable({ benchmarks, formatDateTime }: { benchmarks: ClauseBenchmark[]; formatDateTime: (value: string) => string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5">
       <div className="flex items-center justify-between border-b border-white/10 p-4">
@@ -168,7 +162,7 @@ function BenchmarksTable({
                       {benchmark.delta === "risque" && "Surveillance"}
                     </Badge>
                     <span className="text-xs text-white/40">
-                      MAJ {formatDateTime(new Date(benchmark.updatedAt))}
+                      MAJ {formatDateTime(benchmark.updatedAt)}
                     </span>
                   </div>
                 </td>
@@ -196,7 +190,7 @@ function TemplatesTabs({
   const templatesByType = useMemo(() => {
     return data.templates.reduce<Record<string, DraftingStudioData["templates"]>>((acc, template) => {
       if (!acc[template.type]) acc[template.type] = [];
-      acc[template.type]!.push(template);
+      acc[template.type].push(template);
       return acc;
     }, {});
   }, [data.templates]);
@@ -344,7 +338,7 @@ export function DraftingStudio() {
         const blob = new Blob(
           [
             `Projet: ${data.activeDraft.title}\nFormat: ${option.format}\nDate: ${new Date().toISOString()}\n` +
-            `Clauses acceptées: ${Object.values(clauseState).filter((value) => value === "accepted").length}`
+              `Clauses acceptées: ${Object.values(clauseState).filter((value) => value === "accepted").length}`
           ],
           { type: option.format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }
         );
@@ -421,7 +415,7 @@ export function DraftingStudio() {
               </span>
               <span className="flex items-center gap-1">
                 <Clock3 className="h-3.5 w-3.5" aria-hidden />
-                Sync {formatDateTime(new Date(data.activeDraft.lastSyncedAt))}
+                Sync {formatDateTime(data.activeDraft.lastSyncedAt)}
               </span>
             </div>
           </div>

@@ -1,6 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createServiceClient, type CreateServiceClientOptions, type ServiceSupabaseClient } from '@avocat-ai/supabase';
-import { AuditLogger } from '@avocat-ai/compliance';
+import { createServiceClient } from '@avocat-ai/supabase';
 import ora from 'ora';
 import { OFFICIAL_DOMAIN_ALLOWLIST, getJurisdictionsForDomain } from '@avocat-ai/shared';
 
@@ -9,28 +8,11 @@ type BucketListItem = {
   name: string;
 };
 
-export interface SupabaseServiceOptions extends Omit<CreateServiceClientOptions, 'client'> {
-  client?: SupabaseClient | null;
-}
-
-export type SupabaseClientFactory = typeof createServiceClient;
-
-export function createSupabaseService(
-  env: Record<string, string>,
-  factory: SupabaseClientFactory = createServiceClient,
-  options: CreateServiceClientOptions = {},
-): SupabaseClient {
-  const { client, ...rest } = options;
-  return factory(
-    {
-      SUPABASE_URL: env.SUPABASE_URL,
-      SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
-    },
-    {
-      ...rest,
-      client: (client ?? undefined) as ServiceSupabaseClient | undefined,
-    },
-  );
+export function createSupabaseService(env: Record<string, string>): SupabaseClient {
+  return createServiceClient({
+    SUPABASE_URL: env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
+  });
 }
 
 export async function ensureBucket(
@@ -177,8 +159,4 @@ export async function validateResidencyGuards(supabase: SupabaseClient): Promise
   }
 
   return issues;
-}
-
-export function createOpsAuditLogger(supabase: SupabaseClient) {
-  return new AuditLogger(supabase);
 }

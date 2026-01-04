@@ -3,12 +3,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ora from 'ora';
 import { format } from 'date-fns';
-import {
-  createRestClient,
-  type DispatchRecord,
-  type LaunchDigestEntry,
-  type RestApiClient,
-} from '@avocat-ai/api-clients';
 import { requireEnv } from './lib/env.js';
 
 interface CliOptions {
@@ -18,7 +12,18 @@ interface CliOptions {
   periodStart?: string;
   periodEnd?: string;
   output: 'markdown' | 'json';
-  verifyParity: boolean;
+}
+
+interface DispatchRecord {
+  id: string;
+  report_type: string | null;
+  period_start: string;
+  period_end: string;
+  status: string | null;
+  payload_url: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  dispatched_at: string | null;
 }
 
 function parseArgs(): CliOptions {
@@ -28,7 +33,6 @@ function parseArgs(): CliOptions {
     userId: process.env.DISPATCH_USER_ID ?? '00000000-0000-0000-0000-000000000000',
     apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',
     output: 'markdown',
-    verifyParity: true,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -57,9 +61,6 @@ function parseArgs(): CliOptions {
       case '--json':
         options.output = 'json';
         break;
-      case '--no-parity':
-        options.verifyParity = false;
-        break;
       default:
         break;
     }
@@ -85,64 +86,42 @@ export function formatRegulatorDigest(reference: Date, dispatches: DispatchRecor
   return `${lines.join('\n')}\n`;
 }
 
-async function fetchLaunchDigests(options: CliOptions, api: RestApiClient): Promise<LaunchDigestEntry[]> {
-  return api.fetchLaunchDigestsForOrg({
-    orgId: options.orgId,
-    userId: options.userId,
-    limit: 25,
-  });
-}
+async function fetchDispatches(options: CliOptions): Promise<DispatchRecord[]> {
+  const params = new URLSearchParams({ orgId: options.orgId });
+  if (options.periodStart) {
+    params.set('periodStart', options.periodStart);
+  }
+  if (options.periodEnd) {
+    params.set('periodEnd', options.periodEnd);
+  }
 
-export function summariseParity(dispatches: DispatchRecord[], digests: LaunchDigestEntry[]) {
-  const dispatchIds = new Set(dispatches.map((record) => record.id));
-  const unmatched = digests.filter((digest) => !dispatchIds.has(digest.id));
-  return {
-    queued: digests.length,
-    dispatched: dispatches.length,
-    delta: digests.length - dispatches.length,
-    unmatched,
-    inSync: unmatched.length === 0 && dispatches.length === digests.length,
-  };
-}
-
-async function fetchDispatches(options: CliOptions, api: RestApiClient): Promise<DispatchRecord[]> {
-  return api.fetchDispatchesForOrg({
-    orgId: options.orgId,
-    userId: options.userId,
-    periodStart: options.periodStart,
-    periodEnd: options.periodEnd,
+  const response = await fetch(`${options.apiBaseUrl}/reports/dispatches?${params.toString()}`, {
+    headers: {
+      'x-user-id': options.userId,
+    },
   });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Impossible de récupérer les notifications (${response.status}): ${body}`);
+  }
+
+  const json = (await response.json()) as { dispatches?: DispatchRecord[] };
+  return json.dispatches ?? [];
 }
 
 async function run(): Promise<void> {
   const options = parseArgs();
   requireEnv(['SUPABASE_URL']);
-  const api = createRestClient({ baseUrl: options.apiBaseUrl });
   const spinner = ora('Compilation du digest régulateur...').start();
   try {
-    const [dispatches, digests] = await Promise.all([
-      fetchDispatches(options, api),
-      options.verifyParity ? fetchLaunchDigests(options, api) : Promise.resolve<LaunchDigestEntry[]>([]),
-    ]);
-    const parity = options.verifyParity ? summariseParity(dispatches, digests) : null;
+    const dispatches = await fetchDispatches(options);
     spinner.succeed('Digest généré');
     if (options.output === 'json') {
-      console.log(JSON.stringify({ dispatches, digests, parity }, null, 2));
+      console.log(JSON.stringify(dispatches, null, 2));
       return;
     }
     console.log(formatRegulatorDigest(new Date(), dispatches));
-    if (parity) {
-      console.log(
-        `> Parité file d'attente : ${parity.queued} en file / ${parity.dispatched} expédiés (Δ ${parity.delta >= 0 ? '+' : ''}${parity.delta}).`,
-      );
-      if (!parity.inSync) {
-        console.warn(
-          `> ${parity.unmatched.length} digest(s) restent à dispatcher : ${parity.unmatched
-            .map((entry) => `${entry.channel}:${entry.frequency}@${entry.jurisdiction}`)
-            .join(', ') || 'non identifié'}.`,
-        );
-      }
-    }
   } catch (error) {
     spinner.fail(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

@@ -79,26 +79,4 @@ describe('useOutbox', () => {
     const stored = JSON.parse(localStorage.getItem('avocat-ai-outbox') ?? '[]');
     expect(stored).toHaveLength(1);
   });
-
-  it('exposes derived status metrics', () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() => useOutbox());
-
-    expect(result.current.pendingCount).toBe(0);
-    expect(result.current.hasItems).toBe(false);
-    expect(result.current.stalenessMs).toBe(0);
-
-    act(() => {
-      result.current.enqueue({ question: 'Stale item', context: 'ctx', confidentialMode: false });
-    });
-
-    expect(result.current.pendingCount).toBe(1);
-    expect(result.current.hasItems).toBe(true);
-    expect(result.current.stalenessMs).toBeGreaterThanOrEqual(0);
-
-    vi.advanceTimersByTime(60_000);
-    expect(result.current.stalenessMs).toBeGreaterThanOrEqual(60_000);
-
-    vi.useRealTimers();
-  });
 });

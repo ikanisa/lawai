@@ -1,7 +1,5 @@
 import { config as loadEnv } from 'dotenv';
 
-import { serverEnv } from '../env.server.js';
-
 export interface LoadedEnv {
   values: Record<string, string>;
   missing: string[];
@@ -14,8 +12,7 @@ export function loadRequiredEnv(requiredKeys: string[]): LoadedEnv {
   const missing: string[] = [];
 
   for (const key of requiredKeys) {
-    const fromServerEnv = serverEnv[key as keyof typeof serverEnv];
-    const value = process.env[key] ?? (typeof fromServerEnv === 'string' ? fromServerEnv : undefined);
+    const value = process.env[key];
     if (value && value.length > 0) {
       values[key] = value;
     } else {

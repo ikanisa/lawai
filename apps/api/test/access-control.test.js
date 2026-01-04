@@ -5,16 +5,21 @@ function makeAccess(overrides = {}) {
         orgId: 'org',
         userId: 'user',
         role: 'owner',
-        policies: { confidentialMode: false, franceJudgeAnalyticsBlocked: true, mfaRequired: false, ipAllowlistEnforced: false, consentRequirement: null, councilOfEuropeRequirement: null },
+        policies: {
+            confidentialMode: false,
+            franceJudgeAnalyticsBlocked: true,
+            mfaRequired: false,
+            ipAllowlistEnforced: false,
+            consentVersion: null,
+            councilOfEuropeDisclosureVersion: null,
+        },
         rawPolicies: {},
         entitlements: new Map(),
         ipAllowlistCidrs: [],
-        consent: { requirement: null, latest: null },
-        councilOfEurope: { requirement: null, acknowledgedVersion: null },
+        consent: { requiredVersion: null, latestAcceptedVersion: null },
         ...overrides,
-        policies: { ...{ confidentialMode: false, franceJudgeAnalyticsBlocked: true, mfaRequired: false, ipAllowlistEnforced: false, consentRequirement: null, councilOfEuropeRequirement: null }, ...(overrides.policies ?? {}) },
-        consent: { ...{ requirement: null, latest: null }, ...(overrides.consent ?? {}) },
-        councilOfEurope: { ...{ requirement: null, acknowledgedVersion: null }, ...(overrides.councilOfEurope ?? {}) },
+        policies: { ...{ confidentialMode: false, franceJudgeAnalyticsBlocked: true, mfaRequired: false, ipAllowlistEnforced: false, consentVersion: null, councilOfEuropeDisclosureVersion: null }, ...(overrides.policies ?? {}) },
+        consent: { ...{ requiredVersion: null, latestAcceptedVersion: null }, ...(overrides.consent ?? {}) },
     };
 }
 describe('ensureOrgAccessCompliance', () => {
@@ -37,24 +42,23 @@ describe('ensureOrgAccessCompliance', () => {
     });
     it('requires consent acknowledgement when version differs', () => {
         const access = makeAccess({
-            policies: { consentRequirement: { type: 'ai_assist', version: '2024-09' } },
-            consent: { requirement: { type: 'ai_assist', version: '2024-09' }, latest: { type: 'ai_assist', version: '2024-08' } },
+            policies: { consentVersion: '2024-09' },
+            consent: { requiredVersion: '2024-09', latestAcceptedVersion: '2024-08' },
         });
         expect(() => ensureOrgAccessCompliance(access, { ip: '127.0.0.1', headers: {} })).toThrowError(/consent_required/);
-        expect(() => ensureOrgAccessCompliance(makeAccess({
-            policies: { consentRequirement: { type: 'ai_assist', version: '2024-09' } },
-            consent: { requirement: { type: 'ai_assist', version: '2024-09' }, latest: { type: 'ai_assist', version: '2024-09' } },
-        }), { ip: '127.0.0.1', headers: {} })).not.toThrow();
+        expect(() => ensureOrgAccessCompliance(access, {
+            ip: '127.0.0.1',
+            headers: { 'x-consent-version': '2024-09' },
+        })).not.toThrow();
     });
     it('requires Council of Europe disclosure acknowledgement when configured', () => {
         const access = makeAccess({
-            councilOfEurope: { requirement: { version: '1.0.0' }, acknowledgedVersion: null },
-            policies: { councilOfEuropeRequirement: { version: '1.0.0' } },
+            policies: { councilOfEuropeDisclosureVersion: '1.0.0' },
         });
         expect(() => ensureOrgAccessCompliance(access, { ip: '127.0.0.1', headers: {} })).toThrowError(/coe_disclosure_required/);
-        expect(() => ensureOrgAccessCompliance(makeAccess({
-            councilOfEurope: { requirement: { version: '1.0.0' }, acknowledgedVersion: '1.0.0' },
-            policies: { councilOfEuropeRequirement: { version: '1.0.0' } },
-        }), { ip: '127.0.0.1', headers: {} })).not.toThrow();
+        expect(() => ensureOrgAccessCompliance(access, {
+            ip: '127.0.0.1',
+            headers: { 'x-coe-disclosure-version': '1.0.0' },
+        })).not.toThrow();
     });
 });

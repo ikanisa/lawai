@@ -1,8 +1,8 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@avocat-ai/ui';
-import type { Messages } from '@/lib/i18n';
-import type { OperationsOverviewResponse } from '@/lib/api';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import type { Messages } from '../../lib/i18n';
+import type { OperationsOverviewResponse } from '../../lib/api';
 
 interface OperationsOverviewCardProps {
   messages: Messages;
@@ -48,23 +48,6 @@ export function OperationsOverviewCard({ messages, data, loading }: OperationsOv
 
   const sloSummary = data?.slo.summary ?? null;
   const latestSlo = data?.slo.snapshots?.[0] ?? null;
-  const sloFreshnessBadge = (() => {
-    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ml-2';
-    const captured = sloSummary?.latestCapture ?? null;
-    if (!captured) return null;
-    const now = Date.now();
-    const ts = new Date(captured).getTime();
-    if (!Number.isFinite(ts)) return null;
-    const days = Math.floor((now - ts) / (1000 * 60 * 60 * 24));
-    const isFresh = days <= 7;
-    const label = isFresh ? operationsMessages.sloFresh : operationsMessages.sloStale;
-    const color = isFresh
-      ? 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50'
-      : 'bg-amber-900/40 text-amber-200 border-amber-700/50';
-    return (
-      <span className={`${baseBadge} ${color}`} title={`SLO capture age: ${days} day(s)`}>{label}</span>
-    );
-  })();
   const latestIncident = data?.incidents.latest ?? null;
   const latestChange = data?.changeLog.latest ?? null;
   const goNoGoCriteria = data?.goNoGo.criteria ?? [];
@@ -91,9 +74,8 @@ export function OperationsOverviewCard({ messages, data, loading }: OperationsOv
                 <div className="text-xs uppercase tracking-wide text-slate-400">
                   {operationsMessages.sloLatestCapture}
                 </div>
-              <div className="mt-1 text-lg font-semibold text-slate-100">
+                <div className="mt-1 text-lg font-semibold text-slate-100">
                   {formatDateTime(sloSummary.latestCapture)}
-                  {sloFreshnessBadge}
                 </div>
                 {latestSlo?.notes ? (
                   <p className="mt-2 text-sm text-slate-300">{latestSlo.notes}</p>

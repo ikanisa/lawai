@@ -19,7 +19,7 @@ import {
   TimerReset
 } from "lucide-react";
 
-import { Button } from '@avocat-ai/ui';
+import { Button } from "@/components/ui/button";
 import { ToastAction } from "@/components/ui/toast";
 import { toast } from "@/components/ui/use-toast";
 import { focusTrap } from "@/lib/a11y";
@@ -361,7 +361,6 @@ function CommandGroup({ label, items, onSelect }: CommandGroupProps) {
               )}
               onClick={() => onSelect(item)}
               role="option"
-              aria-selected={false}
             >
               <span className="flex items-center gap-3">
                 {item.icon ? <item.icon className="h-4 w-4 text-white/70" aria-hidden /> : null}

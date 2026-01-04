@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useOnlineStatus } from './use-online-status';
 
 export interface OutboxItem {
   id: string;
@@ -40,8 +39,6 @@ export function useOutbox(options: UseOutboxOptions = {}) {
   const persist = options.persist ?? true;
   const [shouldPersist, setShouldPersist] = useState(persist);
   const [items, setItems] = useState<OutboxItem[]>(() => (persist ? loadInitial() : []));
-  const online = useOnlineStatus();
-  const [, forceUpdate] = useState(0);
 
   useEffect(() => {
     if (persist === shouldPersist) {
@@ -108,30 +105,5 @@ export function useOutbox(options: UseOutboxOptions = {}) {
 
   const sorted = useMemo(() => items.slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)), [items]);
 
-  useEffect(() => {
-    if (sorted.length === 0) {
-      return;
-    }
-    const interval: ReturnType<typeof setInterval> = setInterval(
-      () => forceUpdate((value) => value + 1),
-      30_000,
-    );
-    return () => clearInterval(interval);
-  }, [sorted.length]);
-
-  const newest = sorted[0];
-
-  return {
-    items: sorted,
-    enqueue,
-    remove,
-    clear,
-    flush,
-    pendingCount: sorted.length,
-    hasItems: sorted.length > 0,
-    get stalenessMs() {
-      return newest ? Math.max(0, Date.now() - new Date(newest.createdAt).getTime()) : 0;
-    },
-    isOnline: online,
-  };
+  return { items: sorted, enqueue, remove, clear, flush };
 }

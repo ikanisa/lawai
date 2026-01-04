@@ -1,5 +1,5 @@
-import { DraftingView } from '@/features/drafting/components/drafting-view';
-import { getMessages, type Locale } from '@/lib/i18n';
+import { DraftingView } from '../../../src/components/drafting/drafting-view';
+import { getMessages, type Locale } from '../../../src/lib/i18n';
 
 interface PageProps {
   params: { locale: Locale };

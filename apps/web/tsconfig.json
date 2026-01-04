@@ -4,24 +4,13 @@
     "jsx": "preserve",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "baseUrl": ".",
     "types": [
-      "node",
-      "vitest",
-      "vitest/globals"
+      "node"
     ],
     "allowJs": true,
     "noEmit": true,
     "incremental": true,
     "isolatedModules": true,
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/app/*": [
-        "./app/*"
-      ]
-    },
     "plugins": [
       {
         "name": "next"
@@ -35,7 +24,6 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "test"
+    "node_modules"
   ]
 }

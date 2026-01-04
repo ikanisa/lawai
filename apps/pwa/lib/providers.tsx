@@ -1,6 +1,6 @@
 "use client";
 
-import { QueryClient, QueryClientProvider, type QueryClientConfig } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useMemo, useState, useEffect } from "react";
 import { ThemeProvider as NextThemeProvider, useTheme } from "next-themes";
 
@@ -11,10 +11,9 @@ import { TelemetryDashboardProvider } from "@/lib/telemetry-dashboard";
 import { OutboxProvider } from "@/lib/offline/outbox";
 import { UIStateProvider, useUIState, type ThemePreference } from "@/lib/state/ui-store";
 import { ServiceWorkerBridge } from "@/lib/pwa/service-worker-bridge";
-import { UiThemeProvider } from '@avocat-ai/ui';
 import { Toaster } from "@/components/ui/toaster";
 
-const queryClientOptions: QueryClientConfig = {
+const queryClientOptions = {
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
@@ -25,7 +24,7 @@ const queryClientOptions: QueryClientConfig = {
       retry: 1
     }
   }
-};
+} satisfies Parameters<typeof QueryClient>[0];
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient(queryClientOptions));
@@ -33,34 +32,32 @@ export function Providers({ children }: { children: ReactNode }) {
   const themeValue = useMemo(() => ({ dark: "dark", light: "light", contrast: "contrast" }), []);
 
   return (
-    <UiThemeProvider theme="pwa">
-      <NextThemeProvider
-        attribute="data-theme"
-        defaultTheme="dark"
-        enableSystem
-        disableTransitionOnChange
-        value={themeValue}
-      >
-        <AccessibilityProvider>
-          <TelemetryProvider>
-            <TelemetryDashboardProvider>
-              <OutboxProvider>
-                <I18nProvider>
-                  <UIStateProvider>
-                    <QueryClientProvider client={queryClient}>
-                      <ThemeBridge />
-                      <ServiceWorkerBridge />
-                      {children}
-                      <Toaster />
-                    </QueryClientProvider>
-                  </UIStateProvider>
-                </I18nProvider>
-              </OutboxProvider>
-            </TelemetryDashboardProvider>
-          </TelemetryProvider>
-        </AccessibilityProvider>
-      </NextThemeProvider>
-    </UiThemeProvider>
+    <NextThemeProvider
+      attribute="data-theme"
+      defaultTheme="dark"
+      enableSystem
+      disableTransitionOnChange
+      value={themeValue}
+    >
+      <AccessibilityProvider>
+        <TelemetryProvider>
+          <TelemetryDashboardProvider>
+            <OutboxProvider>
+              <I18nProvider>
+                <UIStateProvider>
+                  <QueryClientProvider client={queryClient}>
+                    <ThemeBridge />
+                    <ServiceWorkerBridge />
+                    {children}
+                    <Toaster />
+                  </QueryClientProvider>
+                </UIStateProvider>
+              </I18nProvider>
+            </OutboxProvider>
+          </TelemetryDashboardProvider>
+        </TelemetryProvider>
+      </AccessibilityProvider>
+    </NextThemeProvider>
   );
 }
 

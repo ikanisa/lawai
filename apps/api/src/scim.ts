@@ -67,7 +67,7 @@ interface ScimPatchOperation {
   Value?: unknown;
 }
 
-export interface ScimPatchRequest {
+interface ScimPatchRequest {
   Operations?: ScimPatchOperation[];
 }
 
@@ -198,7 +198,7 @@ export async function listScimUsers(authHeader: string) {
     throw new Error(`scim_users_list_failed:${error.message}`);
   }
 
-  const resources = (data ?? []).map((row: any) => formatScimUser(row as OrgMemberRow));
+  const resources = (data ?? []).map((row) => formatScimUser(row as OrgMemberRow));
   return {
     schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
     totalResults: resources.length,

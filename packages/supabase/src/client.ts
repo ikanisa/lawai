@@ -1,6 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import type { ServiceDatabase, ServiceSupabaseClient } from './types.js';
 
 const envSchema = z.object({
   SUPABASE_URL: z.string().url(),
@@ -9,49 +8,21 @@ const envSchema = z.object({
 
 export type SupabaseEnv = z.infer<typeof envSchema>;
 
-export interface CreateServiceClientOptions {
-  client?: ServiceSupabaseClient;
-  reuseExisting?: boolean;
-}
+let cachedClient: SupabaseClient | null = null;
 
-let cachedClient: ServiceSupabaseClient | null = null;
-
-export function createServiceClient(
-  env: SupabaseEnv,
-  options: CreateServiceClientOptions = {},
-): ServiceSupabaseClient {
+export function createServiceClient(env: SupabaseEnv): SupabaseClient {
   const parsed = envSchema.parse(env);
-  const { reuseExisting = true, client } = options;
 
-  if (client) {
-    if (reuseExisting) {
-      cachedClient = client;
-    }
-    return client;
-  }
-
-  if (reuseExisting && cachedClient) {
+  if (cachedClient) {
     return cachedClient;
   }
 
-  const instance = createClient<ServiceDatabase>(
-    parsed.SUPABASE_URL,
-    parsed.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
+  cachedClient = createClient(parsed.SUPABASE_URL, parsed.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
     },
-  );
+  });
 
-  if (reuseExisting) {
-    cachedClient = instance;
-  }
-
-  return instance;
-}
-
-export function resetServiceClientCache(): void {
-  cachedClient = null;
+  return cachedClient;
 }

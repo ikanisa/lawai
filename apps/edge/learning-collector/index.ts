@@ -1,7 +1,6 @@
 /// <reference lib="deno.unstable" />
 
-import { createEdgeClient, rowsAs } from '../lib/supabase.ts';
-import { serveEdgeFunction } from '../lib/serve.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
 
 const WINDOW_MINUTES = 10;
 
@@ -9,48 +8,18 @@ function isoMinutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
 }
 
-type AgentRunRow = {
-  id: string;
-  org_id: string | null;
-  status: string | null;
-  refusal_reason: string | null;
-  jurisdiction_json: unknown;
-  risk_level: string | null;
-};
+function asArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
 
-type CitationRow = {
-  run_id: string | null;
-  org_id: string | null;
-  domain_ok: boolean | null;
-  translation_flag: string | null;
-  url: string | null;
-};
-
-type TelemetryRow = {
-  org_id: string | null;
-  tool_name: string | null;
-  latency_ms: number | null;
-  success: boolean | null;
-  error_code: string | null;
-  metadata: Record<string, unknown> | null;
-};
-
-type HitlRow = {
-  org_id: string | null;
-  run_id: string | null;
-  status: string | null;
-  reviewer_comment: string | null;
-  updated_at: string | null;
-};
-
-serveEdgeFunction(async () => {
+Deno.serve(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceKey) {
     return new Response('missing_supabase_env', { status: 500 });
   }
 
-  const supabase = createEdgeClient(supabaseUrl, serviceKey, {
+  const supabase = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -69,7 +38,7 @@ serveEdgeFunction(async () => {
       .limit(500),
     supabase
       .from('tool_telemetry')
-      .select('id, org_id, tool_name, latency_ms, success, error_code, metadata, created_at')
+      .select('id, org_id, tool_name, latency_ms, success, error_code, created_at')
       .gte('created_at', sinceIso)
       .limit(500),
     supabase
@@ -81,8 +50,7 @@ serveEdgeFunction(async () => {
 
   const signals: Array<Record<string, unknown>> = [];
 
-  const runRows = rowsAs<AgentRunRow>(runs.data);
-  for (const row of runRows) {
+  for (const row of asArray(runs.data)) {
     signals.push({
       org_id: row.org_id,
       run_id: row.id,
@@ -96,11 +64,7 @@ serveEdgeFunction(async () => {
     });
   }
 
-  const citationRows = rowsAs<CitationRow>(citations.data);
-  for (const row of citationRows) {
-    if (!row.run_id) {
-      continue;
-    }
+  for (const row of asArray(citations.data)) {
     signals.push({
       org_id: row.org_id,
       run_id: row.run_id,
@@ -113,8 +77,7 @@ serveEdgeFunction(async () => {
     });
   }
 
-  const telemetryRows = rowsAs<TelemetryRow>(telemetry.data);
-  for (const row of telemetryRows) {
+  for (const row of asArray(telemetry.data)) {
     signals.push({
       org_id: row.org_id,
       run_id: null,
@@ -124,13 +87,11 @@ serveEdgeFunction(async () => {
         tool: row.tool_name,
         latency_ms: row.latency_ms,
         error_code: row.error_code ?? null,
-        metadata: row.metadata ?? null,
       },
     });
   }
 
-  const hitlRows = rowsAs<HitlRow>(hitl.data);
-  for (const row of hitlRows) {
+  for (const row of asArray(hitl.data)) {
     signals.push({
       org_id: row.org_id,
       run_id: row.run_id,
@@ -149,7 +110,7 @@ serveEdgeFunction(async () => {
     });
   }
 
-  const { error } = await supabase.from('learning_signals').insert(signals);
+  const { error } = await supabase.from('learning_signals').insert(signals, { returning: 'minimal' });
   if (error) {
     return new Response(error.message, { status: 500 });
   }
@@ -158,3 +119,4 @@ serveEdgeFunction(async () => {
     headers: { 'Content-Type': 'application/json' },
   });
 });
+

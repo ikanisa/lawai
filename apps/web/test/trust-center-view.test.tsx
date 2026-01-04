@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Messages } from '@/lib/i18n';
+import type { Messages } from '../src/lib/i18n';
 
 const { getOperationsOverviewMock, getGovernancePublicationsMock } = vi.hoisted(() => ({
   getOperationsOverviewMock: vi.fn(),
@@ -25,7 +25,7 @@ vi.mock('../src/lib/api', async () => {
   };
 });
 
-const { TrustCenterView } = await import('@/features/trust/components/trust-center-view');
+const { TrustCenterView } = await import('../src/components/trust/trust-center-view');
 
 describe('TrustCenterView', () => {
   beforeEach(() => {

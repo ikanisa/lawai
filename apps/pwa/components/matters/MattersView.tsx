@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CalendarCheck2, FileText, Scale } from "lucide-react";
+import { CalendarCheck2, FileText, Scale, TriangleAlert } from "lucide-react";
 
-import { Button } from '@avocat-ai/ui';
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from '@avocat-ai/ui';
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
@@ -16,8 +16,7 @@ import { mattersOverviewQueryOptions } from "@/lib/queries/matters";
 import {
   type MatterDeadlineEntry,
   type MatterDocumentNode,
-  type MatterSummary,
-  type MatterTimelineEvent
+  type MatterSummary
 } from "@/lib/data/matters";
 import { useTelemetry } from "@/lib/telemetry";
 import { cn } from "@/lib/utils";
@@ -41,7 +40,7 @@ function DocumentTree({
 }) {
   return (
     <div className={cn("space-y-3", depth > 0 && "pl-4 border-l border-white/10")}>
-      {documents.map((doc: MatterDocumentNode) => {
+      {documents.map((doc) => {
         const pressed = selected.has(doc.id);
         const status =
           doc.citeCheck === "clean"
@@ -110,7 +109,7 @@ function DeadlineCard({ deadline, onGenerate }: { deadline: MatterDeadlineEntry;
     <div className={cn("rounded-2xl border p-4", tone)}>
       <div className="flex items-center justify-between gap-3 text-sm font-medium text-white">
         <div className="flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4" />
+          <TriangleAlert className="h-4 w-4" />
           {deadline.label}
         </div>
         <Button size="sm" variant="ghost" onClick={onGenerate}>
@@ -134,13 +133,13 @@ export function MattersView() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [compareName, setCompareName] = useState("Comparatif dossiers");
 
-  const matters = useMemo<MatterSummary[]>(() => data?.matters ?? [], [data]);
-  const activeMatter = useMemo<MatterSummary | null>(() => {
+  const matters = data?.matters ?? [];
+  const activeMatter = useMemo(() => {
     if (!matters.length) return null;
-    return matters.find((matter: MatterSummary) => matter.id === selectedMatterId) ?? matters[0];
+    return matters.find((matter) => matter.id === selectedMatterId) ?? matters[0];
   }, [matters, selectedMatterId]);
 
-  const documentTitles = useMemo<Map<string, string>>(() => {
+  const documentTitles = useMemo(() => {
     const map = new Map<string, string>();
     if (!activeMatter) return map;
     const walk = (nodes: MatterDocumentNode[]) => {
@@ -214,7 +213,7 @@ export function MattersView() {
           className="w-full max-w-2xl"
         >
           <TabsList className="grid h-auto grid-cols-2 gap-2 rounded-2xl bg-white/10 p-2">
-            {matters.map((matter: MatterSummary) => (
+            {matters.map((matter) => (
               <TabsTrigger key={matter.id} value={matter.id} className="rounded-xl px-3 py-2 text-left text-sm text-white/80">
                 <div className="flex flex-col">
                   <span className="font-medium text-white">{matter.name}</span>
@@ -279,7 +278,7 @@ export function MattersView() {
               </Button>
             </header>
             <div className="mt-4 space-y-3">
-              {activeMatter.deadlines.map((deadline: MatterDeadlineEntry) => (
+              {activeMatter.deadlines.map((deadline) => (
                 <DeadlineCard
                   key={deadline.id}
                   deadline={deadline}
@@ -294,7 +293,7 @@ export function MattersView() {
               <Scale className="h-4 w-4" /> Chronologie
             </header>
             <ol className="mt-4 space-y-3 text-sm text-white/70">
-              {activeMatter.timeline.map((event: MatterTimelineEvent) => (
+              {activeMatter.timeline.map((event) => (
                 <li key={event.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                   <div className="flex items-center justify-between text-xs text-white/50">
                     <span>{new Date(event.occurredAt).toLocaleString()}</span>
@@ -346,7 +345,7 @@ export function MattersView() {
             <div>
               <p className="text-xs uppercase tracking-wide text-white/60">Documents</p>
               <ul className="mt-2 space-y-1 text-sm text-white/80">
-                {Array.from(selectedDocs).map((docId: string) => (
+                {Array.from(selectedDocs).map((docId) => (
                   <li key={docId}>{documentTitles.get(docId) ?? docId}</li>
                 ))}
               </ul>

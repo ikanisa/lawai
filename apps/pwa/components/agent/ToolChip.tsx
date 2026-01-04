@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
+import { Check, Loader2, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -29,7 +29,7 @@ export function ToolChip({ name, status, description }: ToolChipProps) {
     >
       {status === "running" && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
       {status === "success" && <Check className="h-3.5 w-3.5" aria-hidden />}
-      {status === "error" && <AlertTriangle className="h-3.5 w-3.5" aria-hidden />}
+      {status === "error" && <TriangleAlert className="h-3.5 w-3.5" aria-hidden />}
       <span>{name}</span>
       {description ? <span className="text-[11px] text-white/60">· {description}</span> : null}
     </motion.div>

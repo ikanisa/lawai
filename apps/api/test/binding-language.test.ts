@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { determineBindingLanguage } from '../src/agent.ts';
+import { determineBindingLanguage } from '../src/agent.js';
 
 describe('determineBindingLanguage', () => {
   it('flags Swiss sources as multilingual when using fedlex', () => {

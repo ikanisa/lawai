@@ -14,11 +14,11 @@ import {
 } from "lucide-react";
 
 import { DeadlineWizard } from "@/components/procedure/DeadlineWizard";
-import { Badge } from '@avocat-ai/ui';
-import { Button } from '@avocat-ai/ui';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from '@avocat-ai/ui';
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import { proceduralNavigatorQueryOptions } from "@/lib/queries/procedure";

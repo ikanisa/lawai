@@ -104,7 +104,7 @@ export async function listSsoConnections(orgId: string) {
     throw new Error(`sso_list_failed:${error.message}`);
   }
 
-  return (data ?? []).map((row: any) => sanitizeConnection(row as SsoConnectionRow));
+  return (data ?? []).map((row) => sanitizeConnection(row as SsoConnectionRow));
 }
 
 export async function upsertSsoConnection(orgId: string, actorId: string, input: SsoConnectionInput) {
@@ -220,7 +220,7 @@ export async function listScimTokens(orgId: string): Promise<ScimTokenRecord[]> 
     throw new Error(`scim_list_failed:${error.message}`);
   }
 
-  return (data ?? []).map((row: any) => ({
+  return (data ?? []).map((row) => ({
     id: row.id as string,
     name: row.name as string,
     createdBy: row.created_by as string | null | undefined,

@@ -1,13 +1,11 @@
 import type { ReportHandler } from 'web-vitals';
-import { DEMO_ORG_ID, DEMO_USER_ID } from '../src/lib/api';
-import { API_BASE } from '../src/lib/constants';
-import { withCsrf } from '../src/lib/security';
+import { API_BASE, DEMO_ORG_ID, DEMO_USER_ID } from '../src/lib/api';
 
 const ENDPOINT = `${API_BASE}/metrics/web-vitals`;
 
-async function sendMetric(body: Record<string, unknown>) {
+function sendMetric(body: Record<string, unknown>) {
   try {
-    const init = await withCsrf({
+    void fetch(ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -16,9 +14,7 @@ async function sendMetric(body: Record<string, unknown>) {
       },
       body: JSON.stringify(body),
       keepalive: true,
-      credentials: 'include',
     });
-    void fetch(ENDPOINT, init);
   } catch (error) {
     console.warn('web_vitals_send_failed', error);
   }
@@ -44,5 +40,5 @@ export const reportWebVitals: ReportHandler = (metric) => {
     navigationType: navigation?.type ?? undefined,
   } satisfies Record<string, unknown>;
 
-  void sendMetric(body);
+  sendMetric(body);
 };

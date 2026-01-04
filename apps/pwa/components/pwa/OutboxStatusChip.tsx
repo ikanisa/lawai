@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
-import { Button } from '@avocat-ai/ui';
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface OutboxStatusChipProps {

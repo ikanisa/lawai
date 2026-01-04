@@ -2,7 +2,7 @@ import { createServiceClient } from '@avocat-ai/supabase';
 import ipaddr from 'ipaddr.js';
 import { env } from './config.js';
 
-export type OrgRole =
+type OrgRole =
   | 'owner'
   | 'admin'
   | 'member'
@@ -13,26 +13,13 @@ export type OrgRole =
 
 type PolicyRecord = Record<string, unknown>;
 
-type ConsentRequirement = {
-  type: string;
-  version: string;
-};
-
-type CouncilOfEuropeRequirement = {
-  version: string;
-  documentUrl?: string | null;
-};
-
 type OrgPolicyFlags = {
   confidentialMode: boolean;
   franceJudgeAnalyticsBlocked: boolean;
   mfaRequired: boolean;
   ipAllowlistEnforced: boolean;
-  consentRequirement: ConsentRequirement | null;
-  councilOfEuropeRequirement: CouncilOfEuropeRequirement | null;
-  sensitiveTopicHitl: boolean;
-  residencyZone: string | null;
-  residencyZones: string[] | null;
+  consentVersion?: string | null;
+  councilOfEuropeDisclosureVersion?: string | null;
 };
 
 export type OrgAccessContext = {
@@ -44,12 +31,8 @@ export type OrgAccessContext = {
   entitlements: Map<string, { canRead: boolean; canWrite: boolean }>;
   ipAllowlistCidrs: string[];
   consent: {
-    requirement: ConsentRequirement | null;
-    latest?: { type: string; version: string } | null;
-  };
-  councilOfEurope: {
-    requirement: CouncilOfEuropeRequirement | null;
-    acknowledgedVersion?: string | null;
+    requiredVersion?: string | null;
+    latestAcceptedVersion?: string | null;
   };
 };
 
@@ -77,9 +60,7 @@ type PermissionKey =
   | 'admin:security'
   | 'governance:red-team'
   | 'governance:go-no-go'
-  | 'governance:go-no-go-signoff'
-  | 'orchestrator:command'
-  | 'orchestrator:admin';
+  | 'governance:go-no-go-signoff';
 
 const PERMISSIONS: Record<PermissionKey, OrgRole[]> = {
   'runs:execute': ['owner', 'admin', 'member', 'reviewer'],
@@ -106,8 +87,6 @@ const PERMISSIONS: Record<PermissionKey, OrgRole[]> = {
   'governance:dispatch': ['owner', 'admin', 'compliance_officer'],
   'governance:go-no-go': ['owner', 'admin', 'compliance_officer'],
   'governance:go-no-go-signoff': ['owner', 'compliance_officer'],
-  'orchestrator:command': ['owner', 'admin', 'member', 'reviewer'],
-  'orchestrator:admin': ['owner', 'admin', 'compliance_officer'],
 };
 
 const supabase = createServiceClient({
@@ -178,25 +157,15 @@ async function fetchIpAllowlist(orgId: string): Promise<string[]> {
     throw new Error(error.message);
   }
 
-  return (data ?? [])
-    .map((row: any) => String(row.cidr))
-    .filter((cidr: string) => typeof cidr === 'string' && cidr.length > 0);
+  return (data ?? []).map((row) => row.cidr as string).filter((cidr) => typeof cidr === 'string' && cidr.length > 0);
 }
 
-async function fetchLatestConsent(
-  orgId: string,
-  userId: string,
-  consentType: string,
-): Promise<{ type: string; version: string } | null> {
-  if (!consentType) {
-    return null;
-  }
+async function fetchLatestConsent(orgId: string, userId: string): Promise<string | null> {
   const { data, error } = await supabase
     .from('consent_events')
-    .select('version, consent_type')
+    .select('version')
     .eq('org_id', orgId)
     .eq('user_id', userId)
-    .eq('consent_type', consentType)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -205,40 +174,7 @@ async function fetchLatestConsent(
     throw new Error(error.message);
   }
 
-  if (!data?.version) {
-    return null;
-  }
-
-  return {
-    version: data.version as string,
-    type: (data.consent_type as string) ?? consentType,
-  };
-}
-
-function parseConsentPolicy(value: unknown): ConsentRequirement | null {
-  if (typeof value === 'string') {
-    return { type: 'ai_assist', version: value };
-  }
-  if (value && typeof value === 'object') {
-    const record = value as { version?: unknown; type?: unknown };
-    const version = typeof record.version === 'string' ? record.version : null;
-    const type = typeof record.type === 'string' ? record.type : 'ai_assist';
-    return version ? { version, type } : null;
-  }
-  return null;
-}
-
-function parseCouncilPolicy(value: unknown): CouncilOfEuropeRequirement | null {
-  if (typeof value === 'string') {
-    return { version: value };
-  }
-  if (value && typeof value === 'object') {
-    const record = value as { version?: unknown; document_url?: unknown };
-    const version = typeof record.version === 'string' ? record.version : null;
-    const documentUrl = typeof record.document_url === 'string' ? record.document_url : null;
-    return version ? { version, documentUrl } : null;
-  }
-  return null;
+  return data?.version ?? null;
 }
 
 function resolvePolicyFlags(policyRecord: PolicyRecord): OrgPolicyFlags {
@@ -246,42 +182,8 @@ function resolvePolicyFlags(policyRecord: PolicyRecord): OrgPolicyFlags {
   const franceBan = policyRecord['fr_judge_analytics_block'];
   const mfaRequired = policyRecord['mfa_required'];
   const ipAllowlist = policyRecord['ip_allowlist_enforced'];
-  const consentRequirement = parseConsentPolicy(policyRecord['ai_assist_consent_version']);
-  const coeDisclosure = parseCouncilPolicy(policyRecord['coe_ai_framework_version']);
-  const sensitiveHitl = policyRecord['sensitive_topic_hitl'];
-  const residencyValue = policyRecord['residency_zone'];
-
-  const residencyCollector = new Set<string>();
-  const collectResidency = (input: unknown) => {
-    if (!input) {
-      return;
-    }
-    if (typeof input === 'string') {
-      const normalized = input.trim().toLowerCase();
-      if (normalized) {
-        residencyCollector.add(normalized);
-      }
-      return;
-    }
-    if (Array.isArray(input)) {
-      for (const item of input) {
-        collectResidency(item);
-      }
-      return;
-    }
-    if (typeof input === 'object') {
-      const record = input as Record<string, unknown>;
-      if ('value' in record) collectResidency(record.value);
-      if ('code' in record) collectResidency(record.code);
-      if ('values' in record) collectResidency(record.values);
-      if ('allowed' in record) collectResidency(record.allowed);
-      if ('zones' in record) collectResidency(record.zones);
-    }
-  };
-
-  collectResidency(residencyValue);
-  const residencyZones = residencyCollector.size > 0 ? Array.from(residencyCollector) : null;
-  const primaryResidencyZone = residencyZones?.[0] ?? null;
+  const consentVersion = policyRecord['ai_assist_consent_version'];
+  const coeDisclosure = policyRecord['coe_ai_framework_version'];
 
   return {
     confidentialMode: Boolean(confidential && typeof confidential === 'object' ? (confidential as { enabled?: boolean }).enabled : confidential),
@@ -291,23 +193,19 @@ function resolvePolicyFlags(policyRecord: PolicyRecord): OrgPolicyFlags {
           typeof franceBan === 'object' ? (franceBan as { enabled?: boolean }).enabled : franceBan,
         ),
     mfaRequired: Boolean(
-          typeof mfaRequired === 'object' ? (mfaRequired as { enabled?: boolean }).enabled : mfaRequired,
+      typeof mfaRequired === 'object' ? (mfaRequired as { enabled?: boolean }).enabled : mfaRequired,
     ),
     ipAllowlistEnforced: Boolean(
       typeof ipAllowlist === 'object' ? (ipAllowlist as { enabled?: boolean }).enabled : ipAllowlist,
     ),
-    consentRequirement,
-    councilOfEuropeRequirement: coeDisclosure,
-    sensitiveTopicHitl:
-      sensitiveHitl === undefined
-        ? true
-        : Boolean(
-            typeof sensitiveHitl === 'object'
-              ? (sensitiveHitl as { enabled?: boolean }).enabled
-              : sensitiveHitl,
-          ),
-    residencyZone: primaryResidencyZone,
-    residencyZones,
+    consentVersion:
+      typeof consentVersion === 'object'
+        ? (consentVersion as { version?: string }).version ?? null
+        : (consentVersion as string | null | undefined) ?? null,
+    councilOfEuropeDisclosureVersion:
+      typeof coeDisclosure === 'object'
+        ? (coeDisclosure as { version?: string }).version ?? null
+        : (coeDisclosure as string | null | undefined) ?? null,
   };
 }
 
@@ -330,18 +228,13 @@ export async function authorizeAction(
     throw error;
   }
 
-  const [policies, entitlements, ipAllowlistCidrs] = await Promise.all([
+  const [policies, entitlements, ipAllowlistCidrs, latestConsent] = await Promise.all([
     fetchPolicies(orgId),
     fetchEntitlements(orgId),
     fetchIpAllowlist(orgId),
+    fetchLatestConsent(orgId, userId),
   ]);
   const flags = resolvePolicyFlags(policies);
-  const consentRequirement = flags.consentRequirement;
-  const councilRequirement = flags.councilOfEuropeRequirement;
-  const [latestConsent, latestCouncil] = await Promise.all([
-    consentRequirement ? fetchLatestConsent(orgId, userId, consentRequirement.type) : Promise.resolve(null),
-    councilRequirement?.version ? fetchLatestConsent(orgId, userId, 'council_of_europe_disclosure') : Promise.resolve(null),
-  ]);
 
   return {
     orgId,
@@ -352,12 +245,8 @@ export async function authorizeAction(
     entitlements,
     ipAllowlistCidrs,
     consent: {
-      requirement: consentRequirement,
-      latest: latestConsent,
-    },
-    councilOfEurope: {
-      requirement: councilRequirement,
-      acknowledgedVersion: latestCouncil?.version ?? null,
+      requiredVersion: flags.consentVersion ?? null,
+      latestAcceptedVersion: latestConsent,
     },
   };
 }
@@ -458,17 +347,23 @@ export function ensureOrgAccessCompliance(access: OrgAccessContext, request: Req
     }
   }
 
-  const consentRequirement = access.consent.requirement;
-  if (consentRequirement && (!access.consent.latest || access.consent.latest.version !== consentRequirement.version)) {
-    const error = new Error('consent_required');
-    (error as Error & { statusCode?: number }).statusCode = 428;
-    throw error;
+  const requiredConsent = access.consent.requiredVersion;
+  if (requiredConsent && access.consent.latestAcceptedVersion !== requiredConsent) {
+    const provided = headerValue(request.headers, 'x-consent-version');
+    if (provided !== requiredConsent) {
+      const error = new Error('consent_required');
+      (error as Error & { statusCode?: number }).statusCode = 428;
+      throw error;
+    }
   }
 
-  const councilRequirement = access.councilOfEurope.requirement;
-  if (councilRequirement?.version && access.councilOfEurope.acknowledgedVersion !== councilRequirement.version) {
-    const error = new Error('coe_disclosure_required');
-    (error as Error & { statusCode?: number }).statusCode = 428;
-    throw error;
+  const requiredCoeDisclosure = access.policies.councilOfEuropeDisclosureVersion;
+  if (requiredCoeDisclosure) {
+    const ack = headerValue(request.headers, 'x-coe-disclosure-version');
+    if (ack !== requiredCoeDisclosure) {
+      const error = new Error('coe_disclosure_required');
+      (error as Error & { statusCode?: number }).statusCode = 428;
+      throw error;
+    }
   }
 }

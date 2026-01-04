@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { IRACPayload } from '@avocat-ai/shared';
 import { Clipboard, Loader2 } from 'lucide-react';
-import { Button } from '@avocat-ai/ui';
-import { cn } from '@/lib/utils';
+import { Button } from './ui/button';
+import { cn } from '../lib/utils';
 
 interface IRACAccordionProps {
   payload: IRACPayload;

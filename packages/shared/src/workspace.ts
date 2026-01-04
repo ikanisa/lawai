@@ -58,35 +58,3 @@ export interface WorkspaceDesk {
   personas: WorkspaceDeskPersona[];
   toolChips: WorkspaceDeskToolChip[];
 }
-
-export type ProcessNavigatorStepState = 'complete' | 'in_progress' | 'blocked';
-
-export interface ProcessNavigatorStep {
-  id: string;
-  label: string;
-  description: string;
-  state: ProcessNavigatorStepState;
-  guardrails: string[];
-  outputs: string[];
-  escalation?: string | null;
-}
-
-export interface ProcessNavigatorTelemetry {
-  runCount: number;
-  hitlEscalations: number;
-  pendingTasks: number;
-}
-
-export interface ProcessNavigatorFlow {
-  id: string;
-  title: string;
-  jurisdiction: string;
-  persona: string;
-  mode: WorkspaceDeskMode;
-  summary: string;
-  estimatedMinutes: number;
-  lastRunAt: string | null;
-  alerts: string[];
-  telemetry: ProcessNavigatorTelemetry;
-  steps: ProcessNavigatorStep[];
-}

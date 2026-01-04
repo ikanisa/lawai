@@ -10,37 +10,9 @@ const summariseDocumentFromPayloadMock = vi.fn();
 vi.mock('@avocat-ai/supabase', () => ({
     createServiceClient: () => supabaseMock,
 }));
-const createAccessContext = (orgId = 'org-1', userId = 'user-1') => ({
-    orgId,
-    userId,
-    role: 'admin',
-    policies: {
-        confidentialMode: false,
-        franceJudgeAnalyticsBlocked: false,
-        mfaRequired: false,
-        ipAllowlistEnforced: false,
-        consentRequirement: null,
-        councilOfEuropeRequirement: null,
-        sensitiveTopicHitl: false,
-        residencyZone: null,
-        residencyZones: null,
-    },
-    rawPolicies: {},
-    entitlements: new Map(),
-    ipAllowlistCidrs: [],
-    consent: { requirement: null, latest: null },
-    councilOfEurope: { requirement: null, acknowledgedVersion: null },
-});
-const authorizeRequestWithGuards = vi.fn(async (_action, orgId, userId) => createAccessContext(orgId, userId));
-vi.mock('../src/http/authorization.js', () => ({
-    authorizeRequestWithGuards,
-}));
 vi.mock('../src/access-control.js', () => ({
-    authorizeAction: vi.fn(async () => createAccessContext()),
+    authorizeAction: vi.fn(async () => ({ orgId: 'org-1', actorId: 'user-1' })),
     ensureOrgAccessCompliance: vi.fn((ctx) => ctx),
-}));
-vi.mock('../src/device-sessions.js', () => ({
-    recordDeviceSession: vi.fn(async () => undefined),
 }));
 vi.mock('../src/audit.js', () => ({
     logAuditEvent: vi.fn(async () => undefined),

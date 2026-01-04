@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const tableMocks: Record<string, () => any> = {};
 
-vi.mock('../src/config.ts', () => ({
+vi.mock('../src/config.js', () => ({
   env: {
     SUPABASE_URL: 'https://example.supabase.co',
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
@@ -10,12 +10,12 @@ vi.mock('../src/config.ts', () => ({
 }));
 
 const auditMock = vi.fn(async () => {});
-vi.mock('../src/audit.ts', () => ({
+vi.mock('../src/audit.js', () => ({
   logAuditEvent: auditMock,
 }));
 
 const resolveScimTokenMock = vi.fn(async () => ({ tokenId: 'token-1', orgId: 'org-1' }));
-vi.mock('../src/sso.ts', () => ({
+vi.mock('../src/sso.js', () => ({
   resolveScimToken: resolveScimTokenMock,
 }));
 
@@ -53,7 +53,7 @@ describe('scim helpers', () => {
     const upsertMock = vi.fn(() => ({ select: selectMock }));
     tableMocks['org_members'] = () => ({ upsert: upsertMock });
 
-    const { createScimUser } = await import('../src/scim.ts');
+    const { createScimUser } = await import('../src/scim.js');
     const payload = {
       id: 'user-1',
       emails: [{ value: 'lawyer@example.com', primary: true }],
@@ -92,7 +92,7 @@ describe('scim helpers', () => {
     const selectMock = vi.fn(() => ({ eq: eqMock }));
     tableMocks['org_members'] = () => ({ select: selectMock });
 
-    const { listScimUsers } = await import('../src/scim.ts');
+    const { listScimUsers } = await import('../src/scim.js');
     const response = await listScimUsers('Bearer token-value');
 
     expect(resolveScimTokenMock).toHaveBeenCalledWith('token-value');

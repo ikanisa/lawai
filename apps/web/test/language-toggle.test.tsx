@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BilingualToggle } from '@/components/bilingual-toggle';
+import { BilingualToggle } from '../src/components/bilingual-toggle';
 
 describe('BilingualToggle', () => {
   it('renders provided languages and emits selection events', async () => {

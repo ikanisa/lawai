@@ -1,5 +1,3 @@
-import { withCsrf } from "@/lib/security";
-
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
 interface ApiRequest<TBody = unknown> {
@@ -17,7 +15,7 @@ export async function apiFetch<TResponse, TBody = unknown>({
   headers,
   signal
 }: ApiRequest<TBody>): Promise<TResponse> {
-  const baseInit: RequestInit = {
+  const response = await fetch(path, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -25,11 +23,8 @@ export async function apiFetch<TResponse, TBody = unknown>({
     },
     body: body ? JSON.stringify(body) : undefined,
     signal,
-    cache: method === "GET" ? "no-store" : "no-cache",
-    credentials: "include"
-  };
-  const prepared = await withCsrf(baseInit);
-  const response = await fetch(path, prepared);
+    cache: method === "GET" ? "no-store" : "no-cache"
+  });
 
   if (!response.ok) {
     const errorText = await response.text();

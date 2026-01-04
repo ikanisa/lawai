@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateCaseQuality } from '../src/case-quality.ts';
+import { evaluateCaseQuality } from '../src/case-quality.js';
 
 describe('evaluateCaseQuality', () => {
   it('returns high score for aligned supreme court decision', () => {

@@ -12,9 +12,9 @@ import {
   TableProperties
 } from "lucide-react";
 
-import { Badge } from '@avocat-ai/ui';
-import { Button } from '@avocat-ai/ui';
-import { Input } from '@avocat-ai/ui';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,7 +37,7 @@ function DocumentToc({ items, onSelect, activeAnchor }: {
 }) {
   return (
     <nav className="space-y-2">
-      {items.map((item: CitationDocument["toc"][number]) => (
+      {items.map((item) => (
         <button
           key={item.id}
           onClick={() => onSelect(item.anchor)}
@@ -75,8 +75,8 @@ export function CitationsBrowserView() {
   const [activeAnchor, setActiveAnchor] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const results = useMemo<CitationDocument[]>(() => data?.results ?? [], [data]);
-  const ohadaFeatured = useMemo<CitationDocument[]>(() => data?.ohadaFeatured ?? [], [data]);
+  const results = data?.results ?? [];
+  const ohadaFeatured = data?.ohadaFeatured ?? [];
 
   useEffect(() => {
     if (!results.length) return;
@@ -85,7 +85,7 @@ export function CitationsBrowserView() {
     telemetry.emit("temporal_validity_checked", { total: results.length, upToDate });
   }, [results, telemetry]);
 
-  const filteredResults = useMemo<CitationDocument[]>(() => {
+  const filteredResults = useMemo(() => {
     return results.filter((doc) => {
       const matchesSearch = doc.title.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesJurisdiction = jurisdiction === "all" || doc.jurisdiction === jurisdiction;
@@ -94,9 +94,9 @@ export function CitationsBrowserView() {
     });
   }, [results, searchTerm, jurisdiction, docType]);
 
-  const activeDocument = useMemo<CitationDocument | null>(() => {
+  const activeDocument = useMemo(() => {
     if (!filteredResults.length) return null;
-    const fallback = filteredResults[0]!;
+    const fallback = filteredResults[0];
     return filteredResults.find((doc) => doc.id === activeId) ?? fallback;
   }, [filteredResults, activeId]);
 
@@ -144,7 +144,7 @@ export function CitationsBrowserView() {
             <Sparkles className="h-4 w-4" /> OHADA en priorité
           </div>
           <div className="flex gap-2 overflow-x-auto">
-            {ohadaFeatured.map((doc: CitationDocument) => (
+            {ohadaFeatured.map((doc) => (
               <button
                 key={doc.id}
                 onClick={() => selectDocument(doc)}
@@ -201,7 +201,7 @@ export function CitationsBrowserView() {
         <div className="mt-6 grid gap-4 lg:grid-cols-[260px_1fr_300px]">
           <ScrollArea className="h-[520px] rounded-2xl border border-white/10 bg-white/5">
             <div className="space-y-1 p-3">
-              {filteredResults.map((doc: CitationDocument) => (
+              {filteredResults.map((doc) => (
                 <button
                   key={doc.id}
                   onClick={() => selectDocument(doc)}
@@ -250,14 +250,14 @@ export function CitationsBrowserView() {
                 className="h-full"
               >
                 <TabsList className="flex flex-wrap gap-2 rounded-2xl bg-white/10 p-2">
-                  {activeDocument.content.map((section: CitationDocument["content"][number]) => (
+                  {activeDocument.content.map((section) => (
                     <TabsTrigger key={section.anchor} value={section.anchor} className="rounded-xl px-3 py-2 text-sm text-white/80">
                       {section.heading}
                     </TabsTrigger>
                   ))}
                 </TabsList>
                 <ScrollArea className="mt-4 h-[460px] pr-4">
-                  {activeDocument.content.map((section: CitationDocument["content"][number]) => (
+                  {activeDocument.content.map((section) => (
                     <TabsContent key={section.anchor} value={section.anchor} className="space-y-4">
                       <article
                         id={section.anchor}
@@ -307,7 +307,7 @@ export function CitationsBrowserView() {
                     <ArrowLeftRight className="h-4 w-4" /> Versions
                   </header>
                   <ul className="mt-3 space-y-2 text-sm text-white/70">
-                    {activeDocument.versions.map((version: CitationDocument["versions"][number]) => (
+                    {activeDocument.versions.map((version) => (
                       <li key={version.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-white">{version.label}</span>

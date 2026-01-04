@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@/ui';
-import type { Messages } from '@/lib/i18n';
-import { startWhatsAppOtp, linkWhatsAppOtp, unlinkWhatsApp } from '@/lib/api';
-import { useRequiredSession } from '@avocat-ai/auth';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Input } from '../ui/input';
+import { Button } from '../ui/button';
+import type { Messages } from '../../lib/i18n';
+import { DEMO_ORG_ID, DEMO_USER_ID, startWhatsAppOtp, linkWhatsAppOtp, unlinkWhatsApp } from '../../lib/api';
 
 interface SecurityPanelProps {
   messages: Messages;
@@ -15,14 +16,13 @@ interface SecurityPanelProps {
 const PHONE_REGEX = /^\+\d{8,15}$/;
 
 export function SecurityPanel({ messages }: SecurityPanelProps) {
-  const { orgId, userId } = useRequiredSession();
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [linked, setLinked] = useState(false);
   const [waId, setWaId] = useState<string | null>(null);
 
   const startMutation = useMutation({
-    mutationFn: (formattedPhone: string) => startWhatsAppOtp({ phone: formattedPhone, orgId }),
+    mutationFn: (formattedPhone: string) => startWhatsAppOtp({ phone: formattedPhone, orgId: DEMO_ORG_ID }),
     onSuccess: (_, formattedPhone) => {
       toast.success(messages.security.otpSent.replace('{phone}', formattedPhone));
     },
@@ -33,7 +33,7 @@ export function SecurityPanel({ messages }: SecurityPanelProps) {
 
   const linkMutation = useMutation({
     mutationFn: (payload: { phone: string; code: string }) =>
-      linkWhatsAppOtp({ phone: payload.phone, otp: payload.code, orgId, userId }),
+      linkWhatsAppOtp({ phone: payload.phone, otp: payload.code, orgId: DEMO_ORG_ID, userId: DEMO_USER_ID }),
     onSuccess: (data) => {
       setWaId(data.wa_id);
       setLinked(true);
@@ -45,7 +45,7 @@ export function SecurityPanel({ messages }: SecurityPanelProps) {
   });
 
   const unlinkMutation = useMutation({
-    mutationFn: () => unlinkWhatsApp({ orgId, userId }),
+    mutationFn: () => unlinkWhatsApp({ orgId: DEMO_ORG_ID, userId: DEMO_USER_ID }),
     onSuccess: () => {
       setLinked(false);
       setWaId(null);

@@ -1,5 +1,5 @@
-import { WhatsAppAuth } from '@/features/auth/components/whatsapp-auth';
-import { getMessages, type Locale } from '@/lib/i18n';
+import { WhatsAppAuth } from '../../../src/components/auth/whatsapp-auth';
+import { getMessages, type Locale } from '../../../src/lib/i18n';
 
 interface PageProps {
   params: { locale: Locale };

@@ -1,42 +1,30 @@
 /// <reference lib="deno.unstable" />
 
-import { createEdgeClient, EdgeSupabaseClient, rowAs } from '../lib/supabase.ts';
-import { serveEdgeFunction } from '../lib/serve.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.5';
 
 const PRECISION_THRESHOLD = 0.95;
 const DEAD_LINK_THRESHOLD = 0.01;
 
-type LearningMetricRow = {
-  value: number | null;
-  computed_at: string;
-};
-
-type PolicyVersionRow = {
-  id: string;
-  org_id: string | null;
-  version_number: number | null;
-};
-
-async function fetchLatestMetric(supabase: EdgeSupabaseClient, metric: string) {
+async function fetchLatestMetric(supabase: ReturnType<typeof createClient>, metric: string) {
   const response = await supabase
     .from('learning_metrics')
     .select('value, computed_at')
     .eq('metric', metric)
     .order('computed_at', { ascending: false })
     .limit(1)
-    .maybeSingle<LearningMetricRow>();
+    .maybeSingle();
   if (response.error) throw response.error;
-  return rowAs<LearningMetricRow>(response.data);
+  return response.data ?? null;
 }
 
-serveEdgeFunction(async () => {
+Deno.serve(async () => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceKey) {
     return new Response('missing_supabase_env', { status: 500 });
   }
 
-  const supabase = createEdgeClient(supabaseUrl, serviceKey, {
+  const supabase = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -47,10 +35,10 @@ serveEdgeFunction(async () => {
     ]);
 
     const rollbackReasons: string[] = [];
-    if (precisionMetric && precisionMetric.value !== null && precisionMetric.value < PRECISION_THRESHOLD) {
+    if (precisionMetric && precisionMetric.value < PRECISION_THRESHOLD) {
       rollbackReasons.push('allowlisted_precision_regression');
     }
-    if (deadLinkMetric && deadLinkMetric.value !== null && deadLinkMetric.value > DEAD_LINK_THRESHOLD) {
+    if (deadLinkMetric && deadLinkMetric.value > DEAD_LINK_THRESHOLD) {
       rollbackReasons.push('dead_link_rate_exceeded');
     }
 
@@ -64,17 +52,15 @@ serveEdgeFunction(async () => {
       .eq('status', 'approved')
       .order('version_number', { ascending: false })
       .limit(1)
-      .maybeSingle<PolicyVersionRow>();
+      .maybeSingle();
 
-    const latestApprovedRow = rowAs<PolicyVersionRow>(latestApproved.data);
-
-    if (latestApproved.error || !latestApprovedRow) {
+    if (latestApproved.error || !latestApproved.data) {
       return new Response(JSON.stringify({ rollback: false, message: 'no approved version' }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const versionId = latestApprovedRow.id;
+    const versionId = latestApproved.data.id as string;
 
     await supabase
       .from('agent_policy_versions')
@@ -93,3 +79,4 @@ serveEdgeFunction(async () => {
     return new Response((error as Error).message ?? 'evaluate_failed', { status: 500 });
   }
 });
+

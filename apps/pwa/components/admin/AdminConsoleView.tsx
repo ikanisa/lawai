@@ -4,11 +4,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, CreditCard, FileText, Settings2, ShieldCheck, Users } from "lucide-react";
 
-import { Badge } from '@avocat-ai/ui';
-import { Button } from '@avocat-ai/ui';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from '@avocat-ai/ui';
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { adminConsoleQueryOptions } from "@/lib/queries/admin";
 import { type AdminConsoleData, type PolicyToggle } from "@/lib/data/admin";
@@ -35,7 +35,7 @@ function PolicyRow({ policy, onToggle }: { policy: PolicyToggle; onToggle: (enab
 
 export function AdminConsoleView() {
   const { data, isLoading, isError } = useQuery(adminConsoleQueryOptions());
-  const [tab, setTab] = useState(tabConfig[0]!.id);
+  const [tab, setTab] = useState(tabConfig[0].id);
   const [localData, setLocalData] = useState<AdminConsoleData | null>(null);
 
   const consoleData = localData ?? data;
@@ -49,9 +49,9 @@ export function AdminConsoleView() {
         policies: base.policies.map((policy) =>
           policy.id === id
             ? {
-              ...policy,
-              enabled
-            }
+                ...policy,
+                enabled
+              }
             : policy
         )
       };

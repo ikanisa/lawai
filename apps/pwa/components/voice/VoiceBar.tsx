@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Loader2, Mic, Square } from "lucide-react";
 
-import { Button } from '@avocat-ai/ui';
+import { Button } from "@/components/ui/button";
 import { useLocale } from "@/lib/i18n/provider";
 import { useTelemetry } from "@/lib/telemetry";
 import type { VoiceSessionOptions } from "@/lib/voiceClient";

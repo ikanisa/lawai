@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type {
   AllowlistSource,
   CitationDocument,
@@ -104,31 +103,20 @@ export const researchAnswerChunks: string[] = [
   'La jurisprudence récente de la CCJA confirme cette analyse et ouvre un angle de négociation pour une transaction encadrée.',
 ];
 
-export const webSearchModes = ['allowlist', 'broad'] as const;
-export type WebSearchMode = (typeof webSearchModes)[number];
-
-export const defaultWebSearchMode: WebSearchMode = 'allowlist';
-
-export const researchToolSummaries = {
-  lookupCodeArticle: {
+export const researchToolSummaries: Record<string, { start: string; success: string }> = {
+  'lookupCodeArticle': {
     start: "Analyse de l'article L110-1 et identification des obligations principales.",
     success: 'Article L110-1 enrichi avec les obligations essentielles et alignements OHADA.',
   },
-  web_search: {
-    allowlist: {
-      start: 'Recherche des arrêts CCJA récents sur les clauses limitatives de responsabilité.',
-      success: 'Décision CCJA 132/2022 identifiée et ajoutée aux citations.',
-    },
-    broad: {
-      start: 'Exploration élargie des bulletins OHADA et sources publiques spécialisées.',
-      success: 'Sources élargies validées et intégrées au dossier de preuve.',
-    },
+  'web_search': {
+    start: 'Recherche des arrêts CCJA récents sur les clauses limitatives de responsabilité.',
+    success: 'Décision CCJA 132/2022 identifiée et ajoutée aux citations.',
   },
-  limitationCheck: {
+  'limitationCheck': {
     start: 'Calcul du délai de prescription applicable au contrat de services.',
     success: 'Prescription confirmée à deux ans, alerte sur interruption possible.',
   },
-} as const;
+};
 
 export const citationsData: CitationsBrowserData = {
   results: [

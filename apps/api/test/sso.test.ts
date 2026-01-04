@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const tableMocks: Record<string, () => any> = {};
 
-vi.mock('../src/config.ts', () => ({
+vi.mock('../src/config.js', () => ({
   env: {
     SUPABASE_URL: 'https://example.supabase.co',
     SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
@@ -10,7 +10,7 @@ vi.mock('../src/config.ts', () => ({
 }));
 
 const auditMock = vi.fn(async () => {});
-vi.mock('../src/audit.ts', () => ({
+vi.mock('../src/audit.js', () => ({
   logAuditEvent: auditMock,
 }));
 
@@ -62,7 +62,7 @@ describe('sso helpers', () => {
     const insertMock = vi.fn(() => ({ select: selectMock }));
     tableMocks['sso_connections'] = () => ({ insert: insertMock });
 
-    const { upsertSsoConnection } = await import('../src/sso.ts');
+    const { upsertSsoConnection } = await import('../src/sso.js');
     const result = await upsertSsoConnection('org-1', 'user-1', {
       provider: 'saml',
       defaultRole: 'invalid-role',
@@ -90,7 +90,7 @@ describe('sso helpers', () => {
     const insertMock = vi.fn(() => ({ select: selectMock }));
     tableMocks['scim_tokens'] = () => ({ insert: insertMock });
 
-    const { createScimToken } = await import('../src/sso.ts');
+    const { createScimToken } = await import('../src/sso.js');
     const result = await createScimToken('org-1', 'user-1', 'Provisioning');
 
     expect(randomBytesMock).toHaveBeenCalledWith(32);
@@ -116,7 +116,7 @@ describe('sso helpers', () => {
     const updateMock = vi.fn(() => ({ eq: vi.fn(async () => ({ data: null, error: null })) }));
     tableMocks['scim_tokens'] = () => ({ select: selectMock, update: updateMock });
 
-    const { resolveScimToken } = await import('../src/sso.ts');
+    const { resolveScimToken } = await import('../src/sso.js');
     const result = await resolveScimToken('raw-token');
 
     expect(result).toBeNull();
@@ -137,7 +137,7 @@ describe('sso helpers', () => {
     const updateMock = vi.fn(() => ({ eq: updateEqMock }));
     tableMocks['scim_tokens'] = () => ({ select: selectMock, update: updateMock });
 
-    const { resolveScimToken } = await import('../src/sso.ts');
+    const { resolveScimToken } = await import('../src/sso.js');
     const result = await resolveScimToken('active-token');
 
     expect(result).toEqual({ tokenId: 'token-2', orgId: 'org-9' });

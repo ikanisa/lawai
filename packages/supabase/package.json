@@ -8,19 +8,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.77.0",
-    "zod": "^3.25.42"
+    "@supabase/supabase-js": "^2.43.5",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
+    "typescript": "^5.4.5",
     "vitest": "^1.6.0",
     "@types/node": "^20.12.7",
-    "eslint": "^9.38.0",
+    "eslint": "^8.57.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^8.46.2"
+    "@typescript-eslint/parser": "^6.21.0"
   }
 }

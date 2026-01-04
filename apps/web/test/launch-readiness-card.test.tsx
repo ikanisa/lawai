@@ -2,8 +2,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import messagesEn from '../messages/en.json';
-import type { Messages } from '@/lib/i18n';
-import { LaunchReadinessCard } from '@/features/admin/components/launch-readiness-card';
+import type { Messages } from '../src/lib/i18n';
+import { LaunchReadinessCard } from '../src/components/admin/launch-readiness-card';
 import type { LaunchOfflineOutboxItem, LaunchReadinessSnapshot } from '@avocat-ai/shared';
 
 const messages = messagesEn as Messages;

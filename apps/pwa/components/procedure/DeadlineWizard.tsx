@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { Timer } from "lucide-react";
 
-import { Button } from '@avocat-ai/ui';
+import { Button } from "@/components/ui/button";
 import type { DeadlineComputation } from "@/lib/data/procedure";
 import { cn } from "@/lib/utils";
 

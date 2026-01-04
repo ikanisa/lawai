@@ -1,4 +1,6 @@
 node_modules
+# pnpm-lock.yaml should be tracked
+
 .DS_Store
 .env
 .env.local
@@ -6,45 +8,23 @@ node_modules
 .env.development
 .supabase
 coverage
-.lighthouse
 .idea
 .vscode
 *.log
 /dist
-apps/dist
-apps/*/dist
 /build
 /.turbo
 /tmp
-playwright-report/
-test-results/
 apps/web/public/sw.js
-*.tsbuildinfo
-packages/*/tsconfig.tsbuildinfo
-packages/*/dist
-db/*/dist
-.next/
-apps/*/.next/
 
 # Generated PWA icons
 apps/web/public/icons/icon-*.png
 
-# PWA cache (codex branch)
-apps/pwa/cache/
-
-# Local dev artifacts (mac/pnpm)
-.corepack/
-.pnpm-state/
-Library/
-apps/web/tsconfig.typecheck.tsbuildinfo
-
-# Cloudflare/Caddy local runtime
-.logs/
-infra/cloudflared/config.yml
-infra/cloudflared/credentials/
-
-# Cloudflare Pages build artifacts
+# Build artifacts
+packages/shared/src/**/*.js
+packages/shared/src/**/*.js.map
+packages/shared/src/**/*.d.ts
+packages/shared/src/**/*.d.ts.map
+*.tsbuildinfo
 .vercel/
-.wrangler/
-*.wrangler-state.json
-cloudflare-deployment.log
+apps/pwa/cache/

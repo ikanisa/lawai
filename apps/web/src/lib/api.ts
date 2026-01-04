@@ -1,143 +1,9 @@
-import {
-  AgentPlanNotice,
-  AgentPlanStep,
-  IRACPayload,
-  WorkspaceDesk,
-} from '@avocat-ai/shared';
-import type { TelemetryEventName, TelemetryEventPayload } from '@avocat-ai/types';
+import { AgentPlanNotice, AgentPlanStep, IRACPayload } from '@avocat-ai/shared';
 
-import { clientEnv } from '../env.client';
-import { API_BASE } from './constants';
-import { withCsrf } from './security';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3333';
 
 export const DEMO_ORG_ID = '00000000-0000-0000-0000-000000000000';
 export const DEMO_USER_ID = '00000000-0000-0000-0000-000000000000';
-
-const ALLOW_DEMO_FALLBACK = process.env.NODE_ENV !== 'production';
-
-async function secureFetch(input: string, init: RequestInit = {}): Promise<Response> {
-  const prepared = await withCsrf({ credentials: 'include', ...init });
-  return fetch(input, prepared);
-}
-
-function resolveOrgId(orgId?: string | null): string {
-  if (orgId && orgId.trim()) {
-    return orgId;
-  }
-  if (ALLOW_DEMO_FALLBACK) {
-    return DEMO_ORG_ID;
-  }
-  throw new Error('org_id_required');
-}
-
-function resolveUserId(userId?: string | null): string {
-  if (userId && userId.trim()) {
-    return userId;
-  }
-  if (ALLOW_DEMO_FALLBACK) {
-    return DEMO_USER_ID;
-  }
-  throw new Error('user_id_required');
-}
-
-interface StartWhatsAppOtpResponse {
-  verificationId?: string;
-  expiresAt?: string;
-}
-
-interface VerifyWhatsAppOtpResponse {
-  session_token: string;
-  wa_id?: string | null;
-}
-
-interface LinkWhatsAppOtpResponse {
-  wa_id: string;
-}
-
-function extractErrorMessage(payload: unknown, fallback: string): string {
-  if (payload && typeof payload === 'object') {
-    const withError = payload as { error?: unknown; message?: unknown };
-    if (typeof withError.error === 'string') {
-      return withError.error;
-    }
-    if (typeof withError.message === 'string') {
-      return withError.message;
-    }
-  }
-  return fallback;
-}
-
-export async function startWhatsAppOtp(input: { phone: string; orgId?: string }): Promise<StartWhatsAppOtpResponse> {
-  const response = await fetch(`${API_BASE}/auth/whatsapp/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone: input.phone, orgId: resolveOrgId(input.orgId) }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(extractErrorMessage(errorBody, 'auth_start_failed'));
-  }
-
-  return response.json() as Promise<StartWhatsAppOtpResponse>;
-}
-
-export async function verifyWhatsAppOtp(input: {
-  phone: string;
-  otp: string;
-  orgHint?: string;
-}): Promise<VerifyWhatsAppOtpResponse> {
-  const response = await fetch(`${API_BASE}/auth/whatsapp/verify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone: input.phone, otp: input.otp, orgId: resolveOrgId(input.orgHint) }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(extractErrorMessage(errorBody, 'auth_verify_failed'));
-  }
-
-  return response.json() as Promise<VerifyWhatsAppOtpResponse>;
-}
-
-export async function linkWhatsAppOtp(input: {
-  phone: string;
-  otp: string;
-  orgId: string;
-  userId: string;
-}): Promise<LinkWhatsAppOtpResponse> {
-  const response = await fetch(`${API_BASE}/auth/whatsapp/link`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      phone: input.phone,
-      otp: input.otp,
-      orgId: resolveOrgId(input.orgId),
-      userId: resolveUserId(input.userId),
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(extractErrorMessage(errorBody, 'auth_link_failed'));
-  }
-
-  return response.json() as Promise<LinkWhatsAppOtpResponse>;
-}
-
-export async function unlinkWhatsApp(input: { orgId: string; userId: string }): Promise<void> {
-  const response = await fetch(`${API_BASE}/auth/whatsapp/unlink`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orgId: resolveOrgId(input.orgId), userId: resolveUserId(input.userId) }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(extractErrorMessage(errorBody, 'auth_unlink_failed'));
-  }
-}
 
 export type VerificationSeverity = 'info' | 'warning' | 'critical';
 
@@ -432,115 +298,6 @@ export interface OperationsOverviewResponse {
   };
 }
 
-export interface ComplianceAcknowledgements {
-  consent: {
-    requiredVersion: string | null;
-    acknowledgedVersion: string | null;
-    acknowledgedAt: string | null;
-    satisfied: boolean;
-  };
-  councilOfEurope: {
-    requiredVersion: string | null;
-    acknowledgedVersion: string | null;
-    acknowledgedAt: string | null;
-    satisfied: boolean;
-  };
-}
-
-export interface ComplianceAssessmentSummary {
-  fria: {
-    required: boolean;
-    reasons: string[];
-  };
-  cepej: {
-    passed: boolean;
-    violations: string[];
-  };
-  statute: {
-    passed: boolean;
-    violations: string[];
-  };
-  disclosures: {
-    consentSatisfied: boolean;
-    councilSatisfied: boolean;
-    missing: string[];
-    requiredConsentVersion: string | null;
-    acknowledgedConsentVersion: string | null;
-    requiredCoeVersion: string | null;
-    acknowledgedCoeVersion: string | null;
-  };
-}
-
-export interface ComplianceStatusEntry {
-  runId: string | null;
-  createdAt: string | null;
-  assessment: ComplianceAssessmentSummary;
-}
-
-export interface ComplianceStatusResponse {
-  orgId: string;
-  userId: string;
-  acknowledgements: ComplianceAcknowledgements;
-  latest: ComplianceStatusEntry | null;
-  history: ComplianceStatusEntry[];
-  totals: {
-    total: number;
-    friaRequired: number;
-    cepejViolations: number;
-    statuteViolations: number;
-    disclosureGaps: number;
-  };
-}
-
-export interface ComplianceDashboardResponse {
-  orgId: string;
-  timeframe: { start: string; end: string };
-  limits: { hitl: number };
-  hitl: {
-    total: number;
-    pending: number;
-    resolved: number;
-    medianResponseMinutes: number | null;
-  };
-  allowlist: {
-    allowlistedRatio: number | null;
-    translationWarnings: number;
-    runsWithoutCitations: number;
-    runsTotal: number;
-    lastRunAt: string | null;
-  };
-  maghreb: {
-    bannerCoverage: number | null;
-    citationPrecisionP95: number | null;
-    temporalValidityP95: number | null;
-    evaluatedResults: number;
-    lastResultAt: string | null;
-  };
-}
-
-export interface DeviceSession {
-  id: string;
-  userId: string;
-  sessionToken: string;
-  deviceFingerprint: string;
-  deviceLabel: string | null;
-  userAgent: string | null;
-  platform: string | null;
-  clientVersion: string | null;
-  ipAddress: string | null;
-  authStrength: string | null;
-  mfaMethod: string | null;
-  attested: boolean | null;
-  passkey: boolean | null;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  lastSeenAt: string;
-  expiresAt: string | null;
-  revokedAt: string | null;
-  revokedBy: string | null;
-  revokedReason: string | null;
-}
-
 export interface AuditEvent {
   id: string;
   kind: string;
@@ -557,7 +314,7 @@ export async function submitResearchQuestion(input: {
   userId: string;
   confidentialMode?: boolean;
 }): Promise<AgentRunResponse> {
-  const response = await secureFetch(`${API_BASE}/runs`, {
+  const response = await fetch(`${API_BASE}/runs`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -567,56 +324,23 @@ export async function submitResearchQuestion(input: {
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
-    const message =
-      typeof errorBody?.message === 'string'
-        ? errorBody.message
-        : typeof errorBody?.error === 'string'
-          ? errorBody.error
-          : 'agent_unavailable';
-    throw new Error(message);
+    throw new Error(errorBody?.message ?? 'Agent unavailable');
   }
 
   return response.json();
 }
 
-export async function requestHitlReview(
-  runId: string,
-  input: { reason: string; manual?: boolean; orgId?: string; userId?: string },
-): Promise<void> {
-  const response = await secureFetch(`${API_BASE}/runs/${encodeURIComponent(runId)}/hitl`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      orgId: resolveOrgId(input.orgId),
-      userId: resolveUserId(input.userId),
-      reason: input.reason,
-      manual: input.manual ?? true,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error('Unable to request human review');
-  }
-}
-
-export async function sendTelemetryEvent<TEvent extends TelemetryEventName>(
-  eventName: TEvent,
-  payload?: TelemetryEventPayload<TEvent>,
-  orgId?: string,
-  userId?: string,
+export async function sendTelemetryEvent(
+  eventName: string,
+  payload?: Record<string, unknown>,
+  orgId: string = DEMO_ORG_ID,
+  userId: string = DEMO_USER_ID,
 ): Promise<void> {
   try {
-    await secureFetch(`${API_BASE}/telemetry`, {
+    await fetch(`${API_BASE}/telemetry`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orgId: resolveOrgId(orgId),
-        userId: resolveUserId(userId),
-        eventName,
-        payload,
-      }),
+      body: JSON.stringify({ orgId, userId, eventName, payload }),
     });
   } catch (error) {
     console.warn('telemetry_event_failed', eventName, error);
@@ -624,7 +348,7 @@ export async function sendTelemetryEvent<TEvent extends TelemetryEventName>(
 }
 
 export async function fetchCitations(orgId: string) {
-  const response = await secureFetch(`${API_BASE}/citations?orgId=${encodeURIComponent(orgId)}`);
+  const response = await fetch(`${API_BASE}/citations?orgId=${encodeURIComponent(orgId)}`);
   if (!response.ok) {
     throw new Error('Unable to fetch citations');
   }
@@ -632,7 +356,7 @@ export async function fetchCitations(orgId: string) {
 }
 
 export async function fetchHitlQueue(orgId: string) {
-  const response = await secureFetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`);
+  const response = await fetch(`${API_BASE}/hitl?orgId=${encodeURIComponent(orgId)}`);
   if (!response.ok) {
     throw new Error('Unable to fetch HITL queue');
   }
@@ -640,8 +364,8 @@ export async function fetchHitlQueue(orgId: string) {
 }
 
 export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsResponse> {
-  const response = await secureFetch(`${API_BASE}/hitl/metrics?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': resolveUserId() },
+  const response = await fetch(`${API_BASE}/hitl/metrics?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL metrics');
@@ -650,8 +374,8 @@ export async function fetchHitlMetrics(orgId: string): Promise<HitlMetricsRespon
 }
 
 export async function fetchHitlDetail(orgId: string, id: string): Promise<HitlDetailResponse> {
-  const response = await secureFetch(`${API_BASE}/hitl/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': resolveUserId() },
+  const response = await fetch(`${API_BASE}/hitl/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch HITL detail');
@@ -660,7 +384,7 @@ export async function fetchHitlDetail(orgId: string, id: string): Promise<HitlDe
 }
 
 export async function submitHitlAction(id: string, action: 'approve' | 'request_changes' | 'reject', comment?: string) {
-  const response = await secureFetch(`${API_BASE}/hitl/${id}`, {
+  const response = await fetch(`${API_BASE}/hitl/${id}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, comment }),
@@ -672,7 +396,7 @@ export async function submitHitlAction(id: string, action: 'approve' | 'request_
 }
 
 export async function fetchMatters(orgId: string) {
-  const response = await secureFetch(`${API_BASE}/matters?orgId=${encodeURIComponent(orgId)}`);
+  const response = await fetch(`${API_BASE}/matters?orgId=${encodeURIComponent(orgId)}`);
   if (!response.ok) {
     throw new Error('Unable to fetch matters');
   }
@@ -680,7 +404,7 @@ export async function fetchMatters(orgId: string) {
 }
 
 export async function fetchMatterDetail(orgId: string, id: string) {
-  const response = await secureFetch(
+  const response = await fetch(
     `${API_BASE}/matters/${encodeURIComponent(id)}?orgId=${encodeURIComponent(orgId)}`,
   );
   if (!response.ok) {
@@ -704,8 +428,8 @@ export async function fetchHitlAuditTrail(
     url.searchParams.set('runId', options.runId);
   }
 
-  const response = await secureFetch(url.toString(), {
-    headers: { 'x-user-id': resolveUserId() },
+  const response = await fetch(url.toString(), {
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch audit events');
@@ -714,8 +438,8 @@ export async function fetchHitlAuditTrail(
 }
 
 export async function fetchCorpus(orgId: string) {
-  const response = await secureFetch(`${API_BASE}/corpus?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': resolveUserId() },
+  const response = await fetch(`${API_BASE}/corpus?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch corpus overview');
@@ -728,11 +452,11 @@ export async function resummarizeDocument(
   documentId: string,
   overrides?: { summariserModel?: string; embeddingModel?: string; maxSummaryChars?: number },
 ) {
-  const response = await secureFetch(`${API_BASE}/corpus/${encodeURIComponent(documentId)}/resummarize`, {
+  const response = await fetch(`${API_BASE}/corpus/${encodeURIComponent(documentId)}/resummarize`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-id': resolveUserId(),
+      'x-user-id': DEMO_USER_ID,
     },
     body: JSON.stringify({ orgId, ...overrides }),
   });
@@ -768,17 +492,6 @@ export interface GovernanceMetricsResponse {
     documentsSkipped: number;
     documentsChunked: number;
   } | null;
-  manifest: {
-    manifestName: string | null;
-    manifestUrl: string | null;
-    fileCount: number;
-    validCount: number;
-    warningCount: number;
-    errorCount: number;
-    validated: boolean;
-    createdAt: string | null;
-    status?: 'ok' | 'warnings' | 'errors' | null;
-  } | null;
   tools: Array<{
     toolName: string;
     totalInvocations: number;
@@ -812,10 +525,10 @@ export interface GovernanceMetricsResponse {
   }>;
 }
 
-export async function fetchGovernanceMetrics(orgId: string, options?: { userId?: string }): Promise<GovernanceMetricsResponse> {
-  const response = await secureFetch(`${API_BASE}/metrics/governance?orgId=${encodeURIComponent(orgId)}`, {
+export async function fetchGovernanceMetrics(orgId: string): Promise<GovernanceMetricsResponse> {
+  const response = await fetch(`${API_BASE}/metrics/governance?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': resolveUserId(options?.userId),
+      'x-user-id': DEMO_USER_ID,
     },
   });
   if (!response.ok) {
@@ -824,10 +537,10 @@ export async function fetchGovernanceMetrics(orgId: string, options?: { userId?:
   return response.json();
 }
 
-export async function fetchRetrievalMetrics(orgId: string, options?: { userId?: string }): Promise<RetrievalMetricsResponse> {
-  const response = await secureFetch(`${API_BASE}/metrics/retrieval?orgId=${encodeURIComponent(orgId)}`, {
+export async function fetchRetrievalMetrics(orgId: string): Promise<RetrievalMetricsResponse> {
+  const response = await fetch(`${API_BASE}/metrics/retrieval?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': resolveUserId(options?.userId),
+      'x-user-id': DEMO_USER_ID,
     },
   });
 
@@ -861,10 +574,10 @@ export interface EvaluationMetricsResponse {
   }>;
 }
 
-export async function fetchEvaluationMetrics(orgId: string, options?: { userId?: string }): Promise<EvaluationMetricsResponse> {
-  const response = await secureFetch(`${API_BASE}/metrics/evaluations?orgId=${encodeURIComponent(orgId)}`, {
+export async function fetchEvaluationMetrics(orgId: string): Promise<EvaluationMetricsResponse> {
+  const response = await fetch(`${API_BASE}/metrics/evaluations?orgId=${encodeURIComponent(orgId)}`, {
     headers: {
-      'x-user-id': resolveUserId(options?.userId),
+      'x-user-id': DEMO_USER_ID,
     },
   });
 
@@ -875,11 +588,11 @@ export async function fetchEvaluationMetrics(orgId: string, options?: { userId?:
   return response.json();
 }
 
-export async function fetchSloMetrics(orgId: string, limit = 6, options?: { userId?: string }): Promise<SloMetricsResponse> {
+export async function fetchSloMetrics(orgId: string, limit = 6): Promise<SloMetricsResponse> {
   const params = new URLSearchParams({ orgId, limit: String(limit) });
-  const response = await secureFetch(`${API_BASE}/metrics/slo?${params.toString()}`, {
+  const response = await fetch(`${API_BASE}/metrics/slo?${params.toString()}`, {
     headers: {
-      'x-user-id': resolveUserId(options?.userId),
+      'x-user-id': DEMO_USER_ID,
     },
   });
 
@@ -892,7 +605,7 @@ export async function fetchSloMetrics(orgId: string, limit = 6, options?: { user
 
 export async function fetchSnapshotDiff(orgId: string, snapshotId: string, compareTo: string) {
   const params = new URLSearchParams({ orgId, snapshotId, compareTo });
-  const response = await secureFetch(`${API_BASE}/corpus/diff?${params.toString()}`);
+  const response = await fetch(`${API_BASE}/corpus/diff?${params.toString()}`);
   if (!response.ok) {
     throw new Error('Unable to compute diff');
   }
@@ -900,7 +613,7 @@ export async function fetchSnapshotDiff(orgId: string, snapshotId: string, compa
 }
 
 export async function toggleAllowlistDomain(host: string, active: boolean, jurisdiction?: string) {
-  const response = await secureFetch(`${API_BASE}/corpus/allowlist/${encodeURIComponent(host)}`, {
+  const response = await fetch(`${API_BASE}/corpus/allowlist/${encodeURIComponent(host)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ active, jurisdiction }),
@@ -923,9 +636,9 @@ export interface SsoConnectionResponse {
   }>;
 }
 
-export async function fetchSsoConnections(orgId: string, options?: { userId?: string }): Promise<SsoConnectionResponse> {
-  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/sso`, {
-    headers: { 'x-user-id': resolveUserId(options?.userId) },
+export async function fetchSsoConnections(orgId: string): Promise<SsoConnectionResponse> {
+  const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SSO connections');
@@ -944,9 +657,9 @@ export async function saveSsoConnection(
     defaultRole?: string;
   },
 ) {
-  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/sso`, {
+  const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
     body: JSON.stringify({ ...input, metadata: {}, groupMappings: {} }),
   });
   if (!response.ok) {
@@ -956,9 +669,9 @@ export async function saveSsoConnection(
 }
 
 export async function removeSsoConnection(orgId: string, connectionId: string) {
-  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/sso/${connectionId}`, {
+  const response = await fetch(`${API_BASE}/admin/org/${orgId}/sso/${connectionId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': resolveUserId() },
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to delete SSO connection');
@@ -971,9 +684,9 @@ export interface ScimTokenResponse {
   expiresAt?: string | null;
 }
 
-export async function fetchScimTokens(orgId: string, options?: { userId?: string }) {
-  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
-    headers: { 'x-user-id': resolveUserId(options?.userId) },
+export async function fetchScimTokens(orgId: string) {
+  const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch SCIM tokens');
@@ -982,9 +695,9 @@ export async function fetchScimTokens(orgId: string, options?: { userId?: string
 }
 
 export async function createScimAccessToken(orgId: string, name: string, expiresAt?: string | null) {
-  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
+  const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
     body: JSON.stringify({ name, expiresAt }),
   });
   if (!response.ok) {
@@ -994,82 +707,19 @@ export async function createScimAccessToken(orgId: string, name: string, expires
 }
 
 export async function deleteScimAccessToken(orgId: string, tokenId: string) {
-  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/scim-tokens/${tokenId}`, {
+  const response = await fetch(`${API_BASE}/admin/org/${orgId}/scim-tokens/${tokenId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': resolveUserId() },
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to delete SCIM token');
   }
 }
 
-export async function fetchComplianceStatus(
-  orgId: string,
-  options?: { userId?: string; limit?: number },
-): Promise<ComplianceStatusResponse> {
-  const params = new URLSearchParams();
-  if (options?.limit) {
-    params.set('limit', String(options.limit));
-  }
-  const response = await secureFetch(`${API_BASE}/compliance/status?${params.toString()}`, {
-    headers: {
-      'x-user-id': resolveUserId(options?.userId),
-      'x-org-id': orgId,
-    },
-  });
-  if (!response.ok) {
-    throw new Error('compliance_status_failed');
-  }
-  return response.json();
-}
-
-export async function acknowledgeCompliance(
-  orgId: string,
-  input: {
-    consent?: { type: string; version: string } | null;
-    councilOfEurope?: { version: string } | null;
-    userId?: string;
-  },
-): Promise<ComplianceStatusResponse> {
-  const payload: Record<string, unknown> = {};
-  if (input.consent) {
-    payload.consent = input.consent;
-  }
-  if (input.councilOfEurope) {
-    payload.councilOfEurope = input.councilOfEurope;
-  }
-  const response = await secureFetch(`${API_BASE}/compliance/acknowledgements`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': resolveUserId(input.userId),
-      'x-org-id': orgId,
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    throw new Error('compliance_ack_failed');
-  }
-  return response.json();
-}
-
-export async function fetchComplianceDashboard(orgId: string, options?: { userId?: string }) {
-  const response = await secureFetch(`${API_BASE}/compliance/dashboard`, {
-    headers: {
-      'x-user-id': resolveUserId(options?.userId),
-      'x-org-id': orgId,
-    },
-  });
-  if (!response.ok) {
-    throw new Error('compliance_dashboard_failed');
-  }
-  return response.json() as Promise<ComplianceDashboardResponse>;
-}
-
-export async function fetchAuditEvents(orgId: string, limit = 50, options?: { userId?: string }) {
-  const response = await secureFetch(
+export async function fetchAuditEvents(orgId: string, limit = 50) {
+  const response = await fetch(
     `${API_BASE}/admin/org/${orgId}/audit-events?limit=${encodeURIComponent(String(limit))}`,
-    { headers: { 'x-user-id': resolveUserId(options?.userId) } },
+    { headers: { 'x-user-id': DEMO_USER_ID } },
   );
   if (!response.ok) {
     throw new Error('Unable to fetch audit events');
@@ -1077,69 +727,9 @@ export async function fetchAuditEvents(orgId: string, limit = 50, options?: { us
   return response.json();
 }
 
-export async function fetchDeviceSessions(
-  orgId: string,
-  options?: { includeRevoked?: boolean; limit?: number; userId?: string },
-): Promise<{ sessions: DeviceSession[] }> {
-  const params = new URLSearchParams({ orgId });
-  if (options?.includeRevoked) params.set('includeRevoked', 'true');
-  if (options?.limit) params.set('limit', String(options.limit));
-  if (options?.userId) params.set('userId', options.userId);
-
-  const response = await secureFetch(`${API_BASE}/security/devices?${params.toString()}`, {
-    headers: { 'x-user-id': resolveUserId(options?.userId) },
-  });
-  if (!response.ok) {
-    throw new Error('Unable to fetch device sessions');
-  }
-
-  const payload = (await response.json()) as { sessions: Array<Record<string, unknown>> };
-  const sessions = (payload.sessions ?? []).map((session) => ({
-    id: String(session.id ?? ''),
-    userId: String(session.userId ?? ''),
-    sessionToken: String(session.sessionToken ?? ''),
-    deviceFingerprint: String(session.deviceFingerprint ?? ''),
-    deviceLabel: (session.deviceLabel as string | null) ?? null,
-    userAgent: (session.userAgent as string | null) ?? null,
-    platform: (session.platform as string | null) ?? null,
-    clientVersion: (session.clientVersion as string | null) ?? null,
-    ipAddress: (session.ipAddress as string | null) ?? null,
-    authStrength: (session.authStrength as string | null) ?? null,
-    mfaMethod: (session.mfaMethod as string | null) ?? null,
-    attested: (session.attested as boolean | null) ?? null,
-    passkey: (session.passkey as boolean | null) ?? null,
-    metadata: (session.metadata as Record<string, unknown> | null) ?? {},
-    createdAt: String(session.createdAt ?? session.created_at ?? ''),
-    lastSeenAt: String(session.lastSeenAt ?? session.last_seen_at ?? ''),
-    expiresAt: (session.expiresAt as string | null) ?? null,
-    revokedAt: (session.revokedAt as string | null) ?? null,
-    revokedBy: (session.revokedBy as string | null) ?? null,
-    revokedReason: (session.revokedReason as string | null) ?? null,
-  })) as DeviceSession[];
-
-  return { sessions };
-}
-
-export async function revokeDeviceSession(orgId: string, sessionId: string, reason?: string) {
-  const response = await secureFetch(`${API_BASE}/security/devices/revoke`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': resolveUserId(),
-    },
-    body: JSON.stringify({ orgId, sessionId, reason: reason ?? null }),
-  });
-
-  if (!response.ok) {
-    throw new Error('Unable to revoke device session');
-  }
-
-  return response.json() as Promise<{ session: { id: string; revokedAt: string } }>;
-}
-
-export async function fetchIpAllowlist(orgId: string, options?: { userId?: string }) {
-  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist`, {
-    headers: { 'x-user-id': resolveUserId(options?.userId) },
+export async function fetchIpAllowlist(orgId: string) {
+  const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch IP allowlist');
@@ -1155,9 +745,9 @@ export async function upsertIpAllowlistEntry(
     ? `${API_BASE}/admin/org/${orgId}/ip-allowlist/${input.id}`
     : `${API_BASE}/admin/org/${orgId}/ip-allowlist`;
   const method = input.id ? 'PATCH' : 'POST';
-  const response = await secureFetch(url, {
+  const response = await fetch(url, {
     method,
-    headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': DEMO_USER_ID },
     body: JSON.stringify({ cidr: input.cidr, description: input.description ?? null }),
   });
   if (!response.ok) {
@@ -1167,9 +757,9 @@ export async function upsertIpAllowlistEntry(
 }
 
 export async function deleteIpAllowlistEntry(orgId: string, entryId: string) {
-  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist/${entryId}`, {
+  const response = await fetch(`${API_BASE}/admin/org/${orgId}/ip-allowlist/${entryId}`, {
     method: 'DELETE',
-    headers: { 'x-user-id': resolveUserId() },
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to delete IP entry');
@@ -1184,7 +774,7 @@ export async function fetchDraftingTemplates(orgId: string, params?: { jurisdict
   if (params?.matterType) {
     search.set('matterType', params.matterType);
   }
-  const response = await secureFetch(`${API_BASE}/drafting/templates?${search.toString()}`);
+  const response = await fetch(`${API_BASE}/drafting/templates?${search.toString()}`);
   if (!response.ok) {
     throw new Error('Unable to fetch templates');
   }
@@ -1217,21 +807,19 @@ export interface WorkspaceOverviewResponse {
     items: Array<{ id: string; runId: string; reason: string; status: string; createdAt: string | null }>;
     pendingCount: number;
   };
-  desk?: WorkspaceDesk;
-  navigator?: unknown[];
 }
 
 export async function fetchWorkspaceOverview(orgId: string): Promise<WorkspaceOverviewResponse> {
-  const response = await secureFetch(`${API_BASE}/workspace?orgId=${encodeURIComponent(orgId)}`);
+  const response = await fetch(`${API_BASE}/workspace?orgId=${encodeURIComponent(orgId)}`);
   if (!response.ok) {
     throw new Error('Unable to fetch workspace overview');
   }
   return response.json();
 }
 
-export async function getOperationsOverview(orgId: string, options?: { userId?: string }): Promise<OperationsOverviewResponse> {
-  const response = await secureFetch(`${API_BASE}/admin/org/${orgId}/operations/overview`, {
-    headers: { 'x-user-id': resolveUserId(options?.userId) },
+export async function getOperationsOverview(orgId: string): Promise<OperationsOverviewResponse> {
+  const response = await fetch(`${API_BASE}/admin/org/${orgId}/operations/overview`, {
+    headers: { 'x-user-id': DEMO_USER_ID },
   });
   if (!response.ok) {
     throw new Error('Unable to fetch operations overview');
@@ -1272,84 +860,14 @@ export async function getGovernancePublications(params?: {
 
   const headers: Record<string, string> = {};
   if (params?.orgId) {
-    headers['x-user-id'] = resolveUserId();
+    headers['x-user-id'] = DEMO_USER_ID;
   }
 
   const query = search.toString();
   const url = query ? `${API_BASE}/governance/publications?${query}` : `${API_BASE}/governance/publications`;
-  const response = await secureFetch(url, { headers });
+  const response = await fetch(url, { headers });
   if (!response.ok) {
     throw new Error('Unable to fetch governance publications');
-  }
-  return response.json();
-}
-
-export interface ChatkitSession {
-  id: string;
-  orgId: string;
-  userId: string;
-  startedAt: string;
-  endedAt: string | null;
-  status: 'active' | 'archived' | 'error';
-  title?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export async function fetchChatkitSessions(orgId: string, options?: { userId?: string; limit?: number }) {
-  const params = new URLSearchParams({ orgId });
-  if (options?.limit) params.set('limit', String(options.limit));
-
-  const response = await secureFetch(`${API_BASE}/chatkit/sessions?${params.toString()}`, {
-    headers: { 'x-user-id': resolveUserId(options?.userId) },
-  });
-  if (!response.ok) {
-    throw new Error('Unable to fetch chatkit sessions');
-  }
-  return response.json() as Promise<{ sessions: ChatkitSession[] }>;
-}
-
-export async function fetchChatkitSession(orgId: string, sessionId: string) {
-  const response = await secureFetch(`${API_BASE}/chatkit/sessions/${sessionId}?orgId=${encodeURIComponent(orgId)}`, {
-    headers: { 'x-user-id': resolveUserId() },
-  });
-  if (!response.ok) {
-    throw new Error('Unable to fetch chatkit session');
-  }
-  return response.json() as Promise<ChatkitSession>;
-}
-
-export async function createChatkitSession(orgId: string, input: { title?: string; context?: Record<string, unknown> }) {
-  const response = await secureFetch(`${API_BASE}/chatkit/sessions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
-    body: JSON.stringify({ orgId, ...input }),
-  });
-  if (!response.ok) {
-    throw new Error('Unable to create chatkit session');
-  }
-  return response.json() as Promise<ChatkitSession>;
-}
-
-export async function cancelChatkitSession(orgId: string, sessionId: string) {
-  const response = await secureFetch(`${API_BASE}/chatkit/sessions/${sessionId}/cancel`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
-    body: JSON.stringify({ orgId }),
-  });
-  if (!response.ok) {
-    throw new Error('Unable to cancel chatkit session');
-  }
-  return response.json();
-}
-
-export async function postChatkitEvent(orgId: string, sessionId: string, event: { type: string; payload: unknown }) {
-  const response = await secureFetch(`${API_BASE}/chatkit/sessions/${sessionId}/events`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
-    body: JSON.stringify({ orgId, ...event }),
-  });
-  if (!response.ok) {
-    throw new Error('Unable to post chatkit event');
   }
   return response.json();
 }

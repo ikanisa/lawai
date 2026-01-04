@@ -1,5 +1,5 @@
-import { CitationsBrowser } from '@/features/citations/components/citations-browser';
-import { getMessages, type Locale } from '@/lib/i18n';
+import { CitationsBrowser } from '../../../src/components/citations/citations-browser';
+import { getMessages, type Locale } from '../../../src/lib/i18n';
 
 interface PageProps {
   params: { locale: Locale };

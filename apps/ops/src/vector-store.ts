@@ -1,11 +1,6 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import ora from 'ora';
-import {
-  fetchOpenAIDebugDetails,
-  getOpenAIClient,
-  isOpenAIDebugEnabled,
-} from '@avocat-ai/shared';
 import { requireEnv } from './lib/env.js';
 import { createSupabaseService } from './lib/supabase.js';
 import { ensureVectorStore } from './lib/vector-store.js';
@@ -28,10 +23,6 @@ const supabase = createSupabaseService(env);
 let vectorStoreId = process.env.OPENAI_VECTOR_STORE_AUTHORITIES_ID ?? '';
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has('--dry-run') || process.env.VECTOR_STORE_DRY_RUN === '1';
-const OPENAI_CLIENT_OPTIONS = {
-  cacheKeySuffix: 'ops-vector-store',
-  requestTags: process.env.OPENAI_REQUEST_TAGS_OPS ?? process.env.OPENAI_REQUEST_TAGS ?? 'service=ops,component=vector-store-cli',
-} as const;
 
 async function upsertLocalChunks(doc: PendingDocument, blob: Blob, embeddingEnv: EmbeddingEnv) {
   const text = await decodeBlob(blob);
@@ -73,37 +64,36 @@ async function uploadDocument(doc: PendingDocument, apiKey: string) {
   const arrayBuffer = await blob.arrayBuffer();
   const buffer = new Uint8Array(arrayBuffer);
 
+  const fileForm = new FormData();
+  fileForm.append('purpose', 'assistants');
   const filename = path.basename(doc.storage_path) || `document-${doc.id}.bin`;
-  const openai = getOpenAIClient({ apiKey, ...OPENAI_CLIENT_OPTIONS });
+  fileForm.append('file', new Blob([buffer], { type: doc.mime_type ?? 'application/octet-stream' }), filename);
 
-  let uploadedFile;
-  try {
-    uploadedFile = await openai.files.create({
-      purpose: 'assistants',
-      file: new File([buffer], filename, { type: doc.mime_type ?? 'application/octet-stream' }),
-    });
-  } catch (error) {
-    if (isOpenAIDebugEnabled()) {
-      const info = await fetchOpenAIDebugDetails(openai, error);
-      if (info) {
-        console.error('[openai-debug] uploadDocument:file', info);
-      }
-    }
-    const message = error instanceof Error ? error.message : 'Erreur lors de l’upload du fichier vers OpenAI';
-    throw new Error(message);
+  const fileResponse = await fetch('https://api.openai.com/v1/files', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: fileForm,
+  });
+
+  const fileJson = await fileResponse.json();
+  if (!fileResponse.ok) {
+    throw new Error(fileJson.error?.message ?? 'Erreur lors de l’upload du fichier vers OpenAI');
   }
 
-  try {
-    await (openai.beta as any).vectorStores.files.create(vectorStoreId, { file_id: uploadedFile.id });
-  } catch (error) {
-    if (isOpenAIDebugEnabled()) {
-      const info = await fetchOpenAIDebugDetails(openai, error);
-      if (info) {
-        console.error('[openai-debug] uploadDocument:attach', info);
-      }
-    }
-    const message = error instanceof Error ? error.message : 'Erreur lors du rattachement du fichier';
-    throw new Error(message);
+  const attachResponse = await fetch(`https://api.openai.com/v1/vector_stores/${vectorStoreId}/files`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ file_id: fileJson.id }),
+  });
+
+  const attachJson = await attachResponse.json();
+  if (!attachResponse.ok) {
+    throw new Error(attachJson.error?.message ?? 'Erreur lors du rattachement du fichier');
   }
 
   await upsertLocalChunks(doc, blob, {
@@ -115,7 +105,7 @@ async function uploadDocument(doc: PendingDocument, apiKey: string) {
   await supabase
     .from('documents')
     .update({
-      openai_file_id: uploadedFile.id,
+      openai_file_id: fileJson.id as string,
       vector_store_status: 'uploaded',
       vector_store_error: null,
       vector_store_synced_at: new Date().toISOString(),
