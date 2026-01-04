@@ -182,3 +182,72 @@ export async function watchChanges(
   return { id: channelId, resourceId: json.resourceId, expiration: json.expiration ?? null };
 }
 
+export async function listFilesInFolder(
+  accessToken: string,
+  folderId: string,
+  pageToken?: string,
+  pageSize = 100,
+): Promise<{ files: NonNullable<DriveChange['file']>[]; nextPageToken?: string }> {
+  const url = new URL('https://www.googleapis.com/drive/v3/files');
+  url.searchParams.set('q', `'${folderId}' in parents and trashed = false`);
+  url.searchParams.set('pageSize', String(Math.max(1, Math.min(pageSize, 1000))));
+  url.searchParams.set(
+    'fields',
+    'nextPageToken,files(id,name,mimeType,parents,md5Checksum,modifiedTime,driveId)',
+  );
+  url.searchParams.set('supportsAllDrives', 'true');
+  url.searchParams.set('includeItemsFromAllDrives', 'true');
+  if (pageToken) {
+    url.searchParams.set('pageToken', pageToken);
+  }
+
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`google_list_files_failed: ${res.status} ${text}`);
+  }
+
+  const json = (await res.json()) as {
+    files?: NonNullable<DriveChange['file']>[];
+    nextPageToken?: string;
+  };
+
+  return { files: json.files ?? [], nextPageToken: json.nextPageToken };
+}
+
+export async function listFilesRecursively(
+  accessToken: string,
+  rootFolderId: string,
+): Promise<NonNullable<DriveChange['file']>[]> {
+  const allFiles: NonNullable<DriveChange['file']>[] = [];
+  const foldersToProcess: string[] = [rootFolderId];
+
+  while (foldersToProcess.length > 0) {
+    const currentFolderId = foldersToProcess.shift()!;
+    let pageToken: string | undefined = undefined;
+
+    do {
+      const { files, nextPageToken } = await listFilesInFolder(
+        accessToken,
+        currentFolderId,
+        pageToken,
+      );
+
+      for (const file of files) {
+        if (file.mimeType === 'application/vnd.google-apps.folder' && file.id) {
+          foldersToProcess.push(file.id);
+        } else {
+          allFiles.push(file);
+        }
+      }
+
+      pageToken = nextPageToken;
+    } while (pageToken);
+  }
+
+  return allFiles;
+}
+
