@@ -196,7 +196,7 @@ function TemplatesTabs({
   const templatesByType = useMemo(() => {
     return data.templates.reduce<Record<string, DraftingStudioData["templates"]>>((acc, template) => {
       if (!acc[template.type]) acc[template.type] = [];
-      acc[template.type].push(template);
+      acc[template.type]!.push(template);
       return acc;
     }, {});
   }, [data.templates]);
@@ -344,7 +344,7 @@ export function DraftingStudio() {
         const blob = new Blob(
           [
             `Projet: ${data.activeDraft.title}\nFormat: ${option.format}\nDate: ${new Date().toISOString()}\n` +
-              `Clauses acceptées: ${Object.values(clauseState).filter((value) => value === "accepted").length}`
+            `Clauses acceptées: ${Object.values(clauseState).filter((value) => value === "accepted").length}`
           ],
           { type: option.format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }
         );

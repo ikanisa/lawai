@@ -65,9 +65,9 @@ export function AdminView({ messages }: AdminViewProps) {
   const orgId = session?.orgId;
   const userId = session?.userId;
   const canQuery = sessionStatus === 'authenticated' && Boolean(orgId && userId);
-  
+
   const metricsQuery = useGovernanceMetrics(orgId, userId, canQuery);
-  
+
   if (sessionStatus === 'loading') {
     return (
       <div className="rounded-3xl border border-slate-800/60 bg-slate-900/40 p-6 text-slate-200">
@@ -268,17 +268,17 @@ export function AdminView({ messages }: AdminViewProps) {
   );
   const policyDocuments = useMemo(
     () => [
-      { href: '@/components/governance/responsible_ai_policy.md', label: messages.admin.policyResponsible },
-      { href: '@/components/governance/dpia_commitments.md', label: messages.admin.policyDpia },
-      { href: '@/components/governance/coe_ai_alignment.md', label: messages.admin.policyCoe },
-      { href: '@/components/governance/cepej_charter_mapping.md', label: messages.admin.policyCepej },
-      { href: '@/components/governance/incident_response_plan.md', label: messages.admin.policyIncident },
-      { href: '@/components/governance/change_management_playbook.md', label: messages.admin.policyChange },
-      { href: '@/components/governance/support_runbook.md', label: messages.admin.policySupport },
-      { href: '@/components/governance/slo_and_support.md', label: messages.admin.policySlo },
-      { href: '@/components/governance/pilot_onboarding_playbook.md', label: messages.admin.policyOnboarding },
-      { href: '@/components/governance/pricing_collateral.md', label: messages.admin.policyPricing },
-      { href: '@/components/governance/regulator_outreach_plan.md', label: messages.admin.policyRegulator },
+      { href: '/governance/responsible_ai_policy.md', label: messages.admin.policyResponsible },
+      { href: '/governance/dpia_commitments.md', label: messages.admin.policyDpia },
+      { href: '/governance/coe_ai_alignment.md', label: messages.admin.policyCoe },
+      { href: '/governance/cepej_charter_mapping.md', label: messages.admin.policyCepej },
+      { href: '/governance/incident_response_plan.md', label: messages.admin.policyIncident },
+      { href: '/governance/change_management_playbook.md', label: messages.admin.policyChange },
+      { href: '/governance/support_runbook.md', label: messages.admin.policySupport },
+      { href: '/governance/slo_and_support.md', label: messages.admin.policySlo },
+      { href: '/governance/pilot_onboarding_playbook.md', label: messages.admin.policyOnboarding },
+      { href: '/governance/pricing_collateral.md', label: messages.admin.policyPricing },
+      { href: '/governance/regulator_outreach_plan.md', label: messages.admin.policyRegulator },
     ],
     [
       messages.admin.policyResponsible,
@@ -648,11 +648,10 @@ export function AdminView({ messages }: AdminViewProps) {
                 <MetricBlock
                   label={messages.admin.retrievalAllowlistedLabel}
                   primary={formatPercent(retrievalSummary?.allowlistedRatio)}
-                  secondary={`${messages.admin.retrievalWarningsLabel} ${
-                    retrievalSummary
+                  secondary={`${messages.admin.retrievalWarningsLabel} ${retrievalSummary
                       ? numberFormatter.format(retrievalSummary.runsWithTranslationWarnings)
                       : '—'
-                  }`}
+                    }`}
                   loading={retrievalQuery.isLoading && !retrievalSummary}
                 />
                 <MetricBlock
@@ -785,372 +784,372 @@ export function AdminView({ messages }: AdminViewProps) {
                   )}
                 </div>
               </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.admin.sloTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.admin.sloDescription}</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <MetricBlock
-                label={messages.admin.sloUptime}
-                primary={formatPercentValue(sloSummary?.apiUptimeP95)}
-                secondary={messages.admin.sloLastCapture.replace(
-                  '{date}',
-                  formatDateTime(sloSummary?.latestCapture ?? null),
-                )}
-                loading={sloQuery.isLoading && !sloSummary}
-              />
-              <MetricBlock
-                label={messages.admin.sloHitlP95}
-                primary={formatMinutes(
-                  sloSummary?.hitlResponseP95Seconds === null
-                    ? null
-                    : (sloSummary?.hitlResponseP95Seconds ?? 0) / 60,
-                )}
-                secondary={messages.admin.sloHitlHint}
-                loading={sloQuery.isLoading && !sloSummary}
-              />
-              <MetricBlock
-                label={messages.admin.sloRetrievalP95}
-                primary={formatSeconds(sloSummary?.retrievalLatencyP95Seconds)}
-                secondary={messages.admin.sloRetrievalHint}
-                loading={sloQuery.isLoading && !sloSummary}
-              />
-              <MetricBlock
-                label={messages.admin.sloCitationP95}
-                primary={formatPercent(sloSummary?.citationPrecisionP95)}
-                secondary={messages.admin.sloCitationHint}
-                loading={sloQuery.isLoading && !sloSummary}
-              />
-            </div>
+          <Card className="glass-card border border-slate-800/60">
+            <CardHeader>
+              <CardTitle className="text-slate-100">{messages.admin.sloTitle}</CardTitle>
+              <p className="text-sm text-slate-400">{messages.admin.sloDescription}</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <MetricBlock
+                  label={messages.admin.sloUptime}
+                  primary={formatPercentValue(sloSummary?.apiUptimeP95)}
+                  secondary={messages.admin.sloLastCapture.replace(
+                    '{date}',
+                    formatDateTime(sloSummary?.latestCapture ?? null),
+                  )}
+                  loading={sloQuery.isLoading && !sloSummary}
+                />
+                <MetricBlock
+                  label={messages.admin.sloHitlP95}
+                  primary={formatMinutes(
+                    sloSummary?.hitlResponseP95Seconds === null
+                      ? null
+                      : (sloSummary?.hitlResponseP95Seconds ?? 0) / 60,
+                  )}
+                  secondary={messages.admin.sloHitlHint}
+                  loading={sloQuery.isLoading && !sloSummary}
+                />
+                <MetricBlock
+                  label={messages.admin.sloRetrievalP95}
+                  primary={formatSeconds(sloSummary?.retrievalLatencyP95Seconds)}
+                  secondary={messages.admin.sloRetrievalHint}
+                  loading={sloQuery.isLoading && !sloSummary}
+                />
+                <MetricBlock
+                  label={messages.admin.sloCitationP95}
+                  primary={formatPercent(sloSummary?.citationPrecisionP95)}
+                  secondary={messages.admin.sloCitationHint}
+                  loading={sloQuery.isLoading && !sloSummary}
+                />
+              </div>
 
-            <div>
-              <h4 className="font-semibold text-slate-100">{messages.admin.sloSnapshotsTitle}</h4>
-              {sloQuery.isLoading && sloSnapshots.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-400">{messages.admin.loadingShort}</p>
-              ) : sloSnapshots.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-400">{messages.admin.sloSnapshotsEmpty}</p>
+              <div>
+                <h4 className="font-semibold text-slate-100">{messages.admin.sloSnapshotsTitle}</h4>
+                {sloQuery.isLoading && sloSnapshots.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-400">{messages.admin.loadingShort}</p>
+                ) : sloSnapshots.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-400">{messages.admin.sloSnapshotsEmpty}</p>
+                ) : (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="min-w-full text-left text-sm text-slate-200">
+                      <thead className="text-xs uppercase tracking-wide text-slate-400">
+                        <tr>
+                          <th className="py-2 pr-4">{messages.admin.sloCapturedAt}</th>
+                          <th className="py-2 pr-4">{messages.admin.sloUptime}</th>
+                          <th className="py-2 pr-4">{messages.admin.sloHitlP95}</th>
+                          <th className="py-2 pr-4">{messages.admin.sloRetrievalP95}</th>
+                          <th className="py-2 pr-4">{messages.admin.sloCitationP95}</th>
+                          <th className="py-2">{messages.admin.sloNotes}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {sloSnapshots.slice(0, 5).map((snapshot) => (
+                          <tr key={snapshot.captured_at}>
+                            <td className="py-2 pr-4 text-slate-300">{formatDateTime(snapshot.captured_at)}</td>
+                            <td className="py-2 pr-4">{formatPercentValue(snapshot.api_uptime_percent)}</td>
+                            <td className="py-2 pr-4">{formatMinutes(
+                              snapshot.hitl_response_p95_seconds === null
+                                ? null
+                                : snapshot.hitl_response_p95_seconds / 60,
+                            )}</td>
+                            <td className="py-2 pr-4">{formatSeconds(snapshot.retrieval_latency_p95_seconds)}</td>
+                            <td className="py-2 pr-4">{formatPercent(snapshot.citation_precision_p95)}</td>
+                            <td className="py-2 text-slate-300">{snapshot.notes ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border border-slate-800/60">
+            <CardHeader>
+              <CardTitle className="text-slate-100">{messages.admin.provenanceJurisdictionTitle}</CardTitle>
+              <p className="text-sm text-slate-400">{messages.admin.provenanceJurisdictionDescription}</p>
+            </CardHeader>
+            <CardContent>
+              {metricsQuery.isLoading && jurisdictionCoverage.length === 0 ? (
+                <p className="text-sm text-slate-400">{messages.admin.loadingShort}</p>
+              ) : jurisdictionCoverage.length === 0 ? (
+                <p className="text-sm text-slate-400">{messages.admin.provenanceJurisdictionEmpty}</p>
               ) : (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="min-w-full text-left text-sm text-slate-200">
-                    <thead className="text-xs uppercase tracking-wide text-slate-400">
-                      <tr>
-                        <th className="py-2 pr-4">{messages.admin.sloCapturedAt}</th>
-                        <th className="py-2 pr-4">{messages.admin.sloUptime}</th>
-                        <th className="py-2 pr-4">{messages.admin.sloHitlP95}</th>
-                        <th className="py-2 pr-4">{messages.admin.sloRetrievalP95}</th>
-                        <th className="py-2 pr-4">{messages.admin.sloCitationP95}</th>
-                        <th className="py-2">{messages.admin.sloNotes}</th>
+                <div className="overflow-x-auto">
+                  <table className="w-full table-fixed text-sm text-slate-200">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                        <th className="pb-2">{messages.admin.provenanceJurisdictionColumnJurisdiction}</th>
+                        <th className="pb-2 text-right">{messages.admin.provenanceJurisdictionColumnResidency}</th>
+                        <th className="pb-2 text-right">{messages.admin.provenanceJurisdictionColumnSources}</th>
+                        <th className="pb-2">{messages.admin.provenanceJurisdictionColumnBinding}</th>
+                        <th className="pb-2">{messages.admin.provenanceJurisdictionColumnIdentifiers}</th>
+                        <th className="pb-2">{messages.admin.provenanceJurisdictionColumnAkoma}</th>
+                        <th className="pb-2">{messages.admin.provenanceJurisdictionColumnTypes}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
-                      {sloSnapshots.slice(0, 5).map((snapshot) => (
-                        <tr key={snapshot.captured_at}>
-                          <td className="py-2 pr-4 text-slate-300">{formatDateTime(snapshot.captured_at)}</td>
-                          <td className="py-2 pr-4">{formatPercentValue(snapshot.api_uptime_percent)}</td>
-                          <td className="py-2 pr-4">{formatMinutes(
-                            snapshot.hitl_response_p95_seconds === null
-                              ? null
-                              : snapshot.hitl_response_p95_seconds / 60,
-                          )}</td>
-                          <td className="py-2 pr-4">{formatSeconds(snapshot.retrieval_latency_p95_seconds)}</td>
-                          <td className="py-2 pr-4">{formatPercent(snapshot.citation_precision_p95)}</td>
-                          <td className="py-2 text-slate-300">{snapshot.notes ?? '—'}</td>
-                        </tr>
-                      ))}
+                      {jurisdictionCoverage.map((row) => {
+                        const bindingSummary = bindingSummaryFor(row.bindingBreakdown ?? {});
+                        const languageNotes = languageNoteSummaryFor(row.languageNoteBreakdown ?? {});
+                        const identifiersText = messages.admin.provenanceJurisdictionIdentifiers
+                          .replace('{eli}', numberFormatter.format(row.sourcesWithEli ?? 0))
+                          .replace('{ecli}', numberFormatter.format(row.sourcesWithEcli ?? 0));
+                        const akomaText = messages.admin.provenanceJurisdictionAkoma.replace(
+                          '{count}',
+                          numberFormatter.format(row.sourcesWithAkoma ?? 0),
+                        );
+                        const typeSummary = sourceTypeSummaryFor(row.sourceTypeBreakdown ?? {});
+                        return (
+                          <tr key={row.jurisdiction}>
+                            <td className="py-3 pr-3 align-top">
+                              <div className="font-medium text-slate-100">{row.label}</div>
+                            </td>
+                            <td className="py-3 pr-3 text-right align-top text-sm text-slate-300">
+                              {row.residencyZone.toUpperCase()}
+                            </td>
+                            <td className="py-3 pr-3 text-right align-top text-sm text-slate-300">
+                              {`${numberFormatter.format(row.sourcesConsolidated ?? 0)} / ${numberFormatter.format(
+                                row.totalSources ?? 0,
+                              )}`}
+                            </td>
+                            <td className="py-3 pr-3 align-top text-sm text-slate-200">
+                              {bindingSummary}
+                              {languageNotes ? (
+                                <div className="text-xs text-slate-400">{languageNotes}</div>
+                              ) : null}
+                            </td>
+                            <td className="py-3 pr-3 align-top text-sm text-slate-200">{identifiersText}</td>
+                            <td className="py-3 pr-3 align-top text-sm text-slate-200">{akomaText}</td>
+                            <td className="py-3 align-top text-sm text-slate-200">{typeSummary}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               )}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.admin.provenanceJurisdictionTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.admin.provenanceJurisdictionDescription}</p>
-          </CardHeader>
-          <CardContent>
-            {metricsQuery.isLoading && jurisdictionCoverage.length === 0 ? (
-              <p className="text-sm text-slate-400">{messages.admin.loadingShort}</p>
-            ) : jurisdictionCoverage.length === 0 ? (
-              <p className="text-sm text-slate-400">{messages.admin.provenanceJurisdictionEmpty}</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full table-fixed text-sm text-slate-200">
-                  <thead>
-                    <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                      <th className="pb-2">{messages.admin.provenanceJurisdictionColumnJurisdiction}</th>
-                      <th className="pb-2 text-right">{messages.admin.provenanceJurisdictionColumnResidency}</th>
-                      <th className="pb-2 text-right">{messages.admin.provenanceJurisdictionColumnSources}</th>
-                      <th className="pb-2">{messages.admin.provenanceJurisdictionColumnBinding}</th>
-                      <th className="pb-2">{messages.admin.provenanceJurisdictionColumnIdentifiers}</th>
-                      <th className="pb-2">{messages.admin.provenanceJurisdictionColumnAkoma}</th>
-                      <th className="pb-2">{messages.admin.provenanceJurisdictionColumnTypes}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {jurisdictionCoverage.map((row) => {
-                      const bindingSummary = bindingSummaryFor(row.bindingBreakdown ?? {});
-                      const languageNotes = languageNoteSummaryFor(row.languageNoteBreakdown ?? {});
-                      const identifiersText = messages.admin.provenanceJurisdictionIdentifiers
-                        .replace('{eli}', numberFormatter.format(row.sourcesWithEli ?? 0))
-                        .replace('{ecli}', numberFormatter.format(row.sourcesWithEcli ?? 0));
-                      const akomaText = messages.admin.provenanceJurisdictionAkoma.replace(
-                        '{count}',
-                        numberFormatter.format(row.sourcesWithAkoma ?? 0),
-                      );
-                      const typeSummary = sourceTypeSummaryFor(row.sourceTypeBreakdown ?? {});
-                      return (
-                        <tr key={row.jurisdiction}>
-                          <td className="py-3 pr-3 align-top">
-                            <div className="font-medium text-slate-100">{row.label}</div>
-                          </td>
-                          <td className="py-3 pr-3 text-right align-top text-sm text-slate-300">
-                            {row.residencyZone.toUpperCase()}
-                          </td>
-                          <td className="py-3 pr-3 text-right align-top text-sm text-slate-300">
-                            {`${numberFormatter.format(row.sourcesConsolidated ?? 0)} / ${numberFormatter.format(
-                              row.totalSources ?? 0,
-                            )}`}
-                          </td>
-                          <td className="py-3 pr-3 align-top text-sm text-slate-200">
-                            {bindingSummary}
-                            {languageNotes ? (
-                              <div className="text-xs text-slate-400">{languageNotes}</div>
-                            ) : null}
-                          </td>
-                          <td className="py-3 pr-3 align-top text-sm text-slate-200">{identifiersText}</td>
-                          <td className="py-3 pr-3 align-top text-sm text-slate-200">{akomaText}</td>
-                          <td className="py-3 align-top text-sm text-slate-200">{typeSummary}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+          <Card className="glass-card border border-slate-800/60">
+            <CardHeader>
+              <CardTitle className="text-slate-100">{messages.admin.evaluationTitle}</CardTitle>
+              <p className="text-sm text-slate-400">{messages.admin.evaluationDescription}</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <MetricBlock
+                  label={messages.admin.evaluationPassRate}
+                  primary={formatPercent(evaluationSummary?.passRate)}
+                  secondary={(function () {
+                    const pass = evaluationSummary?.passRate ?? null;
+                    const good = clientEnv.NEXT_PUBLIC_EVAL_PASS_GOOD;
+                    const ok = clientEnv.NEXT_PUBLIC_EVAL_PASS_OK;
+                    let kind: 'good' | 'ok' | 'poor' | null = null;
+                    if (typeof pass === 'number') {
+                      kind = pass >= good ? 'good' : pass >= ok ? 'ok' : 'poor';
+                    }
+                    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                    const { label, color } =
+                      kind === 'good'
+                        ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                        : kind === 'ok'
+                          ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                          : kind === 'poor'
+                            ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                            : { label: null, color: '' } as any;
+                    return (
+                      <span>
+                        {label ? (
+                          <>
+                            <span
+                              className={`${baseBadge} ${color}`}
+                              title={`Pass rate ${formatPercent(evaluationSummary?.passRate)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_PASS_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_PASS_OK * 100}%)`}
+                            >
+                              {label}
+                            </span>
+                            <span className="mx-1 text-slate-600">·</span>
+                          </>
+                        ) : null}
+                        <span>
+                          {messages.admin.evaluationCases} {evaluationSummary ? numberFormatter.format(evaluationSummary.totalCases) : '—'} · {messages.admin.evaluationsExecuted} {evaluationSummary ? numberFormatter.format(evaluationSummary.evaluatedResults) : '—'} · {messages.admin.evaluationLastRun} {formatDateTime(evaluationSummary?.lastResultAt ?? null)}
+                        </span>
+                      </span>
+                    );
+                  })()}
+                  loading={evaluationQuery.isLoading}
+                />
+                <MetricBlock
+                  label={messages.admin.evaluationCitationCoverage}
+                  primary={formatPercent(evaluationSummary?.citationPrecisionCoverage)}
+                  secondary={(function () {
+                    const cov = evaluationSummary?.citationPrecisionCoverage ?? null;
+                    const good = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD;
+                    const ok = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK;
+                    let kind: 'good' | 'ok' | 'poor' | null = null;
+                    if (typeof cov === 'number') {
+                      kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
+                    }
+                    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                    const { label, color } =
+                      kind === 'good'
+                        ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                        : kind === 'ok'
+                          ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                          : kind === 'poor'
+                            ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                            : { label: null, color: '' } as any;
+                    return (
+                      <span>
+                        {label ? (
+                          <>
+                            <span
+                              className={`${baseBadge} ${color}`}
+                              title={`Coverage ${formatPercent(evaluationSummary?.citationPrecisionCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK * 100}%)`}
+                            >
+                              {label}
+                            </span>
+                            <span className="mx-1 text-slate-600">·</span>
+                          </>
+                        ) : null}
+                        <span>
+                          {messages.admin.evaluationCitationP95} {formatPercent(evaluationSummary?.citationPrecisionP95)}
+                        </span>
+                      </span>
+                    );
+                  })()}
+                  loading={evaluationQuery.isLoading}
+                />
+                <MetricBlock
+                  label={messages.admin.evaluationTemporalCoverage}
+                  primary={formatPercent(evaluationSummary?.temporalValidityCoverage)}
+                  secondary={(function () {
+                    const cov = evaluationSummary?.temporalValidityCoverage ?? null;
+                    const good = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD;
+                    const ok = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK;
+                    let kind: 'good' | 'ok' | 'poor' | null = null;
+                    if (typeof cov === 'number') {
+                      kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
+                    }
+                    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                    const { label, color } =
+                      kind === 'good'
+                        ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                        : kind === 'ok'
+                          ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                          : kind === 'poor'
+                            ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                            : { label: null, color: '' } as any;
+                    return (
+                      <span>
+                        {label ? (
+                          <>
+                            <span
+                              className={`${baseBadge} ${color}`}
+                              title={`Coverage ${formatPercent(evaluationSummary?.temporalValidityCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK * 100}%)`}
+                            >
+                              {label}
+                            </span>
+                            <span className="mx-1 text-slate-600">·</span>
+                          </>
+                        ) : null}
+                        <span>
+                          {messages.admin.evaluationTemporalP95} {formatPercent(evaluationSummary?.temporalValidityP95)}
+                        </span>
+                      </span>
+                    );
+                  })()}
+                  loading={evaluationQuery.isLoading}
+                />
+                <MetricBlock
+                  label={messages.admin.evaluationMaghrebCoverage}
+                  primary={formatPercent(evaluationSummary?.maghrebBannerCoverage)}
+                  secondary={(function () {
+                    const cov = evaluationSummary?.maghrebBannerCoverage ?? null;
+                    const good = clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_GOOD;
+                    const ok = clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_OK;
+                    let kind: 'good' | 'ok' | 'poor' | null = null;
+                    if (typeof cov === 'number') {
+                      kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
+                    }
+                    const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
+                    const { label, color } =
+                      kind === 'good'
+                        ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
+                        : kind === 'ok'
+                          ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
+                          : kind === 'poor'
+                            ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
+                            : { label: null, color: '' } as any;
+                    return (
+                      <span>
+                        {label ? (
+                          <>
+                            <span
+                              className={`${baseBadge} ${color}`}
+                              title={`Coverage ${formatPercent(evaluationSummary?.maghrebBannerCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_OK * 100}%)`}
+                            >
+                              {label}
+                            </span>
+                            <span className="mx-1 text-slate-600">·</span>
+                          </>
+                        ) : null}
+                        <span>{messages.admin.evaluationMaghrebHint}</span>
+                      </span>
+                    );
+                  })()}
+                  loading={evaluationQuery.isLoading}
+                />
               </div>
-            )}
-          </CardContent>
-        </Card>
 
-        <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.admin.evaluationTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.admin.evaluationDescription}</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <MetricBlock
-                label={messages.admin.evaluationPassRate}
-                primary={formatPercent(evaluationSummary?.passRate)}
-                secondary={(function () {
-                  const pass = evaluationSummary?.passRate ?? null;
-                  const good = clientEnv.NEXT_PUBLIC_EVAL_PASS_GOOD;
-                  const ok = clientEnv.NEXT_PUBLIC_EVAL_PASS_OK;
-                  let kind: 'good' | 'ok' | 'poor' | null = null;
-                  if (typeof pass === 'number') {
-                    kind = pass >= good ? 'good' : pass >= ok ? 'ok' : 'poor';
-                  }
-                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-                  const { label, color } =
-                    kind === 'good'
-                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
-                      : kind === 'ok'
-                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
-                        : kind === 'poor'
-                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
-                          : { label: null, color: '' } as any;
-                  return (
-                    <span>
-                      {label ? (
-                        <>
-                          <span
-                            className={`${baseBadge} ${color}`}
-                            title={`Pass rate ${formatPercent(evaluationSummary?.passRate)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_PASS_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_PASS_OK * 100}%)`}
-                          >
-                            {label}
-                          </span>
-                          <span className="mx-1 text-slate-600">·</span>
-                        </>
-                      ) : null}
-                      <span>
-                        {messages.admin.evaluationCases} {evaluationSummary ? numberFormatter.format(evaluationSummary.totalCases) : '—'} · {messages.admin.evaluationsExecuted} {evaluationSummary ? numberFormatter.format(evaluationSummary.evaluatedResults) : '—'} · {messages.admin.evaluationLastRun} {formatDateTime(evaluationSummary?.lastResultAt ?? null)}
-                      </span>
-                    </span>
-                  );
-                })()}
-                loading={evaluationQuery.isLoading}
-              />
-              <MetricBlock
-                label={messages.admin.evaluationCitationCoverage}
-                primary={formatPercent(evaluationSummary?.citationPrecisionCoverage)}
-                secondary={(function () {
-                  const cov = evaluationSummary?.citationPrecisionCoverage ?? null;
-                  const good = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD;
-                  const ok = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK;
-                  let kind: 'good' | 'ok' | 'poor' | null = null;
-                  if (typeof cov === 'number') {
-                    kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
-                  }
-                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-                  const { label, color } =
-                    kind === 'good'
-                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
-                      : kind === 'ok'
-                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
-                        : kind === 'poor'
-                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
-                          : { label: null, color: '' } as any;
-                  return (
-                    <span>
-                      {label ? (
-                        <>
-                          <span
-                            className={`${baseBadge} ${color}`}
-                            title={`Coverage ${formatPercent(evaluationSummary?.citationPrecisionCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK * 100}%)`}
-                          >
-                            {label}
-                          </span>
-                          <span className="mx-1 text-slate-600">·</span>
-                        </>
-                      ) : null}
-                      <span>
-                        {messages.admin.evaluationCitationP95} {formatPercent(evaluationSummary?.citationPrecisionP95)}
-                      </span>
-                    </span>
-                  );
-                })()}
-                loading={evaluationQuery.isLoading}
-              />
-              <MetricBlock
-                label={messages.admin.evaluationTemporalCoverage}
-                primary={formatPercent(evaluationSummary?.temporalValidityCoverage)}
-                secondary={(function () {
-                  const cov = evaluationSummary?.temporalValidityCoverage ?? null;
-                  const good = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD;
-                  const ok = clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK;
-                  let kind: 'good' | 'ok' | 'poor' | null = null;
-                  if (typeof cov === 'number') {
-                    kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
-                  }
-                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-                  const { label, color } =
-                    kind === 'good'
-                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
-                      : kind === 'ok'
-                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
-                        : kind === 'poor'
-                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
-                          : { label: null, color: '' } as any;
-                  return (
-                    <span>
-                      {label ? (
-                        <>
-                          <span
-                            className={`${baseBadge} ${color}`}
-                            title={`Coverage ${formatPercent(evaluationSummary?.temporalValidityCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_COVERAGE_OK * 100}%)`}
-                          >
-                            {label}
-                          </span>
-                          <span className="mx-1 text-slate-600">·</span>
-                        </>
-                      ) : null}
-                      <span>
-                        {messages.admin.evaluationTemporalP95} {formatPercent(evaluationSummary?.temporalValidityP95)}
-                      </span>
-                    </span>
-                  );
-                })()}
-                loading={evaluationQuery.isLoading}
-              />
-              <MetricBlock
-                label={messages.admin.evaluationMaghrebCoverage}
-                primary={formatPercent(evaluationSummary?.maghrebBannerCoverage)}
-                secondary={(function () {
-                  const cov = evaluationSummary?.maghrebBannerCoverage ?? null;
-                  const good = clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_GOOD;
-                  const ok = clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_OK;
-                  let kind: 'good' | 'ok' | 'poor' | null = null;
-                  if (typeof cov === 'number') {
-                    kind = cov >= good ? 'good' : cov >= ok ? 'ok' : 'poor';
-                  }
-                  const baseBadge = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium';
-                  const { label, color } =
-                    kind === 'good'
-                      ? { label: messages.admin.evaluationStatusGood, color: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50' }
-                      : kind === 'ok'
-                        ? { label: messages.admin.evaluationStatusAcceptable, color: 'bg-amber-900/40 text-amber-200 border-amber-700/50' }
-                        : kind === 'poor'
-                          ? { label: messages.admin.evaluationStatusPoor, color: 'bg-rose-900/40 text-rose-200 border-rose-700/50' }
-                          : { label: null, color: '' } as any;
-                  return (
-                    <span>
-                      {label ? (
-                        <>
-                          <span
-                            className={`${baseBadge} ${color}`}
-                            title={`Coverage ${formatPercent(evaluationSummary?.maghrebBannerCoverage)} (good ≥ ${clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_GOOD * 100}%, ok ≥ ${clientEnv.NEXT_PUBLIC_EVAL_MAGHREB_OK * 100}%)`}
-                          >
-                            {label}
-                          </span>
-                          <span className="mx-1 text-slate-600">·</span>
-                        </>
-                      ) : null}
-                      <span>{messages.admin.evaluationMaghrebHint}</span>
-                    </span>
-                  );
-                })()}
-                loading={evaluationQuery.isLoading}
-              />
-            </div>
-
-            <div>
-              <h4 className="font-semibold text-slate-100">{messages.admin.evaluationJurisdictionTitle}</h4>
-              {evaluationQuery.isLoading && evaluationJurisdictions.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-400">{messages.admin.loadingShort}</p>
-              ) : evaluationJurisdictions.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-400">{messages.admin.evaluationJurisdictionEmpty}</p>
-              ) : (
-                <table className="mt-3 w-full table-fixed text-sm text-slate-200">
-                  <thead>
-                    <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                      <th className="pb-2">{messages.admin.evaluationJurisdiction}</th>
-                      <th className="pb-2 text-right">{messages.admin.evaluationCount}</th>
-                      <th className="pb-2 text-right">{messages.admin.evaluationPassRate}</th>
-                      <th className="pb-2 text-right">{messages.admin.evaluationCitationMedian}</th>
-                      <th className="pb-2 text-right">{messages.admin.evaluationTemporalMedian}</th>
-                      <th className="pb-2 text-right">{messages.admin.evaluationBindingWarnings}</th>
-                      <th className="pb-2 text-right">{messages.admin.evaluationMaghrebCoverage}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {evaluationJurisdictions.map((row) => (
-                      <tr key={row.jurisdiction}>
-                        <td className="py-2 pr-2 text-sm text-slate-200">{row.label}</td>
-                        <td className="py-2 text-right text-sm">{numberFormatter.format(row.evaluationCount)}</td>
-                        <td className="py-2 text-right text-sm">{formatPercent(row.passRate)}</td>
-                        <td className="py-2 text-right text-sm">{formatPercent(row.citationPrecisionMedian)}</td>
-                        <td className="py-2 text-right text-sm">{formatPercent(row.temporalValidityMedian)}</td>
-                        <td className="py-2 text-right text-sm">{formatDecimal(row.avgBindingWarnings)}</td>
-                        <td className="py-2 text-right text-sm">{formatPercent(row.maghrebBannerCoverage)}</td>
+              <div>
+                <h4 className="font-semibold text-slate-100">{messages.admin.evaluationJurisdictionTitle}</h4>
+                {evaluationQuery.isLoading && evaluationJurisdictions.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-400">{messages.admin.loadingShort}</p>
+                ) : evaluationJurisdictions.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-400">{messages.admin.evaluationJurisdictionEmpty}</p>
+                ) : (
+                  <table className="mt-3 w-full table-fixed text-sm text-slate-200">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                        <th className="pb-2">{messages.admin.evaluationJurisdiction}</th>
+                        <th className="pb-2 text-right">{messages.admin.evaluationCount}</th>
+                        <th className="pb-2 text-right">{messages.admin.evaluationPassRate}</th>
+                        <th className="pb-2 text-right">{messages.admin.evaluationCitationMedian}</th>
+                        <th className="pb-2 text-right">{messages.admin.evaluationTemporalMedian}</th>
+                        <th className="pb-2 text-right">{messages.admin.evaluationBindingWarnings}</th>
+                        <th className="pb-2 text-right">{messages.admin.evaluationMaghrebCoverage}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {evaluationJurisdictions.map((row) => (
+                        <tr key={row.jurisdiction}>
+                          <td className="py-2 pr-2 text-sm text-slate-200">{row.label}</td>
+                          <td className="py-2 text-right text-sm">{numberFormatter.format(row.evaluationCount)}</td>
+                          <td className="py-2 text-right text-sm">{formatPercent(row.passRate)}</td>
+                          <td className="py-2 text-right text-sm">{formatPercent(row.citationPrecisionMedian)}</td>
+                          <td className="py-2 text-right text-sm">{formatPercent(row.temporalValidityMedian)}</td>
+                          <td className="py-2 text-right text-sm">{formatDecimal(row.avgBindingWarnings)}</td>
+                          <td className="py-2 text-right text-sm">{formatPercent(row.maghrebBannerCoverage)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="glass-card border border-slate-800/60">
-          <CardHeader>
-            <CardTitle className="text-slate-100">{messages.admin.identifierTitle}</CardTitle>
-            <p className="text-sm text-slate-400">{messages.admin.identifierDescription}</p>
+          <Card className="glass-card border border-slate-800/60">
+            <CardHeader>
+              <CardTitle className="text-slate-100">{messages.admin.identifierTitle}</CardTitle>
+              <p className="text-sm text-slate-400">{messages.admin.identifierDescription}</p>
             </CardHeader>
             <CardContent>
               {metricsQuery.isLoading && identifierRows.length === 0 ? (
