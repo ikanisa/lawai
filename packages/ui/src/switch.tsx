@@ -29,9 +29,9 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
           <SwitchPrimitive.Root
             ref={ref as React.Ref<HTMLButtonElement>}
             className={rootClass}
-            checked={checked}
-            defaultChecked={defaultChecked}
-            onCheckedChange={onCheckedChange}
+            {...(checked !== undefined ? { checked } : {})}
+            {...(defaultChecked !== undefined ? { defaultChecked } : {})}
+            {...(onCheckedChange ? { onCheckedChange } : {})}
             {...rest}
           >
             <SwitchPrimitive.Thumb

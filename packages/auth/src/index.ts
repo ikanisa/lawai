@@ -12,3 +12,4 @@ export {
   __setSessionStateForTests,
 } from './session-provider.js';
 export type { SessionProviderProps, SessionStatus, SessionValue } from './session-provider.js';
+export * from './use-permission.js';

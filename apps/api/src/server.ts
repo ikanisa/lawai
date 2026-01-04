@@ -74,6 +74,12 @@ import { enqueueRegulatorDigest, listRegulatorDigestsForOrg } from './launch.js'
 import { extractCountry } from './utils/jurisdictions.js';
 import { ensureTelemetryRuntime } from './telemetry.js';
 import { registerGracefulShutdown } from './core/lifecycle/graceful-shutdown.js';
+import {
+  collectAllowedResidencyZones,
+  determineResidencyZone,
+  extractResidencyFromPath,
+  type OrgAccessContext,
+} from './residency-helpers.js';
 
 const telemetry = await ensureTelemetryRuntime();
 const { app, context } = await createApp();
