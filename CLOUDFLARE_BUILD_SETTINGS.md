@@ -14,6 +14,8 @@ None
 pnpm install && pnpm --filter @avocat-ai/web run pages:build
 ```
 
+**Note**: The `pages:build` script automatically runs `next build` first, then transforms the output for Cloudflare Pages.
+
 ### Build output directory
 ```
 apps/web/.vercel/output/static
@@ -38,6 +40,8 @@ If the above doesn't work, you can also use:
 ```
 corepack enable && corepack prepare pnpm@9.12.3 --activate && pnpm install --frozen-lockfile && pnpm --filter @avocat-ai/web run pages:build
 ```
+
+**Note**: Ensure `patch-package` is installed. If you encounter postinstall script errors, the root `package.json` includes `patch-package` as a devDependency.
 
 ## Summary for Quick Copy-Paste
 
