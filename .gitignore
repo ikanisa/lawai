@@ -42,3 +42,9 @@ apps/web/tsconfig.typecheck.tsbuildinfo
 .logs/
 infra/cloudflared/config.yml
 infra/cloudflared/credentials/
+
+# Cloudflare Pages build artifacts
+.vercel/
+.wrangler/
+*.wrangler-state.json
+cloudflare-deployment.log

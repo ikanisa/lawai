@@ -1,0 +1,26 @@
+# Cloudflare Pages Configuration
+# This file is used for local development and documentation
+# Build settings are configured in Cloudflare Pages dashboard
+
+name = "avocat-ai-web"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+# For local development with wrangler pages dev
+[site]
+bucket = ".vercel/output/static"
+
+# Environment variables should be set in Cloudflare Pages dashboard:
+# Settings → Environment Variables
+#
+# Required variables:
+# - NEXT_PUBLIC_API_BASE_URL
+# - NEXT_PUBLIC_SUPABASE_URL
+# - NEXT_PUBLIC_SUPABASE_ANON_KEY
+# - NODE_ENV=production
+#
+# See cloudflare.env.example for reference
+
+[availability]
+r2 = "enabled"
