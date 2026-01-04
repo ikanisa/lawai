@@ -14,6 +14,9 @@ import {
 export interface SessionValue {
   orgId: string;
   userId: string;
+  role?: string;
+  user_metadata?: Record<string, unknown>;
+  app_metadata?: Record<string, unknown>;
 }
 
 export type SessionStatus = 'loading' | 'authenticated' | 'unauthenticated';
@@ -37,7 +40,7 @@ interface SessionBootstrapWindow extends Window {
   __AVOCAT_SESSION__?: unknown;
 }
 
-const EMPTY_SESSION: SessionValue = Object.freeze({ orgId: '', userId: '' });
+const EMPTY_SESSION: SessionValue = Object.freeze({ orgId: '', userId: '', role: undefined, user_metadata: undefined, app_metadata: undefined });
 
 let cachedSession: SessionValue | null = null;
 let cachedStatus: SessionStatus = 'loading';
@@ -69,9 +72,18 @@ function parseSession(value: unknown): SessionValue | null {
   const maybe = value as Record<string, unknown>;
   const orgId = maybe.orgId;
   const userId = maybe.userId;
+  const role = maybe.role;
+  const user_metadata = maybe.user_metadata;
+  const app_metadata = maybe.app_metadata;
 
   if (typeof orgId === 'string' && orgId && typeof userId === 'string' && userId) {
-    return { orgId, userId };
+    return {
+      orgId,
+      userId,
+      role: typeof role === 'string' ? role : undefined,
+      user_metadata: user_metadata && typeof user_metadata === 'object' ? user_metadata as Record<string, unknown> : undefined,
+      app_metadata: app_metadata && typeof app_metadata === 'object' ? app_metadata as Record<string, unknown> : undefined,
+    };
   }
 
   return null;

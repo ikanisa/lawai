@@ -4,6 +4,7 @@
     "jsx": "preserve",
     "module": "esnext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
     "types": [
       "node",
       "vitest",
@@ -14,8 +15,12 @@
     "incremental": true,
     "isolatedModules": true,
     "paths": {
-      "@/*": ["./src/*"],
-      "@/app/*": ["./app/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@/app/*": [
+        "./app/*"
+      ]
     },
     "plugins": [
       {

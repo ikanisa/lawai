@@ -155,7 +155,7 @@ function sanitizeHeaders(input?: Record<string, string | null | undefined>): Rec
     return undefined;
   }
   const entries = Object.entries(input)
-    .map(([key, value]) => [key, typeof value === 'string' ? value : value == null ? '' : String(value)])
+    .map(([key, value]): [string, string] => [key, typeof value === 'string' ? value : value == null ? '' : String(value)])
     .filter(([, value]) => value.length > 0);
   if (entries.length === 0) {
     return undefined;

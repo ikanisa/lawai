@@ -29,11 +29,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@avocat-ai/compliance": "file:../../packages/compliance",
-    "@avocat-ai/observability": "file:../../packages/observability",
-    "@avocat-ai/shared": "file:../../packages/shared",
-    "@avocat-ai/supabase": "file:../../packages/supabase",
-    "@avocat-ai/api-clients": "file:../../packages/api-clients",
+    "@avocat-ai/compliance": "workspace:*",
+    "@avocat-ai/observability": "workspace:*",
+    "@avocat-ai/shared": "workspace:*",
+    "@avocat-ai/supabase": "workspace:*",
+    "@avocat-ai/api-clients": "workspace:*",
     "@opentelemetry/api": "^1.9.0",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.5",

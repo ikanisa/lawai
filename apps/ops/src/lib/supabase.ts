@@ -13,12 +13,15 @@ export interface SupabaseServiceOptions extends Omit<CreateServiceClientOptions,
   client?: SupabaseClient | null;
 }
 
+export type SupabaseClientFactory = typeof createServiceClient;
+
 export function createSupabaseService(
   env: Record<string, string>,
   factory: SupabaseClientFactory = createServiceClient,
+  options: CreateServiceClientOptions = {},
 ): SupabaseClient {
   const { client, ...rest } = options;
-  return createServiceClient(
+  return factory(
     {
       SUPABASE_URL: env.SUPABASE_URL,
       SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,

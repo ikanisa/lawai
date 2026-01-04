@@ -172,8 +172,8 @@ function applyPolicyGates(
 
 export class FinanceAgentKernel {
   private readonly options: AgentKernelOptions;
-  private directorAgent: Agent | null = null;
-  private safetyAgent: Agent | null = null;
+  private directorAgent: Agent<unknown, typeof FinanceDirectorPlanSchema> | null = null;
+  private safetyAgent: Agent<unknown, typeof FinanceSafetyReviewSchema> | null = null;
   private providerConfigured = false;
 
   constructor(options: AgentKernelOptions) {
@@ -195,7 +195,7 @@ export class FinanceAgentKernel {
     this.providerConfigured = true;
   }
 
-  private getDirectorAgent(): Agent {
+  private getDirectorAgent() {
     if (!this.directorAgent) {
       this.ensureProvider();
       this.directorAgent = new Agent({
@@ -205,10 +205,10 @@ export class FinanceAgentKernel {
         outputType: FinanceDirectorPlanSchema,
       });
     }
-    return this.directorAgent;
+    return this.directorAgent!;
   }
 
-  private getSafetyAgent(): Agent {
+  private getSafetyAgent() {
     if (!this.safetyAgent) {
       this.ensureProvider();
       this.safetyAgent = new Agent({
@@ -218,7 +218,7 @@ export class FinanceAgentKernel {
         outputType: FinanceSafetyReviewSchema,
       });
     }
-    return this.safetyAgent;
+    return this.safetyAgent!;
   }
 
   private async runWithTimeout<T>(promise: Promise<T>, operation: string): Promise<T> {

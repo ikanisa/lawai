@@ -47,6 +47,16 @@ const securityHeaders = [
 
 
 const nextConfig = {
+  transpilePackages: [
+    '@avocat-ai/shared',
+    '@avocat-ai/ui',
+    '@avocat-ai/ui-plan-drawer',
+    '@avocat-ai/auth',
+    '@avocat-ai/types',
+    '@avocat-ai/utils',
+    '@avocat-ai/supabase',
+    '@avocat-ai/api-clients',
+  ],
   output: 'standalone',
   reactStrictMode: true,
   images: {

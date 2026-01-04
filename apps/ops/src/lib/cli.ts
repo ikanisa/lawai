@@ -274,7 +274,7 @@ export async function runOpsCli(argv: string[], deps: OpsCliDependencies = {}): 
       }
     }
 
-    const schedulerFactory = deps.schedulerFactory ?? ((supabase: SupabaseClient) => new SupabaseScheduler(supabase));
+    const schedulerFactory = deps.schedulerFactory ?? ((supabase: SupabaseClient) => new SupabaseScheduler(supabase as any));
     const scheduler = schedulerFactory(client);
     spinner.start('Planification de la tâche...');
 

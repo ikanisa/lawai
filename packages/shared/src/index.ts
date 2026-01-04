@@ -18,6 +18,7 @@ export * from './pwa.js';
 export * from './workspace.js';
 export * from './transparency/digest.js';
 export * from './scheduling/scheduler.js';
+export * from './scheduling.js';
 export * from './config/env.js';
 export * from './semantic-search.js';
 export * from './roles.js';

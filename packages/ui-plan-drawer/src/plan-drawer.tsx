@@ -126,7 +126,7 @@ export function PlanDrawer({
               {labels.steps}
             </h3>
             <ol className="space-y-3" role="list">
-              {plan.steps.map((step) => (
+              {plan?.steps?.map((step) => (
                 <li key={step.id} className={clsx('rounded-2xl border p-4', classNames?.step)}>
                   <div className="flex items-start gap-3">
                     <StepStatusIcon status={step.status} />

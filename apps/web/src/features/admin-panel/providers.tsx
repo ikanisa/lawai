@@ -10,13 +10,14 @@ interface ProviderProps {
   children: ReactNode;
   messages: Messages;
   locale: Locale;
+  environment: 'development' | 'staging' | 'production';
 }
 
-export function AdminPanelProviders({ children, messages, locale }: ProviderProps) {
+export function AdminPanelProviders({ children, messages, locale, environment }: ProviderProps) {
   return (
     <AdminSessionProvider>
       <AdminPanelMessagesProvider messages={messages} locale={locale}>
-        <AdminPanelContextProvider>{children}</AdminPanelContextProvider>
+        <AdminPanelContextProvider environment={environment}>{children}</AdminPanelContextProvider>
       </AdminPanelMessagesProvider>
     </AdminSessionProvider>
   );

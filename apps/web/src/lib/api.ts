@@ -1283,3 +1283,73 @@ export async function getGovernancePublications(params?: {
   }
   return response.json();
 }
+
+export interface ChatkitSession {
+  id: string;
+  orgId: string;
+  userId: string;
+  startedAt: string;
+  endedAt: string | null;
+  status: 'active' | 'archived' | 'error';
+  title?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export async function fetchChatkitSessions(orgId: string, options?: { userId?: string; limit?: number }) {
+  const params = new URLSearchParams({ orgId });
+  if (options?.limit) params.set('limit', String(options.limit));
+
+  const response = await secureFetch(`${API_BASE}/chatkit/sessions?${params.toString()}`, {
+    headers: { 'x-user-id': resolveUserId(options?.userId) },
+  });
+  if (!response.ok) {
+    throw new Error('Unable to fetch chatkit sessions');
+  }
+  return response.json() as Promise<{ sessions: ChatkitSession[] }>;
+}
+
+export async function fetchChatkitSession(orgId: string, sessionId: string) {
+  const response = await secureFetch(`${API_BASE}/chatkit/sessions/${sessionId}?orgId=${encodeURIComponent(orgId)}`, {
+    headers: { 'x-user-id': resolveUserId() },
+  });
+  if (!response.ok) {
+    throw new Error('Unable to fetch chatkit session');
+  }
+  return response.json() as Promise<ChatkitSession>;
+}
+
+export async function createChatkitSession(orgId: string, input: { title?: string; context?: Record<string, unknown> }) {
+  const response = await secureFetch(`${API_BASE}/chatkit/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
+    body: JSON.stringify({ orgId, ...input }),
+  });
+  if (!response.ok) {
+    throw new Error('Unable to create chatkit session');
+  }
+  return response.json() as Promise<ChatkitSession>;
+}
+
+export async function cancelChatkitSession(orgId: string, sessionId: string) {
+  const response = await secureFetch(`${API_BASE}/chatkit/sessions/${sessionId}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
+    body: JSON.stringify({ orgId }),
+  });
+  if (!response.ok) {
+    throw new Error('Unable to cancel chatkit session');
+  }
+  return response.json();
+}
+
+export async function postChatkitEvent(orgId: string, sessionId: string, event: { type: string; payload: unknown }) {
+  const response = await secureFetch(`${API_BASE}/chatkit/sessions/${sessionId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': resolveUserId() },
+    body: JSON.stringify({ orgId, ...event }),
+  });
+  if (!response.ok) {
+    throw new Error('Unable to post chatkit event');
+  }
+  return response.json();
+}

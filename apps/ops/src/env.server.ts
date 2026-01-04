@@ -49,6 +49,8 @@ const envSchema = sharedSupabaseSchema
     SUPABASE_PROJECT_REF: sharedSupabaseSchema.shape.SUPABASE_PROJECT_REF,
     SUPABASE_DB_URL: sharedSupabaseSchema.shape.SUPABASE_DB_URL,
     EMBEDDING_DIMENSION: z.coerce.number().int().positive().max(3072).optional(),
+    OPENAI_EVAL_DATASET_MAP: z.string().optional(),
+    OPENAI_EVAL_AGENT_ID: z.string().optional(),
   });
 
 export const serverEnv = loadServerEnv(envSchema);

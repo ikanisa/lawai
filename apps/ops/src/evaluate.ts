@@ -221,6 +221,7 @@ export interface EvaluationCaseScore {
   benchmark: string | null;
   metrics?: CaseMetricsSummary | null;
   error?: string | null;
+  notes?: string | null;
 }
 
 export interface EvaluationRunSummary {
@@ -934,13 +935,7 @@ export async function runEvaluation(
   const errors: string[] = [];
   let passed = 0;
   let failed = 0;
-  const scoreboard: Array<{
-    caseId: string;
-    name: string;
-    pass: boolean;
-    benchmark: string | null;
-    metrics?: CaseMetricsSummary | null;
-  }> = [];
+
 
   const api = createRestClient({ baseUrl: options.apiBaseUrl });
 

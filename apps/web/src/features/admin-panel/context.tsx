@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { getAdminEnvironmentLabel } from '../../config/feature-flags';
+
 
 export interface AdminOrganization {
   id: string;
@@ -25,8 +25,8 @@ const DEMO_ORGS: AdminOrganization[] = [
   { id: 'org-eu', name: 'Démo Europe', slug: 'demo-eu' },
 ];
 
-export function AdminPanelContextProvider({ children }: { children: ReactNode }) {
-  const environment = getAdminEnvironmentLabel();
+export function AdminPanelContextProvider({ children, environment }: { children: ReactNode; environment: 'development' | 'staging' | 'production' }) {
+
   const [activeId, setActiveId] = useState(DEMO_ORGS[0].id);
   const [searchQuery, setSearchQuery] = useState('');
 

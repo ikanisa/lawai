@@ -18,10 +18,11 @@ export function usePermission(permission?: Permission): UsePermissionResult {
     const { session, status } = useSession();
 
     const role: UserRole | null = useMemo(() => {
-        if (!session?.user) return null;
-        // Check user_metadata first, then app_metadata, default to viewer if undefined but user exists
-        return (session.user.user_metadata?.role as UserRole) ||
-            (session.user.app_metadata?.role as UserRole) ||
+        if (!session) return null;
+        // Check role directly, then user_metadata, then app_metadata, default to viewer if undefined but session exists
+        return (session.role as UserRole) ||
+            (session.user_metadata?.role as UserRole) ||
+            (session.app_metadata?.role as UserRole) ||
             'viewer';
     }, [session]);
 
@@ -56,9 +57,10 @@ export function useRole() {
     const { session, status } = useSession();
 
     const role: UserRole | null = useMemo(() => {
-        if (!session?.user) return null;
-        return (session.user.user_metadata?.role as UserRole) ||
-            (session.user.app_metadata?.role as UserRole) ||
+        if (!session) return null;
+        return (session.role as UserRole) ||
+            (session.user_metadata?.role as UserRole) ||
+            (session.app_metadata?.role as UserRole) ||
             'viewer';
     }, [session]);
 

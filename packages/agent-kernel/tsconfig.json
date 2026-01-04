@@ -2,12 +2,13 @@
   "extends": "../../tsconfig.node.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
-    "paths": {
-      "@avocat-ai/shared": ["packages/shared/src/index.ts"],
-      "@avocat-ai/shared/*": ["packages/shared/src/*"]
-    }
+    "rootDir": "src"
   },
-  "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
 }

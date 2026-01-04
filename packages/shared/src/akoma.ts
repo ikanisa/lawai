@@ -106,7 +106,9 @@ export function buildAkomaBodyFromText(text: string): AkomaBody | null {
       const headingMatch = line.match(/^(article|art\.)\s*[0-9a-z][0-9a-z.-]*/i);
       const marker = headingMatch?.[0] ? headingMatch[0].trim() : line;
       const remainder = headingMatch ? line.slice(headingMatch[0].length).trim() : '';
-      const initialParagraph = remainder.replace(/^[-:–—]\s*/, '');
+      const dashes = String.fromCharCode(0x2013, 0x2014); // en-dash, em-dash
+      const markerRegex = new RegExp(`^[-:${dashes}]\\s*`);
+      const initialParagraph = remainder.replace(markerRegex, '');
 
       currentArticle = {
         marker,

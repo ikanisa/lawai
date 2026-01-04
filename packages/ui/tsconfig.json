@@ -7,8 +7,17 @@
     "declarationMap": true,
     "module": "ESNext",
     "target": "ES2020",
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "skipLibCheck": true
   },
-  "include": ["src/**/*.{ts,tsx}"],
-  "exclude": ["dist", "node_modules", "test", ".storybook"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "test",
+    ".storybook"
+  ]
 }

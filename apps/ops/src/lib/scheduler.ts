@@ -39,6 +39,7 @@ export function buildOpsScheduler(
           SUPABASE_URL: supabaseConfig.url!,
           SUPABASE_SERVICE_ROLE_KEY: supabaseConfig.serviceRoleKey!,
         },
+        undefined,
         {
           ...options.supabaseOptions,
           reuseExisting: options.supabaseOptions?.reuseExisting ?? false,

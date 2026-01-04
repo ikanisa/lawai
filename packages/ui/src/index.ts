@@ -10,3 +10,8 @@ export { Switch } from './switch.js';
 export type { SwitchProps } from './switch.js';
 export { UiThemeProvider, useUiTheme } from './theme.js';
 export type { UiTheme, UiThemeProviderProps } from './theme.js';
+export * from './card.js';
+export * from './separator.js';
+export * from './sheet.js';
+export * from './spinner.js';
+
