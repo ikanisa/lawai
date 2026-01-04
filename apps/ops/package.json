@@ -33,6 +33,7 @@
     "@avocat-ai/observability": "file:../../packages/observability",
     "@avocat-ai/shared": "file:../../packages/shared",
     "@avocat-ai/supabase": "file:../../packages/supabase",
+    "@avocat-ai/api-clients": "file:../../packages/api-clients",
     "@opentelemetry/api": "^1.9.0",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.5",
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.9.2",
+    "@types/pg": "^8.11.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^8.46.2",
     "eslint": "^8.57.0",

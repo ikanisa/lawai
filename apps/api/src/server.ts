@@ -14,7 +14,7 @@ try {
   const dyn = new Function('p', 'return import(p)');
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
   void Promise.resolve((dyn as any)('./finance-workers.js')).catch(() => undefined);
-} catch {}
+} catch { }
 import { z as zod } from 'zod';
 import {
   buildTransparencyReport,
@@ -141,8 +141,6 @@ async function embedQuery(text: string): Promise<number[]> {
 
   try {
     const response = await openai.embeddings.create({
-      model: env.EMBEDDING_MODEL,
-      input: text,
       ...(env.EMBEDDING_DIMENSION ? { dimensions: env.EMBEDDING_DIMENSION } : {}),
     });
 
@@ -278,7 +276,7 @@ function normaliseFairnessJurisdiction(entry: unknown): Record<string, unknown> 
     0;
   const hitlRate = clampRate(
     toNumber(payload.hitlRate) ?? toNumber(payload.hitl_rate) ??
-      (totalRuns > 0 ? hitlEscalations / totalRuns : null),
+    (totalRuns > 0 ? hitlEscalations / totalRuns : null),
   );
   const highRiskShare = clampRate(
     toNumber(payload.highRiskShare) ?? toNumber(payload.high_risk_share) ?? null,
@@ -562,7 +560,7 @@ app.get<{ Querystring: z.infer<typeof regulatorDigestQuerySchema> }>('/launch/di
   );
 
   return reply.send({ orgId: parsed.data.orgId, digests });
-  },
+},
 );
 
 app.get('/healthz', async () => ({ status: 'ok' }));
@@ -577,87 +575,87 @@ app.get<{ Querystring: { orgId?: string } }>(
     preHandler: complianceRateLimitGuard,
   },
   async (request, reply) => {
-  const querySchema = z.object({ orgId: z.string().uuid() });
-  const parsed = querySchema.safeParse(request.query ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'invalid_query', details: parsed.error.flatten() });
-  }
-  const { orgId } = parsed.data;
+    const querySchema = z.object({ orgId: z.string().uuid() });
+    const parsed = querySchema.safeParse(request.query ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid_query', details: parsed.error.flatten() });
+    }
+    const { orgId } = parsed.data;
 
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  const allowed = await enforceRateLimit(workspaceLimiter, request, reply, `workspace:${orgId}:${userHeader}`);
-  if (!allowed) {
-    return;
-  }
-
-  try {
-    await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
-    const [overviewResult, toolResult, provenanceResult, identifierResult, jurisdictionResult, manifestResult] = await Promise.all([
-      supabase.from('org_metrics').select('*').eq('org_id', orgId).limit(1).maybeSingle(),
-      supabase
-        .from('tool_performance_metrics')
-        .select('tool_name, total_invocations, success_count, failure_count, avg_latency_ms, p95_latency_ms, last_invoked_at')
-        .eq('org_id', orgId)
-        .order('tool_name', { ascending: true }),
-      supabase.from('org_provenance_metrics').select('*').eq('org_id', orgId).limit(1).maybeSingle(),
-      supabase
-        .from('jurisdiction_identifier_coverage')
-        .select('jurisdiction_code, sources_total, sources_with_eli, sources_with_ecli, sources_with_akoma, akoma_article_count')
-        .eq('org_id', orgId)
-        .order('jurisdiction_code', { ascending: true }),
-      supabase
-        .from('org_jurisdiction_provenance')
-        .select(
-          'jurisdiction_code, residency_zone, total_sources, sources_consolidated, sources_with_binding, sources_with_language_note, sources_with_eli, sources_with_ecli, sources_with_akoma, binding_breakdown, source_type_breakdown, language_note_breakdown',
-        )
-        .eq('org_id', orgId)
-        .order('jurisdiction_code', { ascending: true }),
-      supabase
-        .from('drive_manifests')
-        .select('manifest_name, manifest_url, file_count, valid_count, warning_count, error_count, validated, created_at')
-        .eq('org_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
-
-    if (overviewResult.error) {
-      request.log.error({ err: overviewResult.error }, 'org metrics query failed');
-      return reply.code(500).send({ error: 'metrics_overview_failed' });
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
     }
 
-    if (toolResult.error) {
-      request.log.error({ err: toolResult.error }, 'tool metrics query failed');
-      return reply.code(500).send({ error: 'metrics_tool_failed' });
+    const allowed = await enforceRateLimit(workspaceLimiter, request, reply, `workspace:${orgId}:${userHeader}`);
+    if (!allowed) {
+      return;
     }
 
-    if (provenanceResult.error) {
-      request.log.error({ err: provenanceResult.error }, 'provenance metrics query failed');
-      return reply.code(500).send({ error: 'metrics_provenance_failed' });
-    }
+    try {
+      await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
+      const [overviewResult, toolResult, provenanceResult, identifierResult, jurisdictionResult, manifestResult] = await Promise.all([
+        supabase.from('org_metrics').select('*').eq('org_id', orgId).limit(1).maybeSingle(),
+        supabase
+          .from('tool_performance_metrics')
+          .select('tool_name, total_invocations, success_count, failure_count, avg_latency_ms, p95_latency_ms, last_invoked_at')
+          .eq('org_id', orgId)
+          .order('tool_name', { ascending: true }),
+        supabase.from('org_provenance_metrics').select('*').eq('org_id', orgId).limit(1).maybeSingle(),
+        supabase
+          .from('jurisdiction_identifier_coverage')
+          .select('jurisdiction_code, sources_total, sources_with_eli, sources_with_ecli, sources_with_akoma, akoma_article_count')
+          .eq('org_id', orgId)
+          .order('jurisdiction_code', { ascending: true }),
+        supabase
+          .from('org_jurisdiction_provenance')
+          .select(
+            'jurisdiction_code, residency_zone, total_sources, sources_consolidated, sources_with_binding, sources_with_language_note, sources_with_eli, sources_with_ecli, sources_with_akoma, binding_breakdown, source_type_breakdown, language_note_breakdown',
+          )
+          .eq('org_id', orgId)
+          .order('jurisdiction_code', { ascending: true }),
+        supabase
+          .from('drive_manifests')
+          .select('manifest_name, manifest_url, file_count, valid_count, warning_count, error_count, validated, created_at')
+          .eq('org_id', orgId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
-    if (identifierResult.error) {
-      request.log.error({ err: identifierResult.error }, 'identifier coverage query failed');
-      return reply.code(500).send({ error: 'metrics_identifier_failed' });
-    }
+      if (overviewResult.error) {
+        request.log.error({ err: overviewResult.error }, 'org metrics query failed');
+        return reply.code(500).send({ error: 'metrics_overview_failed' });
+      }
 
-    if (jurisdictionResult.error) {
-      request.log.error({ err: jurisdictionResult.error }, 'jurisdiction provenance query failed');
-      return reply.code(500).send({ error: 'metrics_jurisdiction_provenance_failed' });
-    }
+      if (toolResult.error) {
+        request.log.error({ err: toolResult.error }, 'tool metrics query failed');
+        return reply.code(500).send({ error: 'metrics_tool_failed' });
+      }
 
-    if (manifestResult.error) {
-      request.log.error({ err: manifestResult.error }, 'drive manifest summary query failed');
-      return reply.code(500).send({ error: 'metrics_manifest_failed' });
-    }
+      if (provenanceResult.error) {
+        request.log.error({ err: provenanceResult.error }, 'provenance metrics query failed');
+        return reply.code(500).send({ error: 'metrics_provenance_failed' });
+      }
 
-    const overviewRow = overviewResult.data ?? null;
-    const overview = overviewRow
-      ? {
+      if (identifierResult.error) {
+        request.log.error({ err: identifierResult.error }, 'identifier coverage query failed');
+        return reply.code(500).send({ error: 'metrics_identifier_failed' });
+      }
+
+      if (jurisdictionResult.error) {
+        request.log.error({ err: jurisdictionResult.error }, 'jurisdiction provenance query failed');
+        return reply.code(500).send({ error: 'metrics_jurisdiction_provenance_failed' });
+      }
+
+      if (manifestResult.error) {
+        request.log.error({ err: manifestResult.error }, 'drive manifest summary query failed');
+        return reply.code(500).send({ error: 'metrics_manifest_failed' });
+      }
+
+      const overviewRow = overviewResult.data ?? null;
+      const overview = overviewRow
+        ? {
           orgId: overviewRow.org_id,
           orgName: overviewRow.name,
           totalRuns: overviewRow.total_runs ?? 0,
@@ -679,11 +677,11 @@ app.get<{ Querystring: { orgId?: string } }>(
           documentsSkipped: overviewRow.documents_skipped ?? 0,
           documentsChunked: overviewRow.documents_chunked ?? 0,
         }
-      : null;
+        : null;
 
-    const provenanceRow = provenanceResult.data ?? null;
-    const provenance = provenanceRow
-      ? {
+      const provenanceRow = provenanceResult.data ?? null;
+      const provenance = provenanceRow
+        ? {
           sourcesTotal: provenanceRow.total_sources ?? 0,
           sourcesWithBinding: provenanceRow.sources_with_binding ?? 0,
           sourcesWithLanguageNote: provenanceRow.sources_with_language_note ?? 0,
@@ -698,45 +696,45 @@ app.get<{ Querystring: { orgId?: string } }>(
           chunkTotal: provenanceRow.chunk_total ?? 0,
           chunksWithMarkers: provenanceRow.chunks_with_markers ?? 0,
         }
-      : null;
+        : null;
 
-    const identifierRows = (identifierResult.data ?? []).map((row) => ({
-      jurisdiction: row.jurisdiction_code ?? 'UNKNOWN',
-      sourcesTotal: row.sources_total ?? 0,
-      sourcesWithEli: row.sources_with_eli ?? 0,
-      sourcesWithEcli: row.sources_with_ecli ?? 0,
-      sourcesWithAkoma: row.sources_with_akoma ?? 0,
-      akomaArticles: row.akoma_article_count ?? 0,
-    }));
+      const identifierRows = (identifierResult.data ?? []).map((row) => ({
+        jurisdiction: row.jurisdiction_code ?? 'UNKNOWN',
+        sourcesTotal: row.sources_total ?? 0,
+        sourcesWithEli: row.sources_with_eli ?? 0,
+        sourcesWithEcli: row.sources_with_ecli ?? 0,
+        sourcesWithAkoma: row.sources_with_akoma ?? 0,
+        akomaArticles: row.akoma_article_count ?? 0,
+      }));
 
-    const tools = (toolResult.data ?? []).map((row) => ({
-      toolName: row.tool_name,
-      totalInvocations: row.total_invocations ?? 0,
-      successCount: row.success_count ?? 0,
-      failureCount: row.failure_count ?? 0,
-      avgLatencyMs: toNumber(row.avg_latency_ms) ?? 0,
-      p95LatencyMs: toNumber(row.p95_latency_ms) ?? 0,
-      lastInvokedAt: row.last_invoked_at ?? null,
-    }));
+      const tools = (toolResult.data ?? []).map((row) => ({
+        toolName: row.tool_name,
+        totalInvocations: row.total_invocations ?? 0,
+        successCount: row.success_count ?? 0,
+        failureCount: row.failure_count ?? 0,
+        avgLatencyMs: toNumber(row.avg_latency_ms) ?? 0,
+        p95LatencyMs: toNumber(row.p95_latency_ms) ?? 0,
+        lastInvokedAt: row.last_invoked_at ?? null,
+      }));
 
-    const jurisdictionRows = (jurisdictionResult.data ?? []).map((row) => ({
-      jurisdiction: row.jurisdiction_code ?? 'UNKNOWN',
-      residencyZone: row.residency_zone ?? 'unknown',
-      totalSources: row.total_sources ?? 0,
-      sourcesConsolidated: row.sources_consolidated ?? 0,
-      sourcesWithBinding: row.sources_with_binding ?? 0,
-      sourcesWithLanguageNote: row.sources_with_language_note ?? 0,
-      sourcesWithEli: row.sources_with_eli ?? 0,
-      sourcesWithEcli: row.sources_with_ecli ?? 0,
-      sourcesWithAkoma: row.sources_with_akoma ?? 0,
-      bindingBreakdown: toNumberRecord(row.binding_breakdown),
-      sourceTypeBreakdown: toNumberRecord(row.source_type_breakdown),
-      languageNoteBreakdown: toNumberRecord(row.language_note_breakdown),
-    }));
+      const jurisdictionRows = (jurisdictionResult.data ?? []).map((row) => ({
+        jurisdiction: row.jurisdiction_code ?? 'UNKNOWN',
+        residencyZone: row.residency_zone ?? 'unknown',
+        totalSources: row.total_sources ?? 0,
+        sourcesConsolidated: row.sources_consolidated ?? 0,
+        sourcesWithBinding: row.sources_with_binding ?? 0,
+        sourcesWithLanguageNote: row.sources_with_language_note ?? 0,
+        sourcesWithEli: row.sources_with_eli ?? 0,
+        sourcesWithEcli: row.sources_with_ecli ?? 0,
+        sourcesWithAkoma: row.sources_with_akoma ?? 0,
+        bindingBreakdown: toNumberRecord(row.binding_breakdown),
+        sourceTypeBreakdown: toNumberRecord(row.source_type_breakdown),
+        languageNoteBreakdown: toNumberRecord(row.language_note_breakdown),
+      }));
 
-    const manifestRow = manifestResult.data ?? null;
-    const manifest = manifestRow
-      ? (() => {
+      const manifestRow = manifestResult.data ?? null;
+      const manifest = manifestRow
+        ? (() => {
           const fileCount = (manifestRow as any).file_count ?? 0;
           const validCount = (manifestRow as any).valid_count ?? 0;
           const warningCount = (manifestRow as any).warning_count ?? 0;
@@ -758,16 +756,16 @@ app.get<{ Querystring: { orgId?: string } }>(
             status,
           };
         })()
-      : null;
+        : null;
 
-    return { overview, provenance, tools, identifiers: identifierRows, jurisdictions: jurisdictionRows, manifest };
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+      return { overview, provenance, tools, identifiers: identifierRows, jurisdictions: jurisdictionRows, manifest };
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'governance metrics failed');
+      return reply.code(500).send({ error: 'metrics_failed' });
     }
-    request.log.error({ err: error }, 'governance metrics failed');
-    return reply.code(500).send({ error: 'metrics_failed' });
-  }
   },
 );
 
@@ -823,65 +821,65 @@ app.get<{ Querystring: { orgId?: string } }>(
     },
   },
   async (request, reply) => {
-  const { orgId } = request.query;
+    const { orgId } = request.query;
 
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
-    const [summaryResult, originResult, hostResult] = await Promise.all([
-      supabase
-        .from('org_retrieval_metrics')
-        .select('*')
-        .eq('org_id', orgId)
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from('org_retrieval_origin_metrics')
-        .select('origin, snippet_count, avg_similarity, avg_weight')
-        .eq('org_id', orgId),
-      supabase
-        .from('org_retrieval_host_metrics')
-        .select('host, citation_count, allowlisted_count, translation_warnings, last_cited_at')
-        .eq('org_id', orgId)
-        .order('citation_count', { ascending: false })
-        .limit(15),
-    ]);
-
-    if (summaryResult.error) {
-      request.log.error({ err: summaryResult.error }, 'retrieval summary query failed');
-      return reply.code(500).send({ error: 'metrics_retrieval_summary_failed' });
+    if (!orgId) {
+      return reply.code(400).send({ error: 'orgId is required' });
     }
 
-    if (originResult.error) {
-      request.log.error({ err: originResult.error }, 'retrieval origin query failed');
-      return reply.code(500).send({ error: 'metrics_retrieval_origin_failed' });
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
     }
 
-    if (hostResult.error) {
-      request.log.error({ err: hostResult.error }, 'retrieval host query failed');
-      return reply.code(500).send({ error: 'metrics_retrieval_host_failed' });
-    }
+    try {
+      await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
+      const [summaryResult, originResult, hostResult] = await Promise.all([
+        supabase
+          .from('org_retrieval_metrics')
+          .select('*')
+          .eq('org_id', orgId)
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('org_retrieval_origin_metrics')
+          .select('origin, snippet_count, avg_similarity, avg_weight')
+          .eq('org_id', orgId),
+        supabase
+          .from('org_retrieval_host_metrics')
+          .select('host, citation_count, allowlisted_count, translation_warnings, last_cited_at')
+          .eq('org_id', orgId)
+          .order('citation_count', { ascending: false })
+          .limit(15),
+      ]);
 
-    return buildRetrievalMetricsResponse(
-      (summaryResult.data ?? null) as RetrievalSummaryRow | null,
-      (originResult.data ?? []) as RetrievalOriginRow[],
-      (hostResult.data ?? []) as RetrievalHostRow[],
-    );
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+      if (summaryResult.error) {
+        request.log.error({ err: summaryResult.error }, 'retrieval summary query failed');
+        return reply.code(500).send({ error: 'metrics_retrieval_summary_failed' });
+      }
+
+      if (originResult.error) {
+        request.log.error({ err: originResult.error }, 'retrieval origin query failed');
+        return reply.code(500).send({ error: 'metrics_retrieval_origin_failed' });
+      }
+
+      if (hostResult.error) {
+        request.log.error({ err: hostResult.error }, 'retrieval host query failed');
+        return reply.code(500).send({ error: 'metrics_retrieval_host_failed' });
+      }
+
+      return buildRetrievalMetricsResponse(
+        (summaryResult.data ?? null) as RetrievalSummaryRow | null,
+        (originResult.data ?? []) as RetrievalOriginRow[],
+        (hostResult.data ?? []) as RetrievalHostRow[],
+      );
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'retrieval metrics authorization failed');
+      return reply.code(403).send({ error: 'forbidden' });
     }
-    request.log.error({ err: error }, 'retrieval metrics authorization failed');
-    return reply.code(403).send({ error: 'forbidden' });
-  }
   },
 );
 
@@ -894,55 +892,55 @@ app.get<{ Querystring: { orgId?: string } }>(
     },
   },
   async (request, reply) => {
-  const { orgId } = request.query;
+    const { orgId } = request.query;
 
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
-    const [summaryResult, jurisdictionResult] = await Promise.all([
-      supabase
-        .from('org_evaluation_metrics')
-        .select('*')
-        .eq('org_id', orgId)
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from('org_evaluation_jurisdiction_metrics')
-        .select(
-          'jurisdiction, evaluation_count, pass_rate, citation_precision_median, temporal_validity_median, avg_binding_warnings, maghreb_banner_coverage',
-        )
-        .eq('org_id', orgId),
-    ]);
-
-    if (summaryResult.error) {
-      request.log.error({ err: summaryResult.error }, 'evaluation summary query failed');
-      return reply.code(500).send({ error: 'metrics_evaluation_summary_failed' });
+    if (!orgId) {
+      return reply.code(400).send({ error: 'orgId is required' });
     }
 
-    if (jurisdictionResult.error) {
-      request.log.error({ err: jurisdictionResult.error }, 'evaluation jurisdiction query failed');
-      return reply.code(500).send({ error: 'metrics_evaluation_jurisdiction_failed' });
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
     }
 
-    return buildEvaluationMetricsResponse(
-      (summaryResult.data ?? null) as EvaluationMetricsSummaryRow | null,
-      (jurisdictionResult.data ?? []) as EvaluationJurisdictionRow[],
-    );
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+    try {
+      await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
+      const [summaryResult, jurisdictionResult] = await Promise.all([
+        supabase
+          .from('org_evaluation_metrics')
+          .select('*')
+          .eq('org_id', orgId)
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('org_evaluation_jurisdiction_metrics')
+          .select(
+            'jurisdiction, evaluation_count, pass_rate, citation_precision_median, temporal_validity_median, avg_binding_warnings, maghreb_banner_coverage',
+          )
+          .eq('org_id', orgId),
+      ]);
+
+      if (summaryResult.error) {
+        request.log.error({ err: summaryResult.error }, 'evaluation summary query failed');
+        return reply.code(500).send({ error: 'metrics_evaluation_summary_failed' });
+      }
+
+      if (jurisdictionResult.error) {
+        request.log.error({ err: jurisdictionResult.error }, 'evaluation jurisdiction query failed');
+        return reply.code(500).send({ error: 'metrics_evaluation_jurisdiction_failed' });
+      }
+
+      return buildEvaluationMetricsResponse(
+        (summaryResult.data ?? null) as EvaluationMetricsSummaryRow | null,
+        (jurisdictionResult.data ?? []) as EvaluationJurisdictionRow[],
+      );
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'evaluation metrics authorization failed');
+      return reply.code(403).send({ error: 'forbidden' });
     }
-    request.log.error({ err: error }, 'evaluation metrics authorization failed');
-    return reply.code(403).send({ error: 'forbidden' });
-  }
   },
 );
 
@@ -959,47 +957,47 @@ app.get<{ Querystring: { orgId?: string; start?: string; end?: string } }>(
     },
   },
   async (request, reply) => {
-  const { orgId, start, end } = request.query;
+    const { orgId, start, end } = request.query;
 
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
+    if (!orgId) {
+      return reply.code(400).send({ error: 'orgId is required' });
+    }
 
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
 
-  let range: { start: string; end: string };
-  try {
-    range = resolveDateRange(start, end);
-  } catch (error) {
-    return reply.code(400).send({ error: error instanceof Error ? error.message : 'invalid_date_range' });
-  }
+    let range: { start: string; end: string };
+    try {
+      range = resolveDateRange(start, end);
+    } catch (error) {
+      return reply.code(400).send({ error: error instanceof Error ? error.message : 'invalid_date_range' });
+    }
 
-  try {
-    await authorizeRequestWithGuards('governance:cepej', orgId, userHeader, request);
-    const { data, error } = await supabase
-      .from('compliance_assessments')
-      .select('cepej_passed, cepej_violations, fria_required, created_at')
-      .eq('org_id', orgId)
-      .gte('created_at', range.start)
-      .lte('created_at', range.end);
+    try {
+      await authorizeRequestWithGuards('governance:cepej', orgId, userHeader, request);
+      const { data, error } = await supabase
+        .from('compliance_assessments')
+        .select('cepej_passed, cepej_violations, fria_required, created_at')
+        .eq('org_id', orgId)
+        .gte('created_at', range.start)
+        .lte('created_at', range.end);
 
-    if (error) {
-      request.log.error({ err: error }, 'cepej metrics query failed');
+      if (error) {
+        request.log.error({ err: error }, 'cepej metrics query failed');
+        return reply.code(500).send({ error: 'cepej_metrics_failed' });
+      }
+
+      const summary = summariseCepej((data ?? []) as CepejRecord[]);
+      return { timeframe: range, summary };
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'cepej metrics failed');
       return reply.code(500).send({ error: 'cepej_metrics_failed' });
     }
-
-    const summary = summariseCepej((data ?? []) as CepejRecord[]);
-    return { timeframe: range, summary };
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error }, 'cepej metrics failed');
-    return reply.code(500).send({ error: 'cepej_metrics_failed' });
-  }
   },
 );
 
@@ -2248,22 +2246,22 @@ app.get<{ Params: { orgId: string } }>(
     },
   },
   async (request, reply) => {
-  const { orgId } = request.params;
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-  try {
-    await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
-    const connections = await listSsoConnections(orgId);
-    return { connections };
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+    const { orgId } = request.params;
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
     }
-    request.log.error({ err: error }, 'sso list failed');
-    return reply.code(500).send({ error: 'sso_list_failed' });
-  }
+    try {
+      await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+      const connections = await listSsoConnections(orgId);
+      return { connections };
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'sso list failed');
+      return reply.code(500).send({ error: 'sso_list_failed' });
+    }
   },
 );
 
@@ -2307,38 +2305,38 @@ app.post<{
     },
   },
   async (request, reply) => {
-  const { orgId } = request.params;
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-  const bodySchema = z.object({
-    id: z.string().uuid().optional(),
-    provider: z.enum(['saml', 'oidc']),
-    label: z.string().max(200).optional(),
-    metadata: z.record(z.any()).optional(),
-    acsUrl: z.string().url().optional(),
-    entityId: z.string().min(1).optional(),
-    clientId: z.string().min(1).optional(),
-    clientSecret: z.string().min(1).optional(),
-    defaultRole: z.string().min(1).optional(),
-    groupMappings: z.record(z.string()).optional(),
-  });
-  const parsed = bodySchema.safeParse(request.body ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
-  }
-  try {
-    await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
-    const connection = await upsertSsoConnection(orgId, userHeader, parsed.data);
-    return reply.code(parsed.data.id ? 200 : 201).send({ connection });
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+    const { orgId } = request.params;
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
     }
-    request.log.error({ err: error }, 'sso upsert failed');
-    return reply.code(500).send({ error: 'sso_upsert_failed' });
-  }
+    const bodySchema = z.object({
+      id: z.string().uuid().optional(),
+      provider: z.enum(['saml', 'oidc']),
+      label: z.string().max(200).optional(),
+      metadata: z.record(z.any()).optional(),
+      acsUrl: z.string().url().optional(),
+      entityId: z.string().min(1).optional(),
+      clientId: z.string().min(1).optional(),
+      clientSecret: z.string().min(1).optional(),
+      defaultRole: z.string().min(1).optional(),
+      groupMappings: z.record(z.string()).optional(),
+    });
+    const parsed = bodySchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
+    }
+    try {
+      await authorizeRequestWithGuards('admin:manage', orgId, userHeader, request);
+      const connection = await upsertSsoConnection(orgId, userHeader, parsed.data);
+      return reply.code(parsed.data.id ? 200 : 201).send({ connection });
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'sso upsert failed');
+      return reply.code(500).send({ error: 'sso_upsert_failed' });
+    }
   },
 );
 
@@ -2373,7 +2371,7 @@ app.delete<{ Params: { orgId: string; connectionId: string } }>(
       }
       request.log.error({ err: error }, 'sso delete failed');
       return reply.code(500).send({ error: 'sso_delete_failed' });
-  }
+    }
   },
 );
 
@@ -2390,46 +2388,46 @@ app.get<{ Querystring: { orgId?: string; limit?: string } }>(
     },
   },
   async (request, reply) => {
-  const { orgId, limit } = request.query ?? {};
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('metrics:slo', orgId, userHeader, request);
-    const query = supabase
-      .from('slo_snapshots')
-      .select(
-        'captured_at, api_uptime_percent, hitl_response_p95_seconds, retrieval_latency_p95_seconds, citation_precision_p95, notes',
-      )
-      .eq('org_id', orgId)
-      .order('captured_at', { ascending: false });
-
-    const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
-    if (parsedLimit && Number.isFinite(parsedLimit) && parsedLimit > 0) {
-      query.limit(parsedLimit);
+    const { orgId, limit } = request.query ?? {};
+    if (!orgId) {
+      return reply.code(400).send({ error: 'orgId is required' });
     }
 
-    const { data, error } = await query;
-    if (error) {
-      request.log.error({ err: error }, 'slo query failed');
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
+
+    try {
+      await authorizeRequestWithGuards('metrics:slo', orgId, userHeader, request);
+      const query = supabase
+        .from('slo_snapshots')
+        .select(
+          'captured_at, api_uptime_percent, hitl_response_p95_seconds, retrieval_latency_p95_seconds, citation_precision_p95, notes',
+        )
+        .eq('org_id', orgId)
+        .order('captured_at', { ascending: false });
+
+      const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
+      if (parsedLimit && Number.isFinite(parsedLimit) && parsedLimit > 0) {
+        query.limit(parsedLimit);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        request.log.error({ err: error }, 'slo query failed');
+        return reply.code(500).send({ error: 'slo_query_failed' });
+      }
+
+      const rows = (data ?? []) as unknown as SloSnapshotRecord[];
+      return { summary: summariseSlo(rows), snapshots: rows };
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'slo fetch failed');
       return reply.code(500).send({ error: 'slo_query_failed' });
     }
-
-    const rows = (data ?? []) as unknown as SloSnapshotRecord[];
-    return { summary: summariseSlo(rows), snapshots: rows };
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error }, 'slo fetch failed');
-    return reply.code(500).send({ error: 'slo_query_failed' });
-  }
   },
 );
 
@@ -2446,60 +2444,60 @@ app.get<{ Querystring: { orgId?: string; format?: string } }>(
     },
   },
   async (request, reply) => {
-  const { orgId, format } = request.query ?? {};
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
+    const { orgId, format } = request.query ?? {};
+    if (!orgId) {
+      return reply.code(400).send({ error: 'orgId is required' });
+    }
 
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
 
-  try {
-    await authorizeRequestWithGuards('metrics:slo', orgId, userHeader, request);
-    const { data, error } = await supabase
-      .from('slo_snapshots')
-      .select(
-        'captured_at, api_uptime_percent, hitl_response_p95_seconds, retrieval_latency_p95_seconds, citation_precision_p95, notes',
-      )
-      .eq('org_id', orgId)
-      .order('captured_at', { ascending: false });
+    try {
+      await authorizeRequestWithGuards('metrics:slo', orgId, userHeader, request);
+      const { data, error } = await supabase
+        .from('slo_snapshots')
+        .select(
+          'captured_at, api_uptime_percent, hitl_response_p95_seconds, retrieval_latency_p95_seconds, citation_precision_p95, notes',
+        )
+        .eq('org_id', orgId)
+        .order('captured_at', { ascending: false });
 
-    if (error) {
-      request.log.error({ err: error }, 'slo export query failed');
+      if (error) {
+        request.log.error({ err: error }, 'slo export query failed');
+        return reply.code(500).send({ error: 'slo_export_failed' });
+      }
+
+      const rows = (data ?? []) as unknown as SloSnapshotRecord[];
+      if ((format ?? 'json').toLowerCase() === 'csv') {
+        const csvRows = [
+          ['captured_at', 'api_uptime_percent', 'hitl_response_p95_seconds', 'retrieval_latency_p95_seconds', 'citation_precision_p95', 'notes'],
+          ...rows.map((row) => [
+            row.captured_at,
+            String(row.api_uptime_percent ?? ''),
+            String(row.hitl_response_p95_seconds ?? ''),
+            String(row.retrieval_latency_p95_seconds ?? ''),
+            row.citation_precision_p95 === null ? '' : String(row.citation_precision_p95),
+            (row.notes ?? '').replace(/\n/g, ' '),
+          ]),
+        ];
+        const csv = csvRows
+          .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+          .join('\n');
+        reply.header('content-type', 'text/csv; charset=utf-8');
+        reply.header('content-disposition', `attachment; filename="slo-${orgId}.csv"`);
+        return csv;
+      }
+
+      return { summary: summariseSlo(rows), snapshots: rows };
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'slo export failed');
       return reply.code(500).send({ error: 'slo_export_failed' });
     }
-
-    const rows = (data ?? []) as unknown as SloSnapshotRecord[];
-    if ((format ?? 'json').toLowerCase() === 'csv') {
-      const csvRows = [
-        ['captured_at', 'api_uptime_percent', 'hitl_response_p95_seconds', 'retrieval_latency_p95_seconds', 'citation_precision_p95', 'notes'],
-        ...rows.map((row) => [
-          row.captured_at,
-          String(row.api_uptime_percent ?? ''),
-          String(row.hitl_response_p95_seconds ?? ''),
-          String(row.retrieval_latency_p95_seconds ?? ''),
-          row.citation_precision_p95 === null ? '' : String(row.citation_precision_p95),
-          (row.notes ?? '').replace(/\n/g, ' '),
-        ]),
-      ];
-      const csv = csvRows
-        .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
-        .join('\n');
-      reply.header('content-type', 'text/csv; charset=utf-8');
-      reply.header('content-disposition', `attachment; filename="slo-${orgId}.csv"`);
-      return csv;
-    }
-
-    return { summary: summariseSlo(rows), snapshots: rows };
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error }, 'slo export failed');
-    return reply.code(500).send({ error: 'slo_export_failed' });
-  }
   },
 );
 
@@ -2570,50 +2568,50 @@ app.get<{ Querystring: { orgId?: string; kind?: string; limit?: string } }>(
     },
   },
   async (request, reply) => {
-  const { orgId, kind, limit } = request.query ?? {};
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  let parsedLimit = Number.parseInt(typeof limit === 'string' ? limit : '', 10);
-  if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
-    parsedLimit = 20;
-  }
-  parsedLimit = Math.min(Math.max(parsedLimit, 1), 200);
-
-  try {
-    await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+    const { orgId, kind, limit } = request.query ?? {};
+    if (!orgId) {
+      return reply.code(400).send({ error: 'orgId is required' });
     }
-    request.log.error({ err: error }, 'learning reports authorization failed');
-    return reply.code(403).send({ error: 'forbidden' });
-  }
 
-  let query = supabase
-    .from('agent_learning_reports')
-    .select('kind, report_date, payload, created_at')
-    .eq('org_id', orgId)
-    .order('report_date', { ascending: false })
-    .limit(parsedLimit);
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
 
-  if (kind) {
-    query = query.eq('kind', kind);
-  }
+    let parsedLimit = Number.parseInt(typeof limit === 'string' ? limit : '', 10);
+    if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+      parsedLimit = 20;
+    }
+    parsedLimit = Math.min(Math.max(parsedLimit, 1), 200);
 
-  const { data, error } = await query;
-  if (error) {
-    request.log.error({ err: error }, 'learning reports query failed');
-    return reply.code(500).send({ error: 'learning_reports_failed' });
-  }
+    try {
+      await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'learning reports authorization failed');
+      return reply.code(403).send({ error: 'forbidden' });
+    }
 
-  return { reports: mapLearningReports((data ?? []) as LearningReportRow[]) };
+    let query = supabase
+      .from('agent_learning_reports')
+      .select('kind, report_date, payload, created_at')
+      .eq('org_id', orgId)
+      .order('report_date', { ascending: false })
+      .limit(parsedLimit);
+
+    if (kind) {
+      query = query.eq('kind', kind);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      request.log.error({ err: error }, 'learning reports query failed');
+      return reply.code(500).send({ error: 'learning_reports_failed' });
+    }
+
+    return { reports: mapLearningReports((data ?? []) as LearningReportRow[]) };
   },
 );
 
@@ -2673,169 +2671,169 @@ app.get<{ Params: { orgId: string } }>(
     },
   },
   async (request, reply) => {
-  const { orgId } = request.params;
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
+    const { orgId } = request.params;
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
 
-  try {
-    await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
+    try {
+      await authorizeRequestWithGuards('metrics:view', orgId, userHeader, request);
 
-    const [sloResult, incidentResult, changeResult, evidenceResult, regulatorPublication] = await Promise.all([
-      supabase
-        .from('slo_snapshots')
-        .select(
-          'captured_at, api_uptime_percent, hitl_response_p95_seconds, retrieval_latency_p95_seconds, citation_precision_p95, notes',
-        )
-        .eq('org_id', orgId)
-        .order('captured_at', { ascending: false })
-        .limit(12),
-      supabase
-        .from('incident_reports')
-        .select(
-          'id, occurred_at, detected_at, resolved_at, severity, status, title, summary, impact, resolution, follow_up, evidence_url, recorded_at',
-        )
-        .eq('org_id', orgId)
-        .order('occurred_at', { ascending: false })
-        .limit(10),
-      supabase
-        .from('change_log_entries')
-        .select('id, entry_date, title, category, summary, release_tag, links, recorded_at')
-        .eq('org_id', orgId)
-        .order('entry_date', { ascending: false })
-        .limit(10),
-      supabase
-        .from('go_no_go_evidence')
-        .select('id, section, criterion, status, evidence_url, notes')
-        .eq('org_id', orgId)
-        .eq('section', 'H'),
-      supabase
-        .from('governance_publications')
-        .select('slug, status')
-        .eq('slug', 'regulator-outreach-plan')
-        .maybeSingle(),
-    ]);
+      const [sloResult, incidentResult, changeResult, evidenceResult, regulatorPublication] = await Promise.all([
+        supabase
+          .from('slo_snapshots')
+          .select(
+            'captured_at, api_uptime_percent, hitl_response_p95_seconds, retrieval_latency_p95_seconds, citation_precision_p95, notes',
+          )
+          .eq('org_id', orgId)
+          .order('captured_at', { ascending: false })
+          .limit(12),
+        supabase
+          .from('incident_reports')
+          .select(
+            'id, occurred_at, detected_at, resolved_at, severity, status, title, summary, impact, resolution, follow_up, evidence_url, recorded_at',
+          )
+          .eq('org_id', orgId)
+          .order('occurred_at', { ascending: false })
+          .limit(10),
+        supabase
+          .from('change_log_entries')
+          .select('id, entry_date, title, category, summary, release_tag, links, recorded_at')
+          .eq('org_id', orgId)
+          .order('entry_date', { ascending: false })
+          .limit(10),
+        supabase
+          .from('go_no_go_evidence')
+          .select('id, section, criterion, status, evidence_url, notes')
+          .eq('org_id', orgId)
+          .eq('section', 'H'),
+        supabase
+          .from('governance_publications')
+          .select('slug, status')
+          .eq('slug', 'regulator-outreach-plan')
+          .maybeSingle(),
+      ]);
 
-    const sloError = sloResult.error;
-    const incidentError = incidentResult.error;
-    const changeError = changeResult.error;
-    const evidenceError = evidenceResult.error;
-    const regulatorError = regulatorPublication.error;
+      const sloError = sloResult.error;
+      const incidentError = incidentResult.error;
+      const changeError = changeResult.error;
+      const evidenceError = evidenceResult.error;
+      const regulatorError = regulatorPublication.error;
 
-    if (sloError || incidentError || changeError || evidenceError || regulatorError) {
-      request.log.error(
-        { sloError, incidentError, changeError, evidenceError, regulatorError },
-        'operations overview query failed',
-      );
+      if (sloError || incidentError || changeError || evidenceError || regulatorError) {
+        request.log.error(
+          { sloError, incidentError, changeError, evidenceError, regulatorError },
+          'operations overview query failed',
+        );
+        return reply.code(500).send({ error: 'operations_overview_failed' });
+      }
+
+      const sloRows = (sloResult.data ?? []) as SloSnapshotRecord[];
+      const sloSummary = summariseSlo(sloRows);
+      const sloSnapshots = sloRows.slice(0, 5);
+
+      const incidentRows = (incidentResult.data ?? []) as IncidentRow[];
+      const incidents = incidentRows.map((row) => ({
+        id: row.id,
+        occurredAt: row.occurred_at,
+        detectedAt: row.detected_at ?? null,
+        resolvedAt: row.resolved_at ?? null,
+        severity: row.severity ?? null,
+        status: row.status ?? null,
+        title: row.title ?? '',
+        summary: row.summary ?? '',
+        impact: row.impact ?? '',
+        resolution: row.resolution ?? '',
+        followUp: row.follow_up ?? '',
+        evidenceUrl: row.evidence_url ?? null,
+        recordedAt: row.recorded_at,
+      }));
+
+      const changeRows = (changeResult.data ?? []) as ChangeLogRow[];
+      const changeLog = changeRows.map((row) => ({
+        id: row.id,
+        entryDate: row.entry_date,
+        title: row.title ?? '',
+        category: row.category ?? '',
+        summary: row.summary ?? '',
+        releaseTag: row.release_tag ?? null,
+        links: row.links ?? null,
+        recordedAt: row.recorded_at,
+      }));
+
+      const evidenceRows = (evidenceResult.data ?? []) as Array<{
+        criterion: string;
+        status: string;
+        evidence_url: string | null;
+        notes?: Record<string, unknown> | null;
+      }>;
+      const evidenceMap = new Map(evidenceRows.map((row) => [row.criterion, row]));
+
+      const openIncidents = incidents.filter((incident) => incident.status !== 'closed');
+      const closedIncidents = incidents.filter((incident) => incident.status === 'closed');
+      const regulatorPlanPublished = (regulatorPublication.data?.status ?? null) === 'published';
+
+      const goNoGoCriteria = [
+        {
+          criterion: 'SLO snapshots capturés',
+          autoSatisfied: sloRows.length > 0,
+          recommendedEvidenceUrl: 'https://app.avocat-ai.example/governance/slo_and_support.md',
+        },
+        {
+          criterion: 'Incident response & rollback documentés',
+          autoSatisfied: closedIncidents.length > 0,
+          recommendedEvidenceUrl: 'https://app.avocat-ai.example/governance/incident_response_plan.md',
+        },
+        {
+          criterion: 'Change log opérationnel publié',
+          autoSatisfied: changeLog.length > 0,
+          recommendedEvidenceUrl: 'https://app.avocat-ai.example/governance/change_management_playbook.md',
+        },
+        {
+          criterion: 'Plan de communication régulateurs partagé',
+          autoSatisfied: regulatorPlanPublished,
+          recommendedEvidenceUrl: 'https://app.avocat-ai.example/governance/regulator_outreach_plan.md',
+        },
+      ].map((item) => {
+        const recorded = evidenceMap.get(item.criterion);
+        return {
+          ...item,
+          recordedStatus: recorded?.status ?? 'pending',
+          recordedEvidenceUrl: recorded?.evidence_url ?? null,
+          recordedNotes: recorded?.notes ?? null,
+        };
+      });
+
+      return {
+        slo: {
+          summary: sloSummary,
+          snapshots: sloSnapshots,
+        },
+        incidents: {
+          total: incidents.length,
+          open: openIncidents.length,
+          closed: closedIncidents.length,
+          latest: incidents[0] ?? null,
+          entries: incidents,
+        },
+        changeLog: {
+          total: changeLog.length,
+          latest: changeLog[0] ?? null,
+          entries: changeLog,
+        },
+        goNoGo: {
+          section: 'H',
+          criteria: goNoGoCriteria,
+        },
+      };
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error, orgId }, 'operations overview failed');
       return reply.code(500).send({ error: 'operations_overview_failed' });
     }
-
-    const sloRows = (sloResult.data ?? []) as SloSnapshotRecord[];
-    const sloSummary = summariseSlo(sloRows);
-    const sloSnapshots = sloRows.slice(0, 5);
-
-    const incidentRows = (incidentResult.data ?? []) as IncidentRow[];
-    const incidents = incidentRows.map((row) => ({
-      id: row.id,
-      occurredAt: row.occurred_at,
-      detectedAt: row.detected_at ?? null,
-      resolvedAt: row.resolved_at ?? null,
-      severity: row.severity ?? null,
-      status: row.status ?? null,
-      title: row.title ?? '',
-      summary: row.summary ?? '',
-      impact: row.impact ?? '',
-      resolution: row.resolution ?? '',
-      followUp: row.follow_up ?? '',
-      evidenceUrl: row.evidence_url ?? null,
-      recordedAt: row.recorded_at,
-    }));
-
-    const changeRows = (changeResult.data ?? []) as ChangeLogRow[];
-    const changeLog = changeRows.map((row) => ({
-      id: row.id,
-      entryDate: row.entry_date,
-      title: row.title ?? '',
-      category: row.category ?? '',
-      summary: row.summary ?? '',
-      releaseTag: row.release_tag ?? null,
-      links: row.links ?? null,
-      recordedAt: row.recorded_at,
-    }));
-
-    const evidenceRows = (evidenceResult.data ?? []) as Array<{
-      criterion: string;
-      status: string;
-      evidence_url: string | null;
-      notes?: Record<string, unknown> | null;
-    }>;
-    const evidenceMap = new Map(evidenceRows.map((row) => [row.criterion, row]));
-
-    const openIncidents = incidents.filter((incident) => incident.status !== 'closed');
-    const closedIncidents = incidents.filter((incident) => incident.status === 'closed');
-    const regulatorPlanPublished = (regulatorPublication.data?.status ?? null) === 'published';
-
-    const goNoGoCriteria = [
-      {
-        criterion: 'SLO snapshots capturés',
-        autoSatisfied: sloRows.length > 0,
-        recommendedEvidenceUrl: 'https://app.avocat-ai.example/governance/slo_and_support.md',
-      },
-      {
-        criterion: 'Incident response & rollback documentés',
-        autoSatisfied: closedIncidents.length > 0,
-        recommendedEvidenceUrl: 'https://app.avocat-ai.example/governance/incident_response_plan.md',
-      },
-      {
-        criterion: 'Change log opérationnel publié',
-        autoSatisfied: changeLog.length > 0,
-        recommendedEvidenceUrl: 'https://app.avocat-ai.example/governance/change_management_playbook.md',
-      },
-      {
-        criterion: 'Plan de communication régulateurs partagé',
-        autoSatisfied: regulatorPlanPublished,
-        recommendedEvidenceUrl: 'https://app.avocat-ai.example/governance/regulator_outreach_plan.md',
-      },
-    ].map((item) => {
-      const recorded = evidenceMap.get(item.criterion);
-      return {
-        ...item,
-        recordedStatus: recorded?.status ?? 'pending',
-        recordedEvidenceUrl: recorded?.evidence_url ?? null,
-        recordedNotes: recorded?.notes ?? null,
-      };
-    });
-
-    return {
-      slo: {
-        summary: sloSummary,
-        snapshots: sloSnapshots,
-      },
-      incidents: {
-        total: incidents.length,
-        open: openIncidents.length,
-        closed: closedIncidents.length,
-        latest: incidents[0] ?? null,
-        entries: incidents,
-      },
-      changeLog: {
-        total: changeLog.length,
-        latest: changeLog[0] ?? null,
-        entries: changeLog,
-      },
-      goNoGo: {
-        section: 'H',
-        criteria: goNoGoCriteria,
-      },
-    };
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error, orgId }, 'operations overview failed');
-    return reply.code(500).send({ error: 'operations_overview_failed' });
-  }
   },
 );
 
@@ -2922,22 +2920,22 @@ app.get<{ Params: { orgId: string } }>(
     },
   },
   async (request, reply) => {
-  const { orgId } = request.params;
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-  try {
-    await authorizeRequestWithGuards('admin:security', orgId, userHeader, request);
-    const tokens = await listScimTokens(orgId);
-    return { tokens };
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+    const { orgId } = request.params;
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
     }
-    request.log.error({ err: error }, 'scim token list failed');
-    return reply.code(500).send({ error: 'scim_list_failed' });
-  }
+    try {
+      await authorizeRequestWithGuards('admin:security', orgId, userHeader, request);
+      const tokens = await listScimTokens(orgId);
+      return { tokens };
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'scim token list failed');
+      return reply.code(500).send({ error: 'scim_list_failed' });
+    }
   },
 );
 
@@ -2958,28 +2956,28 @@ app.post<{
     },
   },
   async (request, reply) => {
-  const { orgId } = request.params;
-  const bodySchema = z.object({ name: z.string().min(1), expiresAt: z.string().datetime().nullable().optional() });
-  const parsed = bodySchema.safeParse(request.body ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
-  }
-  const { name, expiresAt } = parsed.data;
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-  try {
-    await authorizeRequestWithGuards('admin:security', orgId, userHeader, request);
-    const token = await createScimToken(orgId, userHeader, name, expiresAt ?? null);
-    return reply.code(201).send(token);
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+    const { orgId } = request.params;
+    const bodySchema = z.object({ name: z.string().min(1), expiresAt: z.string().datetime().nullable().optional() });
+    const parsed = bodySchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
     }
-    request.log.error({ err: error }, 'scim token create failed');
-    return reply.code(500).send({ error: 'scim_create_failed' });
-  }
+    const { name, expiresAt } = parsed.data;
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
+    try {
+      await authorizeRequestWithGuards('admin:security', orgId, userHeader, request);
+      const token = await createScimToken(orgId, userHeader, name, expiresAt ?? null);
+      return reply.code(201).send(token);
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'scim token create failed');
+      return reply.code(500).send({ error: 'scim_create_failed' });
+    }
   },
 );
 
@@ -3205,10 +3203,10 @@ app.post(
   },
   async (request, reply) => {
     try {
-    const result = await createScimUser(
-      request.headers.authorization ?? '',
-      (request.body as unknown) as ScimUserPayload,
-    );
+      const result = await createScimUser(
+        request.headers.authorization ?? '',
+        (request.body as unknown) as ScimUserPayload,
+      );
       return reply.code(201).header('Content-Type', 'application/scim+json').send(result);
     } catch (error) {
       if (error instanceof Error) {
@@ -3244,11 +3242,11 @@ app.patch<{ Params: { id: string } }>(
   },
   async (request, reply) => {
     try {
-    const result = await patchScimUser(
-      request.headers.authorization ?? '',
-      request.params.id,
-      (request.body as unknown) as ScimPatchRequest,
-    );
+      const result = await patchScimUser(
+        request.headers.authorization ?? '',
+        request.params.id,
+        (request.body as unknown) as ScimPatchRequest,
+      );
       return reply.header('Content-Type', 'application/scim+json').send(result);
     } catch (error) {
       if (error instanceof Error) {
@@ -3307,33 +3305,33 @@ app.post<{
     }
     const { orgId, userId, eventName, payload } = request.body ?? {};
 
-  if (!orgId || !userId || !eventName) {
-    return reply.code(400).send({ error: 'orgId, userId, and eventName are required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('telemetry:record', orgId, userId, request);
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+    if (!orgId || !userId || !eventName) {
+      return reply.code(400).send({ error: 'orgId, userId, and eventName are required' });
     }
-    request.log.error({ err: error }, 'telemetry authorization failed');
-    return reply.code(403).send({ error: 'forbidden' });
-  }
 
-  const { error } = await supabase.from('ui_telemetry_events').insert({
-    org_id: orgId,
-    user_id: userId,
-    event_name: eventName,
-    payload: payload ?? null,
-  });
+    try {
+      await authorizeRequestWithGuards('telemetry:record', orgId, userId, request);
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'telemetry authorization failed');
+      return reply.code(403).send({ error: 'forbidden' });
+    }
 
-  if (error) {
-    request.log.error({ err: error }, 'telemetry insert failed');
-    return reply.code(500).send({ error: 'telemetry_failed' });
-  }
+    const { error } = await supabase.from('ui_telemetry_events').insert({
+      org_id: orgId,
+      user_id: userId,
+      event_name: eventName,
+      payload: payload ?? null,
+    });
 
-  return reply.code(204).send();
+    if (error) {
+      request.log.error({ err: error }, 'telemetry insert failed');
+      return reply.code(500).send({ error: 'telemetry_failed' });
+    }
+
+    return reply.code(204).send();
   },
 );
 
@@ -3443,11 +3441,11 @@ app.get<{ Querystring: { orgId?: string; sourceId?: string } }>('/case-scores', 
       computedAt: row.computed_at,
       source: (row as any).sources
         ? {
-            title: (row as any).sources.title,
-            url: (row as any).sources.source_url,
-            trustTier: (row as any).sources.trust_tier,
-            courtRank: (row as any).sources.court_rank,
-          }
+          title: (row as any).sources.title,
+          url: (row as any).sources.source_url,
+          trustTier: (row as any).sources.trust_tier,
+          courtRank: (row as any).sources.court_rank,
+        }
         : null,
     })),
   };
@@ -3665,33 +3663,33 @@ app.get<{ Querystring: { orgId?: string } }>('/hitl/metrics', async (request, re
         typeof payload.capturedAt === 'string'
           ? payload.capturedAt
           : typeof payload.windowEnd === 'string'
-          ? payload.windowEnd
-          : reportDate;
+            ? payload.windowEnd
+            : reportDate;
 
       const jurisdictions = Array.isArray(payload.jurisdictions)
         ? payload.jurisdictions
-            .map((entry) => normaliseFairnessJurisdiction(entry))
-            .filter((entry): entry is Record<string, unknown> => entry !== null)
+          .map((entry) => normaliseFairnessJurisdiction(entry))
+          .filter((entry): entry is Record<string, unknown> => entry !== null)
         : [];
 
       const benchmarks = Array.isArray(payload.benchmarks)
         ? payload.benchmarks
-            .map((entry) => normaliseFairnessBenchmark(entry))
-            .filter((entry): entry is Record<string, unknown> => entry !== null)
+          .map((entry) => normaliseFairnessBenchmark(entry))
+          .filter((entry): entry is Record<string, unknown> => entry !== null)
         : [];
 
       const flagged =
         payload.flagged && typeof payload.flagged === 'object'
           ? {
-              jurisdictions: Array.isArray((payload.flagged as Record<string, unknown>).jurisdictions)
-                ? ((payload.flagged as Record<string, unknown>).jurisdictions as unknown[])
-                    .filter((code): code is string => typeof code === 'string')
-                : [],
-              benchmarks: Array.isArray((payload.flagged as Record<string, unknown>).benchmarks)
-                ? ((payload.flagged as Record<string, unknown>).benchmarks as unknown[])
-                    .filter((name): name is string => typeof name === 'string')
-                : [],
-            }
+            jurisdictions: Array.isArray((payload.flagged as Record<string, unknown>).jurisdictions)
+              ? ((payload.flagged as Record<string, unknown>).jurisdictions as unknown[])
+                .filter((code): code is string => typeof code === 'string')
+              : [],
+            benchmarks: Array.isArray((payload.flagged as Record<string, unknown>).benchmarks)
+              ? ((payload.flagged as Record<string, unknown>).benchmarks as unknown[])
+                .filter((name): name is string => typeof name === 'string')
+              : [],
+          }
           : { jurisdictions: [], benchmarks: [] };
 
       fairnessReports.push({
@@ -3714,79 +3712,79 @@ app.get<{ Querystring: { orgId?: string } }>('/hitl/metrics', async (request, re
   const queuePayload = queueRow?.payload ?? null;
   const queue = queuePayload
     ? {
-        reportDate: queueRow?.reportDate ?? null,
-        pending: toNumber(queuePayload.pending) ?? 0,
-        byType: toNumberRecord(queuePayload.byType),
-        oldestCreatedAt:
-          typeof queuePayload.oldestCreatedAt === 'string' ? queuePayload.oldestCreatedAt : null,
-        capturedAt:
-          typeof queuePayload.capturedAt === 'string'
-            ? queuePayload.capturedAt
-            : queueRow?.reportDate ?? null,
-      }
+      reportDate: queueRow?.reportDate ?? null,
+      pending: toNumber(queuePayload.pending) ?? 0,
+      byType: toNumberRecord(queuePayload.byType),
+      oldestCreatedAt:
+        typeof queuePayload.oldestCreatedAt === 'string' ? queuePayload.oldestCreatedAt : null,
+      capturedAt:
+        typeof queuePayload.capturedAt === 'string'
+          ? queuePayload.capturedAt
+          : queueRow?.reportDate ?? null,
+    }
     : null;
 
   const driftRow = latest.get('drift');
   const driftPayload = driftRow?.payload ?? null;
   const drift = driftPayload
     ? {
-        reportDate: driftRow?.reportDate ?? null,
-        totalRuns: toNumber(driftPayload.totalRuns) ?? 0,
-        highRiskRuns: toNumber(driftPayload.highRiskRuns) ?? 0,
-        hitlEscalations: toNumber(driftPayload.hitlEscalations) ?? 0,
-        allowlistedRatio: toNumber(driftPayload.allowlistedRatio),
-      }
+      reportDate: driftRow?.reportDate ?? null,
+      totalRuns: toNumber(driftPayload.totalRuns) ?? 0,
+      highRiskRuns: toNumber(driftPayload.highRiskRuns) ?? 0,
+      hitlEscalations: toNumber(driftPayload.hitlEscalations) ?? 0,
+      allowlistedRatio: toNumber(driftPayload.allowlistedRatio),
+    }
     : null;
 
   const fairnessRow = latest.get('fairness');
   const fairnessPayload = fairnessRow?.payload ?? null;
   const fairness = fairnessPayload
     ? {
-        reportDate: fairnessRow?.reportDate ?? null,
-        overall:
-          fairnessPayload.overall && typeof fairnessPayload.overall === 'object'
-            ? normaliseFairnessOverall(fairnessPayload.overall as Record<string, unknown>)
-            : null,
-        capturedAt:
-          typeof fairnessPayload.capturedAt === 'string'
-            ? fairnessPayload.capturedAt
-            : fairnessRow?.reportDate ?? null,
-        jurisdictions: Array.isArray(fairnessPayload.jurisdictions)
-          ? fairnessPayload.jurisdictions
-              .map((entry) => normaliseFairnessJurisdiction(entry))
-              .filter((entry): entry is Record<string, unknown> => entry !== null)
-          : [],
-        benchmarks: Array.isArray(fairnessPayload.benchmarks)
-          ? fairnessPayload.benchmarks
-              .map((entry) => normaliseFairnessBenchmark(entry))
-              .filter((entry): entry is Record<string, unknown> => entry !== null)
-          : [],
-        flagged:
-          fairnessPayload.flagged && typeof fairnessPayload.flagged === 'object'
-            ? {
-                jurisdictions: Array.isArray((fairnessPayload.flagged as Record<string, unknown>).jurisdictions)
-                  ? ((fairnessPayload.flagged as Record<string, unknown>).jurisdictions as unknown[])
-                      .filter((code): code is string => typeof code === 'string')
-                  : [],
-                benchmarks: Array.isArray((fairnessPayload.flagged as Record<string, unknown>).benchmarks)
-                  ? ((fairnessPayload.flagged as Record<string, unknown>).benchmarks as unknown[])
-                      .filter((name): name is string => typeof name === 'string')
-                  : [],
-              }
-            : { jurisdictions: [], benchmarks: [] },
-        trend: fairnessReports
-          .slice(0, 12)
-          .map((entry) => ({
-            reportDate: entry.reportDate,
-            capturedAt: entry.capturedAt,
-            windowStart: entry.windowStart,
-            windowEnd: entry.windowEnd,
-            overall: entry.overall,
-            jurisdictions: entry.jurisdictions,
-            benchmarks: entry.benchmarks,
-            flagged: entry.flagged,
-          })),
-      }
+      reportDate: fairnessRow?.reportDate ?? null,
+      overall:
+        fairnessPayload.overall && typeof fairnessPayload.overall === 'object'
+          ? normaliseFairnessOverall(fairnessPayload.overall as Record<string, unknown>)
+          : null,
+      capturedAt:
+        typeof fairnessPayload.capturedAt === 'string'
+          ? fairnessPayload.capturedAt
+          : fairnessRow?.reportDate ?? null,
+      jurisdictions: Array.isArray(fairnessPayload.jurisdictions)
+        ? fairnessPayload.jurisdictions
+          .map((entry) => normaliseFairnessJurisdiction(entry))
+          .filter((entry): entry is Record<string, unknown> => entry !== null)
+        : [],
+      benchmarks: Array.isArray(fairnessPayload.benchmarks)
+        ? fairnessPayload.benchmarks
+          .map((entry) => normaliseFairnessBenchmark(entry))
+          .filter((entry): entry is Record<string, unknown> => entry !== null)
+        : [],
+      flagged:
+        fairnessPayload.flagged && typeof fairnessPayload.flagged === 'object'
+          ? {
+            jurisdictions: Array.isArray((fairnessPayload.flagged as Record<string, unknown>).jurisdictions)
+              ? ((fairnessPayload.flagged as Record<string, unknown>).jurisdictions as unknown[])
+                .filter((code): code is string => typeof code === 'string')
+              : [],
+            benchmarks: Array.isArray((fairnessPayload.flagged as Record<string, unknown>).benchmarks)
+              ? ((fairnessPayload.flagged as Record<string, unknown>).benchmarks as unknown[])
+                .filter((name): name is string => typeof name === 'string')
+              : [],
+          }
+          : { jurisdictions: [], benchmarks: [] },
+      trend: fairnessReports
+        .slice(0, 12)
+        .map((entry) => ({
+          reportDate: entry.reportDate,
+          capturedAt: entry.capturedAt,
+          windowStart: entry.windowStart,
+          windowEnd: entry.windowEnd,
+          overall: entry.overall,
+          jurisdictions: entry.jurisdictions,
+          benchmarks: entry.benchmarks,
+          flagged: entry.flagged,
+        })),
+    }
     : null;
 
   return {
@@ -3887,22 +3885,22 @@ app.get<{ Params: { id: string }; Querystring: { orgId?: string } }>('/hitl/:id'
   const [run, citations, retrieval, edits] = await Promise.all([
     runId
       ? supabase
-          .from('agent_runs')
-          .select('id, org_id, question, jurisdiction_json, irac, risk_level, status, started_at, finished_at, hitl_required')
-          .eq('id', runId)
-          .maybeSingle()
+        .from('agent_runs')
+        .select('id, org_id, question, jurisdiction_json, irac, risk_level, status, started_at, finished_at, hitl_required')
+        .eq('id', runId)
+        .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     runId
       ? supabase
-          .from('run_citations')
-          .select('title, publisher, url, domain_ok, note')
-          .eq('run_id', runId)
+        .from('run_citations')
+        .select('title, publisher, url, domain_ok, note')
+        .eq('run_id', runId)
       : Promise.resolve({ data: [], error: null }),
     runId
       ? supabase
-          .from('run_retrieval_sets')
-          .select('id, origin, snippet, similarity, weight, metadata')
-          .eq('run_id', runId)
+        .from('run_retrieval_sets')
+        .select('id, origin, snippet, similarity, weight, metadata')
+        .eq('run_id', runId)
       : Promise.resolve({ data: [], error: null }),
     supabase
       .from('hitl_reviewer_edits')
@@ -3943,17 +3941,17 @@ app.get<{ Params: { id: string }; Querystring: { orgId?: string } }>('/hitl/:id'
     },
     run: runData
       ? {
-          id: runData.id,
-          orgId: runData.org_id ?? null,
-          question: runData.question,
-          jurisdiction: extractCountry(runData.jurisdiction_json),
-          irac: runData.irac,
-          riskLevel: runData.risk_level,
-          status: runData.status,
-          hitlRequired: runData.hitl_required,
-          startedAt: runData.started_at,
-          finishedAt: runData.finished_at,
-        }
+        id: runData.id,
+        orgId: runData.org_id ?? null,
+        question: runData.question,
+        jurisdiction: extractCountry(runData.jurisdiction_json),
+        irac: runData.irac,
+        riskLevel: runData.risk_level,
+        status: runData.status,
+        hitlRequired: runData.hitl_required,
+        startedAt: runData.started_at,
+        finishedAt: runData.finished_at,
+      }
       : null,
     citations: (citations.data ?? []).map((citation) => ({
       title: citation.title,
@@ -4050,10 +4048,10 @@ app.post<{
 
     const runLookup = existing.run_id
       ? await supabase
-          .from('agent_runs')
-          .select('id, org_id, irac')
-          .eq('id', existing.run_id as string)
-          .maybeSingle()
+        .from('agent_runs')
+        .select('id, org_id, irac')
+        .eq('id', existing.run_id as string)
+        .maybeSingle()
       : { data: null, error: null };
 
     if (runLookup.error) {
@@ -4714,10 +4712,10 @@ app.post<{
         (chunk) => typeof chunk.marker === 'string' && chunk.marker.length > 0,
       );
       const articles = articleCandidates.slice(0, MAX_AKOMA_ARTICLES).map((chunk) => ({
-          marker: chunk.marker as string,
-          seq: chunk.seq,
-          excerpt: chunk.content.slice(0, 280).trim(),
-        }));
+        marker: chunk.marker as string,
+        seq: chunk.seq,
+        excerpt: chunk.content.slice(0, 280).trim(),
+      }));
 
       if (articleCandidates.length > MAX_AKOMA_ARTICLES) {
         request.log.info(
@@ -4733,8 +4731,8 @@ app.post<{
       const existingAkoma =
         source && typeof source.akoma_ntoso === 'object' && source.akoma_ntoso
           ? (source.akoma_ntoso as {
-              meta?: { publication?: { consolidated?: boolean | null } };
-            })
+            meta?: { publication?: { consolidated?: boolean | null } };
+          })
           : null;
       const consolidatedFlag =
         typeof source?.consolidated === 'boolean'
@@ -4880,72 +4878,72 @@ app.get<{
     preHandler: [securityRateLimit],
   },
   async (request, reply) => {
-  const { orgId, userId, includeRevoked, limit } = request.query;
+    const { orgId, userId, includeRevoked, limit } = request.query;
 
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  const limitNumber = limit ? Number.parseInt(limit, 10) : 100;
-  const resolvedLimit = Number.isFinite(limitNumber) ? Math.min(Math.max(limitNumber, 1), 500) : 100;
-  const includeRevokedFlag = includeRevoked === 'true';
-  const filterUserId = userId ? userId.trim() : undefined;
-
-  try {
-    if (filterUserId && filterUserId === userHeader) {
-      await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
-    } else {
-      await authorizeRequestWithGuards('admin:security', orgId, userHeader, request);
+    if (!orgId) {
+      return reply.code(400).send({ error: 'orgId is required' });
     }
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
     }
-    request.log.error({ err: error }, 'device_session_authorization_failed');
-    return reply.code(403).send({ error: 'forbidden' });
-  }
 
-  try {
-    const sessions = await listDeviceSessions(supabase, {
-      orgId,
-      userId: filterUserId,
-      includeRevoked: includeRevokedFlag,
-      limit: resolvedLimit,
-    });
+    const limitNumber = limit ? Number.parseInt(limit, 10) : 100;
+    const resolvedLimit = Number.isFinite(limitNumber) ? Math.min(Math.max(limitNumber, 1), 500) : 100;
+    const includeRevokedFlag = includeRevoked === 'true';
+    const filterUserId = userId ? userId.trim() : undefined;
 
-    return reply.send({
-      sessions: sessions.map((session) => ({
-        id: session.id,
-        userId: session.user_id,
-        sessionToken: session.session_token,
-        deviceFingerprint: session.device_fingerprint,
-        deviceLabel: session.device_label,
-        userAgent: session.user_agent,
-        platform: session.platform,
-        clientVersion: session.client_version,
-        ipAddress: session.ip_address,
-        authStrength: session.auth_strength,
-        mfaMethod: session.mfa_method,
-        attested: session.attested,
-        passkey: session.passkey,
-        metadata: session.metadata,
-        createdAt: session.created_at,
-        lastSeenAt: session.last_seen_at,
-        expiresAt: session.expires_at,
-        revokedAt: session.revoked_at,
-        revokedBy: session.revoked_by,
-        revokedReason: session.revoked_reason,
-      })),
-    });
-  } catch (error) {
-    request.log.error({ err: error }, 'device_session_list_failed');
-    return reply.code(500).send({ error: 'device_sessions_unavailable' });
-  }
+    try {
+      if (filterUserId && filterUserId === userHeader) {
+        await authorizeRequestWithGuards('workspace:view', orgId, userHeader, request);
+      } else {
+        await authorizeRequestWithGuards('admin:security', orgId, userHeader, request);
+      }
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'device_session_authorization_failed');
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    try {
+      const sessions = await listDeviceSessions(supabase, {
+        orgId,
+        userId: filterUserId,
+        includeRevoked: includeRevokedFlag,
+        limit: resolvedLimit,
+      });
+
+      return reply.send({
+        sessions: sessions.map((session) => ({
+          id: session.id,
+          userId: session.user_id,
+          sessionToken: session.session_token,
+          deviceFingerprint: session.device_fingerprint,
+          deviceLabel: session.device_label,
+          userAgent: session.user_agent,
+          platform: session.platform,
+          clientVersion: session.client_version,
+          ipAddress: session.ip_address,
+          authStrength: session.auth_strength,
+          mfaMethod: session.mfa_method,
+          attested: session.attested,
+          passkey: session.passkey,
+          metadata: session.metadata,
+          createdAt: session.created_at,
+          lastSeenAt: session.last_seen_at,
+          expiresAt: session.expires_at,
+          revokedAt: session.revoked_at,
+          revokedBy: session.revoked_by,
+          revokedReason: session.revoked_reason,
+        })),
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'device_session_list_failed');
+      return reply.code(500).send({ error: 'device_sessions_unavailable' });
+    }
   },
 );
 
@@ -4954,62 +4952,62 @@ app.post<{
 }>('/security/devices/revoke',
   { schema: { headers: { type: 'object', properties: { 'x-user-id': { type: 'string' } }, required: ['x-user-id'] } }, preHandler: [securityRateLimit] },
   async (request, reply) => {
-  const bodySchema = z.object({
-    orgId: z.string().uuid(),
-    sessionId: z.string().uuid(),
-    reason: z.string().max(500).nullable().optional(),
-  });
-  const parsed = bodySchema.safeParse(request.body ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
-  }
-  const { orgId, sessionId, reason } = parsed.data;
-
-  if (!orgId || !sessionId) {
-    return reply.code(400).send({ error: 'orgId and sessionId are required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('admin:security', orgId, userHeader, request);
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error }, 'device_session_revoke_authorization_failed');
-    return reply.code(403).send({ error: 'forbidden' });
-  }
-
-  try {
-    const revoked = await revokeDeviceSession(supabase, {
-      orgId,
-      sessionId,
-      actorUserId: userHeader,
-      reason: reason ?? null,
+    const bodySchema = z.object({
+      orgId: z.string().uuid(),
+      sessionId: z.string().uuid(),
+      reason: z.string().max(500).nullable().optional(),
     });
+    const parsed = bodySchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'invalid_request_body', details: parsed.error.flatten() });
+    }
+    const { orgId, sessionId, reason } = parsed.data;
 
-    if (!revoked) {
-      return reply.code(404).send({ error: 'device_session_not_found' });
+    if (!orgId || !sessionId) {
+      return reply.code(400).send({ error: 'orgId and sessionId are required' });
     }
 
-    return reply.send({
-      session: {
-        id: revoked.id,
-        userId: revoked.user_id,
-        sessionToken: revoked.session_token,
-        revokedAt: revoked.revoked_at,
-        revokedBy: revoked.revoked_by,
-        revokedReason: revoked.revoked_reason,
-      },
-    });
-  } catch (error) {
-    request.log.error({ err: error }, 'device_session_revoke_failed');
-    return reply.code(500).send({ error: 'device_session_revoke_failed' });
-  }
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
+
+    try {
+      await authorizeRequestWithGuards('admin:security', orgId, userHeader, request);
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'device_session_revoke_authorization_failed');
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    try {
+      const revoked = await revokeDeviceSession(supabase, {
+        orgId,
+        sessionId,
+        actorUserId: userHeader,
+        reason: reason ?? null,
+      });
+
+      if (!revoked) {
+        return reply.code(404).send({ error: 'device_session_not_found' });
+      }
+
+      return reply.send({
+        session: {
+          id: revoked.id,
+          userId: revoked.user_id,
+          sessionToken: revoked.session_token,
+          revokedAt: revoked.revoked_at,
+          revokedBy: revoked.revoked_by,
+          revokedReason: revoked.revoked_reason,
+        },
+      });
+    } catch (error) {
+      request.log.error({ err: error }, 'device_session_revoke_failed');
+      return reply.code(500).send({ error: 'device_session_revoke_failed' });
+    }
   },
 );
 
@@ -5185,52 +5183,52 @@ app.get<{
     },
   },
   async (request, reply) => {
-  const { orgId, query, jurisdiction } = request.query;
+    const { orgId, query, jurisdiction } = request.query;
 
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  if (!query) {
-    return reply.code(400).send({ error: 'query is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('search-hybrid', orgId, userHeader, request);
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
+    if (!orgId) {
+      return reply.code(400).send({ error: 'orgId is required' });
     }
-    request.log.error({ err: error }, 'hybrid search authorization failed');
-    return reply.code(403).send({ error: 'forbidden' });
-  }
 
-  try {
-    const results = await getHybridRetrievalContext(orgId, query, jurisdiction ?? null);
-    return {
-      results: results.map((item) => ({
-        content: item.content,
-        similarity: item.similarity,
-        weight: item.weight,
-        origin: item.origin,
-        sourceId: item.sourceId ?? null,
-        documentId: item.documentId ?? null,
-        fileId: item.fileId ?? null,
-        url: item.url ?? null,
-        title: item.title ?? null,
-        publisher: item.publisher ?? null,
-        trustTier: item.trustTier ?? null,
-      })),
-    };
-  } catch (error) {
-    request.log.error({ err: error }, 'hybrid search failed');
-    return reply.code(502).send({ error: 'hybrid_search_failed' });
-  }
+    if (!query) {
+      return reply.code(400).send({ error: 'query is required' });
+    }
+
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
+
+    try {
+      await authorizeRequestWithGuards('search-hybrid', orgId, userHeader, request);
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'hybrid search authorization failed');
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    try {
+      const results = await getHybridRetrievalContext(orgId, query, jurisdiction ?? null);
+      return {
+        results: results.map((item) => ({
+          content: item.content,
+          similarity: item.similarity,
+          weight: item.weight,
+          origin: item.origin,
+          sourceId: item.sourceId ?? null,
+          documentId: item.documentId ?? null,
+          fileId: item.fileId ?? null,
+          url: item.url ?? null,
+          title: item.title ?? null,
+          publisher: item.publisher ?? null,
+          trustTier: item.trustTier ?? null,
+        })),
+      };
+    } catch (error) {
+      request.log.error({ err: error }, 'hybrid search failed');
+      return reply.code(502).send({ error: 'hybrid_search_failed' });
+    }
   },
 );
 
@@ -5254,60 +5252,60 @@ app.get<{
     },
   },
   async (request, reply) => {
-  const { orgId, query, jurisdiction, limit } = request.query;
+    const { orgId, query, jurisdiction, limit } = request.query;
 
-  if (!orgId) {
-    return reply.code(400).send({ error: 'orgId is required' });
-  }
-
-  if (!query) {
-    return reply.code(400).send({ error: 'query is required' });
-  }
-
-  const userHeader = request.headers['x-user-id'];
-  if (!userHeader || typeof userHeader !== 'string') {
-    return reply.code(400).send({ error: 'x-user-id header is required' });
-  }
-
-  try {
-    await authorizeRequestWithGuards('search-local', orgId, userHeader, request);
-  } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
-      return reply.code(error.statusCode).send({ error: error.message });
-    }
-    request.log.error({ err: error }, 'local search authorization failed');
-    return reply.code(403).send({ error: 'forbidden' });
-  }
-
-  try {
-    const embedding = await embedQuery(query);
-    const matchCount = limit ? Math.min(Math.max(Number.parseInt(limit, 10) || 0, 1), 20) : 8;
-
-    const { data, error } = await supabase.rpc('match_chunks', {
-      p_org: orgId,
-      p_query_embedding: embedding,
-      p_match_count: matchCount,
-      p_jurisdiction: jurisdiction ?? null,
-    });
-
-    if (error) {
-      request.log.error({ err: error }, 'match_chunks rpc failed');
-      return reply.code(500).send({ error: 'search_failed' });
+    if (!orgId) {
+      return reply.code(400).send({ error: 'orgId is required' });
     }
 
-    return {
-      matches: (data ?? []).map((entry: any) => ({
-        id: entry.chunk_id,
-        documentId: entry.document_id,
-        jurisdiction: entry.jurisdiction_code,
-        content: entry.content,
-        similarity: entry.similarity,
-      })),
-    };
-  } catch (error) {
-    request.log.error({ err: error }, 'local search failed');
-    return reply.code(502).send({ error: 'embedding_failed' });
-  }
+    if (!query) {
+      return reply.code(400).send({ error: 'query is required' });
+    }
+
+    const userHeader = request.headers['x-user-id'];
+    if (!userHeader || typeof userHeader !== 'string') {
+      return reply.code(400).send({ error: 'x-user-id header is required' });
+    }
+
+    try {
+      await authorizeRequestWithGuards('search-local', orgId, userHeader, request);
+    } catch (error) {
+      if (error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number') {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      request.log.error({ err: error }, 'local search authorization failed');
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    try {
+      const embedding = await embedQuery(query);
+      const matchCount = limit ? Math.min(Math.max(Number.parseInt(limit, 10) || 0, 1), 20) : 8;
+
+      const { data, error } = await supabase.rpc('match_chunks', {
+        p_org: orgId,
+        p_query_embedding: embedding,
+        p_match_count: matchCount,
+        p_jurisdiction: jurisdiction ?? null,
+      });
+
+      if (error) {
+        request.log.error({ err: error }, 'match_chunks rpc failed');
+        return reply.code(500).send({ error: 'search_failed' });
+      }
+
+      return {
+        matches: (data ?? []).map((entry: any) => ({
+          id: entry.chunk_id,
+          documentId: entry.document_id,
+          jurisdiction: entry.jurisdiction_code,
+          content: entry.content,
+          similarity: entry.similarity,
+        })),
+      };
+    } catch (error) {
+      request.log.error({ err: error }, 'local search failed');
+      return reply.code(502).send({ error: 'embedding_failed' });
+    }
   },
 );
 

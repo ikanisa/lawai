@@ -31,7 +31,7 @@ type Logger = {
  */
 function extractWebSearchCalls(output: unknown[]): WebSearchCallItem[] {
   const calls: WebSearchCallItem[] = [];
-  
+
   for (const item of output) {
     if (
       item &&
@@ -42,7 +42,7 @@ function extractWebSearchCalls(output: unknown[]): WebSearchCallItem[] {
       calls.push(item as WebSearchCallItem);
     }
   }
-  
+
   return calls;
 }
 
@@ -51,7 +51,7 @@ function extractWebSearchCalls(output: unknown[]): WebSearchCallItem[] {
  */
 function extractMessages(output: unknown[]): MessageItem[] {
   const messages: MessageItem[] = [];
-  
+
   for (const item of output) {
     if (
       item &&
@@ -62,7 +62,7 @@ function extractMessages(output: unknown[]): MessageItem[] {
       messages.push(item as MessageItem);
     }
   }
-  
+
   return messages;
 }
 
@@ -71,7 +71,7 @@ function extractMessages(output: unknown[]): MessageItem[] {
  */
 function extractCitations(message: MessageItem): URLCitation[] {
   const citations: URLCitation[] = [];
-  
+
   for (const content of message.content) {
     if (content.annotations) {
       for (const annotation of content.annotations) {
@@ -81,7 +81,7 @@ function extractCitations(message: MessageItem): URLCitation[] {
       }
     }
   }
-  
+
   return citations;
 }
 
@@ -90,13 +90,13 @@ function extractCitations(message: MessageItem): URLCitation[] {
  */
 function extractSources(calls: WebSearchCallItem[]): WebSearchSource[] {
   const sources: WebSearchSource[] = [];
-  
+
   for (const call of calls) {
     if (call.action?.sources) {
       sources.push(...call.action.sources);
     }
   }
-  
+
   return sources;
 }
 
@@ -168,7 +168,7 @@ export async function performWebSearch(
           role: 'user',
           content: [
             {
-              type: 'text',
+              type: 'input_text',
               text: query,
             },
           ],
@@ -187,7 +187,7 @@ export async function performWebSearch(
     // Extract text from assistant message
     let text = '';
     const allCitations: URLCitation[] = [];
-    
+
     for (const message of messages) {
       if (message.role === 'assistant') {
         for (const content of message.content) {
@@ -256,10 +256,10 @@ export function validateAllowedDomains(domains: string[]): {
 
   for (const domain of domains) {
     const trimmed = domain.trim().toLowerCase();
-    
+
     // Remove http/https prefix if present
     const cleaned = trimmed.replace(/^https?:\/\//, '');
-    
+
     // Basic hostname validation
     if (/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test(cleaned)) {
       valid.push(cleaned);

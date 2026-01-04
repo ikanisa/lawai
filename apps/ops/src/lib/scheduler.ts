@@ -1,4 +1,4 @@
-import { createScheduler, type Scheduler } from '@avocat-ai/shared/scheduling';
+import { createScheduler, type Scheduler } from '@avocat-ai/shared';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseService, type SupabaseServiceOptions } from './supabase.js';
 import { runEvaluation, createEvaluationDataSource, type CliOptions } from '../evaluate.js';
@@ -35,15 +35,15 @@ export function buildOpsScheduler(
     options.supabase ??
     (shouldCreateSupabase
       ? createSupabaseService(
-          {
-            SUPABASE_URL: supabaseConfig.url!,
-            SUPABASE_SERVICE_ROLE_KEY: supabaseConfig.serviceRoleKey!,
-          },
-          {
-            ...options.supabaseOptions,
-            reuseExisting: options.supabaseOptions?.reuseExisting ?? false,
-          },
-        )
+        {
+          SUPABASE_URL: supabaseConfig.url!,
+          SUPABASE_SERVICE_ROLE_KEY: supabaseConfig.serviceRoleKey!,
+        },
+        {
+          ...options.supabaseOptions,
+          reuseExisting: options.supabaseOptions?.reuseExisting ?? false,
+        },
+      )
       : null);
   const fetchImpl = options.fetchImpl ?? fetch;
   const edgeServiceSecret = env.EDGE_SERVICE_SECRET;
@@ -58,9 +58,8 @@ export function buildOpsScheduler(
     description: 'Traite la file d’apprentissage côté edge en mode horaire.',
     trigger: { kind: 'cron', expression: env.INGESTION_CRON ?? '0 * * * *', timezone: env.INGESTION_TZ ?? 'UTC' },
     command: env.EDGE_PROCESS_LEARNING_URL
-      ? `curl -s -X POST "${env.EDGE_PROCESS_LEARNING_URL}?mode=hourly"${
-          edgeServiceSecret ? ` -H 'x-service-secret: ${edgeServiceSecret}'` : ''
-        }`
+      ? `curl -s -X POST "${env.EDGE_PROCESS_LEARNING_URL}?mode=hourly"${edgeServiceSecret ? ` -H 'x-service-secret: ${edgeServiceSecret}'` : ''
+      }`
       : undefined,
     handler: async ({ fetchImpl: ctxFetch }) => {
       const endpoint = env.EDGE_PROCESS_LEARNING_URL;

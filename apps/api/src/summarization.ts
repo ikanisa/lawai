@@ -214,7 +214,7 @@ async function generateStructuredSummary(
           role: 'system',
           content: [
             {
-              type: 'text',
+              type: 'input_text',
               text:
                 "Tu es un assistant juridique senior. Résume les documents officiels en français, en rappelant les points clefs, la portée juridique et les dates importantes.",
             },
@@ -224,7 +224,7 @@ async function generateStructuredSummary(
           role: 'user',
           content: [
             {
-              type: 'text',
+              type: 'input_text',
               text: `Titre: ${metadata.title}\nJuridiction: ${metadata.jurisdiction}\nÉditeur: ${metadata.publisher ?? 'Inconnu'}\n\nTexte:\n${truncated}`,
             },
           ],
@@ -361,12 +361,12 @@ export async function summariseDocumentFromPayload(params: {
     const inputs = chunks.map((chunk) => chunk.content);
     const embeddings = inputs.length
       ? await generateEmbeddings(
-          inputs,
-          openaiApiKey,
-          embeddingModel ?? env.EMBEDDING_MODEL,
-          env.EMBEDDING_DIMENSION,
-          logger,
-        )
+        inputs,
+        openaiApiKey,
+        embeddingModel ?? env.EMBEDDING_MODEL,
+        env.EMBEDDING_DIMENSION,
+        logger,
+      )
       : [];
 
     return {

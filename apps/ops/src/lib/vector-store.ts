@@ -3,8 +3,11 @@ import {
   fetchOpenAIDebugDetails,
   getOpenAIClient,
   isOpenAIDebugEnabled,
-  tryGetVectorStoreApi,
 } from '@avocat-ai/shared';
+
+function tryGetVectorStoreApi(client: import('openai').OpenAI): any {
+  return (client as any).beta?.vectorStores;
+}
 
 const OPS_VECTOR_CLIENT_OPTIONS = {
   cacheKeySuffix: 'ops-vector-lib',

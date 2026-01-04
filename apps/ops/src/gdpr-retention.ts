@@ -198,7 +198,7 @@ async function countOrDelete(
   }
   const { error, count } = await client
     .from(table)
-    .delete({ count: 'exact', returning: 'minimal' })
+    .delete({ count: 'exact' })
     .eq('org_id', orgId)
     .lt(column, cutoffIso);
   if (error) {

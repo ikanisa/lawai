@@ -17,7 +17,7 @@ import {
   getJurisdictionsForDomain,
 } from '@avocat-ai/shared';
 
-interface CliOptions {
+export interface CliOptions {
   orgId: string;
   userId: string;
   apiBaseUrl: string;
@@ -34,68 +34,68 @@ const FALLBACK_CASES: Array<{
   expected_contains: string[];
   benchmark?: string;
 }> = [
-  {
-    id: 'local-fr-responsabilite',
-    name: 'FR - Responsabilité délictuelle',
-    prompt: "Quels sont les critères de mise en jeu de la responsabilité délictuelle pour un dommage causé par un salarié en France ?",
-    expected_contains: ['code civil', '1240', 'faute'],
-    benchmark: 'fallback',
-  },
-  {
-    id: 'local-ohada-suretes',
-    name: 'OHADA - Sûretés mobilières',
-    prompt: "Dans le cadre OHADA, quelles sont les exigences pour constituer un gage sans dépossession sur un stock de marchandises ?",
-    expected_contains: ['acte uniforme', 'sûretés', 'ccja'],
-    benchmark: 'fallback',
-  },
-  {
-    id: 'local-ma-nonconcurrence',
-    name: 'MA - Clause de non-concurrence',
-    prompt: "Au Maroc, quelles conditions rendent valable une clause de non-concurrence insérée dans un contrat de travail ?",
-    expected_contains: ['bulletin officiel', 'code du travail', 'traduction'],
-    benchmark: 'fallback',
-  },
-  {
-    id: 'local-be-consommation',
-    name: 'BE - Clauses abusives B2C',
-    prompt:
-      "En Belgique, quelles règles du Code de droit économique encadrent les clauses abusives dans les contrats conclus avec les consommateurs ?",
-    expected_contains: ['code de droit économique', 'clause abusive', 'justel'],
-    benchmark: 'fallback',
-  },
-  {
-    id: 'local-lu-sarl',
-    name: 'LU - Cession de parts de SARL',
-    prompt:
-      "Au Luxembourg, quelles formalités s'appliquent à la cession de parts sociales d'une SARL et quelles références légales doivent être citées ?",
-    expected_contains: ['legilux', 'sarl', 'parts sociales'],
-    benchmark: 'fallback',
-  },
-  {
-    id: 'local-ch-ldip',
-    name: 'CH - Conflits de lois (LDIP)',
-    prompt:
-      "Selon la LDIP suisse, quels critères permettent de déterminer la compétence des tribunaux et la loi applicable lorsqu'un contrat présente des éléments internationaux ?",
-    expected_contains: ['ldip', 'tribunal fédéral', 'droit international privé'],
-    benchmark: 'fallback',
-  },
-  {
-    id: 'local-ca-qc-delais',
-    name: 'QC - Délais procéduraux',
-    prompt:
-      "Au Québec, quels délais prévus au Code de procédure civile s'appliquent pour signifier une demande introductive d'instance en matière civile ?",
-    expected_contains: ['code de procédure civile', 'c.p.c.', 'signification'],
-    benchmark: 'fallback',
-  },
-  {
-    id: 'local-rw-gazette',
-    name: 'RW - Publication au Journal officiel',
-    prompt:
-      "Au Rwanda, quelles sont les exigences de publication au Journal officiel pour qu'une loi entre en vigueur et quel avertissement linguistique faut-il rappeler ?",
-    expected_contains: ['gazette officielle', 'amategeko', 'langue'],
-    benchmark: 'fallback',
-  },
-];
+    {
+      id: 'local-fr-responsabilite',
+      name: 'FR - Responsabilité délictuelle',
+      prompt: "Quels sont les critères de mise en jeu de la responsabilité délictuelle pour un dommage causé par un salarié en France ?",
+      expected_contains: ['code civil', '1240', 'faute'],
+      benchmark: 'fallback',
+    },
+    {
+      id: 'local-ohada-suretes',
+      name: 'OHADA - Sûretés mobilières',
+      prompt: "Dans le cadre OHADA, quelles sont les exigences pour constituer un gage sans dépossession sur un stock de marchandises ?",
+      expected_contains: ['acte uniforme', 'sûretés', 'ccja'],
+      benchmark: 'fallback',
+    },
+    {
+      id: 'local-ma-nonconcurrence',
+      name: 'MA - Clause de non-concurrence',
+      prompt: "Au Maroc, quelles conditions rendent valable une clause de non-concurrence insérée dans un contrat de travail ?",
+      expected_contains: ['bulletin officiel', 'code du travail', 'traduction'],
+      benchmark: 'fallback',
+    },
+    {
+      id: 'local-be-consommation',
+      name: 'BE - Clauses abusives B2C',
+      prompt:
+        "En Belgique, quelles règles du Code de droit économique encadrent les clauses abusives dans les contrats conclus avec les consommateurs ?",
+      expected_contains: ['code de droit économique', 'clause abusive', 'justel'],
+      benchmark: 'fallback',
+    },
+    {
+      id: 'local-lu-sarl',
+      name: 'LU - Cession de parts de SARL',
+      prompt:
+        "Au Luxembourg, quelles formalités s'appliquent à la cession de parts sociales d'une SARL et quelles références légales doivent être citées ?",
+      expected_contains: ['legilux', 'sarl', 'parts sociales'],
+      benchmark: 'fallback',
+    },
+    {
+      id: 'local-ch-ldip',
+      name: 'CH - Conflits de lois (LDIP)',
+      prompt:
+        "Selon la LDIP suisse, quels critères permettent de déterminer la compétence des tribunaux et la loi applicable lorsqu'un contrat présente des éléments internationaux ?",
+      expected_contains: ['ldip', 'tribunal fédéral', 'droit international privé'],
+      benchmark: 'fallback',
+    },
+    {
+      id: 'local-ca-qc-delais',
+      name: 'QC - Délais procéduraux',
+      prompt:
+        "Au Québec, quels délais prévus au Code de procédure civile s'appliquent pour signifier une demande introductive d'instance en matière civile ?",
+      expected_contains: ['code de procédure civile', 'c.p.c.', 'signification'],
+      benchmark: 'fallback',
+    },
+    {
+      id: 'local-rw-gazette',
+      name: 'RW - Publication au Journal officiel',
+      prompt:
+        "Au Rwanda, quelles sont les exigences de publication au Journal officiel pour qu'une loi entre en vigueur et quel avertissement linguistique faut-il rappeler ?",
+      expected_contains: ['gazette officielle', 'amategeko', 'langue'],
+      benchmark: 'fallback',
+    },
+  ];
 
 type DatasetMap = Record<string, string>;
 
@@ -174,8 +174,8 @@ export async function loadBenchmarkCases(name: string): Promise<
       error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT'
         ? `Benchmark inconnu: ${safeName}`
         : error instanceof Error
-        ? error.message
-        : 'benchmark_load_failed';
+          ? error.message
+          : 'benchmark_load_failed';
     throw new Error(message);
   }
 }
@@ -686,11 +686,11 @@ async function runRemoteEvaluation(
     },
     link_health: linkHealthSummary
       ? {
-          total_sources: linkHealthSummary.totalSources,
-          failed_sources: linkHealthSummary.failedSources,
-          stale_sources: linkHealthSummary.staleSources,
-          failure_ratio: linkHealthSummary.failureRatio,
-        }
+        total_sources: linkHealthSummary.totalSources,
+        failed_sources: linkHealthSummary.failedSources,
+        stale_sources: linkHealthSummary.staleSources,
+        failure_ratio: linkHealthSummary.failureRatio,
+      }
       : null,
   };
 
@@ -888,7 +888,18 @@ export async function runEvaluation(
 
   if (datasetId) {
     await runRemoteEvaluation(supabase, options, datasetId, scenario);
-    return;
+    // Return dummy summary for remote execution
+    return {
+      totalCases: 0,
+      passed: 0,
+      failed: 0,
+      scoreboard: [],
+      errors: [],
+      coverageSnapshot: null,
+      thresholdFailures: [],
+      thresholdFailed: false,
+      linkHealthSummary: null,
+    };
   }
 
   const spinner = options.ciMode ? null : ora("Chargement des cas d'évaluation...").start();
@@ -1038,7 +1049,7 @@ export async function runEvaluation(
 
   if (options.dryRun) {
     return {
-      totalCases: total,
+      totalCases: cases.length,
       passed: 0,
       failed: 0,
       scoreboard,
@@ -1083,7 +1094,7 @@ export async function runEvaluation(
   }
 
   return {
-    totalCases: total,
+    totalCases: cases.length,
     passed,
     failed,
     scoreboard,
@@ -1108,12 +1119,12 @@ async function run(): Promise<void> {
     console.warn('Supabase credentials missing: running evaluation in local fallback mode.');
   }
 
-  let loadSpinner: ora.Ora | null = null;
+  let loadSpinner: Ora | null = null;
   if (!options.ciMode) {
     loadSpinner = ora("Chargement des cas d'évaluation...").start();
   }
 
-  let caseSpinner: ora.Ora | null = null;
+  let caseSpinner: Ora | null = null;
   const summary = await runEvaluation(options, {
     dataSource: createEvaluationDataSource(supabase),
     fetchImpl: fetch,
@@ -1243,11 +1254,11 @@ async function run(): Promise<void> {
       threshold_failures: summary.thresholdFailures,
       link_health: summary.linkHealthSummary
         ? {
-            total_sources: summary.linkHealthSummary.totalSources,
-            failed_sources: summary.linkHealthSummary.failedSources,
-            stale_sources: summary.linkHealthSummary.staleSources,
-            failure_ratio: summary.linkHealthSummary.failureRatio,
-          }
+          total_sources: summary.linkHealthSummary.totalSources,
+          failed_sources: summary.linkHealthSummary.failedSources,
+          stale_sources: summary.linkHealthSummary.staleSources,
+          failure_ratio: summary.linkHealthSummary.failureRatio,
+        }
         : null,
       cases: summary.scoreboard,
     };
