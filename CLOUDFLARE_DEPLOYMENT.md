@@ -2,6 +2,8 @@
 
 This repository is configured for deployment to Cloudflare Pages. The web application (`apps/web`) is a Next.js app adapted for Cloudflare's Edge runtime.
 
+> **Important**: This is an **internal staff-only system**. Access is controlled via user management - users can only access the system by invitation from system administrators. This is not a publicly available application.
+
 ## Quick Deployment
 
 ### Option 1: GitHub Actions (Recommended)
@@ -23,13 +25,15 @@ This repository is configured for deployment to Cloudflare Pages. The web applic
 2. Click **Create a project** → **Connect to Git**
 3. Select this repository
 4. Configure build settings:
-   - **Framework preset**: None
+   - **Framework preset**: `None`
    - **Build command**: `pnpm install && pnpm --filter @avocat-ai/web run pages:build`
    - **Build output directory**: `apps/web/.vercel/output/static`
-   - **Root directory**: `/`
+   - **Root directory**: `/` (or leave empty)
    - **Node version**: `20`
 5. Add environment variables (see `apps/web/cloudflare.env.example`)
 6. Click **Save and Deploy**
+
+**Quick reference**: See `CLOUDFLARE_BUILD_SETTINGS.md` for copy-paste ready settings.
 
 ### Option 3: Local Deployment with Wrangler
 

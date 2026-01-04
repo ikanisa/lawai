@@ -2,6 +2,8 @@
 
 This guide covers deploying the Avocat-AI web application to Cloudflare Pages using Next.js with `@cloudflare/next-on-pages`.
 
+> **Important**: This is an **internal staff-only system**. Access is controlled via user management and invitations. Users can only access the system when invited by system administrators through the user management interface. This is not a publicly available application.
+
 ## Prerequisites
 
 1. **Cloudflare Account**: Sign up at [cloudflare.com](https://www.cloudflare.com)
@@ -117,13 +119,15 @@ Your Account ID can be found in:
 2. Click **Create a project**
 3. Connect your Git repository
 4. Configure build settings:
-   - **Framework preset**: None (or Next.js if available)
+   - **Framework preset**: `None`
    - **Build command**: `pnpm install && pnpm --filter @avocat-ai/web run pages:build`
    - **Build output directory**: `apps/web/.vercel/output/static`
-   - **Root directory**: `/` (root of repository)
+   - **Root directory**: `/` (or leave empty)
    - **Node version**: `20`
 5. Add environment variables (see above)
 6. Click **Save and Deploy**
+
+> **Quick reference**: See `CLOUDFLARE_BUILD_SETTINGS.md` in the repository root for copy-paste ready settings.
 
 ## Build Configuration
 
@@ -220,6 +224,12 @@ The output directory is `apps/web/.vercel/output/static` (as specified in `wrang
 2. **API Keys**: Use Cloudflare Pages environment variables only
 3. **CSP Headers**: Configured in `next.config.mjs` for security
 4. **HTTPS**: Automatically enabled by Cloudflare
+5. **Access Control**: This is an internal system with access controlled via user management:
+   - Users must be invited by system administrators
+   - Access is managed through the user management interface
+   - Role-based access control (RBAC) and attribute-based access control (ABAC) enforce permissions
+   - Row-level security (RLS) in Supabase ensures data isolation
+   - The system is not publicly accessible - only invited staff members can access it
 
 ## Rollback
 
