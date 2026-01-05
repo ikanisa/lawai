@@ -6,3 +6,18 @@
 
 /_next/static/*
   Cache-Control: public, max-age=31536000, immutable
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/workbox-*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/icons/*
+  Cache-Control: public, max-age=86400
+
+/manifest.json
+  Cache-Control: public, max-age=3600
