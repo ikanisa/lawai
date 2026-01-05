@@ -26,6 +26,10 @@
     "ops:rls-smoke": "pnpm --filter @apps/ops rls-smoke",
     "ops:phase": "pnpm --filter @apps/ops phase",
     "seed": "pnpm --filter @db/seed start",
-    "check:binaries": "node ./scripts/check-binaries.mjs"
+    "check:binaries": "node ./scripts/check-binaries.mjs",
+    "dev:mcp": "pnpm --filter @apps/mcp dev",
+    "build:mcp": "pnpm --filter @apps/mcp build",
+    "dev:chatgpt-ui": "pnpm --filter @apps/chatgpt-ui dev",
+    "build:chatgpt-ui": "pnpm --filter @apps/chatgpt-ui build"
   }
 }
