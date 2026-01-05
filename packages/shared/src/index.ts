@@ -6,3 +6,4 @@ export * from './plan.js';
 export * from './akoma.js';
 export * from './scheduling.js';
 export * from './scheduling/scheduler.js';
+export * from './roles.js';

@@ -4,6 +4,11 @@ import { AppProviders } from '../../src/components/providers';
 import { AppShell } from '../../src/components/app-shell';
 import { getMessages, isLocale, locales, type Locale } from '../../src/lib/i18n';
 
+// Cloudflare Pages requires edge runtime for dynamic routes
+export const runtime = 'edge';
+// Force dynamic rendering for pages using session hooks
+export const dynamic = 'force-dynamic';
+
 export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }

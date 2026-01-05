@@ -123,8 +123,7 @@ export function createOpenAIDenoClient(config: OpenAIDenoClientConfig): OpenAIDe
         const blob =
           params.data instanceof Blob
             ? params.data
-            : // @ts-expect-error - ArrayBuffer/Uint8Array type mismatch with BlobPart
-            new Blob([params.data], { type: params.mimeType ?? 'application/octet-stream' });
+            : new Blob([params.data as BlobPart], { type: params.mimeType ?? 'application/octet-stream' });
         form.append('file', new File([blob], params.filename, { type: params.mimeType ?? blob.type }));
 
         const response = await fetch(`${baseUrl}/files`, {
