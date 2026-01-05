@@ -10,6 +10,8 @@
       "subtitle": "Naviguez rapidement ou déclenchez une action.",
       "placeholder": "Rechercher une commande…",
       "empty": "Aucune commande ne correspond à votre recherche.",
+      "resultsCount": "{count} commande(s) correspondante(s).",
+      "keyboardHint": "Utilisez ↑/↓ pour naviguer, Entrée pour valider.",
       "close": "Fermer",
       "sections": {
         "actions": "Actions rapides",
@@ -58,6 +60,22 @@
           "description": "Consulter la transparence, les SLO et les publications de gouvernance."
         }
       }
+    },
+    "compliance": {
+      "title": "Accusés de conformité",
+      "description": "Veuillez confirmer les dernières divulgations de conformité IA.",
+      "consentRequired": "Consentement à l’assistance IA mis à jour ({version}).",
+      "councilRequired": "Divulgation Conseil de l’Europe mise à jour ({version}).",
+      "acknowledge": "Confirmer les mises à jour",
+      "footer": "Les confirmations sont enregistrées pour audit.",
+      "loading": "Vérification du statut de conformité…",
+      "errorTitle": "Impossible de vérifier la conformité",
+      "error": "Impossible de charger les confirmations de conformité.",
+      "offline": "Vous êtes hors ligne. Reconnectez-vous pour confirmer la conformité.",
+      "retry": "Réessayer",
+      "clearTitle": "Conformité à jour.",
+      "clearDescription": "Aucune action supplémentaire n’est requise.",
+      "acknowledged": "Confirmation enregistrée."
     },
     "install": {
       "title": "Installer Avocat-AI",
@@ -110,7 +128,27 @@
     "exportPdf": "Exporter PDF signé (C2PA)",
     "exportDocx": "Exporter DOCX signé (C2PA)",
     "hitl": "Soumettre à revue",
+    "hitlQueued": "Revue en attente",
     "ask": "Poser une question"
+  },
+  "auth": {
+    "title": "Vérification WhatsApp",
+    "description": "Vérifiez votre numéro pour accéder à la messagerie sécurisée.",
+    "phoneLabel": "Numéro de téléphone",
+    "sendCode": "Envoyer le code",
+    "sending": "Envoi…",
+    "enterCodeTitle": "Saisissez le code reçu.",
+    "otpPlaceholder": "Code à 6 chiffres",
+    "verifyCode": "Vérifier",
+    "verifying": "Vérification…",
+    "back": "Retour",
+    "success": "Vérification réussie.",
+    "startAgain": "Recommencer",
+    "invalidPhone": "Veuillez saisir un numéro valide.",
+    "invalidOtp": "Veuillez saisir le code de vérification.",
+    "otpSent": "Code envoyé au {phone}.",
+    "errorRateLimit": "Trop de tentatives. Réessayez plus tard.",
+    "errorGeneric": "Impossible de vérifier. Réessayez."
   },
   "research": {
     "heroPlaceholder": "Posez votre question juridique…",
@@ -160,6 +198,17 @@
       "evidenceSecondary": "Autres citations",
       "evidenceOpen": "Ouvrir la source",
       "evidenceEmpty": "Aucune citation officielle n’est encore disponible."
+    },
+    "cards": {
+      "clauseRiskTitle": "Points de risque de clause",
+      "clauseRiskDescription": "Signaux clés détectés dans la clause et le contexte.",
+      "clauseRiskIssueLabel": "Clause ciblée",
+      "clauseRiskRationaleLabel": "Justification du risque",
+      "clauseRiskHitl": "Revue humaine requise",
+      "obligationsTitle": "Checklist des obligations",
+      "obligationsDescription": "Suivi des obligations et actions issues de la clause.",
+      "obligationsEmpty": "Aucune obligation extraite pour l’instant.",
+      "obligationsCount": "{count} obligations"
     },
     "badges": {
       "eu": "UE",
@@ -219,7 +268,32 @@
         "HIGH": "Élevé"
       },
       "hitlRequired": "Revue humaine requise.",
-      "hitlNotRequired": "Revue humaine non requise."
+      "hitlNotRequired": "Revue humaine non requise.",
+      "manualHitlReason": "Revue humaine demandée depuis le panneau de confiance.",
+      "hitlRequestFailed": "Impossible de demander une revue humaine. Réessayez plus tard."
+    },
+    "compliance": {
+      "title": "Contrôles de conformité",
+      "description": "FRIA, CEPEJ, priorité aux textes et obligations de divulgation.",
+      "friaRequired": "FRIA requise",
+      "friaReasonFallback": "Workflow à risque élevé — FRIA à compléter.",
+      "cepejFailed": "Non-conformité CEPEJ",
+      "cepejDefaultDetail": "Les critères CEPEJ doivent être revus.",
+      "cepejViolations": {
+        "transparency": "Principe de transparence non respecté"
+      },
+      "statuteFailed": "Priorité aux textes",
+      "statuteDefaultDetail": "La règle principale doit être statutaire.",
+      "statuteViolations": {
+        "first_rule_not_statute": "La règle principale n’est pas un texte statutaire"
+      },
+      "disclosuresRequired": "Divulgations requises",
+      "disclosuresMissing": {
+        "consent": "Consentement manquant",
+        "council": "Divulgation Conseil de l’Europe manquante"
+      },
+      "resolved": "Conformité validée.",
+      "resolvedDetail": "Aucune action supplémentaire nécessaire."
     },
     "bilingual": {
       "label": "Versions officielles bilingues",
@@ -318,6 +392,41 @@
     "digestEnabled": "Les notifications de veille sont activées.",
     "digestError": "Impossible d'activer les notifications.",
     "digestEnabledBadge": "Alertes actives",
+    "desk": {
+      "modeLabels": {
+        "ask": "Question",
+        "do": "Exécution",
+        "review": "Revue",
+        "generate": "Génération"
+      }
+    },
+    "navigator": {
+      "title": "Navigateur de processus guidé",
+      "subtitle": "Suivi des workflows juridiques et de la télémétrie opérationnelle.",
+      "empty": "Les exécutions du navigateur apparaîtront après le lancement d’un workflow.",
+      "kpis": {
+        "lastRunLabel": "Dernière exécution",
+        "telemetryLabel": "Télémétrie",
+        "progress": "Progression"
+      },
+      "persona": "Persona : {persona}",
+      "progressSummary": "{complete}/{total} étapes terminées",
+      "progressPercent": "{percent}% terminé",
+      "runCount": "{count} exécutions guidées",
+      "hitlEscalations": "{count} escalades HITL",
+      "pendingTasks": "{count} tâches en attente",
+      "stepsTitle": "Étapes",
+      "states": {
+        "complete": "Terminé",
+        "inProgress": "En cours",
+        "blocked": "Bloqué"
+      },
+      "guardrailsLabel": "Garde-fous",
+      "outputsLabel": "Livrables",
+      "lastRun": "Dernière exécution",
+      "estimated": "Durée estimée {minutes} min",
+      "alertsTitle": "Alertes"
+    },
     "status": {
       "research": "Recherche",
       "drafting": "Rédaction",
@@ -553,6 +662,27 @@
     "empty": "Les paramètres de l’organisation seront affichés ici selon votre rôle.",
     "metricsTitle": "Tableau de pilotage",
     "metricsDescription": "Surveillez la précision des citations, la charge HITL et la santé de l’ingestion pour vos équipes.",
+    "launchReadinessTitle": "Préparation au lancement",
+    "launchReadinessSubtitle": "Suivez les critères go/no-go, la robustesse hors ligne et les supports disponibles.",
+    "launchReadinessRefresh": "Actualiser",
+    "launchReadinessAddOfflineSample": "Ajouter un test hors ligne",
+    "launchReadinessScoreLabel": "Score de préparation",
+    "launchReadinessScoreHint": "Indice de préparation synthétique.",
+    "launchReadinessVitalsLabel": "Vitals web",
+    "launchReadinessVitalsHint": "{needs} à améliorer · {poor} critiques",
+    "launchReadinessOfflineLabel": "File hors ligne",
+    "launchReadinessOfflineHint": "{queued} en file · {syncing} en cours",
+    "launchReadinessDigestsLabel": "Digests",
+    "launchReadinessDigestsHint": "Dernier : {last}",
+    "launchReadinessActionsTitle": "Actions prioritaires",
+    "launchReadinessActionFallback": "Aucune action prioritaire.",
+    "launchReadinessNotesTitle": "Notes",
+    "launchReadinessNotesFallback": "Aucune note enregistrée.",
+    "launchReadinessOfflineSection": "Échantillons hors ligne",
+    "launchReadinessOfflineEmpty": "Aucun échantillon hors ligne.",
+    "launchReadinessCollateralLabel": "Packs onboarding pilote : {count}",
+    "launchReadinessCollateralPricing": "Packs tarifaires : {count}",
+    "launchReadinessCollateralTransparency": "Kits transparence : {count}",
     "runs30d": "Exécutions (30 jours)",
     "totalRunsLabel": "Total",
     "allowlistedPrecision": "Précision allowlist",

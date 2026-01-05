@@ -40,6 +40,15 @@ describe('evaluation helpers', () => {
     expect(haystack).toContain('legiart');
   });
 
+  it('includes obligations in the haystack', () => {
+    const payload: IRACPayload = {
+      ...basePayload,
+      obligations: ['Le fournisseur doit livrer sous 30 jours.'],
+    };
+    const haystack = buildEvaluationHaystack(payload);
+    expect(haystack).toContain('fournisseur doit livrer');
+  });
+
   it('flags missing expectations', () => {
     const result = evaluateExpectedTerms(basePayload, ['responsabilité', 'article 1245', 'cassation']);
     expect(result.pass).toBe(false);
@@ -58,6 +67,12 @@ describe('evaluation helpers', () => {
     expect(dataset.length).toBeGreaterThan(0);
     expect(dataset[0].benchmark).toBe('legalbench');
     expect(typeof dataset[0].prompt).toBe('string');
+  });
+
+  it('loads the lawai golden benchmark', async () => {
+    const dataset = await loadBenchmarkCases('lawai-golden');
+    expect(dataset.length).toBeGreaterThan(0);
+    expect(dataset[0].benchmark).toBe('lawai-golden');
   });
 
   it('computes metrics and detects Maghreb coverage', () => {

@@ -8,10 +8,12 @@ import messagesEn from '../messages/en.json';
 import type { Messages } from '@/lib/i18n';
 import { WhatsAppAuth } from '@/features/auth/components/whatsapp-auth';
 
-const startWhatsAppOtpMock = vi.fn();
-const verifyWhatsAppOtpMock = vi.fn();
-const toastSuccessMock = vi.fn();
-const toastErrorMock = vi.fn();
+const { startWhatsAppOtpMock, verifyWhatsAppOtpMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
+  startWhatsAppOtpMock: vi.fn(),
+  verifyWhatsAppOtpMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+}));
 
 vi.mock('@/lib/api', () => ({
   DEMO_ORG_ID: '00000000-0000-0000-0000-000000000000',

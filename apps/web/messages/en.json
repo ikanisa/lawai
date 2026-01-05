@@ -10,6 +10,8 @@
       "subtitle": "Navigate quickly or trigger an action.",
       "placeholder": "Search commands…",
       "empty": "No commands match your search.",
+      "resultsCount": "Found {count} matching command(s).",
+      "keyboardHint": "Use ↑/↓ to navigate, Enter to select.",
       "close": "Close",
       "sections": {
         "actions": "Quick actions",
@@ -58,6 +60,22 @@
           "description": "Review transparency metrics, SLO snapshots, and published evidence."
         }
       }
+    },
+    "compliance": {
+      "title": "Compliance acknowledgements",
+      "description": "Review and acknowledge updated AI compliance disclosures.",
+      "consentRequired": "AI assistance consent updated ({version}).",
+      "councilRequired": "Council of Europe disclosure updated ({version}).",
+      "acknowledge": "Acknowledge updates",
+      "footer": "Acknowledgements are recorded for audit.",
+      "loading": "Checking compliance status…",
+      "errorTitle": "Unable to verify compliance status",
+      "error": "We couldn't load compliance acknowledgements.",
+      "offline": "You're offline. Please reconnect to confirm compliance.",
+      "retry": "Retry",
+      "clearTitle": "Compliance acknowledgements are up to date.",
+      "clearDescription": "No further action is required.",
+      "acknowledged": "Acknowledgement recorded."
     },
     "install": {
       "title": "Install Avocat-AI",
@@ -110,7 +128,27 @@
     "exportPdf": "Export signed PDF (C2PA)",
     "exportDocx": "Export signed DOCX (C2PA)",
     "hitl": "Submit for review",
+    "hitlQueued": "Queued for review",
     "ask": "Ask"
+  },
+  "auth": {
+    "title": "WhatsApp verification",
+    "description": "Verify your phone number to access secure messaging.",
+    "phoneLabel": "Phone number",
+    "sendCode": "Send code",
+    "sending": "Sending…",
+    "enterCodeTitle": "Enter the verification code we sent.",
+    "otpPlaceholder": "6-digit code",
+    "verifyCode": "Verify code",
+    "verifying": "Verifying…",
+    "back": "Back",
+    "success": "Verification complete.",
+    "startAgain": "Start again",
+    "invalidPhone": "Enter a valid phone number.",
+    "invalidOtp": "Enter the verification code.",
+    "otpSent": "Code sent to {phone}.",
+    "errorRateLimit": "Too many attempts. Try again later.",
+    "errorGeneric": "Unable to verify. Please try again."
   },
   "research": {
     "heroPlaceholder": "Ask your legal question…",
@@ -160,6 +198,17 @@
       "evidenceSecondary": "Additional citations",
       "evidenceOpen": "Open source",
       "evidenceEmpty": "No authoritative citations are available yet."
+    },
+    "cards": {
+      "clauseRiskTitle": "Clause risk highlights",
+      "clauseRiskDescription": "Key risk signals extracted from the clause and current context.",
+      "clauseRiskIssueLabel": "Clause focus",
+      "clauseRiskRationaleLabel": "Risk rationale",
+      "clauseRiskHitl": "Human review required",
+      "obligationsTitle": "Obligations checklist",
+      "obligationsDescription": "Track duties and action items implied by the clause.",
+      "obligationsEmpty": "No obligations extracted yet.",
+      "obligationsCount": "{count} obligations"
     },
     "badges": {
       "eu": "EU",
@@ -219,7 +268,32 @@
         "HIGH": "High"
       },
       "hitlRequired": "Human review required.",
-      "hitlNotRequired": "Human review not required."
+      "hitlNotRequired": "Human review not required.",
+      "manualHitlReason": "Manual review requested from the trust panel.",
+      "hitlRequestFailed": "Unable to request human review. Try again shortly."
+    },
+    "compliance": {
+      "title": "Compliance checks",
+      "description": "FRIA, CEPEJ, statute-first, and disclosure requirements.",
+      "friaRequired": "FRIA required",
+      "friaReasonFallback": "High-risk workflow flagged for FRIA review.",
+      "cepejFailed": "CEPEJ compliance issues",
+      "cepejDefaultDetail": "CEPEJ transparency criteria need attention.",
+      "cepejViolations": {
+        "transparency": "Transparency principle not satisfied"
+      },
+      "statuteFailed": "Statute-first issues",
+      "statuteDefaultDetail": "Primary rules should be statutory.",
+      "statuteViolations": {
+        "first_rule_not_statute": "Primary rule is not a statute"
+      },
+      "disclosuresRequired": "Disclosures required",
+      "disclosuresMissing": {
+        "consent": "Consent disclosure missing",
+        "council": "Council of Europe disclosure missing"
+      },
+      "resolved": "All compliance checks resolved.",
+      "resolvedDetail": "No additional action is required."
     },
     "bilingual": {
       "label": "Official bilingual versions",
@@ -318,6 +392,41 @@
     "digestEnabled": "Digest notifications are enabled.",
     "digestError": "We couldn't enable notifications.",
     "digestEnabledBadge": "Alerts on",
+    "desk": {
+      "modeLabels": {
+        "ask": "Ask",
+        "do": "Do",
+        "review": "Review",
+        "generate": "Generate"
+      }
+    },
+    "navigator": {
+      "title": "Guided process navigator",
+      "subtitle": "Track multi-step legal workflows and operational telemetry.",
+      "empty": "Navigator runs will appear once a workflow is launched.",
+      "kpis": {
+        "lastRunLabel": "Last run",
+        "telemetryLabel": "Telemetry",
+        "progress": "Progress"
+      },
+      "persona": "Persona: {persona}",
+      "progressSummary": "{complete}/{total} steps complete",
+      "progressPercent": "{percent}% complete",
+      "runCount": "{count} guided runs",
+      "hitlEscalations": "{count} HITL escalations",
+      "pendingTasks": "{count} pending tasks",
+      "stepsTitle": "Steps",
+      "states": {
+        "complete": "Complete",
+        "inProgress": "In progress",
+        "blocked": "Blocked"
+      },
+      "guardrailsLabel": "Guardrails",
+      "outputsLabel": "Outputs",
+      "lastRun": "Last run",
+      "estimated": "Estimated {minutes} min",
+      "alertsTitle": "Alerts"
+    },
     "status": {
       "research": "Research",
       "drafting": "Drafting",
@@ -553,6 +662,27 @@
     "empty": "Organization settings appear here based on your role.",
     "metricsTitle": "Operations dashboard",
     "metricsDescription": "Monitor citation precision, HITL workload, and ingestion health across your teams.",
+    "launchReadinessTitle": "Launch readiness",
+    "launchReadinessSubtitle": "Monitor go/no-go criteria, offline durability, and collateral availability.",
+    "launchReadinessRefresh": "Refresh",
+    "launchReadinessAddOfflineSample": "Add offline sample",
+    "launchReadinessScoreLabel": "Readiness score",
+    "launchReadinessScoreHint": "Composite readiness index.",
+    "launchReadinessVitalsLabel": "Web vitals",
+    "launchReadinessVitalsHint": "{needs} need improvement · {poor} poor",
+    "launchReadinessOfflineLabel": "Offline outbox",
+    "launchReadinessOfflineHint": "{queued} queued · {syncing} syncing",
+    "launchReadinessDigestsLabel": "Digests",
+    "launchReadinessDigestsHint": "Last: {last}",
+    "launchReadinessActionsTitle": "Priority actions",
+    "launchReadinessActionFallback": "No priority actions queued.",
+    "launchReadinessNotesTitle": "Notes",
+    "launchReadinessNotesFallback": "No notes recorded yet.",
+    "launchReadinessOfflineSection": "Offline samples",
+    "launchReadinessOfflineEmpty": "No offline samples yet.",
+    "launchReadinessCollateralLabel": "Pilot onboarding packs: {count}",
+    "launchReadinessCollateralPricing": "Pricing packs: {count}",
+    "launchReadinessCollateralTransparency": "Transparency kits: {count}",
     "runs30d": "Runs (30 days)",
     "totalRunsLabel": "Total",
     "allowlistedPrecision": "Allowlisted precision",

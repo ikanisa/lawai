@@ -12,19 +12,16 @@ describe('BilingualToggle', () => {
       <BilingualToggle
         messages={{
           label: 'Official versions',
+          fr: 'Français',
+          en: 'English',
           note: 'Choose an official language.',
-          languages: [
-            { code: 'fr', label: 'Français' },
-            { code: 'en', label: 'English' },
-            { code: 'rw', label: 'Kinyarwanda' },
-          ],
         }}
         onSelect={onSelect}
       />,
     );
 
     expect(screen.getByRole('button', { name: /Français/i })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Kinyarwanda/i }));
-    expect(onSelect).toHaveBeenCalledWith('rw');
+    await user.click(screen.getByRole('button', { name: /English/i }));
+    expect(onSelect).toHaveBeenCalledWith('en');
   });
 });

@@ -11,6 +11,7 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+    exclude: ['**/node_modules/**', '**/*.server.test.ts', '**/*.server.test.tsx', 'tests/e2e/**', 'playwright/**'],
     coverage: {
       provider: 'v8',
     },

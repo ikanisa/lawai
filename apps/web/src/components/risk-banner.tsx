@@ -7,6 +7,7 @@ interface RiskBannerProps {
   risk: IRACPayload['risk'];
   onHitl?: () => void;
   hitlLabel: string;
+  hitlDisabled?: boolean;
 }
 
 const riskPalette: Record<IRACPayload['risk']['level'], { bg: string; text: string; icon: React.ComponentType<any> }> = {
@@ -15,7 +16,7 @@ const riskPalette: Record<IRACPayload['risk']['level'], { bg: string; text: stri
   HIGH: { bg: 'bg-legal-red/20 border-legal-red/50 text-legal-red', text: 'Risque élevé', icon: ShieldAlert },
 };
 
-export function RiskBanner({ risk, onHitl, hitlLabel }: RiskBannerProps) {
+export function RiskBanner({ risk, onHitl, hitlLabel, hitlDisabled }: RiskBannerProps) {
   const palette = riskPalette[risk.level];
   const Icon = palette.icon;
 
@@ -33,8 +34,8 @@ export function RiskBanner({ risk, onHitl, hitlLabel }: RiskBannerProps) {
           <p className="text-sm font-semibold uppercase tracking-wide">{palette.text}</p>
           <p className="text-sm text-slate-200/80">{risk.why}</p>
         </div>
-        {risk.hitl_required && onHitl && (
-          <Button variant="outline" onClick={onHitl} className="text-xs uppercase">
+        {onHitl && (
+          <Button variant="outline" onClick={onHitl} className="text-xs uppercase" disabled={hitlDisabled}>
             {hitlLabel}
           </Button>
         )}

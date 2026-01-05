@@ -8,10 +8,12 @@ import messagesEn from '../messages/en.json';
 import type { Messages } from '@/lib/i18n';
 import { ComplianceBanner } from '@/features/shell/components/compliance-banner';
 
-const fetchComplianceStatusMock = vi.fn();
-const acknowledgeComplianceMock = vi.fn();
-const toastSuccessMock = vi.fn();
-const toastErrorMock = vi.fn();
+const { fetchComplianceStatusMock, acknowledgeComplianceMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
+  fetchComplianceStatusMock: vi.fn(),
+  acknowledgeComplianceMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+}));
 
 vi.mock('@/lib/api', () => ({
   DEMO_ORG_ID: '00000000-0000-0000-0000-000000000000',

@@ -142,6 +142,14 @@ describe('SearchPanel', () => {
     });
     expect(screen.getByText('Official source with high score')).toBeInTheDocument();
 
+    await user.clear(scoreInput);
+    await user.type(scoreInput, '70');
+
+    await waitFor(() => {
+      expect(screen.getByText('Doctrine analysis')).toBeInTheDocument();
+      expect(screen.getByText('Official source with high score')).toBeInTheDocument();
+    });
+
     const doctrineButton = screen.getByRole('button', { name: 'Doctrine' });
     await user.click(doctrineButton);
 

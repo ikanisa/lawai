@@ -40,62 +40,60 @@ export function PlanDrawer({ open, onOpenChange, toolLogs, plan, reused = false,
           </p>
         )}
 
-        {hasPlan ? (
-          planItems.map((step, index) => (
-            <SheetSection key={`${step.id}-${step.startedAt}-${index}`} className="space-y-3">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-400">
-                  <span>Étape {index + 1}</span>
-                  <span>{step.name}</span>
+        {hasPlan
+          ? planItems.map((step, index) => (
+              <SheetSection key={`${step.id}-${step.startedAt}-${index}`} className="space-y-3">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-400">
+                    <span>Étape {index + 1}</span>
+                    <span>{step.name}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                    <span className="rounded-full border border-slate-700/60 px-2 py-0.5 text-[10px] uppercase">
+                      Statut : {step.status}
+                    </span>
+                    <span>Tentatives : {step.attempts}</span>
+                    <span>
+                      Début : {new Date(step.startedAt).toLocaleString()} · Fin : {new Date(step.finishedAt).toLocaleString()}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                  <span className="rounded-full border border-slate-700/60 px-2 py-0.5 text-[10px] uppercase">
-                    Statut : {step.status}
-                  </span>
-                  <span>Tentatives : {step.attempts}</span>
-                  <span>
-                    Début : {new Date(step.startedAt).toLocaleString()} · Fin : {new Date(step.finishedAt).toLocaleString()}
-                  </span>
+                <Separator className="bg-slate-800/80" />
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-400">{step.description}</p>
+                  {step.detail && (
+                    <pre className="max-h-40 overflow-auto rounded-xl bg-slate-950/60 p-3 text-xs text-slate-300/90">
+                      {JSON.stringify(step.detail, null, 2)}
+                    </pre>
+                  )}
                 </div>
+              </SheetSection>
+            ))
+          : null}
+        {!hasPlan && logItems.length === 0 ? <p>Aucun outil n’a encore été déclenché.</p> : null}
+        {logItems.map((step, index) => (
+          <SheetSection key={step.id} className="space-y-3">
+            <div className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-400">
+              <span>Étape {index + 1}</span>
+              <span>{step.name}</span>
+            </div>
+            <Separator className="bg-slate-800/80" />
+            <div className="space-y-2">
+              <div>
+                <p className="text-xs font-semibold text-slate-300">Entrée</p>
+                <pre className="max-h-40 overflow-auto rounded-xl bg-slate-950/60 p-3 text-xs text-slate-300/90">
+                  {JSON.stringify(step.args, null, 2)}
+                </pre>
               </div>
-              <Separator className="bg-slate-800/80" />
-              <div className="space-y-2">
-                <p className="text-xs text-slate-400">{step.description}</p>
-                {step.detail && (
-                  <pre className="max-h-40 overflow-auto rounded-xl bg-slate-950/60 p-3 text-xs text-slate-300/90">
-                    {JSON.stringify(step.detail, null, 2)}
-                  </pre>
-                )}
+              <div>
+                <p className="text-xs font-semibold text-slate-300">Sortie</p>
+                <pre className="max-h-40 overflow-auto rounded-xl bg-slate-950/60 p-3 text-xs text-slate-300/90">
+                  {JSON.stringify(step.output, null, 2)}
+                </pre>
               </div>
-            </SheetSection>
-          ))
-        ) : logItems.length === 0 ? (
-          <p>Aucun outil n’a encore été déclenché.</p>
-        ) : (
-          logItems.map((step, index) => (
-            <SheetSection key={step.id} className="space-y-3">
-              <div className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-400">
-                <span>Étape {index + 1}</span>
-                <span>{step.name}</span>
-              </div>
-              <Separator className="bg-slate-800/80" />
-              <div className="space-y-2">
-                <div>
-                  <p className="text-xs font-semibold text-slate-300">Entrée</p>
-                  <pre className="max-h-40 overflow-auto rounded-xl bg-slate-950/60 p-3 text-xs text-slate-300/90">
-                    {JSON.stringify(step.args, null, 2)}
-                  </pre>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-300">Sortie</p>
-                  <pre className="max-h-40 overflow-auto rounded-xl bg-slate-950/60 p-3 text-xs text-slate-300/90">
-                    {JSON.stringify(step.output, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            </SheetSection>
-          ))
-        )}
+            </div>
+          </SheetSection>
+        ))}
       </div>
     </Sheet>
   );

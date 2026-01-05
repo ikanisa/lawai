@@ -273,23 +273,27 @@ export function DraftingView({ messages, locale }: DraftingViewProps) {
         </Card>
       </section>
 
-      <section className="space-y-4">
-        <header className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-100">{messages.drafting.redline}</h2>
-            <p className="text-sm text-slate-400">{messages.drafting.redlineDescription}</p>
-          </div>
-          <Button variant="outline">{messages.drafting.export}</Button>
-        </header>
-        <RedlineDiff
-          entries={REDLINE_DIFF}
-          messages={messages.drafting.redlineViewer}
-          onExplain={(entry) =>
-            toast.info(messages.drafting.redlineViewer.explainToastTitle.replace('{title}', entry.title), {
-              description: entry.impact,
-            })
-          }
-        />
+      <section>
+        <Card className="glass-card border border-slate-800/60">
+          <CardHeader className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>{messages.drafting.redline}</CardTitle>
+              <p className="text-sm text-slate-400">{messages.drafting.redlineDescription}</p>
+            </div>
+            <Button variant="outline">{messages.drafting.export}</Button>
+          </CardHeader>
+          <CardContent>
+            <RedlineDiff
+              entries={REDLINE_DIFF}
+              messages={messages.drafting.redlineViewer}
+              onExplain={(entry) =>
+                toast.info(messages.drafting.redlineViewer.explainToastTitle.replace('{title}', entry.title), {
+                  description: entry.impact,
+                })
+              }
+            />
+          </CardContent>
+        </Card>
       </section>
     </div>
   );

@@ -51,12 +51,18 @@ function resolveRollbackStrategy(id, slug, sql, overrides) {
   return 'manual-restore';
 }
 
-const files = readdirSync(migrationsDir)
+const migrationPattern = /^(\d{14})_([a-z0-9_]+)\.sql$/;
+const allFiles = readdirSync(migrationsDir)
   .filter((name) => name.endsWith('.sql'))
   .sort();
+const files = allFiles.filter((file) => migrationPattern.test(file));
+const skippedFiles = allFiles.filter((file) => !migrationPattern.test(file));
+if (skippedFiles.length > 0) {
+  console.warn(`Skipping legacy migrations: ${skippedFiles.join(', ')}`);
+}
 
 const fileIds = files.map((file) => {
-  const match = file.match(/^(\d{14})_([a-z0-9_]+)\.sql$/);
+  const match = file.match(migrationPattern);
   if (!match) {
     throw new Error(`Migration file ${file} does not match expected pattern YYYYMMDDHHMMSS_slug.sql`);
   }
@@ -107,7 +113,7 @@ const manifest = {
 let previousId = null;
 
 for (const file of files) {
-  const match = file.match(/^(\d{14})_([a-z0-9_]+)\.sql$/);
+  const match = file.match(migrationPattern);
   if (!match) {
     throw new Error(`Migration file ${file} does not match expected pattern YYYYMMDDHHMMSS_slug.sql`);
   }

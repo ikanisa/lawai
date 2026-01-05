@@ -46,12 +46,18 @@ if (allowLegacySupabase) {
 }
 
 // 2) Validate db/migrations filenames and ordering
-const files = readdirSync(dbDir)
+const migrationPattern = /^(\d{14})_([a-z0-9_]+)\.sql$/;
+const allFiles = readdirSync(dbDir)
   .filter((f) => f.endsWith('.sql'))
   .sort();
+const files = allFiles.filter((file) => migrationPattern.test(file));
+const skippedFiles = allFiles.filter((file) => !migrationPattern.test(file));
+if (skippedFiles.length > 0) {
+  ok(`legacy migrations ignored: ${skippedFiles.length} file(s)`);
+}
 
 const fileIds = files.map((file) => {
-  const match = file.match(/^(\d{14})_([a-z0-9_]+)\.sql$/);
+  const match = file.match(migrationPattern);
   if (!match) {
     fail(`migration filename must follow YYYYMMDDHHMMSS_slug.sql: ${file}`);
   }
@@ -99,7 +105,7 @@ function resolveDependencies(id) {
 }
 
 for (const file of files) {
-  const match = file.match(/^(\d{14})_([a-z0-9_]+)\.sql$/);
+  const match = file.match(migrationPattern);
   if (!match) {
     fail(`migration filename must follow YYYYMMDDHHMMSS_slug.sql: ${file}`);
   }

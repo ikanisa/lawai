@@ -13,3 +13,15 @@ export const ACCEPTANCE_THRESHOLDS: AcceptanceThresholds = {
   linkHealthFailureRatioMax: 0.05,
   hitlRecallHighRisk: 0.98,
 };
+
+export interface LatencyBudgets {
+  firstLoadSeconds: number;
+  interactionLatencyMs: number;
+  apiLatencyP95Ms: number;
+}
+
+export const LATENCY_BUDGETS: LatencyBudgets = {
+  firstLoadSeconds: 3,
+  interactionLatencyMs: 150,
+  apiLatencyP95Ms: 500,
+};

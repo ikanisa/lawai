@@ -6,7 +6,7 @@ describe('buildOpsScheduler', () => {
     const scheduler = buildOpsScheduler({});
     const tasks = scheduler.list();
     const ids = tasks.map((task) => task.id).sort();
-    expect(ids).toEqual(['evaluation-nightly', 'ingestion-hourly', 'red-team-weekly']);
+    expect(ids).toEqual(['evaluation-nightly', 'gdpr-retention-nightly', 'ingestion-hourly', 'red-team-weekly']);
   });
 
   it('triggers ingestion handler when endpoint set', async () => {

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "lawai-fr-responsabilite-delictuelle",
+    "name": "LawAI Golden - FR Responsabilite delictuelle",
+    "prompt": "Quelles sont les conditions de la responsabilité délictuelle en France pour un dommage causé par négligence?",
+    "expected_contains": ["code civil", "1240", "cour de cassation"],
+    "benchmark": "lawai-golden"
+  },
+  {
+    "id": "lawai-ohada-suretes",
+    "name": "LawAI Golden - OHADA Suretes",
+    "prompt": "Peut-on constituer un gage sur un fonds de commerce dans l'espace OHADA?",
+    "expected_contains": ["acte uniforme", "sûretés", "ccja"],
+    "benchmark": "lawai-golden"
+  },
+  {
+    "id": "lawai-ma-non-concurrence",
+    "name": "LawAI Golden - MA Non concurrence",
+    "prompt": "Une clause de non-concurrence est-elle valable dans un contrat de travail au Maroc?",
+    "expected_contains": ["code du travail", "bulletin officiel"],
+    "benchmark": "lawai-golden"
+  },
+  {
+    "id": "lawai-be-clauses-abusives",
+    "name": "LawAI Golden - BE Clauses abusives",
+    "prompt": "Comment encadrer les clauses abusives dans les contrats B2C en Belgique?",
+    "expected_contains": [],
+    "benchmark": "lawai-golden"
+  },
+  {
+    "id": "lawai-ch-conflit-lois",
+    "name": "LawAI Golden - CH Conflits de lois",
+    "prompt": "Comment déterminer la compétence internationale en matière contractuelle selon la LDIP suisse?",
+    "expected_contains": [],
+    "benchmark": "lawai-golden"
+  },
+  {
+    "id": "lawai-caqc-prescription",
+    "name": "LawAI Golden - CA-QC Prescription",
+    "prompt": "Quel est le délai de prescription pour une action personnelle au Québec?",
+    "expected_contains": [],
+    "benchmark": "lawai-golden"
+  }
+]

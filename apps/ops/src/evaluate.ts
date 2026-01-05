@@ -14,7 +14,7 @@ import {
   getJurisdictionsForDomain,
 } from '@avocat-ai/shared';
 
-interface CliOptions {
+export interface CliOptions {
   orgId: string;
   userId: string;
   apiBaseUrl: string;
@@ -22,6 +22,61 @@ interface CliOptions {
   dryRun: boolean;
   ciMode: boolean;
   benchmark?: string | null;
+}
+
+export interface EvaluationCase {
+  id: string;
+  name: string;
+  prompt: string;
+  expected_contains: string[];
+  benchmark?: string | null;
+}
+
+export interface EvaluationResultRecord {
+  caseId: string;
+  runId: string | null;
+  pass: boolean;
+  notes: string | null;
+  metrics?: CaseMetricsSummary | null;
+  benchmark?: string | null;
+}
+
+export interface EvaluationDataSource {
+  loadCases: (options: { orgId: string; limit: number; benchmark?: string | null }) => Promise<EvaluationCase[]>;
+  recordResult: (record: EvaluationResultRecord) => Promise<void>;
+  loadLinkHealth: (orgId: string) => Promise<LinkHealthSummary | null>;
+}
+
+export interface EvaluationCaseScore {
+  caseId: string;
+  name: string;
+  pass: boolean;
+  benchmark: string | null;
+  metrics?: CaseMetricsSummary | null;
+}
+
+export interface EvaluationSummary {
+  passed: number;
+  failed: number;
+  errors: string[];
+  thresholdFailed: boolean;
+  thresholdFailures: string[];
+  coverage: {
+    citationPrecision: number;
+    temporalValidity: number;
+    maghrebBanner: number;
+  } | null;
+  linkHealth: LinkHealthSummary | null;
+  scoreboard: EvaluationCaseScore[];
+}
+
+export interface RunEvaluationDependencies {
+  dataSource: EvaluationDataSource;
+  fetchImpl?: typeof fetch;
+  retries?: number;
+  retryDelayMs?: number;
+  logger?: Pick<typeof console, 'log' | 'error' | 'warn'>;
+  onRetry?: (attempt: number, error: unknown) => void;
 }
 
 const FALLBACK_CASES: Array<{
@@ -97,6 +152,36 @@ const FALLBACK_CASES: Array<{
 const MAGHREB_JURISDICTION_SET = new Set<string>(
   MAGHREB_JURISDICTIONS.map((code) => code.toUpperCase()),
 );
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function withRetries<T>(
+  operation: () => Promise<T>,
+  retries: number,
+  delayMs: number,
+  onRetry?: (attempt: number, error: unknown) => void,
+): Promise<T> {
+  let attempt = 0;
+  while (attempt <= retries) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt === retries) {
+        throw error;
+      }
+      onRetry?.(attempt + 1, error);
+      if (delayMs > 0) {
+        await sleep(delayMs);
+      }
+      attempt += 1;
+    }
+  }
+  throw new Error('Retry exhaustion without execution');
+}
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BENCHMARKS_DIR = path.resolve(CURRENT_DIR, '../fixtures/benchmarks');
@@ -372,7 +457,7 @@ async function fetchEvalCases(
   orgId: string,
   limit: number,
   benchmark?: string | null,
-) {
+): Promise<EvaluationCase[]> {
   if (benchmark) {
     const cases = await loadBenchmarkCases(benchmark);
     const scoped = Number.isFinite(limit) ? cases.slice(0, limit) : cases;
@@ -409,6 +494,215 @@ async function fetchEvalCases(
     ...entry,
     benchmark: benchmark ?? null,
   }));
+}
+
+export function createEvaluationDataSource(supabase: SupabaseClient | null): EvaluationDataSource {
+  return {
+    loadCases: async ({ orgId, limit, benchmark }) => fetchEvalCases(supabase, orgId, limit, benchmark ?? null),
+    recordResult: async (record) =>
+      recordResult(
+        supabase,
+        record.caseId,
+        record.runId,
+        record.pass,
+        record.notes,
+        record.metrics ?? undefined,
+        record.benchmark ?? null,
+      ),
+    loadLinkHealth: async (orgId) => fetchLinkHealthSummary(supabase, orgId),
+  };
+}
+
+export async function runEvaluation(
+  options: CliOptions,
+  dependencies: RunEvaluationDependencies,
+): Promise<EvaluationSummary> {
+  const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const retries = dependencies.retries ?? 0;
+  const retryDelayMs = dependencies.retryDelayMs ?? 0;
+  const logger = dependencies.logger ?? console;
+  const onRetry = dependencies.onRetry;
+  const scoreboard: EvaluationCaseScore[] = [];
+  const errors: string[] = [];
+
+  const cases = await dependencies.dataSource.loadCases({
+    orgId: options.orgId,
+    limit: options.limit,
+    benchmark: options.benchmark ?? null,
+  });
+
+  if (options.dryRun) {
+    return {
+      passed: 0,
+      failed: 0,
+      errors,
+      thresholdFailed: false,
+      thresholdFailures: [],
+      coverage: null,
+      linkHealth: null,
+      scoreboard,
+    };
+  }
+
+  let passed = 0;
+  let failed = 0;
+
+  for (const evaluationCase of cases) {
+    const benchmark =
+      typeof (evaluationCase as Record<string, unknown>).benchmark === 'string'
+        ? ((evaluationCase as Record<string, unknown>).benchmark as string)
+        : options.benchmark ?? null;
+
+    try {
+      const response = await withRetries(
+        () =>
+          fetchImpl(`${options.apiBaseUrl}/runs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              question: evaluationCase.prompt,
+              orgId: options.orgId,
+              userId: options.userId,
+            }),
+          }),
+        retries,
+        retryDelayMs,
+        onRetry,
+      );
+
+      if (!response.ok) {
+        const message = `API ${response.status}`;
+        await dependencies.dataSource.recordResult({
+          caseId: evaluationCase.id,
+          runId: null,
+          pass: false,
+          notes: message,
+          benchmark,
+        });
+        scoreboard.push({
+          caseId: evaluationCase.id,
+          name: evaluationCase.name,
+          pass: false,
+          benchmark,
+          metrics: null,
+        });
+        errors.push(`${evaluationCase.name}: ${message}`);
+        failed += 1;
+        continue;
+      }
+
+      const json = (await response.json()) as { runId?: string; data?: IRACPayload };
+      const payload = json.data;
+      if (!payload) {
+        const message = 'Réponse vide';
+        await dependencies.dataSource.recordResult({
+          caseId: evaluationCase.id,
+          runId: json.runId ?? null,
+          pass: false,
+          notes: message,
+          benchmark,
+        });
+        scoreboard.push({
+          caseId: evaluationCase.id,
+          name: evaluationCase.name,
+          pass: false,
+          benchmark,
+          metrics: null,
+        });
+        errors.push(`${evaluationCase.name}: ${message}`);
+        failed += 1;
+        continue;
+      }
+
+      const expectedTerms = Array.isArray(evaluationCase.expected_contains)
+        ? evaluationCase.expected_contains
+        : [];
+      const evaluation = evaluateExpectedTerms(payload, expectedTerms);
+      const metrics = computeMetrics(payload);
+      const notes = evaluation.pass ? null : `Manquants: ${evaluation.missing.join(', ')}`;
+
+      await dependencies.dataSource.recordResult({
+        caseId: evaluationCase.id,
+        runId: json.runId ?? null,
+        pass: evaluation.pass,
+        notes,
+        metrics,
+        benchmark,
+      });
+
+      scoreboard.push({
+        caseId: evaluationCase.id,
+        name: evaluationCase.name,
+        pass: evaluation.pass,
+        benchmark,
+        metrics,
+      });
+
+      if (evaluation.pass) {
+        passed += 1;
+      } else {
+        failed += 1;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await dependencies.dataSource.recordResult({
+        caseId: evaluationCase.id,
+        runId: null,
+        pass: false,
+        notes: message,
+        benchmark,
+      });
+      scoreboard.push({
+        caseId: evaluationCase.id,
+        name: evaluationCase.name,
+        pass: false,
+        benchmark,
+        metrics: null,
+      });
+      errors.push(`${evaluationCase.name}: ${message}`);
+      failed += 1;
+    }
+  }
+
+  let thresholdFailed = false;
+  let thresholdFailures: string[] = [];
+  let coverage: EvaluationSummary['coverage'] = null;
+  let linkHealth: LinkHealthSummary | null = null;
+
+  if (scoreboard.length > 0) {
+    const metricsEntries = scoreboard
+      .map((entry) => entry.metrics)
+      .filter((entry): entry is CaseMetricsSummary => entry != null);
+    const thresholdResult = checkAcceptanceThresholds(metricsEntries);
+    thresholdFailed = !thresholdResult.ok;
+    thresholdFailures = [...thresholdResult.failures];
+    coverage = thresholdResult.coverage;
+
+    try {
+      linkHealth = await dependencies.dataSource.loadLinkHealth(options.orgId);
+    } catch (error) {
+      logger.warn(error instanceof Error ? error.message : String(error));
+    }
+
+    const linkHealthCheck = checkLinkHealthThreshold(linkHealth);
+    if (!linkHealthCheck.ok) {
+      thresholdFailed = true;
+      if (linkHealthCheck.failure) {
+        thresholdFailures.push(linkHealthCheck.failure);
+      }
+    }
+  }
+
+  return {
+    passed,
+    failed,
+    errors,
+    thresholdFailed,
+    thresholdFailures,
+    coverage,
+    linkHealth,
+    scoreboard,
+  };
 }
 
 async function recordResult(

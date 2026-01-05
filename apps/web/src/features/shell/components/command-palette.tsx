@@ -307,7 +307,13 @@ export function CommandPalette({ open, onOpenChange, locale, messages, actions =
             {groupedActions.length === 0 ? (
               <p className="px-2 py-6 text-center text-sm text-slate-400">{labels.empty}</p>
             ) : (
-              <div id={listboxId} role="listbox" aria-label={labels.title} className="space-y-3">
+              <div
+                id={listboxId}
+                role="listbox"
+                aria-label={labels.title}
+                aria-activedescendant={activeOptionId}
+                className="space-y-3"
+              >
                 {renderedGroups}
               </div>
             )}

@@ -41,7 +41,7 @@ describe('PlanDrawer (web)', () => {
 
     expect(screen.getByText(/Résultat réutilisé/i)).toBeInTheDocument();
     expect(screen.getByText('Identifier la règle applicable')).toBeInTheDocument();
-    expect(screen.getByText(/Tentatives: 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Tentatives\s*:\s*1/)).toBeInTheDocument();
     expect(screen.getByText(/Étude des sources officielles/)).toBeInTheDocument();
     expect(screen.getByText(/"query": "obligation"/)).toBeInTheDocument();
     expect(screen.getByText(/"result": true/)).toBeInTheDocument();

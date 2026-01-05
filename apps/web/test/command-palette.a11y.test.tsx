@@ -25,7 +25,13 @@ describe('CommandPalette accessibility', () => {
   });
 
   function openPalette() {
-    render(<CommandPalette messages={messagesEn as Messages} locale="en" />);
+    const actions = [
+      { id: 'action-drafting', label: 'Drafting', section: 'actions', href: '/drafting' },
+      { id: 'action-hitl', label: 'HITL review', section: 'actions', href: '/hitl' },
+      { id: 'nav-workspace', label: 'Workspace', section: 'navigate', href: '/workspace' },
+      { id: 'nav-research', label: 'Research', section: 'navigate', href: '/research' },
+    ];
+    render(<CommandPalette messages={messagesEn as Messages} locale="en" actions={actions} />);
     act(() => {
       useCommandPalette.getState().setOpen(true);
     });

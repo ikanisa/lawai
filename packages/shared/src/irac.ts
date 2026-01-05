@@ -17,6 +17,7 @@ export const IRACSchema = z.object({
   ),
   application: z.string(),
   conclusion: z.string(),
+  obligations: z.array(z.string()).optional(),
   citations: z.array(
     z.object({
       title: z.string(),

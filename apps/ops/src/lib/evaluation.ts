@@ -15,6 +15,11 @@ export function buildEvaluationHaystack(payload: IRACPayload): string {
   segments.push(payload.issue);
   segments.push(payload.application);
   segments.push(payload.conclusion);
+  if (payload.obligations) {
+    for (const obligation of payload.obligations) {
+      segments.push(obligation);
+    }
+  }
   for (const rule of payload.rules) {
     segments.push(rule.citation);
     segments.push(rule.source_url);
@@ -45,4 +50,3 @@ export function evaluateExpectedTerms(payload: IRACPayload, expected: string[] =
     haystack,
   };
 }
-
