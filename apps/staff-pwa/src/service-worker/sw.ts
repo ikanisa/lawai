@@ -52,7 +52,7 @@ registerRoute(
   ({ request }) => request.destination === 'image',
   new CacheFirst({
     cacheName: 'images',
-    plugins: [new ExpirationPlugin({ maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 })],
+    plugins: [new ExpirationPlugin({ maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 }) as any],
   }),
 );
 

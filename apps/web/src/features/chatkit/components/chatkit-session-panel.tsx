@@ -186,6 +186,7 @@ function connectionBadgeVariant(state: ConnectionState): 'default' | 'success' |
 
 export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelProps) {
   const copy = messages.workspace.chatkit;
+  const { orgId } = useRequiredSession();
   const queryClient = useQueryClient();
   const chatkitClient = useMemo(() => new ChatkitClient(), []);
   const sessionCache = useRef<Map<string, ChatkitSessionRecord>>(new Map());
@@ -220,6 +221,88 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
     }
     return sessionCache.current.get(selectedSessionId) ?? sessions.find((session) => session.id === selectedSessionId) ?? null;
   }, [selectedSessionId, sessions]);
+
+  /* HOOKS MOVED TO TOP LEVEL */
+  const tasks = useMemo(() => normaliseTasks(selectedSession, messages), [selectedSession, messages]);
+
+  const startSessionMutation = useMutation({
+    mutationFn: async () => {
+      const metadataTasks = buildDefaultTaskMetadata(messages);
+      const session = await createChatkitSession({
+        orgId,
+        metadata: {
+          transport: 'sse',
+          tasks: metadataTasks,
+        },
+      });
+      sessionCache.current.set(session.id, session);
+      return session;
+    },
+    onSuccess: (session) => {
+      setSelectedSessionId(session.id);
+      setConnectionState('connecting');
+      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(orgId) });
+      console.info('chatkit_session_started', { sessionId: session.id, agent: session.agentName });
+      sendTelemetry('chatkit_session_started', {
+        sessionId: session.id,
+        agent: session.agentName,
+        channel: session.channel,
+      });
+    },
+    onError: (error) => {
+      console.error('chatkit_session_start_failed', error);
+      sendTelemetry('chatkit_session_start_failed', {
+        message: error instanceof Error ? error.message : 'unknown',
+      });
+    },
+  });
+
+  const cancelSessionMutation = useMutation({
+    mutationFn: async (session: ChatkitSessionRecord) => cancelChatkitSession(session.id),
+    onSuccess: (updated, original) => {
+      sessionCache.current.set(updated.id, updated);
+      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(orgId) });
+      if (selectedSessionId === updated.id) {
+        setSelectedSessionId(null);
+      }
+      console.info('chatkit_session_cancelled', { sessionId: updated.id });
+      sendTelemetry('chatkit_session_cancelled', {
+        sessionId: updated.id,
+        previousStatus: original.status,
+      });
+    },
+    onError: (error, session) => {
+      console.error('chatkit_session_cancel_failed', error);
+      sendTelemetry('chatkit_session_cancel_failed', {
+        sessionId: session.id,
+        message: error instanceof Error ? error.message : 'unknown',
+      });
+    },
+  });
+
+  const escalateMutation = useMutation({
+    mutationFn: async (session: ChatkitSessionRecord) => {
+      await postChatkitEvent(session.id, {
+        type: 'hitl.escalation.requested',
+        payload: {
+          agent: session.agentName,
+          tasks: normaliseTasks(session, messages).map((task) => ({ id: task.id, status: task.status })),
+        },
+      });
+    },
+    onSuccess: (_result, session) => {
+      console.info('chatkit_escalation_requested', { sessionId: session.id });
+      sendTelemetry('chatkit_escalation_requested', {
+        sessionId: session.id,
+      });
+      toast.success(messages.escalated);
+    },
+    onError: (error) => {
+      console.error('chatkit_escalation_failed', error);
+      toast.error(messages.error);
+    },
+  });
+  /* END HOOKS MOVED */
 
   useEffect(() => {
     if (!selectedSession) {
@@ -329,89 +412,7 @@ export function ChatkitSessionPanel({ messages, locale }: ChatkitSessionPanelPro
     };
   }, [chatkitClient, selectedSession]);
 
-  const tasks = useMemo(() => normaliseTasks(selectedSession, messages), [selectedSession, messages]);
 
-  const startSessionMutation = useMutation({
-    mutationFn: async () => {
-      const metadataTasks = buildDefaultTaskMetadata(messages);
-      const session = await createChatkitSession({
-        orgId,
-        metadata: {
-          transport: 'sse',
-          tasks: metadataTasks,
-        },
-      });
-      sessionCache.current.set(session.id, session);
-      return session;
-    },
-    onSuccess: (session) => {
-      setSelectedSessionId(session.id);
-      setConnectionState('connecting');
-      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(orgId) });
-      console.info('chatkit_session_started', { sessionId: session.id, agent: session.agentName });
-      sendTelemetry('chatkit_session_started', {
-        sessionId: session.id,
-        agent: session.agentName,
-        channel: session.channel,
-      });
-    },
-    onError: (error) => {
-      console.error('chatkit_session_start_failed', error);
-      sendTelemetry('chatkit_session_start_failed', {
-        message: error instanceof Error ? error.message : 'unknown',
-      });
-    },
-  });
-
-  const cancelSessionMutation = useMutation({
-    mutationFn: async (session: ChatkitSessionRecord) => cancelChatkitSession(session.id),
-    onSuccess: (updated, original) => {
-      sessionCache.current.set(updated.id, updated);
-      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(orgId) });
-      if (selectedSessionId === updated.id) {
-        setSelectedSessionId(null);
-      }
-      console.info('chatkit_session_cancelled', { sessionId: updated.id });
-      sendTelemetry('chatkit_session_cancelled', {
-        sessionId: updated.id,
-        previousStatus: original.status,
-      });
-    },
-    onError: (error, session) => {
-      console.error('chatkit_session_cancel_failed', error);
-      sendTelemetry('chatkit_session_cancel_failed', {
-        sessionId: session.id,
-        message: error instanceof Error ? error.message : 'unknown',
-      });
-    },
-  });
-
-  const escalateMutation = useMutation({
-    mutationFn: async (session: ChatkitSessionRecord) => {
-      await postChatkitEvent(session.id, {
-        type: 'hitl.escalation.requested',
-        payload: {
-          agent: session.agentName,
-          tasks: normaliseTasks(session, messages).map((task) => ({ id: task.id, status: task.status })),
-        },
-      });
-    },
-    onSuccess: (_result, session) => {
-      console.info('chatkit_hitl_escalated', { sessionId: session.id });
-      sendTelemetry('chatkit_hitl_escalated', {
-        sessionId: session.id,
-        agent: session.agentName,
-      });
-      void queryClient.invalidateQueries({ queryKey: chatkitKeys.sessions(orgId) });
-    },
-    onError: (error, session) => {
-      console.error('chatkit_hitl_escalation_failed', error);
-      sendTelemetry('chatkit_hitl_escalation_failed', {
-        sessionId: session.id,
-        message: error instanceof Error ? error.message : 'unknown',
-      });
-    },
-  });
 
   const handleStartSession = useCallback(() => {
     startSessionMutation.mutate();

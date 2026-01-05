@@ -35,7 +35,7 @@ function PolicyRow({ policy, onToggle }: { policy: PolicyToggle; onToggle: (enab
 
 export function AdminConsoleView() {
   const { data, isLoading, isError } = useQuery(adminConsoleQueryOptions());
-  const [tab, setTab] = useState(tabConfig[0].id);
+  const [tab, setTab] = useState(tabConfig[0]?.id ?? "");
   const [localData, setLocalData] = useState<AdminConsoleData | null>(null);
 
   const consoleData = localData ?? data;
@@ -49,9 +49,9 @@ export function AdminConsoleView() {
         policies: base.policies.map((policy) =>
           policy.id === id
             ? {
-                ...policy,
-                enabled
-              }
+              ...policy,
+              enabled
+            }
             : policy
         )
       };

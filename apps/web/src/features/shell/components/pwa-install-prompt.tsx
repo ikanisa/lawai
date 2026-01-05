@@ -53,6 +53,16 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
     };
   }, [messages?.releaseNotes]);
 
+  const outboxMessage = useMemo(() => {
+    if (!releaseNotes?.outboxLabel) {
+      return null;
+    }
+    if (!hasItems) {
+      return `${releaseNotes.outboxLabel}: ${releaseNotes.outboxEmpty ?? '0'}`;
+    }
+    return `${releaseNotes.outboxLabel}: ${pendingCount} · ${formatOutboxAge(stalenessMs, locale)}`;
+  }, [releaseNotes?.outboxLabel, releaseNotes?.outboxEmpty, hasItems, pendingCount, stalenessMs, locale]);
+
   useEffect(() => {
     if (!shouldPrompt) return;
     void sendTelemetryEvent('pwa_prompt_shown', {
@@ -106,15 +116,7 @@ export function PwaInstallPrompt({ messages, locale }: PwaInstallPromptProps) {
     }
   };
 
-  const outboxMessage = useMemo(() => {
-    if (!releaseNotes?.outboxLabel) {
-      return null;
-    }
-    if (!hasItems) {
-      return `${releaseNotes.outboxLabel}: ${releaseNotes.outboxEmpty ?? '0'}`;
-    }
-    return `${releaseNotes.outboxLabel}: ${pendingCount} · ${formatOutboxAge(stalenessMs, locale)}`;
-  }, [releaseNotes?.outboxLabel, releaseNotes?.outboxEmpty, hasItems, pendingCount, stalenessMs, locale]);
+
 
   return (
     <div className="fixed bottom-28 right-6 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-200">

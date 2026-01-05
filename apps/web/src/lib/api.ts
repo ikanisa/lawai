@@ -871,3 +871,86 @@ export async function getGovernancePublications(params?: {
   }
   return response.json();
 }
+
+export async function startWhatsAppOtp(input: { phone: string; orgId: string }) {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/otp/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error('Failed to start OTP');
+  return response.json();
+}
+
+export async function verifyWhatsAppOtp(input: { phone: string; otp: string; orgHint: string }) {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/otp/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error('Failed to verify OTP');
+  return response.json();
+}
+
+export async function linkWhatsAppOtp(input: { phone: string; otp: string; orgId: string; userId: string }) {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error('Failed to link WhatsApp');
+  return response.json();
+}
+
+export async function unlinkWhatsApp(input: { orgId: string; userId: string }) {
+  const response = await fetch(`${API_BASE}/auth/whatsapp/link`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error('Failed to unlink WhatsApp');
+}
+
+export interface ChatkitSessionRecord {
+  id: string;
+  agentName: string;
+  channel: string;
+  status: string;
+  createdAt: string;
+  chatkit?: { clientSecret: string };
+  metadata?: Record<string, unknown>;
+}
+
+export async function fetchChatkitSession(id: string, opts?: { includeSecret?: boolean }): Promise<ChatkitSessionRecord> {
+  const url = opts?.includeSecret ? `${API_BASE}/chatkit/sessions/${id}?includeSecret=true` : `${API_BASE}/chatkit/sessions/${id}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to fetch session');
+  return response.json();
+}
+
+export async function createChatkitSession(data: { orgId: string; metadata?: any }): Promise<ChatkitSessionRecord> {
+  const response = await fetch(`${API_BASE}/chatkit/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to create session');
+  return response.json();
+}
+
+export async function cancelChatkitSession(id: string): Promise<ChatkitSessionRecord> {
+  const response = await fetch(`${API_BASE}/chatkit/sessions/${id}/cancel`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error('Failed to cancel session');
+  return response.json();
+}
+
+export async function postChatkitEvent(sessionId: string, event: { type: string; payload: any }): Promise<void> {
+  const response = await fetch(`${API_BASE}/chatkit/sessions/${sessionId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(event),
+  });
+  if (!response.ok) throw new Error('Failed to post event');
+}

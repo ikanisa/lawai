@@ -229,7 +229,7 @@ export async function withEdgeSpan<T>(
 ): Promise<T> {
   const tracer = trace.getTracer(serviceName ?? 'edge');
   const span =
-    tracer?.startSpan?.(name, { attributes }) ??
+    tracer?.startSpan?.(name, attributes ? { attributes } : {}) ??
     ({
       end() { },
       recordException() { },

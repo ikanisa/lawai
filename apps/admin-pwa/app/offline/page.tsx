@@ -13,7 +13,7 @@ export default function OfflinePage() {
       <ul style={{ margin: '1rem 0 0', paddingLeft: '1.25rem', lineHeight: 1.6 }}>
         <li>Deployment approvals queue locally and preserve your reviewer signature.</li>
         <li>Compliance evidence uploads resume when your connection stabilises.</li>
-        <li>Use keyboard shortcuts (press "/" for global search) even without a network.</li>
+        <li>Use keyboard shortcuts (press &quot;/&quot; for global search) even without a network.</li>
       </ul>
     </section>
   );
