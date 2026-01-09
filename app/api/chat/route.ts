@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/permissions';
-import { LawAIAgent } from '@/lib/ai-agent';
+import { LawAIOrchestrator } from '@/lib/ai-orchestrator';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 
@@ -52,26 +52,59 @@ export async function POST(request: NextRequest) {
     }));
     conversationHistory.push({ role: 'user', content: message });
 
-    // Get AI response
-    const agent = new LawAIAgent(session.user.id);
-    
-    // Get case context if session is linked to a case
+    // Get user with organization
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, organizationId: true },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Get matter and case context if session is linked
+    let matterId: string | undefined;
+    let caseId: string | undefined;
     let caseContext: string | undefined;
+
+    if (chatSession.matterId) {
+      matterId = chatSession.matterId;
+    }
+
     if (chatSession.caseId) {
+      caseId = chatSession.caseId;
       const case_ = await prisma.case.findUnique({
         where: { id: chatSession.caseId },
-        select: { title: true, description: true },
+        select: { title: true, description: true, matterId: true },
       });
       if (case_) {
         caseContext = `${case_.title}: ${case_.description || ''}`;
+        if (case_.matterId && !matterId) {
+          matterId = case_.matterId;
+        }
       }
     }
-    
-    const aiResponse = await agent.chat(
-      conversationHistory,
-      sessionId,
-      caseContext
+
+    // Use new orchestrator
+    const orchestrator = new LawAIOrchestrator(
+      user.id,
+      user.organizationId,
+      matterId,
+      caseId
     );
+
+    const result = await orchestrator.processRequest({
+      type: 'chat',
+      content: message,
+      context: {
+        previousMessages: conversationHistory.slice(0, -1), // Exclude current message
+        caseContext,
+      },
+    });
+
+    const aiResponse = typeof result.data === 'string' 
+      ? result.data 
+      : JSON.stringify(result.data);
 
     // Save AI response
     const savedMessage = await prisma.chatMessage.create({

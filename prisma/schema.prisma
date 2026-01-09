@@ -1,5 +1,5 @@
-// Prisma schema for LawAI Staff Portal
-// Minimal schema with only essential tables
+// Prisma schema for LawAI - Harvey AI-Inspired Architecture
+// Matter-centric design with multi-tenant support
 
 generator client {
   provider = "prisma-client-js"
@@ -15,41 +15,108 @@ enum Role {
   ADMIN
 }
 
+enum MatterStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum VaultType {
+  DUE_DILIGENCE
+  DISCOVERY
+  CONTRACT_REVIEW
+  GENERAL
+}
+
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum WorkflowExecutionStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  PAUSED
+}
+
+// Multi-tenant organization support
+model Organization {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  settings        Json     @default("{}")
+  subscriptionTier String? @map("subscription_tier")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  users           User[]
+  matters         Matter[]
+  workflows       Workflow[]
+  templates       Template[]
+  knowledgeSources KnowledgeSource[]
+  auditLogs       AuditLog[]
+  aiInteractions  AIInteraction[]
+  
+  @@map("organizations")
+  @@index([slug])
+}
+
 model User {
   id           String         @id @default(uuid())
   email        String         @unique
   name         String
   role         Role           @default(STAFF)
   passwordHash String         @map("password_hash")
+  organizationId String       @map("organization_id")
+  avatar       String?
+  preferences  Json           @default("{}")
+  ssoId        String?        @map("sso_id") @unique
+  mfaEnabled   Boolean        @default(false) @map("mfa_enabled")
+  lastActivity DateTime?      @map("last_activity")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
   lastLogin    DateTime?      @map("last_login")
   
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   chatSessions ChatSession[]
   chatMessages ChatMessage[]
   documents    Document[]
+  reviewedDocuments Document[] @relation("DocumentReviewer")
   auditLogs    AuditLog[]
   assignedCases Case[]        @relation("AssignedCases")
   createdCases  Case[]        @relation("CreatedCases")
+  ownedMatters  Matter[]      @relation("MatterOwner")
+  matterTeamMembers MatterTeamMember[]
+  createdVaults Vault[]       @relation("VaultCreator")
+  createdWorkflows Workflow[] @relation("WorkflowCreator")
+  workflowExecutions WorkflowExecution[]
+  createdTemplates Template[] @relation("TemplateCreator")
+  aiInteractions AIInteraction[]
   
   @@map("users")
   @@index([email])
+  @@index([organizationId])
 }
 
 model ChatSession {
   id        String        @id @default(uuid())
   userId    String        @map("user_id")
+  matterId  String?      @map("matter_id")
   caseId    String?       @map("case_id")
   title     String?
   createdAt DateTime      @default(now()) @map("created_at")
   updatedAt DateTime      @updatedAt @map("updated_at")
   
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matter    Matter?       @relation(fields: [matterId], references: [id], onDelete: SetNull)
   case      Case?         @relation(fields: [caseId], references: [id], onDelete: SetNull)
   messages  ChatMessage[]
   
   @@map("chat_sessions")
   @@index([userId])
+  @@index([matterId])
   @@index([caseId])
   @@index([createdAt])
 }
@@ -71,48 +138,295 @@ model ChatMessage {
   @@index([createdAt(sort: Desc)])
 }
 
+// Matter-centric architecture - Matter is the central organizing entity
+model Matter {
+  id          String       @id @default(uuid())
+  organizationId String    @map("organization_id")
+  name        String
+  description String?      @db.Text
+  matterType  String?      @map("matter_type") // litigation, transactional, etc.
+  status      MatterStatus @default(ACTIVE)
+  ownerId     String?      @map("owner_id")
+  clientName  String?      @map("client_name")
+  metadata    Json         @default("{}")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User?        @relation("MatterOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  cases        Case[]
+  vaults       Vault[]
+  teamMembers  MatterTeamMember[]
+  chatSessions ChatSession[]
+  workflowExecutions WorkflowExecution[]
+  aiInteractions AIInteraction[]
+  
+  @@map("matters")
+  @@index([organizationId])
+  @@index([status])
+  @@index([ownerId])
+  @@index([createdAt])
+}
+
+// Cases belong to Matters (Harvey's Matter OS concept)
 model Case {
   id          String   @id @default(uuid())
+  matterId    String   @map("matter_id")
   title       String
+  caseNumber  String?  @map("case_number")
   description String?  @db.Text
   status      String   @default("open") // 'open', 'in_progress', 'closed'
+  priority    String?  // 'low', 'medium', 'high', 'urgent'
   assignedTo  String?  @map("assigned_to")
   createdBy   String   @map("created_by")
+  tags        Json     @default("[]")
+  customFields Json    @default("{}") @map("custom_fields")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   
-  assignedUser User?      @relation("AssignedCases", fields: [assignedTo], references: [id], onDelete: SetNull)
-  creator      User       @relation("CreatedCases", fields: [createdBy], references: [id], onDelete: Cascade)
-  documents    Document[]
+  matter      Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  assignedUser User?   @relation("AssignedCases", fields: [assignedTo], references: [id], onDelete: SetNull)
+  creator     User     @relation("CreatedCases", fields: [createdBy], references: [id], onDelete: Cascade)
+  documents   Document[]
   chatSessions ChatSession[]
+  aiInteractions AIInteraction[]
   
   @@map("cases")
+  @@index([matterId])
   @@index([assignedTo])
   @@index([status])
   @@index([createdAt])
 }
 
-model Document {
-  id         String   @id @default(uuid())
-  caseId     String?  @map("case_id")
-  userId     String   @map("user_id")
-  filename   String
-  filePath   String   @map("file_path")
-  fileSize   Int?     @map("file_size")
-  mimeType   String?  @map("mime_type")
-  aiAnalysis Json?    @map("ai_analysis") // AI analysis results
-  uploadedAt DateTime @default(now()) @map("uploaded_at")
+// Matter team members for collaboration
+model MatterTeamMember {
+  id        String   @id @default(uuid())
+  matterId String   @map("matter_id")
+  userId   String   @map("user_id")
+  role     String?  // 'viewer', 'contributor', 'editor'
+  addedAt  DateTime @default(now()) @map("added_at")
   
-  case Case? @relation(fields: [caseId], references: [id], onDelete: SetNull)
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matter   Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([matterId, userId])
+  @@map("matter_team_members")
+  @@index([matterId])
+  @@index([userId])
+}
+
+// Vault system for bulk document management (Harvey-inspired)
+model Vault {
+  id            String     @id @default(uuid())
+  matterId      String     @map("matter_id")
+  name          String
+  description   String?    @db.Text
+  vaultType     VaultType  @default(GENERAL) @map("vault_type")
+  maxDocuments  Int        @default(10000) @map("max_documents")
+  isShared      Boolean    @default(false) @map("is_shared")
+  sharedWith    Json       @default("[]") @map("shared_with") // Email addresses
+  createdById   String     @map("created_by_id")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  
+  matter        Matter     @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  creator       User       @relation("VaultCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  documents     Document[]
+  
+  @@map("vaults")
+  @@index([matterId])
+  @@index([vaultType])
+}
+
+// Enhanced Document model with AI processing and vault support
+model Document {
+  id              String   @id @default(uuid())
+  vaultId         String?  @map("vault_id")
+  caseId          String?  @map("case_id")
+  userId          String   @map("user_id")
+  title           String
+  filename        String
+  filePath        String   @map("file_path")
+  fileType        String?  @map("file_type")
+  fileSize        BigInt   @map("file_size")
+  fileHash        String?  @map("file_hash") // SHA-256 for deduplication
+  path            String?  // Preserve folder structure
+  uploadedAt       DateTime @default(now()) @map("uploaded_at")
+  
+  // AI Processing
+  extractionStatus String?  @default("pending") @map("extraction_status") // pending, processing, completed, failed
+  extractedText     String?  @db.Text @map("extracted_text")
+  embeddingVector   Json?    @map("embedding_vector") // pgvector will be added via extension
+  aiSummary         String?  @db.Text @map("ai_summary")
+  aiMetadata        Json?    @default("{}") @map("ai_metadata") // Extracted entities, dates, parties
+  
+  // Review & Annotation
+  reviewStatus      String?  @default("pending") @map("review_status")
+  reviewedById      String?  @map("reviewed_by_id")
+  annotations       Json     @default("[]")
+  tags              Json     @default("[]")
+  
+  // Legacy AI analysis field (for backward compatibility)
+  aiAnalysis        Json?    @map("ai_analysis")
+  
+  vault             Vault?   @relation(fields: [vaultId], references: [id], onDelete: Cascade)
+  case              Case?    @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewer          User?    @relation("DocumentReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   
   @@map("documents")
   @@index([userId])
+  @@index([vaultId])
   @@index([caseId])
+  @@index([fileHash])
+  @@index([extractionStatus])
+  @@index([reviewStatus])
 }
 
+// Workflow system - Harvey's Workflow Builder
+model Workflow {
+  id            String         @id @default(uuid())
+  organizationId String        @map("organization_id")
+  name          String
+  description   String?        @db.Text
+  workflowType  String?        @map("workflow_type") // contract_review, due_diligence, etc.
+  isTemplate    Boolean        @default(false) @map("is_template")
+  isPublic      Boolean        @default(false) @map("is_public")
+  steps         Json           // Array of workflow step definitions
+  createdById   String         @map("created_by_id")
+  usageCount    Int            @default(0) @map("usage_count")
+  status        WorkflowStatus @default(DRAFT)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator       User           @relation("WorkflowCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  executions    WorkflowExecution[]
+  
+  @@map("workflows")
+  @@index([organizationId])
+  @@index([workflowType])
+  @@index([status])
+}
+
+model WorkflowExecution {
+  id            String                  @id @default(uuid())
+  workflowId    String                  @map("workflow_id")
+  matterId     String?                 @map("matter_id")
+  triggeredById String                  @map("triggered_by_id")
+  status       WorkflowExecutionStatus  @default(RUNNING)
+  inputData    Json                     @map("input_data")
+  outputData   Json?                    @map("output_data")
+  currentStep  Int                      @default(0) @map("current_step")
+  executionTimeMs Int?                  @map("execution_time_ms")
+  errorMessage String?                  @db.Text @map("error_message")
+  startedAt    DateTime                 @default(now()) @map("started_at")
+  completedAt  DateTime?               @map("completed_at")
+  
+  workflow     Workflow                 @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  matter       Matter?                  @relation(fields: [matterId], references: [id], onDelete: SetNull)
+  triggeredBy  User                     @relation(fields: [triggeredById], references: [id], onDelete: Cascade)
+  
+  @@map("workflow_executions")
+  @@index([workflowId])
+  @@index([matterId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+// Document templates with AI variables
+model Template {
+  id            String   @id @default(uuid())
+  organizationId String  @map("organization_id")
+  name          String
+  templateType  String?  @map("template_type") // contract, brief, memo
+  content       String   @db.Text
+  variables     Json     @default("[]") // List of variable definitions
+  sampleData    Json     @default("{}") @map("sample_data")
+  isPublic      Boolean  @default(false) @map("is_public")
+  createdById   String   @map("created_by_id")
+  usageCount    Int      @default(0) @map("usage_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator       User         @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  
+  @@map("templates")
+  @@index([organizationId])
+  @@index([templateType])
+}
+
+// External knowledge source integrations
+model KnowledgeSource {
+  id            String   @id @default(uuid())
+  organizationId String  @map("organization_id")
+  name          String   // LexisNexis, EUR-Lex, etc.
+  sourceType    String   @map("source_type")
+  apiConfig     Json     @default("{}") @map("api_config") // Encrypted API credentials
+  isEnabled     Boolean  @default(true) @map("is_enabled")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  @@map("knowledge_sources")
+  @@index([organizationId])
+  @@index([sourceType])
+}
+
+// Comprehensive AI interaction logging
+model AIInteraction {
+  id              String   @id @default(uuid())
+  organizationId  String   @map("organization_id")
+  userId          String   @map("user_id")
+  matterId        String?  @map("matter_id")
+  caseId          String?  @map("case_id")
+  
+  interactionType String   @map("interaction_type") // chat, analysis, research, draft
+  agentType       String?  @map("agent_type") // assistant, vault_agent, workflow_agent
+  
+  // Request
+  prompt          String   @db.Text
+  context         Json     @default("{}")
+  modelUsed       String?  @map("model_used")
+  knowledgeSources Json    @default("[]") @map("knowledge_sources")
+  
+  // Response
+  response        String   @db.Text
+  citations       Json     @default("[]")
+  confidenceScore Float?   @map("confidence_score")
+  
+  // Metrics
+  tokensPrompt    Int      @map("tokens_prompt")
+  tokensCompletion Int    @map("tokens_completion")
+  latencyMs       Int      @map("latency_ms")
+  cost            Decimal? @db.Decimal(10, 6)
+  
+  // Feedback
+  userRating      Int?     @map("user_rating") // 1-5 stars
+  userFeedback    String?   @db.Text @map("user_feedback")
+  wasEdited       Boolean   @default(false) @map("was_edited")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matter          Matter?      @relation(fields: [matterId], references: [id], onDelete: SetNull)
+  case            Case?        @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  
+  @@map("ai_interactions")
+  @@index([organizationId])
+  @@index([userId])
+  @@index([matterId])
+  @@index([interactionType])
+  @@index([createdAt(sort: Desc)])
+}
+
+// Enhanced audit logging with organization support
 model AuditLog {
   id           String   @id @default(uuid())
+  organizationId String @map("organization_id")
   userId       String?  @map("user_id")
   action       String
   resourceType String?  @map("resource_type")
@@ -122,11 +436,12 @@ model AuditLog {
   userAgent    String?  @map("user_agent")
   createdAt    DateTime @default(now()) @map("created_at")
   
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   
   @@map("audit_logs")
-  @@index([userId])
-  @@index([createdAt(sort: Desc)])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([userId, action])
   @@index([action])
 }
 
