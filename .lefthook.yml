@@ -1,7 +1,0 @@
-pre-commit:
-  parallel: true
-  commands:
-    sql-lint:
-      run: pnpm lint:sql
-    check-migrations:
-      run: pnpm check:migrations

@@ -1,0 +1,141 @@
+// Prisma schema for LawAI Staff Portal
+// Minimal schema with only essential tables
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STAFF
+  ADMIN
+}
+
+model User {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  name         String
+  role         Role           @default(STAFF)
+  passwordHash String         @map("password_hash")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  lastLogin    DateTime?      @map("last_login")
+  
+  chatSessions ChatSession[]
+  chatMessages ChatMessage[]
+  documents    Document[]
+  auditLogs    AuditLog[]
+  assignedCases Case[]        @relation("AssignedCases")
+  createdCases  Case[]        @relation("CreatedCases")
+  
+  @@map("users")
+  @@index([email])
+}
+
+model ChatSession {
+  id        String        @id @default(uuid())
+  userId    String        @map("user_id")
+  caseId    String?       @map("case_id")
+  title     String?
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  case      Case?         @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  messages  ChatMessage[]
+  
+  @@map("chat_sessions")
+  @@index([userId])
+  @@index([caseId])
+  @@index([createdAt])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  sessionId String   @map("session_id")
+  userId    String   @map("user_id")
+  role      String   // 'user', 'assistant', 'system'
+  content   String   @db.Text
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("chat_messages")
+  @@index([sessionId])
+  @@index([createdAt(sort: Desc)])
+}
+
+model Case {
+  id          String   @id @default(uuid())
+  title       String
+  description String?  @db.Text
+  status      String   @default("open") // 'open', 'in_progress', 'closed'
+  assignedTo  String?  @map("assigned_to")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  assignedUser User?      @relation("AssignedCases", fields: [assignedTo], references: [id], onDelete: SetNull)
+  creator      User       @relation("CreatedCases", fields: [createdBy], references: [id], onDelete: Cascade)
+  documents    Document[]
+  chatSessions ChatSession[]
+  
+  @@map("cases")
+  @@index([assignedTo])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Document {
+  id         String   @id @default(uuid())
+  caseId     String?  @map("case_id")
+  userId     String   @map("user_id")
+  filename   String
+  filePath   String   @map("file_path")
+  fileSize   Int?     @map("file_size")
+  mimeType   String?  @map("mime_type")
+  aiAnalysis Json?    @map("ai_analysis") // AI analysis results
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  
+  case Case? @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("documents")
+  @@index([userId])
+  @@index([caseId])
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  userId       String?  @map("user_id")
+  action       String
+  resourceType String?  @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  metadata     Json?
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@map("audit_logs")
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@index([action])
+}
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedBy   String?  @map("updated_by")
+  
+  @@map("system_settings")
+}
